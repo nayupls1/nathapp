@@ -1,0 +1,22 @@
+appId: dev.gapp.app
+productName: gApp
+directories:
+  output: release
+files:
+  - package.json
+  - dist/electron/**
+  - dist/renderer/**
+# The compiled Bun server is a native executable, so it lives outside the asar.
+extraResources:
+  - from: dist/server
+    to: server
+    filter:
+      - gapp-server*
+      - "!*.map"
+linux:
+  target: AppImage
+  category: Utility
+mac:
+  target: dmg
+win:
+  target: nsis

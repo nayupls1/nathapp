@@ -1,0 +1,26 @@
+{
+  "name": "gapp",
+  "productName": "gApp",
+  "version": "0.1.0",
+  "description": "Electron + SolidJS desktop app with a Bun backend server",
+  "private": true,
+  "type": "module",
+  "main": "dist/electron/main.cjs",
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "build": "bun scripts/build.ts",
+    "start": "bun scripts/start.ts",
+    "package": "bun run build && electron-builder",
+    "server": "bun --watch src/server/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.3",
+    "electron": "^44.7.2",
+    "electron-builder": "^26.15.3",
+    "solid-js": "^1.9.17",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vite-plugin-solid": "^2.11.14"
+  }
+}

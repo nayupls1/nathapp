@@ -1,0 +1,88 @@
+import { app, BrowserWindow, dialog, net, protocol, shell } from "electron";
+import { join, normalize, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+import { startServer, type ServerHandle } from "./server";
+
+const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+
+// Bun inlines `__dirname` at bundle time, so resolve build output from the app
+// root instead (works both unpackaged and inside the packaged asar).
+const distDir = join(app.getAppPath(), "dist");
+
+// In production the renderer is served from a custom privileged scheme instead
+// of file:// so it gets a real origin (needed for CORS against the Bun server).
+const APP_SCHEME = "app";
+const APP_HOST = "gapp";
+const rendererOrigin = devServerUrl ? new URL(devServerUrl).origin : `${APP_SCHEME}://${APP_HOST}`;
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
+
+let server: ServerHandle | undefined;
+
+function registerAppProtocol() {
+  const root = join(distDir, "renderer");
+  protocol.handle(APP_SCHEME, (req) => {
+    const { pathname } = new URL(req.url);
+    const file = normalize(join(root, decodeURIComponent(pathname)));
+    if (!file.startsWith(root + sep)) return new Response("Forbidden", { status: 403 });
+    const target = pathname === "/" || !/\.[a-z0-9]+$/i.test(pathname) ? join(root, "index.html") : file;
+    return net.fetch(pathToFileURL(target).toString());
+  });
+}
+
+function createWindow(serverUrl: string) {
+  const win = new BrowserWindow({
+    width: 1100,
+    height: 750,
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(distDir, "electron/preload.cjs"),
+      additionalArguments: [`--gapp-server-url=${serverUrl}`],
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+
+  win.once("ready-to-show", () => win.show());
+
+  // Open external links in the user's browser rather than inside the app.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith("http:") || url.startsWith("https:")) shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  if (devServerUrl) {
+    win.loadURL(devServerUrl);
+    win.webContents.openDevTools({ mode: "detach" });
+  } else {
+    win.loadURL(`${APP_SCHEME}://${APP_HOST}/`);
+  }
+}
+
+app.whenReady().then(async () => {
+  if (!devServerUrl) registerAppProtocol();
+
+  try {
+    server = await startServer(rendererOrigin);
+  } catch (err) {
+    dialog.showErrorBox("gApp", `Failed to start the backend server:\n\n${err}`);
+    app.exit(1);
+    return;
+  }
+
+  createWindow(server.url);
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0 && server) createWindow(server.url);
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+
+app.on("will-quit", () => server?.stop());
