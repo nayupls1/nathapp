@@ -1,8 +1,18 @@
 import { efforts, type AppDetail, type ChatEvent, type ChatRequest, type DataRequest, type HealthResponse } from "../shared/api";
 import { CATALOG_APP_ID, catalogSeed, catalogSpec } from "../shared/catalog";
 import { isRunning, runChat, stopChat } from "./agent";
-import { DataError, deleteAppData, resetAppData, runData } from "./appdata";
-import { addMessage, createApp, deleteApp, getApp, listApps, listMessages, updateApp } from "./db";
+import { copyAppData, DataError, deleteAppData, resetAppData, runData } from "./appdata";
+import {
+  addMessage,
+  clearMessages,
+  createApp,
+  deleteApp,
+  duplicateApp,
+  getApp,
+  listApps,
+  listMessages,
+  updateApp,
+} from "./db";
 import { listModels } from "./models";
 
 // The Catalog page renders its examples against a demo app, reset on every start.
@@ -106,6 +116,24 @@ const server = Bun.serve({
           },
         });
         return new Response(stream, { headers: { ...corsHeaders, "Content-Type": "application/x-ndjson" } });
+      },
+    },
+
+    "/api/apps/:id/duplicate": {
+      POST: (req) => {
+        const copy = duplicateApp(req.params.id);
+        if (!copy) return notFound();
+        copyAppData(req.params.id, copy.id);
+        return json(copy, { status: 201 });
+      },
+    },
+
+    "/api/apps/:id/messages": {
+      DELETE: (req) => {
+        if (!getApp(req.params.id)) return notFound();
+        if (isRunning(req.params.id)) return json({ error: "Stop the agent before clearing the chat" }, { status: 409 });
+        clearMessages(req.params.id);
+        return new Response(null, { status: 204, headers: corsHeaders });
       },
     },
 

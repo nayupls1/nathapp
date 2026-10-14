@@ -30,6 +30,8 @@ export const api = {
   renameApp: (id: string, name: string) =>
     request<AppSummary>(`/api/apps/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteApp: (id: string) => request<void>(`/api/apps/${id}`, { method: "DELETE" }),
+  duplicateApp: (id: string) => request<AppSummary>(`/api/apps/${id}/duplicate`, { method: "POST" }),
+  clearChat: (id: string) => request<void>(`/api/apps/${id}/messages`, { method: "DELETE" }),
   stop: (id: string) => request<void>(`/api/apps/${id}/stop`, { method: "POST" }),
 
   data: <T extends DataResponse>(id: string, req: DataRequest) =>

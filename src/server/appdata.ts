@@ -23,6 +23,11 @@ function open(appId: string): Database {
   return db;
 }
 
+/** Copies an app's database to another app id (which must not have data yet). */
+export function copyAppData(fromId: string, toId: string) {
+  open(fromId).run("VACUUM INTO ?", [join(appsDir, `${toId}.sqlite`)]);
+}
+
 export function deleteAppData(appId: string) {
   handles.get(appId)?.close();
   handles.delete(appId);

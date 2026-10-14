@@ -1,8 +1,20 @@
 import * as stylex from "@stylexjs/stylex";
 import { createSignal, For, Show } from "solid-js";
 import type { AppSummary } from "../../shared/api";
-import { apps, CATALOG_VIEW, deleteApp, newApp, renameApp, selectApp, selectedId, states } from "../lib/store";
+import {
+  apps,
+  CATALOG_VIEW,
+  clearChat,
+  deleteApp,
+  duplicateApp,
+  newApp,
+  renameApp,
+  selectApp,
+  selectedId,
+  states,
+} from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
+import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
 
@@ -35,21 +47,53 @@ export function Sidebar() {
 
 function Item(props: { app: AppSummary }) {
   const [editing, setEditing] = createSignal(false);
+  const [menu, setMenu] = createSignal<MenuPosition>();
   const selected = () => selectedId() === props.app.id;
-  const running = () => states[props.app.id]?.running;
+  const running = () => !!states[props.app.id]?.running;
+  const menuOpen = () => menu() !== undefined;
+  const highlighted = () => selected() || menuOpen();
 
   const commit = (value: string) => {
+    if (!editing()) return; // Enter already committed; this is the blur that follows
     setEditing(false);
     const name = value.trim();
     if (name && name !== props.app.name) renameApp(props.app.id, name);
   };
 
+  const menuItems = (): (MenuItem | "separator")[] => [
+    { label: "Rename", icon: "pencil", onSelect: () => setEditing(true) },
+    { label: "Duplicate", icon: "copy", onSelect: () => duplicateApp(props.app.id) },
+    {
+      label: "Clear chat",
+      icon: "message-square-x",
+      disabled: running() || states[props.app.id]?.messages.length === 0,
+      onSelect: () => {
+        if (window.confirm(`Clear the chat for “${props.app.name}”? The app and its data stay; the agent starts a fresh conversation.`)) {
+          clearChat(props.app.id);
+        }
+      },
+    },
+    "separator",
+    {
+      label: "Delete",
+      icon: "trash",
+      danger: true,
+      onSelect: () => {
+        if (window.confirm(`Delete “${props.app.name}” and all its data?`)) deleteApp(props.app.id);
+      },
+    },
+  ];
+
   return (
     <li
-      {...stylex.attrs(stylex.defaultMarker(), styles.item, selected() && styles.selected)}
+      {...stylex.attrs(stylex.defaultMarker(), styles.item, highlighted() && styles.selected)}
       onClick={() => selectApp(props.app.id)}
       onDblClick={() => setEditing(true)}
-      title="Double-click to rename"
+      onContextMenu={(e) => {
+        e.preventDefault();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
+      data-app-id={props.app.id}
     >
       <Icon
         name={props.app.icon ?? "app-window"}
@@ -57,13 +101,11 @@ function Item(props: { app: AppSummary }) {
         {...stylex.attrs(styles.icon)}
         fallback={<span {...stylex.attrs(styles.icon)}>{props.app.icon}</span>}
       />
-      <Show
-        when={editing()}
-        fallback={<span {...stylex.attrs(styles.name)}>{props.app.name}</span>}
-      >
+      <Show when={editing()} fallback={<span {...stylex.attrs(styles.name)}>{props.app.name}</span>}>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
           value={props.app.name}
+          onClick={(e) => e.stopPropagation()}
           onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit(e.currentTarget.value);
@@ -77,15 +119,20 @@ function Item(props: { app: AppSummary }) {
       </Show>
       <button
         type="button"
-        title="Delete app"
+        title="More"
+        aria-haspopup="menu"
         onClick={(e) => {
           e.stopPropagation();
-          if (window.confirm(`Delete “${props.app.name}” and all its data?`)) deleteApp(props.app.id);
+          const rect = e.currentTarget.getBoundingClientRect();
+          setMenu({ x: rect.left, y: rect.bottom + 4 });
         }}
-        {...stylex.attrs(styles.delete)}
+        {...stylex.attrs(styles.more, menuOpen() && styles.moreOpen)}
       >
-        ✕
+        <Icon name="ellipsis" size={15} />
       </button>
+      <Show when={menu()}>
+        {(position) => <ContextMenu items={menuItems()} position={position()} onClose={() => setMenu()} />}
+      </Show>
     </li>
   );
 }
@@ -164,18 +211,19 @@ const styles = stylex.create({
     animationDuration: "1.2s",
     animationIterationCount: "infinite",
   },
-  delete: {
+  more: {
     display: "grid",
     placeItems: "center",
-    width: 20,
-    height: 20,
+    flexShrink: 0,
+    width: 22,
+    height: 22,
     padding: 0,
     borderStyle: "none",
     borderRadius: radius.sm,
     backgroundColor: "transparent",
-    color: colors.muted,
-    fontSize: 11,
+    color: { default: colors.muted, ":hover": colors.text },
     cursor: "pointer",
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1, ":focus-visible": 1 },
   },
+  moreOpen: { opacity: 1 },
 });

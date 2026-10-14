@@ -118,6 +118,18 @@ export async function renameApp(id: string, name: string) {
   upsertApp(await api.renameApp(id, name));
 }
 
+export async function duplicateApp(id: string) {
+  const copy = await api.duplicateApp(id);
+  upsertApp(copy); // the list is ordered by creation, so it goes last
+
+  await selectApp(copy.id);
+}
+
+export async function clearChat(id: string) {
+  await api.clearChat(id);
+  setStates(id, { messages: [], draft: "" });
+}
+
 export async function deleteApp(id: string) {
   await api.deleteApp(id);
   const index = apps.findIndex((a) => a.id === id);

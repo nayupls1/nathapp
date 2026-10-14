@@ -110,6 +110,30 @@ export function updateApp(
   return row ? toSummary(row) : null;
 }
 
+/** Copies an app's name, icon, spec and agent settings (not its chat) to a new app. */
+export function duplicateApp(id: string): AppSummary | null {
+  const source = getRow.get(id);
+  if (!source) return null;
+  const copyId = crypto.randomUUID();
+  db.query("INSERT INTO apps (id, name, icon, spec, model, effort) VALUES (?, ?, ?, ?, ?, ?)").run(
+    copyId,
+    `${source.name} copy`,
+    source.icon,
+    source.spec,
+    source.model,
+    source.effort,
+  );
+  return toSummary(getRow.get(copyId)!);
+}
+
+/** Deletes the chat history and forgets the agent session, so the next message starts fresh. */
+export function clearMessages(appId: string) {
+  db.transaction(() => {
+    db.query("DELETE FROM messages WHERE app_id = ?").run(appId);
+    db.query(`UPDATE apps SET session_id = NULL, updated_at = ${now} WHERE id = ?`).run(appId);
+  })();
+}
+
 export function deleteApp(id: string) {
   db.query("DELETE FROM apps WHERE id = ?").run(id);
 }

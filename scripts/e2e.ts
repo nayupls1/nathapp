@@ -71,6 +71,7 @@ try {
   page = await Page.connect(port);
   await page.send("Runtime.enable");
   await page.send("Page.enable");
+  page.acceptDialogs();
   page.on("Runtime.exceptionThrown", (e) => pageErrors.push(e.exceptionDetails?.exception?.description ?? e.exceptionDetails?.text));
   page.on("Runtime.consoleAPICalled", (e) => {
     if (e.type === "error") pageErrors.push(e.args.map((a: { value?: unknown; description?: string }) => a.value ?? a.description).join(" "));
@@ -182,6 +183,59 @@ try {
       return `built "${name}"`;
     });
   }
+
+  await check("sidebar context menu: rename, duplicate, delete", async () => {
+    const appNames = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.innerText.split("\\n")[0].trim())`);
+    const openMenu = (index: number) =>
+      page!.eval(`(() => {
+        const li = document.querySelectorAll("nav li")[${index}];
+        const r = li.getBoundingClientRect();
+        li.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 20, clientY: r.top + 10 }));
+        return true;
+      })()`);
+    const choose = async (label: string) => {
+      await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "menu to open" });
+      await click("[data-context-menu] button", label);
+      await page!.waitFor(`!document.querySelector("[data-context-menu]")`, { label: "menu to close" });
+    };
+
+    const before = await appNames();
+    if (!before.length) throw new Error("no apps in the sidebar");
+
+    await openMenu(0);
+    await choose("Rename");
+    await page!.eval(`(() => {
+      const input = document.querySelector("nav li input");
+      input.value = "E2E renamed";
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      return true;
+    })()`);
+    await page!.waitFor(`[...document.querySelectorAll("nav li")].some((li) => li.innerText.includes("E2E renamed"))`, {
+      label: "rename",
+    });
+
+    await openMenu(0);
+    await choose("Duplicate");
+    await page!.waitFor(`[...document.querySelectorAll("nav li")].some((li) => li.innerText.includes("E2E renamed copy"))`, {
+      label: "duplicate",
+    });
+
+    const copyIndex = (await appNames()).indexOf("E2E renamed copy");
+    await openMenu(copyIndex);
+    await choose("Delete");
+    await page!.waitFor(`![...document.querySelectorAll("nav li")].some((li) => li.innerText.includes("E2E renamed copy"))`, {
+      label: "delete",
+    });
+
+    // Escape closes without doing anything.
+    await openMenu(0);
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`);
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    await page!.waitFor(`!document.querySelector("[data-context-menu]")`, { label: "Escape to close the menu" });
+
+    const after = await appNames();
+    if (after.length !== before.length) throw new Error(`expected ${before.length} apps, got ${after.join(", ")}`);
+  });
 
   await check("no uncaught errors in the renderer", async () => {
     // Expected noise from Electron itself isn't an app bug.

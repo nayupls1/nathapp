@@ -58,6 +58,13 @@ export class Page {
     this.listeners.set(method, [...(this.listeners.get(method) ?? []), fn]);
   }
 
+  /** Accepts confirm()/alert() dialogs automatically (requires Page.enable). */
+  acceptDialogs() {
+    this.on("Page.javascriptDialogOpening", () => {
+      void this.send("Page.handleJavaScriptDialog", { accept: true });
+    });
+  }
+
   /** Evaluates an expression (awaiting promises) and returns its JSON value. */
   async eval<T = unknown>(expression: string): Promise<T> {
     const res = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
