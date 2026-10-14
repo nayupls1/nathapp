@@ -64,6 +64,7 @@ export async function startServer(allowedOrigin: string): Promise<ServerHandle> 
       PORT: String(port),
       GAPP_ALLOWED_ORIGIN: allowedOrigin,
       GAPP_PARENT: "electron",
+      GAPP_DATA_DIR: join(app.getPath("userData"), "data"),
     },
     // stdin stays piped so the server can detect when the app goes away.
     stdio: ["pipe", "inherit", "inherit"],

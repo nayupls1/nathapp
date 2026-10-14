@@ -6,12 +6,14 @@ files:
   - package.json
   - dist/electron/**
   - dist/renderer/**
-# The compiled Bun server is a native executable, so it lives outside the asar.
+# The compiled Bun server and the Claude Code binary are native executables,
+# so they live outside the asar.
 extraResources:
   - from: dist/server
     to: server
     filter:
       - gapp-server*
+      - claude*
       - "!*.map"
 linux:
   target: AppImage

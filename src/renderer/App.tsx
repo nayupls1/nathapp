@@ -1,53 +1,54 @@
-import { createResource, createSignal, Show } from "solid-js";
-import { api } from "./api";
+import * as stylex from "@stylexjs/stylex";
+import { onMount, Show } from "solid-js";
+import { Sidebar } from "./components/Sidebar";
+import { Button } from "./components/ui";
+import { Workspace } from "./components/Workspace";
+import { apps, loadApps, newApp, selectedId } from "./lib/store";
+import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
-  const [health] = createResource(api.health);
-  const [name, setName] = createSignal("");
-  const [greeting, setGreeting] = createSignal<string>();
-
-  const sayHello = async (e: SubmitEvent) => {
-    e.preventDefault();
-    const res = await api.hello(name());
-    setGreeting(res.message);
-  };
-
-  const { versions } = window.gapp;
+  onMount(loadApps);
 
   return (
-    <main>
-      <h1>gApp</h1>
-      <p class="muted">Electron + SolidJS, backed by a Bun server.</p>
-
-      <section>
-        <h2>Server</h2>
-        <Show when={!health.error} fallback={<p class="error">Unreachable: {String(health.error)}</p>}>
-          <Show when={health()} fallback={<p class="muted">Connecting…</p>}>
-            {(h) => (
-              <p>
-                <span class="dot" /> Running on <code>{window.gapp.serverUrl}</code> (Bun {h().bun})
-              </p>
-            )}
-          </Show>
+    <div {...stylex.attrs(styles.root)}>
+      <Sidebar />
+      <div {...stylex.attrs(styles.content)}>
+        <Show
+          when={selectedId()}
+          keyed
+          fallback={
+            <div {...stylex.attrs(styles.empty)}>
+              <p>{apps.length ? "Select an app" : "No apps yet"}</p>
+              <Button variant="primary" onClick={() => newApp()}>
+                + New app
+              </Button>
+            </div>
+          }
+        >
+          {(id) => <Workspace appId={id} />}
         </Show>
-      </section>
-
-      <section>
-        <h2>Say hello</h2>
-        <form onSubmit={sayHello}>
-          <input
-            placeholder="Your name"
-            value={name()}
-            onInput={(e) => setName(e.currentTarget.value)}
-          />
-          <button type="submit">Send</button>
-        </form>
-        <Show when={greeting()}>{(g) => <p>{g()}</p>}</Show>
-      </section>
-
-      <footer class="muted">
-        Electron {versions.electron} · Chrome {versions.chrome} · Node {versions.node}
-      </footer>
-    </main>
+      </div>
+    </div>
   );
 }
+
+const styles = stylex.create({
+  root: {
+    display: "flex",
+    height: "100%",
+    fontFamily: font.sans,
+    fontSize: font.md,
+    color: colors.text,
+    backgroundColor: colors.bg,
+  },
+  content: { flex: 1, minWidth: 0, minHeight: 0 },
+  empty: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.sm,
+    height: "100%",
+    color: colors.muted,
+  },
+});
