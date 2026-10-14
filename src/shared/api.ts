@@ -31,6 +31,26 @@ export interface AppDetail extends AppSummary {
   spec: AppSpec | null;
   messages: ChatMessage[];
   running: boolean;
+  /** Last model/effort used for this app's agent (null = default). */
+  model: string | null;
+  effort: Effort | null;
+}
+
+export const efforts = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof efforts)[number];
+
+export interface ModelOption {
+  value: string;
+  displayName: string;
+  description: string;
+  /** Effort levels the model supports; empty if it has no effort setting. */
+  efforts: Effort[];
+}
+
+export interface ChatRequest {
+  prompt: string;
+  model?: string;
+  effort?: Effort;
 }
 
 export interface ChatMessage {
@@ -62,11 +82,12 @@ export type DataRequest =
       where?: Where;
       groupBy?: string;
       bucket?: Bucket;
+      seriesBy?: string;
     }
   | { op: "action"; action: Action };
 
 export type DataResponse =
   | { rows: Row[] }
   | { value: number | null }
-  | { groups: { key: Value; value: number | null }[] }
+  | { groups: { key: Value; series?: Value; value: number | null }[] }
   | { changes: number };

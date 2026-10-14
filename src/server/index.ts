@@ -1,7 +1,12 @@
-import type { AppDetail, ChatEvent, DataRequest, HealthResponse } from "../shared/api";
+import { efforts, type AppDetail, type ChatEvent, type ChatRequest, type DataRequest, type HealthResponse } from "../shared/api";
+import { CATALOG_APP_ID, catalogSeed, catalogSpec } from "../shared/catalog";
 import { isRunning, runChat, stopChat } from "./agent";
-import { DataError, deleteAppData, runData } from "./appdata";
+import { DataError, deleteAppData, resetAppData, runData } from "./appdata";
 import { addMessage, createApp, deleteApp, getApp, listApps, listMessages, updateApp } from "./db";
+import { listModels } from "./models";
+
+// The Catalog page renders its examples against a demo app, reset on every start.
+resetAppData(CATALOG_APP_ID, catalogSpec, catalogSeed);
 
 // The Electron main process picks a free port and passes it in. When running
 // the server standalone (`bun run server`) it falls back to 3000.
@@ -30,6 +35,14 @@ const server = Bun.serve({
   idleTimeout: 0,
   routes: {
     "/api/health": () => json<HealthResponse>({ ok: true, uptime: process.uptime(), bun: Bun.version }),
+
+    "/api/models": async () => {
+      try {
+        return json(await listModels());
+      } catch (err) {
+        return json({ error: `Could not load models: ${err instanceof Error ? err.message : err}` }, { status: 502 });
+      }
+    },
 
     "/api/apps": {
       GET: () => json(listApps()),
@@ -62,9 +75,13 @@ const server = Bun.serve({
         const appId = req.params.id;
         if (!getApp(appId)) return notFound();
         if (isRunning(appId)) return json({ error: "The agent is already working on this app" }, { status: 409 });
-        const body = (await req.json()) as { prompt?: unknown };
+        const body = (await req.json()) as Partial<ChatRequest>;
         if (typeof body.prompt !== "string" || !body.prompt.trim()) return badRequest("prompt is required");
+        if (body.model !== undefined && typeof body.model !== "string") return badRequest("invalid model");
+        if (body.effort !== undefined && !efforts.includes(body.effort)) return badRequest("invalid effort");
         const prompt = body.prompt.trim();
+        const options = { model: body.model || undefined, effort: body.effort };
+        updateApp(appId, { model: options.model ?? null, effort: options.effort ?? null });
 
         // NDJSON stream of ChatEvents. The run continues even if the client
         // goes away; everything important is persisted as it happens.
@@ -80,7 +97,7 @@ const server = Bun.serve({
                 open = false;
               }
             };
-            runChat(appId, prompt, emit)
+            runChat(appId, prompt, emit, options)
               .catch((err) => emit({ type: "message", message: addMessage(appId, "error", String(err)) }))
               .finally(() => {
                 if (open) controller.close();
@@ -101,7 +118,7 @@ const server = Bun.serve({
 
     "/api/apps/:id/data": {
       POST: async (req) => {
-        const spec = getApp(req.params.id)?.spec;
+        const spec = req.params.id === CATALOG_APP_ID ? catalogSpec : getApp(req.params.id)?.spec;
         if (!spec) return notFound();
         try {
           return json(runData(req.params.id, spec, (await req.json()) as DataRequest));

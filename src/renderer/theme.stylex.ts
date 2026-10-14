@@ -15,6 +15,17 @@ export const colors = stylex.defineVars({
   accentSoft: { default: "#efebff", [DARK]: "#272040" },
   danger: { default: "#dc2626", [DARK]: "#f05252" },
   success: { default: "#16a34a", [DARK]: "#3ecf73" },
+  warning: { default: "#d97706", [DARK]: "#f5a524" },
+});
+
+/** Categorical palette for charts. */
+export const chartColors = stylex.defineVars({
+  c1: { default: "#6d4aff", [DARK]: "#8b70ff" },
+  c2: { default: "#0ea5e9", [DARK]: "#38bdf8" },
+  c3: { default: "#f97316", [DARK]: "#fb923c" },
+  c4: { default: "#10b981", [DARK]: "#34d399" },
+  c5: { default: "#ec4899", [DARK]: "#f472b6" },
+  c6: { default: "#eab308", [DARK]: "#facc15" },
 });
 
 export const space = stylex.defineVars({

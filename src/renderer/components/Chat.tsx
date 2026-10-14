@@ -28,6 +28,7 @@ export function Chat(props: { appId: string }) {
       </div>
       <div {...stylex.attrs(styles.composer)}>
         <Composer
+          appId={props.appId}
           running={state().running}
           onSend={(prompt) => sendPrompt(props.appId, prompt)}
           onStop={() => stopAgent(props.appId)}

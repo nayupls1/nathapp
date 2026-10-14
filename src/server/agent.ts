@@ -3,11 +3,13 @@
 // (subscription), so no API key is involved.
 import { createSdkMcpServer, query, tool, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { ChatEvent } from "../shared/api";
+import type { ChatEvent, Effort } from "../shared/api";
 import { AppSpec, checkReferences, Value, Where } from "../shared/spec";
 import { DataError, migrate, rowCounts, runData } from "./appdata";
 import { agentDir, claudeExecutable } from "./config";
 import { addMessage, getApp, updateApp } from "./db";
+import { agentEnv } from "./env";
+import { isIcon, searchIcons } from "./icons";
 import { systemPrompt } from "./prompt";
 
 type Emit = (event: ChatEvent) => void;
@@ -18,21 +20,6 @@ export const isRunning = (appId: string) => running.has(appId);
 
 export function stopChat(appId: string) {
   running.get(appId)?.abort();
-}
-
-/**
- * Environment for the Claude Code process. API keys are removed so it always
- * uses the logged-in Claude account, and variables leaked from a parent Claude
- * Code session (e.g. when gApp is started from one) are dropped.
- */
-function agentEnv() {
-  const env: Record<string, string | undefined> = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (key === "ANTHROPIC_API_KEY" || key === "ANTHROPIC_AUTH_TOKEN" || key === "CLAUDECODE") delete env[key];
-    if (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") delete env[key];
-  }
-  env.CLAUDE_AGENT_SDK_CLIENT_APP = "gapp/0.1.0";
-  return env;
 }
 
 const text = (t: string, isError = false) => ({ content: [{ type: "text" as const, text: t }], isError });
@@ -67,7 +54,7 @@ function createTools(appId: string, emit: Emit) {
         async ({ spec: input }) => {
           const parsed = AppSpec.safeParse(input);
           if (!parsed.success) return text(`Invalid spec:\n${z.prettifyError(parsed.error)}`, true);
-          const problems = checkReferences(parsed.data);
+          const problems = checkReferences(parsed.data, { isIcon });
           if (problems.length) return text(`Invalid spec:\n${problems.map((p) => `- ${p}`).join("\n")}`, true);
 
           const spec = parsed.data;
@@ -77,6 +64,16 @@ function createTools(appId: string, emit: Emit) {
           emit({ type: "app", app });
           log(`Updated app “${spec.name}”`);
           return text("App updated.");
+        },
+      ),
+
+      tool(
+        "search_icons",
+        "Find Lucide icon names by keywords (e.g. 'money', 'calendar check'). Returns the best matches.",
+        { query: z.string().min(1) },
+        async ({ query }) => {
+          const names = searchIcons(query);
+          return text(names.length ? names.join(", ") : "No icons found. Try a more general word.");
         },
       ),
 
@@ -131,7 +128,7 @@ function createTools(appId: string, emit: Emit) {
   });
 }
 
-const toolNames = ["get_app", "update_app", "query_rows", "insert_rows", "update_rows", "delete_rows"].map(
+const toolNames = ["get_app", "update_app", "search_icons", "query_rows", "insert_rows", "update_rows", "delete_rows"].map(
   (name) => `mcp__gapp__${name}`,
 );
 
@@ -139,7 +136,12 @@ function errorText(err: unknown) {
   return err instanceof Error ? err.message : String(err);
 }
 
-export async function runChat(appId: string, prompt: string, emit: Emit) {
+export interface ChatOptions {
+  model?: string;
+  effort?: Effort;
+}
+
+export async function runChat(appId: string, prompt: string, emit: Emit, { model, effort }: ChatOptions = {}) {
   const app = getApp(appId);
   if (!app) throw new Error("App not found");
   if (running.has(appId)) throw new Error("The agent is already working on this app");
@@ -165,7 +167,8 @@ export async function runChat(appId: string, prompt: string, emit: Emit) {
         includePartialMessages: true,
         abortController,
         pathToClaudeCodeExecutable: claudeExecutable(),
-        model: process.env.GAPP_MODEL,
+        model: model ?? process.env.GAPP_MODEL,
+        effort,
       },
     });
 

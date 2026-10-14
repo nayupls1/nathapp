@@ -1,12 +1,24 @@
 // The UI catalog: one Solid component per `UINode` type in src/shared/spec.ts.
 import * as stylex from "@stylexjs/stylex";
-import { createContext, createMemo, createSignal, For, Index, Show, useContext, type Component } from "solid-js";
+import { createMemo, createSignal, For, Index, Show, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import type { Row } from "../../shared/api";
-import type { Bucket, Column, UINode, Value } from "../../shared/spec";
+import type { Column, Tone, UINode, Value } from "../../shared/spec";
+import { Icon } from "../components/Icon";
 import { Button, Checkbox, Input, Select } from "../components/ui";
 import { colors, font, radius, space } from "../theme.stylex";
-import { columnLabel, findColumn, useData, useMutate, useTable } from "./context";
+import { Chart } from "./Chart";
+import {
+  columnLabel,
+  findColumn,
+  formatStat,
+  formatValue,
+  framed,
+  InCard,
+  useData,
+  useMutate,
+  useTable,
+} from "./context";
 
 type NodeOf<T extends UINode["type"]> = Extract<UINode, { type: T }>;
 type Props<T extends UINode["type"]> = { node: NodeOf<T> };
@@ -16,43 +28,7 @@ export function Render(props: { node: UINode }) {
   return <Dynamic component={component()} node={props.node} />;
 }
 
-/** Card-like components drop their own frame when nested inside a card. */
-const InCard = createContext(false);
-const framed = () => !useContext(InCard);
-
 const RenderChildren = (props: { nodes: UINode[] }) => <Index each={props.nodes}>{(n) => <Render node={n()} />}</Index>;
-
-// --- Formatting ------------------------------------------------------------------
-
-function formatValue(col: Column | undefined, value: Value): string {
-  if (value === null || value === undefined || value === "") return "—";
-  if (col?.type === "boolean") return value ? "Yes" : "No";
-  if (col?.name === "created_at") return new Date(String(value)).toLocaleString();
-  if (col?.type === "date") {
-    const d = new Date(`${value}T00:00:00`);
-    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
-  }
-  if (col?.type === "number" && typeof value === "number") return value.toLocaleString();
-  return String(value);
-}
-
-function formatBucket(bucket: Bucket, key: Value): string {
-  if (key === null) return "—";
-  const k = String(key);
-  if (bucket === "month") {
-    const d = new Date(`${k}-01T00:00:00`);
-    return Number.isNaN(d.getTime()) ? k : d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
-  }
-  if (bucket === "day") return new Date(`${k}T00:00:00`).toLocaleDateString();
-  return k;
-}
-
-function formatStat(value: number | null, format: NodeOf<"stat">["format"]) {
-  if (value === null) return "—";
-  if (format === "currency") return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  if (format === "percent") return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
-  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-}
 
 // --- Layout --------------------------------------------------------------------
 
@@ -79,7 +55,10 @@ function Card(props: Props<"card">) {
   return (
     <section {...stylex.attrs(s.card)}>
       <Show when={props.node.title}>
-        <h3 {...stylex.attrs(s.cardTitle)}>{props.node.title}</h3>
+        <h3 {...stylex.attrs(s.cardTitle)}>
+          <Icon name={props.node.icon} size={16} {...stylex.attrs(s.titleIcon)} />
+          {props.node.title}
+        </h3>
       </Show>
       <div {...stylex.attrs(s.stack, s.gap(space.md))}>
         <InCard.Provider value={true}>
@@ -99,6 +78,7 @@ function Tabs(props: Props<"tabs">) {
         <For each={props.node.tabs}>
           {(tab, i) => (
             <button type="button" onClick={() => setActive(i())} {...stylex.attrs(s.tab, active() === i() && s.tabActive)}>
+              <Icon name={tab.icon} size={15} />
               {tab.label}
             </button>
           )}
@@ -116,10 +96,33 @@ function Tabs(props: Props<"tabs">) {
 function Heading(props: Props<"heading">) {
   const level = () => props.node.level ?? 2;
   const size = { 1: s.h1, 2: s.h2, 3: s.h3 };
+  const iconSize = { 1: 26, 2: 20, 3: 17 };
   return (
     <Dynamic component={`h${level()}`} {...stylex.attrs(s.heading, size[level()])}>
+      <Icon name={props.node.icon} size={iconSize[level()]} {...stylex.attrs(s.titleIcon)} />
       {props.node.text}
     </Dynamic>
+  );
+}
+
+const toneColor: Record<Tone, string> = {
+  default: colors.text,
+  muted: colors.muted,
+  accent: colors.accent,
+  success: colors.success,
+  warning: colors.warning,
+  danger: colors.danger,
+};
+const iconSizes = { sm: 16, md: 20, lg: 28 } as const;
+
+function IconNode(props: Props<"icon">) {
+  return (
+    <Icon
+      name={props.node.name}
+      size={iconSizes[props.node.size ?? "md"]}
+      {...stylex.attrs(s.icon, s.tone(toneColor[props.node.tone ?? "default"]))}
+      fallback={<span {...stylex.attrs(s.muted)}>?</span>}
+    />
   );
 }
 
@@ -334,6 +337,7 @@ function List(props: Props<"list">) {
                 <Show when={props.node.checkbox}>
                   <Checkbox checked={checked()} onChange={(e) => toggle(row, e.currentTarget.checked)} />
                 </Show>
+                <Icon name={props.node.icon} size={16} {...stylex.attrs(s.listIcon)} />
                 <div {...stylex.attrs(s.listText)}>
                   <span {...stylex.attrs(s.listPrimary, checked() && s.done)}>
                     {formatValue(findColumn(table(), props.node.primary), row[props.node.primary] ?? null)}
@@ -371,49 +375,11 @@ function Stat(props: Props<"stat">) {
   }));
   return (
     <div {...stylex.attrs(s.stat, framed() && s.frame)}>
-      <span {...stylex.attrs(s.statLabel)}>{props.node.label}</span>
+      <span {...stylex.attrs(s.statLabel)}>
+        <Icon name={props.node.icon} size={14} />
+        {props.node.label}
+      </span>
       <span {...stylex.attrs(s.statValue)}>{data.latest ? formatStat(data.latest.value, props.node.format) : "…"}</span>
-    </div>
-  );
-}
-
-function Chart(props: Props<"chart">) {
-  const table = useTable(() => props.node.table);
-  const data = useData<{ groups: { key: Value; value: number | null }[] }>(() => ({
-    op: "aggregate",
-    table: props.node.table,
-    aggregate: props.node.aggregate,
-    column: props.node.column,
-    where: props.node.where,
-    groupBy: props.node.groupBy,
-    bucket: props.node.bucket,
-  }));
-  const groups = () => data.latest?.groups ?? [];
-  const label = (key: Value) =>
-    props.node.bucket ? formatBucket(props.node.bucket, key) : formatValue(findColumn(table(), props.node.groupBy), key);
-  const max = () => Math.max(1, ...groups().map((g) => Math.abs(g.value ?? 0)));
-
-  return (
-    <div {...stylex.attrs(s.chartRoot, framed() && s.frame)}>
-      <Show when={props.node.title}>
-        <h3 {...stylex.attrs(s.cardTitle)}>{props.node.title}</h3>
-      </Show>
-      <div {...stylex.attrs(s.chart)}>
-        <For each={groups()}>
-          {(g) => (
-            <div {...stylex.attrs(s.chartRow)}>
-              <span {...stylex.attrs(s.chartLabel)}>{label(g.key)}</span>
-              <div {...stylex.attrs(s.chartTrack)}>
-                <div {...stylex.attrs(s.chartBar, s.barWidth(`${(Math.abs(g.value ?? 0) / max()) * 100}%`))} />
-              </div>
-              <span {...stylex.attrs(s.chartValue)}>{formatStat(g.value, "number")}</span>
-            </div>
-          )}
-        </For>
-        <Show when={data.latest && groups().length === 0}>
-          <p {...stylex.attrs(s.empty)}>No data yet.</p>
-        </Show>
-      </div>
     </div>
   );
 }
@@ -433,6 +399,7 @@ function ActionButton(props: Props<"button">) {
   return (
     <div>
       <Button variant={props.node.variant ?? "default"} disabled={busy()} onClick={run}>
+        <Icon name={props.node.icon} size={15} />
         {props.node.label}
       </Button>
     </div>
@@ -445,6 +412,7 @@ const catalog: { [K in UINode["type"]]: Component<Props<K>> } = {
   tabs: Tabs,
   heading: Heading,
   text: Text,
+  icon: IconNode,
   form: Form,
   table: DataTable,
   list: List,
@@ -473,7 +441,11 @@ const s = stylex.create({
     backgroundColor: colors.surface,
     minWidth: 0,
   },
-  cardTitle: { margin: 0, fontSize: font.md, fontWeight: 600 },
+  cardTitle: { margin: 0, fontSize: font.md, fontWeight: 600, display: "flex", alignItems: "center", gap: space.sm },
+  titleIcon: { flexShrink: 0, color: colors.accent },
+  icon: { display: "block", flexShrink: 0 },
+  tone: (color: string) => ({ color }),
+  listIcon: { flexShrink: 0, color: colors.muted },
   frame: {
     padding: space.lg,
     borderRadius: radius.md,
@@ -491,6 +463,9 @@ const s = stylex.create({
     borderBottomColor: colors.border,
   },
   tab: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
     paddingBlock: space.sm,
     paddingInline: space.md,
     borderStyle: "none",
@@ -506,7 +481,7 @@ const s = stylex.create({
   },
   tabActive: { color: colors.text, borderBottomColor: colors.accent },
 
-  heading: { margin: 0, fontWeight: 650, letterSpacing: "-0.01em" },
+  heading: { margin: 0, fontWeight: 650, letterSpacing: "-0.01em", display: "flex", alignItems: "center", gap: space.sm },
   h1: { fontSize: font.xxl },
   h2: { fontSize: font.xl },
   h3: { fontSize: font.lg },
@@ -590,15 +565,16 @@ const s = stylex.create({
   done: { textDecoration: "line-through", color: colors.muted },
 
   stat: { display: "flex", flexDirection: "column", gap: space.xs },
-  statLabel: { fontSize: font.xs, fontWeight: 500, color: colors.muted, textTransform: "uppercase", letterSpacing: "0.04em" },
+  statLabel: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: font.xs,
+    fontWeight: 500,
+    color: colors.muted,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
   statValue: { fontSize: font.xxl, fontWeight: 650, fontVariantNumeric: "tabular-nums" },
 
-  chartRoot: { display: "flex", flexDirection: "column", gap: space.md, minWidth: 0 },
-  chart: { display: "flex", flexDirection: "column", gap: space.sm },
-  chartRow: { display: "grid", gridTemplateColumns: "minmax(60px, 140px) 1fr auto", alignItems: "center", gap: space.md },
-  chartLabel: { fontSize: font.sm, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  chartTrack: { height: 10, borderRadius: radius.full, backgroundColor: colors.surfaceHover, overflow: "hidden" },
-  chartBar: { height: "100%", borderRadius: radius.full, backgroundColor: colors.accent, transition: "width 200ms" },
-  barWidth: (width: string) => ({ width }),
-  chartValue: { fontSize: font.sm, fontVariantNumeric: "tabular-nums", color: colors.muted },
 });

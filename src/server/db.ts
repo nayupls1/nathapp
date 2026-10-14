@@ -2,7 +2,7 @@
 // Each generated app's own data lives in a separate database (see appdata.ts).
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
-import type { AppSummary, ChatMessage } from "../shared/api";
+import type { AppSummary, ChatMessage, Effort } from "../shared/api";
 import type { AppSpec } from "../shared/spec";
 import { dataDir } from "./config";
 
@@ -33,12 +33,23 @@ db.run(`
   )
 `);
 
+// Columns added after the first release; created on existing databases.
+const appColumns = new Set(db.query<{ name: string }, []>("PRAGMA table_info(apps)").all().map((c) => c.name));
+for (const [name, type] of [
+  ["model", "TEXT"],
+  ["effort", "TEXT"],
+] as const) {
+  if (!appColumns.has(name)) db.run(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);
+}
+
 interface AppRow {
   id: string;
   name: string;
   icon: string | null;
   spec: string | null;
   session_id: string | null;
+  model: string | null;
+  effort: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -64,6 +75,8 @@ export function getApp(id: string) {
     ...toSummary(row),
     spec: row.spec ? (JSON.parse(row.spec) as AppSpec) : null,
     sessionId: row.session_id,
+    model: row.model,
+    effort: row.effort as Effort | null,
   };
 }
 
@@ -75,7 +88,14 @@ export function createApp(name = "New app"): AppSummary {
 
 export function updateApp(
   id: string,
-  fields: { name?: string; icon?: string | null; spec?: AppSpec; sessionId?: string },
+  fields: {
+    name?: string;
+    icon?: string | null;
+    spec?: AppSpec;
+    sessionId?: string;
+    model?: string | null;
+    effort?: Effort | null;
+  },
 ): AppSummary | null {
   const sets: string[] = [`updated_at = ${now}`];
   const params: (string | null)[] = [];
@@ -83,6 +103,8 @@ export function updateApp(
   if (fields.icon !== undefined) sets.push("icon = ?"), params.push(fields.icon);
   if (fields.spec !== undefined) sets.push("spec = ?"), params.push(JSON.stringify(fields.spec));
   if (fields.sessionId !== undefined) sets.push("session_id = ?"), params.push(fields.sessionId);
+  if (fields.model !== undefined) sets.push("model = ?"), params.push(fields.model);
+  if (fields.effort !== undefined) sets.push("effort = ?"), params.push(fields.effort);
   db.query(`UPDATE apps SET ${sets.join(", ")} WHERE id = ?`).run(...params, id);
   const row = getRow.get(id);
   return row ? toSummary(row) : null;

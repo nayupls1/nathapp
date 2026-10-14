@@ -1,9 +1,10 @@
 import * as stylex from "@stylexjs/stylex";
 import { onMount, Show } from "solid-js";
+import { CatalogPage } from "./components/CatalogPage";
 import { Sidebar } from "./components/Sidebar";
 import { Button } from "./components/ui";
 import { Workspace } from "./components/Workspace";
-import { apps, loadApps, newApp, selectedId } from "./lib/store";
+import { apps, CATALOG_VIEW, loadApps, newApp, selectedId } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -25,7 +26,11 @@ export default function App() {
             </div>
           }
         >
-          {(id) => <Workspace appId={id} />}
+          {(id) => (
+            <Show when={id !== CATALOG_VIEW} fallback={<CatalogPage />}>
+              <Workspace appId={id} />
+            </Show>
+          )}
         </Show>
       </div>
     </div>
@@ -41,7 +46,7 @@ const styles = stylex.create({
     color: colors.text,
     backgroundColor: colors.bg,
   },
-  content: { flex: 1, minWidth: 0, minHeight: 0 },
+  content: { flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" },
   empty: {
     display: "flex",
     flexDirection: "column",

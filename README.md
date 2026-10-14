@@ -33,6 +33,9 @@ bun run dev
 | `bun run package`   | Builds and packages a distributable into `release/` via electron-builder.              |
 | `bun run server`    | Runs only the Bun server standalone (port 3000), with watch mode.                       |
 | `bun run typecheck` | Type-checks the whole project.                                                          |
+| `bun run test`      | Unit tests (spec validation, catalog, data layer, icons).                               |
+| `bun run e2e`       | Launches the built app with a throwaway profile and drives the UI; add `--agent` to also have the agent build an app (uses your Claude plan). Screenshots land in `test-results/`. |
+| `bun run check`     | Everything: typecheck, tests, build, e2e.                                               |
 
 ## How it fits together
 
@@ -42,7 +45,7 @@ src/
   preload/         Exposes `window.gapp` (server URL, versions) to the renderer
   renderer/        SolidJS UI (Vite + StyleX)
     components/    Host UI: sidebar, chat, workspace
-    catalog/       Components generated apps are rendered with
+    catalog/       Components generated apps are rendered with (charts: TanStack Charts)
   server/          Bun HTTP server (Bun.serve)
     agent.ts       Agent runs via the Claude Agent SDK + gApp's tools
     prompt.ts      System prompt: documents the catalog for the agent
@@ -50,30 +53,42 @@ src/
     db.ts          Host database: apps, specs, chat history
   shared/
     spec.ts        App spec schema (zod): tables + UI tree + actions
+    catalog.ts     Component docs + live examples (drives the prompt and Catalog page)
     api.ts         HTTP API types
-scripts/           Bun scripts for dev / build / start
+scripts/           Bun scripts for dev / build / start / e2e
+tests/             bun:test unit tests
 ```
 
 ### Generated apps
 
 The agent never writes code. It produces an **app spec** (`src/shared/spec.ts`):
-tables with typed columns, plus a UI tree built from catalog components (`stack`,
-`card`, `tabs`, `heading`, `text`, `form`, `table`, `list`, `stat`, `chart`,
-`button`). gApp validates the spec, migrates the app's SQLite database (additive
-only, so data is never dropped), and renders it. The agent's tools are
-`get_app`, `update_app`, and `query_rows` / `insert_rows` / `update_rows` /
+tables with typed columns, plus a UI tree built from catalog components. gApp
+validates the spec, migrates the app's SQLite database (additive only, so data
+is never dropped), and renders it. The agent's tools are `get_app`,
+`update_app`, `search_icons`, and `query_rows` / `insert_rows` / `update_rows` /
 `delete_rows`; it has no access to files, shell or web.
 
-To add a catalog component: add it to `UINode` in `spec.ts` (type, schema and
-`checkReferences`), implement it in `src/renderer/catalog/components.tsx`, and
-document it in `src/server/prompt.ts`.
+The **Catalog** page (bottom of the sidebar) shows every component with a live
+example, its props, and a searchable list of all Lucide icons. Any Lucide icon
+can be used by name; specs with unknown icon names are rejected.
+
+To add a catalog component:
+
+1. Add it to `UINode` in `src/shared/spec.ts` (type, zod schema, `checkReferences`).
+2. Document it with an example in `src/shared/catalog.ts` — this also puts it in
+   the agent's prompt and on the Catalog page.
+3. Implement it in `src/renderer/catalog/components.tsx`.
+4. Run `bun run check`; the tests fail if a component is undocumented or an
+   example is invalid, and e2e fails if an example doesn't render.
 
 ### Agent and auth
 
 The Agent SDK runs the Claude Code binary, which uses your logged-in Claude
 account, so no API key is needed (gApp strips `ANTHROPIC_API_KEY` from the agent's
 environment on purpose). Each app keeps its own agent session, so follow-up
-messages have the full conversation. Set `GAPP_MODEL` to override the model.
+messages have the full conversation. The model and effort pickers under the
+chat input list what your account offers (fetched from Claude Code) and are
+remembered per app.
 
 Data lives in Electron's userData dir (`~/.config/gApp/data` on Linux), or
 `.data/` when running the server standalone.

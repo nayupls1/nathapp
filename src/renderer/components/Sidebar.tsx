@@ -1,8 +1,9 @@
 import * as stylex from "@stylexjs/stylex";
 import { createSignal, For, Show } from "solid-js";
 import type { AppSummary } from "../../shared/api";
-import { apps, deleteApp, newApp, renameApp, selectApp, selectedId, states } from "../lib/store";
+import { apps, CATALOG_VIEW, deleteApp, newApp, renameApp, selectApp, selectedId, states } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
+import { Icon } from "./Icon";
 import { Button } from "./ui";
 
 export function Sidebar() {
@@ -12,11 +13,22 @@ export function Sidebar() {
         <span {...stylex.attrs(styles.brand)}>gApp</span>
       </div>
       <Button onClick={() => newApp()} xstyle={styles.newButton}>
-        + New app
+        <Icon name="plus" size={15} />
+        New app
       </Button>
       <ul {...stylex.attrs(styles.list)}>
         <For each={apps}>{(app) => <Item app={app} />}</For>
       </ul>
+      <div {...stylex.attrs(styles.footer)}>
+        <button
+          type="button"
+          onClick={() => selectApp(CATALOG_VIEW)}
+          {...stylex.attrs(styles.item, styles.footerItem, selectedId() === CATALOG_VIEW && styles.selected)}
+        >
+          <Icon name="book-open" size={16} {...stylex.attrs(styles.icon)} />
+          <span {...stylex.attrs(styles.name)}>Catalog</span>
+        </button>
+      </div>
     </nav>
   );
 }
@@ -39,7 +51,12 @@ function Item(props: { app: AppSummary }) {
       onDblClick={() => setEditing(true)}
       title="Double-click to rename"
     >
-      <span {...stylex.attrs(styles.icon)}>{props.app.icon ?? "✦"}</span>
+      <Icon
+        name={props.app.icon ?? "app-window"}
+        size={16}
+        {...stylex.attrs(styles.icon)}
+        fallback={<span {...stylex.attrs(styles.icon)}>{props.app.icon}</span>}
+      />
       <Show
         when={editing()}
         fallback={<span {...stylex.attrs(styles.name)}>{props.app.name}</span>}
@@ -114,7 +131,15 @@ const styles = stylex.create({
     boxShadow: `0 0 0 1px ${colors.border}`,
     fontWeight: 500,
   },
-  icon: { width: 18, textAlign: "center", flexShrink: 0 },
+  icon: { width: 18, textAlign: "center", flexShrink: 0, color: colors.muted },
+  footer: {
+    marginTop: "auto",
+    paddingTop: space.sm,
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.border,
+  },
+  footerItem: { width: "100%", borderWidth: 0, color: colors.text, textAlign: "left" },
   name: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   rename: {
     flex: 1,

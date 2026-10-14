@@ -1,6 +1,6 @@
 import { createContext, createResource, useContext, type Accessor } from "solid-js";
 import type { DataRequest, DataResponse } from "../../shared/api";
-import type { AppSpec, Column, Table } from "../../shared/spec";
+import type { AppSpec, Bucket, Column, Table, Value } from "../../shared/spec";
 import { api } from "../lib/api";
 
 export interface AppContextValue {
@@ -12,6 +12,10 @@ export interface AppContextValue {
 }
 
 export const AppContext = createContext<AppContextValue>();
+
+/** Card-like components drop their own frame when nested inside a card. */
+export const InCard = createContext(false);
+export const framed = () => !useContext(InCard);
 
 export function useApp() {
   const ctx = useContext(AppContext);
@@ -54,4 +58,36 @@ export function useMutate() {
     invalidate();
     return res;
   };
+}
+
+// --- Formatting ------------------------------------------------------------------
+
+export function formatValue(col: Column | undefined, value: Value | undefined): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (col?.type === "boolean") return value ? "Yes" : "No";
+  if (col?.name === "created_at") return new Date(String(value)).toLocaleString();
+  if (col?.type === "date") {
+    const d = new Date(`${value}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString();
+  }
+  if (col?.type === "number" && typeof value === "number") return value.toLocaleString();
+  return String(value);
+}
+
+export function formatBucket(bucket: Bucket, key: Value): string {
+  if (key === null) return "—";
+  const k = String(key);
+  if (bucket === "month") {
+    const d = new Date(`${k}-01T00:00:00`);
+    return Number.isNaN(d.getTime()) ? k : d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  }
+  if (bucket === "day") return new Date(`${k}T00:00:00`).toLocaleDateString();
+  return k;
+}
+
+export function formatStat(value: number | null, format?: "number" | "currency" | "percent") {
+  if (value === null) return "—";
+  if (format === "currency") return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (format === "percent") return `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }

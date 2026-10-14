@@ -9,6 +9,8 @@ import type { DataRequest, DataResponse, Row } from "../shared/api";
 import { Action, Aggregate, type AppSpec, Bucket, type Column, Sort, type Table, type Value, Where } from "../shared/spec";
 import { appsDir } from "./config";
 
+type SqlValue = string | number | null;
+
 const handles = new Map<string, Database>();
 
 function open(appId: string): Database {
@@ -68,6 +70,15 @@ export function migrate(appId: string, spec: AppSpec) {
   })();
 }
 
+/** Recreates an app's database from scratch with the given rows. */
+export function resetAppData(appId: string, spec: AppSpec, rows: Record<string, Record<string, Value>[]>) {
+  deleteAppData(appId);
+  migrate(appId, spec);
+  for (const [table, list] of Object.entries(rows)) {
+    for (const values of list) runData(appId, spec, { op: "action", action: { type: "insert", table, values } });
+  }
+}
+
 export function rowCounts(appId: string, spec: AppSpec): Record<string, number> {
   const db = open(appId);
   return Object.fromEntries(
@@ -95,6 +106,7 @@ const DataRequestSchema = z.discriminatedUnion("op", [
     where: Where.optional(),
     groupBy: z.string().optional(),
     bucket: Bucket.optional(),
+    seriesBy: z.string().optional(),
   }),
   z.object({ op: z.literal("action"), action: Action }),
 ]);
@@ -188,15 +200,20 @@ export function runData(appId: string, spec: AppSpec, input: DataRequest): DataR
     const where = whereClause(table, req.where);
     if (req.groupBy) {
       const groupCol = getColumn(table, req.groupBy);
+      const seriesCol = req.seriesBy ? getColumn(table, req.seriesBy) : undefined;
       const key = req.bucket ? `strftime('${bucketFormat[req.bucket]}', ${q(groupCol.name)})` : q(groupCol.name);
+      const series = seriesCol ? `, ${q(seriesCol.name)} AS series` : "";
+      const groupBy = seriesCol ? "1, 2" : "1";
       const rows = db
-        .query<{ key: string | number | null; value: number | null }, (string | number | null)[]>(
-          `SELECT ${key} AS key, ${expr} AS value FROM ${q(table.name)}${where.sql} GROUP BY 1 ORDER BY 1`,
+        .query<{ key: SqlValue; series?: SqlValue; value: number | null }, SqlValue[]>(
+          `SELECT ${key} AS key${series}, ${expr} AS value FROM ${q(table.name)}${where.sql} GROUP BY ${groupBy} ORDER BY ${groupBy}`,
         )
         .all(...where.params);
+      const decode = (col: Column, v: SqlValue): Value => (col.type === "boolean" && v !== null ? v === 1 : v);
       return {
         groups: rows.map((r) => ({
-          key: groupCol.type === "boolean" && r.key !== null ? r.key === 1 : r.key,
+          key: req.bucket ? r.key : decode(groupCol, r.key),
+          ...(seriesCol ? { series: decode(seriesCol, r.series ?? null) } : {}),
           value: r.value,
         })),
       };

@@ -45,6 +45,7 @@ function NewApp(props: { appId: string }) {
         <h1 {...stylex.attrs(styles.title)}>What do you want to build?</h1>
         <p {...stylex.attrs(styles.subtitle)}>Describe an app and the agent will build it. You can keep refining it afterwards.</p>
         <Composer
+          appId={props.appId}
           large
           autofocus
           running={!!states[props.appId]?.running}

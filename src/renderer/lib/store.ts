@@ -2,7 +2,7 @@
 // into its tab while you look at another one.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
-import type { AppSummary, ChatMessage } from "../../shared/api";
+import type { AppSummary, ChatMessage, Effort, ModelOption } from "../../shared/api";
 import type { AppSpec } from "../../shared/spec";
 import { api } from "./api";
 
@@ -15,13 +15,45 @@ export interface AppState {
   running: boolean;
   /** Bumped whenever the app's data may have changed. */
   dataVersion: number;
+  /** Agent settings for this app; null means Claude Code's default. */
+  model: string | null;
+  effort: Effort | null;
 }
+
+/** Pseudo app id for the Catalog page in the sidebar. */
+export const CATALOG_VIEW = "catalog";
 
 const [apps, setApps] = createStore<AppSummary[]>([]);
 const [states, setStates] = createStore<Record<string, AppState>>({});
 const [selectedId, setSelectedId] = createSignal<string | null>(null);
+const [models, setModels] = createSignal<ModelOption[]>([]);
+const [modelsError, setModelsError] = createSignal<string>();
 
-export { apps, selectedId, states };
+export { apps, models, modelsError, selectedId, states };
+
+// The last-used agent settings become the default for new apps.
+const DEFAULTS_KEY = "gapp.agentDefaults";
+const agentDefaults = (): { model: string | null; effort: Effort | null } => {
+  try {
+    return { model: null, effort: null, ...JSON.parse(localStorage.getItem(DEFAULTS_KEY) ?? "{}") };
+  } catch {
+    return { model: null, effort: null };
+  }
+};
+
+export async function loadModels() {
+  try {
+    setModels(await api.listModels());
+    setModelsError();
+  } catch (err) {
+    setModelsError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+export function setAgentOptions(id: string, options: { model: string | null; effort: Effort | null }) {
+  setStates(id, options);
+  localStorage.setItem(DEFAULTS_KEY, JSON.stringify(options));
+}
 
 const emptyState = (): AppState => ({
   loaded: false,
@@ -30,6 +62,7 @@ const emptyState = (): AppState => ({
   draft: "",
   running: false,
   dataVersion: 0,
+  ...agentDefaults(),
 });
 
 function upsertApp(app: AppSummary) {
@@ -41,12 +74,12 @@ function upsertApp(app: AppSummary) {
 export async function loadApps() {
   const list = await api.listApps();
   setApps(reconcile(list));
-  if (!selectedId() && list.length) await selectApp(list[list.length - 1]!.id);
+  if (!selectedId()) await selectApp(list.length ? list[list.length - 1]!.id : CATALOG_VIEW);
 }
 
 export async function selectApp(id: string) {
   setSelectedId(id);
-  if (states[id]?.loaded) return;
+  if (id === CATALOG_VIEW || states[id]?.loaded) return;
   const detail = await api.getApp(id);
   setStates(id, {
     ...emptyState(),
@@ -54,6 +87,7 @@ export async function selectApp(id: string) {
     spec: detail.spec,
     messages: detail.messages,
     running: detail.running,
+    ...(detail.model || detail.effort ? { model: detail.model, effort: detail.effort } : {}),
   });
   // A run started before a reload: we can't reattach to its stream, so poll
   // until it finishes and then pick up the results.
@@ -102,8 +136,9 @@ export function bumpData(id: string) {
 
 export async function sendPrompt(id: string, prompt: string) {
   setStates(id, { running: true, draft: "" });
+  const { model, effort } = states[id]!;
   try {
-    await api.chat(id, prompt, (event) => {
+    await api.chat(id, { prompt, model: model ?? undefined, effort: effort ?? undefined }, (event) => {
       switch (event.type) {
         case "message":
           setStates(id, produce((s) => {

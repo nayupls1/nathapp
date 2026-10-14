@@ -5,6 +5,9 @@ import { startServer, type ServerHandle } from "./server";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
+// Lets tests run against a throwaway profile instead of the real data.
+if (process.env.GAPP_USER_DATA_DIR) app.setPath("userData", process.env.GAPP_USER_DATA_DIR);
+
 // Bun inlines `__dirname` at bundle time, so resolve build output from the app
 // root instead (works both unpackaged and inside the packaged asar).
 const distDir = join(app.getAppPath(), "dist");

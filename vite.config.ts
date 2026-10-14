@@ -8,5 +8,7 @@ export default defineConfig({
   build: {
     outDir: "../../dist/renderer",
     emptyOutDir: true,
+    // Desktop app: one bundle is fine (it includes every Lucide icon on purpose).
+    chunkSizeWarningLimit: 2000,
   },
 });

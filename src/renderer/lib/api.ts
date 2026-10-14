@@ -1,4 +1,12 @@
-import type { AppDetail, AppSummary, ChatEvent, DataRequest, DataResponse } from "../../shared/api";
+import type {
+  AppDetail,
+  AppSummary,
+  ChatEvent,
+  ChatRequest,
+  DataRequest,
+  DataResponse,
+  ModelOption,
+} from "../../shared/api";
 
 const url = (path: string) => `${window.gapp.serverUrl}${path}`;
 
@@ -15,6 +23,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  listModels: () => request<ModelOption[]>("/api/models"),
   listApps: () => request<AppSummary[]>("/api/apps"),
   createApp: () => request<AppSummary>("/api/apps", { method: "POST" }),
   getApp: (id: string) => request<AppDetail>(`/api/apps/${id}`),
@@ -27,11 +36,11 @@ export const api = {
     request<T>(`/api/apps/${id}/data`, { method: "POST", body: JSON.stringify(req) }),
 
   /** Sends a prompt to the agent and calls `onEvent` for each streamed event. */
-  async chat(id: string, prompt: string, onEvent: (event: ChatEvent) => void) {
+  async chat(id: string, body: ChatRequest, onEvent: (event: ChatEvent) => void) {
     const res = await fetch(url(`/api/apps/${id}/chat`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(body),
     });
     if (!res.ok || !res.body) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
