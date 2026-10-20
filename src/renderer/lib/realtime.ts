@@ -17,6 +17,13 @@ export function watchApp(appId: string, handlers: { tables: (tables: string[]) =
   });
 }
 
+/** Calls `fn` whenever the connection (re)opens, e.g. to refetch what may have been missed. */
+export function onConnected(fn: () => void) {
+  return socket.onConnection((connected) => {
+    if (connected) fn();
+  });
+}
+
 export function watchTopic(topic: string, fn: (msg: ServerMessage) => void) {
   return socket.subscribe(topic, fn);
 }

@@ -69,9 +69,10 @@ export class Socket {
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;
-      this.setConnected(true);
+      // Subscribe before telling listeners, so what they re-fetch can't miss a change.
       for (const topic of this.handlers.keys()) this.raw({ type: "subscribe", topic });
       for (const msg of this.queue.splice(0)) this.raw(msg);
+      this.setConnected(true);
     };
     ws.onmessage = (event) => {
       const msg = JSON.parse(String(event.data)) as ServerMessage;
@@ -243,10 +244,15 @@ export function connect(options: ConnectOptions = {}) {
       const unsubscribe = client.onChange((tables) => {
         if (tables.includes(table)) void run();
       });
+      // Changes made while (re)connecting aren't pushed, so re-run on every connect.
+      const unwatch = ws().onConnection((connected) => {
+        if (connected) void run();
+      });
       void run();
       return () => {
         stopped = true;
         unsubscribe();
+        unwatch();
       };
     },
 
@@ -281,6 +287,9 @@ export function connect(options: ConnectOptions = {}) {
         if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
         return (await res.json()) as T;
       },
+      /** A WebSocket to the backend, e.g. backend.socket("/ws"). */
+      socket: (path: string) =>
+        new WebSocket(`${url.replace(/^http/, "ws")}/api/apps/${appId}/backend${path.startsWith("/") ? path : `/${path}`}`),
     },
 
     /** Closes the realtime connection. */

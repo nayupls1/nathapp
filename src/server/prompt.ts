@@ -2,6 +2,7 @@
 // generated from src/shared/catalog.ts so it can't drift from the Catalog page.
 import { componentDocs, type ComponentDoc } from "../shared/catalog";
 import { customCssReference, sdkReference } from "../shared/sdkdocs";
+import { BACKEND_ENTRY as ENTRY } from "../shared/api";
 
 function signature(doc: ComponentDoc) {
   const props = doc.props.map((p) => `"${p.name}"${p.required ? "" : "?"}: ${p.type}`);
@@ -72,6 +73,7 @@ Shared shapes:
   { "type": "insert", "table", "values": {col: value} }
   { "type": "update", "table", "where": Where, "values": {col: value} }
   { "type": "delete", "table", "where": Where }
+  { "type": "backend", "path": "/api/…", "method"?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", "body"?: {…} }  – calls the app's custom backend (default POST)
 
 # UI components (UINode)
 ${componentReference()}
@@ -88,6 +90,23 @@ All components showing data refresh automatically (realtime) after any change, f
 
 Realtime SDK:
 ${sdkReference}
+
+# Custom backend
+When an app needs server-side logic, give it a backend: fetching other websites or APIs (no CORS limits), periodic jobs, imports, heavier processing, WebSockets. Skip it when the catalog and custom components are enough.
+- Tools: write_file / read_file / list_files / delete_file, restart_backend (after every change), call_backend to test, backend_logs, run_script for one-off scripts, install_packages for npm packages (only when needed).
+- ${ENTRY} is the entry point and runs with Bun. It must serve HTTP on process.env.PORT:
+  import { connect } from "./gapp";
+  const gapp = connect();
+  Bun.serve({
+    port: Number(process.env.PORT),
+    routes: {
+      "/api/refresh": { POST: async (req) => { await gapp.insert("prices", { … }); return Response.json({ ok: true }); } },
+    },
+    fetch: () => new Response("Not found", { status: 404 }),
+  });
+- Use the full Bun runtime (fetch, Bun.serve websockets, setInterval, bun:sqlite for private caches). Store the app's data in its tables through gapp so the UI updates live.
+- The UI calls it with a button action { "type": "backend", "path": "/api/refresh" } or from custom components with gapp.backend.fetch/json/socket.
+- It runs while gApp is open and starts when the app is opened. Never put API keys or passwords in code; ask the user how they want to provide them.
 
 # Guidelines
 - Build something useful right away instead of asking many questions; make reasonable assumptions and mention them briefly.

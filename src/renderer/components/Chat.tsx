@@ -1,14 +1,17 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, For, Match, on, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
 import { settings } from "../lib/settings";
 import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
+import { BackendDrawer, BackendPill, useRuntime } from "./BackendPanel";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 
 export function Chat(props: { appId: string }) {
   const state = () => states[props.appId]!;
+  const runtime = useRuntime(() => props.appId);
+  const [backendOpen, setBackendOpen] = createSignal(false);
   let scroller!: HTMLDivElement;
 
   // Keep the newest message in view while the agent is talking.
@@ -23,6 +26,7 @@ export function Chat(props: { appId: string }) {
       <header {...stylex.attrs(styles.header)}>
         <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
         <span {...stylex.attrs(styles.headerTitle)}>Agent</span>
+        <BackendPill appId={props.appId} runtime={runtime()} open={backendOpen()} onToggle={() => setBackendOpen((o) => !o)} />
         <button
           type="button"
           title="Hide agent (Ctrl+J)"
@@ -33,6 +37,9 @@ export function Chat(props: { appId: string }) {
           <Icon name="panel-right-close" size={16} />
         </button>
       </header>
+      <Show when={backendOpen() && runtime()?.status.exists && runtime()}>
+        {(info) => <BackendDrawer appId={props.appId} runtime={info()} />}
+      </Show>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
         <For each={state().messages.filter((m) => m.role !== "tool" || settings().agent.showToolMessages)}>
           {(m) => <Message message={m} />}

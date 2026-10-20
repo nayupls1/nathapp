@@ -72,6 +72,15 @@ export const Action = z.discriminatedUnion("type", [
 ]);
 export type Action = z.infer<typeof Action>;
 
+/** Calls the app's custom backend (buttons only). */
+export const BackendAction = z.object({
+  type: z.literal("backend"),
+  path: z.string().regex(/^\//, 'must start with "/"'),
+  method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+  body: z.record(z.string(), Value).optional(),
+});
+export type BackendAction = z.infer<typeof BackendAction>;
+
 // --- UI components ---------------------------------------------------------
 
 const Gap = z.enum(["sm", "md", "lg"]);
@@ -179,7 +188,7 @@ export type UINode =
   | {
       type: "button";
       label: string;
-      action: Action;
+      action: Action | BackendAction;
       confirm?: string;
       variant?: "primary" | "danger";
       icon?: string;
@@ -326,7 +335,7 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
     z.object({
       type: z.literal("button"),
       label: z.string(),
-      action: Action,
+      action: z.union([Action, BackendAction]),
       confirm: z.string().optional(),
       variant: z.enum(["primary", "danger"]).optional(),
       icon: IconName.optional(),
@@ -461,6 +470,7 @@ export function checkReferences(spec: AppSpec, options: CheckOptions = {}): stri
         break;
       case "button": {
         const a = node.action;
+        if (a.type === "backend") break;
         checkColumns(at, a.table, [
           ...("values" in a ? Object.keys(a.values) : []),
           ...("where" in a ? Object.keys(a.where) : []),

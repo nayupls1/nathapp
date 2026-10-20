@@ -6,6 +6,20 @@ import { z } from "zod";
 import type { ChatEvent, Effort } from "../shared/api";
 import { AppSpec, checkReferences, Value, Where } from "../shared/spec";
 import { DataError, migrate, rowCounts, runData } from "./appdata";
+import {
+  BackendError,
+  backendLogs,
+  backendStatus,
+  backendUrl,
+  deleteBackendFile,
+  ENTRY,
+  listFiles,
+  readBackendFile,
+  restartBackend,
+  runBun,
+  stopBackend,
+  writeBackendFile,
+} from "./backends";
 import { agentDir, claudeExecutable } from "./config";
 import { addMessage, getApp, getSettings, updateApp } from "./db";
 import { agentEnv } from "./env";
@@ -36,6 +50,15 @@ function createTools(appId: string, emit: Emit) {
       return fn(spec, args);
     } catch (err) {
       if (err instanceof DataError) return text(err.message, true);
+      throw err;
+    }
+  };
+
+  const backendCall = async (fn: () => ReturnType<typeof text> | Promise<ReturnType<typeof text>>) => {
+    try {
+      return await fn();
+    } catch (err) {
+      if (err instanceof BackendError) return text(err.message, true);
       throw err;
     }
   };
@@ -71,12 +94,128 @@ function createTools(appId: string, emit: Emit) {
         },
       ),
 
-      tool("get_errors", "Errors reported by the app's custom components since the last update_app.", {}, async () => {
-        // Give freshly reloaded components a moment to run.
-        await Bun.sleep(1500);
-        const errors = frameErrors(appId);
-        return text(errors.length ? JSON.stringify(errors, null, 2) : "No errors reported.");
+      tool(
+        "get_errors",
+        "Errors from the app's custom components (since the last update_app) and the backend's state and recent error output.",
+        {},
+        async () => {
+          // Give freshly reloaded components a moment to run.
+          await Bun.sleep(1500);
+          const errors = frameErrors(appId);
+          const status = backendStatus(appId);
+          const parts = [errors.length ? `Custom components:\n${JSON.stringify(errors, null, 2)}` : "Custom components: no errors."];
+          if (status.exists) {
+            parts.push(`Backend: ${status.state}${status.exitCode !== null ? ` (exit code ${status.exitCode})` : ""}`);
+            if (status.state !== "running") parts.push(backendLogs(appId, 30).join("\n"));
+          }
+          return text(parts.join("\n\n"));
+        },
+      ),
+
+      // --- Custom backend
+      tool("list_files", "List the files of the app's backend folder.", {}, async () => {
+        const files = listFiles(appId);
+        return text(files.length ? files.map((f) => `${f.path} (${f.size} bytes)`).join("\n") : "No backend files yet.");
       }),
+
+      tool("read_file", "Read a file from the app's backend folder.", { path: z.string() }, async ({ path }) =>
+        backendCall(() => text(readBackendFile(appId, path))),
+      ),
+
+      tool(
+        "write_file",
+        `Create or replace a file in the app's backend folder (TypeScript, JSON, …). ${ENTRY} is the entry point. Restart the backend afterwards.`,
+        { path: z.string(), content: z.string() },
+        async ({ path, content }) =>
+          backendCall(() => {
+            writeBackendFile(appId, path, content);
+            log(`Wrote ${path}`);
+            return text(`Wrote ${path} (${content.length} chars).`);
+          }),
+      ),
+
+      tool("delete_file", "Delete a file from the app's backend folder.", { path: z.string() }, async ({ path }) =>
+        backendCall(() => {
+          deleteBackendFile(appId, path);
+          log(`Deleted ${path}`);
+          return text(`Deleted ${path}.`);
+        }),
+      ),
+
+      tool(
+        "restart_backend",
+        `(Re)start the app's backend (bun run ${ENTRY} with $PORT) and wait until it listens. Returns its state and recent logs.`,
+        {},
+        async () =>
+          backendCall(async () => {
+            const status = await restartBackend(appId);
+            log(status.state === "running" ? `Backend running on port ${status.port}` : `Backend ${status.state}`);
+            return text(`State: ${status.state}\nRecent logs:\n${backendLogs(appId, 40).join("\n")}`, status.state !== "running");
+          }),
+      ),
+
+      tool("stop_backend", "Stop the app's backend.", {}, async () => {
+        stopBackend(appId);
+        log("Stopped backend");
+        return text("Stopped.");
+      }),
+
+      tool(
+        "backend_logs",
+        "Recent stdout/stderr lines of the app's backend.",
+        { lines: z.number().int().positive().max(500).optional() },
+        async ({ lines }) => text(backendLogs(appId, lines ?? 80).join("\n") || "No logs."),
+      ),
+
+      tool(
+        "call_backend",
+        "Send an HTTP request to the app's running backend (to test it). Path starts with /.",
+        {
+          path: z.string().regex(/^\//),
+          method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+          body: z.unknown().optional(),
+        },
+        async ({ path, method, body }) =>
+          backendCall(async () => {
+            const base = await backendUrl(appId);
+            if (!base) return text(`The backend isn't running (${backendStatus(appId).state}). Use restart_backend.`, true);
+            const res = await fetch(`${base}${path}`, {
+              method: method ?? "GET",
+              headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+              body: body !== undefined ? JSON.stringify(body) : undefined,
+            });
+            const out = await res.text();
+            return text(`${res.status} ${res.statusText}\n${out.length > 6000 ? `${out.slice(0, 6000)}…` : out}`, !res.ok);
+          }),
+      ),
+
+      tool(
+        "run_script",
+        "Run a TypeScript file from the backend folder once with Bun (bun run <path>), e.g. to test logic or import data. Times out after 60s.",
+        { path: z.string(), args: z.array(z.string()).optional() },
+        async ({ path, args }) =>
+          backendCall(async () => {
+            readBackendFile(appId, path); // must exist inside the folder
+            const res = await runBun(appId, ["run", path, ...(args ?? [])]);
+            log(`Ran ${path}`);
+            return text(
+              `${res.timedOut ? "Timed out. " : ""}Exit code ${res.exitCode}\n${res.output || "(no output)"}`,
+              res.exitCode !== 0,
+            );
+          }),
+      ),
+
+      tool(
+        "install_packages",
+        "Add npm packages to the backend (bun add). Only when really needed.",
+        { packages: z.array(z.string().regex(/^(@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*(@[\w.^~<>=*-]+)?$/i)).min(1) },
+        async ({ packages }) =>
+          backendCall(async () => {
+            const res = await runBun(appId, ["add", ...packages], 120_000);
+            log(`Installed ${packages.join(", ")}`);
+            return text(`Exit code ${res.exitCode}\n${res.output}`, res.exitCode !== 0);
+          }),
+      ),
 
       tool(
         "search_icons",
@@ -136,9 +275,26 @@ function createTools(appId: string, emit: Emit) {
   });
 }
 
-const toolNames = ["get_app", "update_app", "get_errors", "search_icons", "query_rows", "insert_rows", "update_rows", "delete_rows"].map(
-  (name) => `mcp__gapp__${name}`,
-);
+const toolNames = [
+  "get_app",
+  "update_app",
+  "get_errors",
+  "search_icons",
+  "query_rows",
+  "insert_rows",
+  "update_rows",
+  "delete_rows",
+  "list_files",
+  "read_file",
+  "write_file",
+  "delete_file",
+  "restart_backend",
+  "stop_backend",
+  "backend_logs",
+  "call_backend",
+  "run_script",
+  "install_packages",
+].map((name) => `mcp__gapp__${name}`);
 
 function errorText(err: unknown) {
   return err instanceof Error ? err.message : String(err);

@@ -5,6 +5,7 @@ import { createStore, produce, reconcile } from "solid-js/store";
 import type { AppSummary, ChatMessage, Effort, ModelOption } from "../../shared/api";
 import type { AppSpec } from "../../shared/spec";
 import { api } from "./api";
+import { onConnected, watchApp } from "./realtime";
 import { settings } from "./settings";
 
 export interface AppState {
@@ -90,6 +91,16 @@ const emptyState = (): AppState => ({
   ...agentDefaults(),
 });
 
+// Realtime updates for every loaded app: data changes and specs changed elsewhere.
+const watchers = new Map<string, () => void>();
+function watch(id: string) {
+  if (watchers.has(id)) return;
+  const stopApp = watchApp(id, { tables: (tables) => bumpTables(id, tables), spec: () => void reloadSpec(id) });
+  // After a reconnect, refetch everything: changes in between weren't pushed.
+  const stopReconnect = onConnected(() => bumpData(id));
+  watchers.set(id, () => (stopApp(), stopReconnect()));
+}
+
 function upsertApp(app: AppSummary) {
   const i = apps.findIndex((a) => a.id === app.id);
   if (i === -1) setApps(apps.length, app);
@@ -106,6 +117,7 @@ export async function selectApp(id: string) {
   setSelectedId(id);
   if (isPage(id) || states[id]?.loaded) return;
   const detail = await api.getApp(id);
+  watch(id);
   setStates(id, {
     ...emptyState(),
     loaded: true,
@@ -136,6 +148,7 @@ export async function newApp() {
   const app = await api.createApp();
   upsertApp(app);
   setStates(app.id, { ...emptyState(), loaded: true });
+  watch(app.id);
   setSelectedId(app.id);
 }
 
@@ -159,6 +172,8 @@ export async function deleteApp(id: string) {
   await api.deleteApp(id);
   const index = apps.findIndex((a) => a.id === id);
   setApps((list) => list.filter((a) => a.id !== id));
+  watchers.get(id)?.();
+  watchers.delete(id);
   setStates(produce((s) => void delete s[id]));
   if (selectedId() === id) {
     const next = apps[Math.min(index, apps.length - 1)];

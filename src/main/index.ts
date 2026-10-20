@@ -47,6 +47,8 @@ function createWindow(serverUrl: string) {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // Agent runs stream into the window while it's in the background.
+      backgroundThrottling: false,
     },
   });
 

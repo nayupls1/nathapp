@@ -5,6 +5,24 @@ import { CATALOG_APP_ID, catalogSeed, catalogSpec } from "../shared/catalog";
 import { Settings } from "../shared/settings";
 import { AppSpec, checkReferences } from "../shared/spec";
 import { isRunning, runChat, stopChat } from "./agent";
+import {
+  BackendError,
+  backendLogs,
+  backendStatus,
+  backendUrl,
+  copyBackend,
+  deleteBackend,
+  deleteBackendFile,
+  hasBackend,
+  listFiles,
+  readBackendFile,
+  restartBackend,
+  setGappUrl,
+  startBackend,
+  stopAllBackends,
+  stopBackend,
+  writeBackendFile,
+} from "./backends";
 import { copyAppData, DataError, deleteAppData, migrate, onDataChange, resetAppData, runData } from "./appdata";
 import { dataDir } from "./config";
 import {
@@ -94,6 +112,48 @@ export function validateSpec(input: unknown): { spec: AppSpec } | { problems: st
   return { spec: parsed.data };
 }
 
+/** Forwards a request (or WebSocket) under /api/apps/:id/backend to the app's backend. */
+async function proxyToBackend(req: Bun.BunRequest<"/api/apps/:id/backend/*">, server: Server<SocketData>) {
+  const appId = req.params.id;
+  if (foreignOrigin(req)) return json({ error: "Forbidden" }, { status: 403 });
+  const base = await backendUrl(appId).catch(() => null);
+  if (!base) {
+    return hasBackend(appId)
+      ? json({ error: "The app's backend isn't running; check its logs" }, { status: 502 })
+      : json({ error: "This app has no backend" }, { status: 404 });
+  }
+  const url = new URL(req.url);
+  const marker = `/api/apps/${appId}/backend`;
+  const target = `${base}${url.pathname.slice(marker.length) || "/"}${url.search}`;
+
+  if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    if (server.upgrade(req, { data: { renderer: false, upstream: target.replace(/^http/, "ws") } })) return undefined;
+    return new Response("WebSocket upgrade failed", { status: 400 });
+  }
+
+  const headers = new Headers(req.headers);
+  headers.delete("host");
+  try {
+    const res = await fetch(target, {
+      method: req.method,
+      headers,
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer(),
+      redirect: "manual",
+    });
+    const out = new Headers(res.headers);
+    // fetch already decoded the body.
+    out.delete("content-encoding");
+    out.delete("content-length");
+    for (const [k, v] of Object.entries(corsHeaders)) out.set(k, v);
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers: out });
+  } catch (err) {
+    return json({ error: `Backend request failed: ${err instanceof Error ? err.message : err}` }, { status: 502 });
+  }
+}
+
+/** The file path after /files/ in a backend file URL. */
+const filePath = (req: Request) => decodeURIComponent(new URL(req.url).pathname.replace(/^\/api\/apps\/[^/]+\/files\//, ""));
+
 const specFor = (appId: string) => (appId === CATALOG_APP_ID ? catalogSpec : getApp(appId)?.spec);
 
 const server = Bun.serve<SocketData>({
@@ -167,6 +227,9 @@ const server = Bun.serve<SocketData>({
         const app = getApp(req.params.id);
         if (!app) return notFound();
         const { sessionId, ...rest } = app;
+        if (getSettings().backends.autoStart && hasBackend(app.id) && backendStatus(app.id).state === "stopped") {
+          startBackend(app.id).catch((err) => console.error(`[backend ${app.id}]`, err));
+        }
         return json<AppDetail>({ ...rest, messages: listMessages(app.id), running: isRunning(app.id) });
       },
       PATCH: async (req) => {
@@ -179,6 +242,7 @@ const server = Bun.serve<SocketData>({
         stopChat(req.params.id);
         deleteApp(req.params.id);
         deleteAppData(req.params.id);
+        deleteBackend(req.params.id);
         return noContent();
       },
     },
@@ -241,6 +305,7 @@ const server = Bun.serve<SocketData>({
         const copy = duplicateApp(req.params.id);
         if (!copy) return notFound();
         copyAppData(req.params.id, copy.id);
+        copyBackend(req.params.id, copy.id);
         return json(copy, { status: 201 });
       },
     },
@@ -258,6 +323,60 @@ const server = Bun.serve<SocketData>({
       POST: (req) => {
         stopChat(req.params.id);
         return json({ ok: true });
+      },
+    },
+
+    // The app's custom backend, proxied (HTTP and WebSocket). Started on demand.
+    "/api/apps/:id/backend": proxyToBackend,
+    "/api/apps/:id/backend/*": proxyToBackend,
+
+    "/api/apps/:id/runtime": {
+      GET: (req) =>
+        json({ status: backendStatus(req.params.id), logs: backendLogs(req.params.id, 300), files: listFiles(req.params.id) }),
+      POST: async (req) => {
+        const { action } = (await req.json()) as { action?: string };
+        try {
+          if (action === "stop") stopBackend(req.params.id);
+          else if (action === "start") await startBackend(req.params.id);
+          else if (action === "restart") await restartBackend(req.params.id);
+          else return badRequest('action must be "start", "stop" or "restart"');
+        } catch (err) {
+          if (err instanceof BackendError) return badRequest(err.message);
+          throw err;
+        }
+        return json(backendStatus(req.params.id));
+      },
+    },
+
+    "/api/apps/:id/files/*": {
+      GET: (req) => {
+        try {
+          return new Response(readBackendFile(req.params.id, filePath(req)), {
+            headers: { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" },
+          });
+        } catch (err) {
+          if (err instanceof BackendError) return json({ error: err.message }, { status: 404 });
+          throw err;
+        }
+      },
+      PUT: async (req) => {
+        if (!getApp(req.params.id)) return notFound();
+        try {
+          writeBackendFile(req.params.id, filePath(req), await req.text());
+          return noContent();
+        } catch (err) {
+          if (err instanceof BackendError) return badRequest(err.message);
+          throw err;
+        }
+      },
+      DELETE: (req) => {
+        try {
+          deleteBackendFile(req.params.id, filePath(req));
+          return noContent();
+        } catch (err) {
+          if (err instanceof BackendError) return json({ error: err.message }, { status: 404 });
+          throw err;
+        }
       },
     },
 
@@ -286,6 +405,7 @@ const server = Bun.serve<SocketData>({
 });
 
 attachHub(server);
+setGappUrl(server.url.toString());
 console.log(`[server] listening on ${server.url}`);
 
 // When spawned by Electron, stdin is a pipe owned by the main process. If the
@@ -294,6 +414,9 @@ if (process.env.GAPP_PARENT === "electron") {
   process.stdin.on("close", () => process.exit(0));
   process.stdin.resume();
 }
+
+// Backends are child processes; don't leave them running.
+process.on("exit", stopAllBackends);
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {

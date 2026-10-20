@@ -8,6 +8,12 @@ import type { ClientMessage, ServerMessage } from "../sdk/gapp";
 export interface SocketData {
   /** The renderer handles RPC requests; everything else is a plain client. */
   renderer: boolean;
+  /** Set for sockets proxied to an app backend: the backend's ws:// URL. */
+  upstream?: string;
+  /** The connection to the backend, for proxied sockets. */
+  backend?: WebSocket;
+  /** Messages from the client received before the backend connection opened. */
+  queued?: (string | Uint8Array<ArrayBuffer>)[];
 }
 
 type WS = ServerWebSocket<SocketData>;
@@ -48,9 +54,17 @@ export const websocket: WebSocketHandler<SocketData> = {
   idleTimeout: 120,
   sendPings: true,
   open(ws) {
+    if (ws.data.upstream) return openProxy(ws);
     if (ws.data.renderer) renderers.push(ws);
   },
   message(ws, raw) {
+    if (ws.data.upstream) {
+      const backend = ws.data.backend;
+      const data = typeof raw === "string" ? raw : new Uint8Array(raw as Uint8Array<ArrayBuffer>);
+      if (backend?.readyState === WebSocket.OPEN) backend.send(data);
+      else ws.data.queued?.push(data);
+      return;
+    }
     let msg: ClientMessage;
     try {
       msg = JSON.parse(String(raw)) as ClientMessage;
@@ -82,11 +96,29 @@ export const websocket: WebSocketHandler<SocketData> = {
       }
     }
   },
-  close(ws) {
+  close(ws, code, reason) {
+    if (ws.data.upstream) {
+      ws.data.backend?.close(code === 1005 ? 1000 : code, reason);
+      return;
+    }
     const i = renderers.indexOf(ws);
     if (i !== -1) renderers.splice(i, 1);
   },
 };
+
+/** Pipes a client socket to an app backend's WebSocket endpoint. */
+function openProxy(ws: WS) {
+  ws.data.queued = [];
+  const backend = new WebSocket(ws.data.upstream!);
+  backend.binaryType = "arraybuffer";
+  ws.data.backend = backend;
+  backend.onopen = () => {
+    for (const msg of ws.data.queued!.splice(0)) backend.send(msg);
+  };
+  backend.onmessage = (e) => ws.send(typeof e.data === "string" ? e.data : new Uint8Array(e.data as ArrayBuffer));
+  backend.onclose = (e) => ws.close(e.code === 1005 || e.code === 1006 ? 1011 : e.code, e.reason);
+  backend.onerror = () => ws.close(1011, "Backend connection failed");
+}
 
 /** Asks the gApp window to do something (e.g. run JS in a web tab) and waits for the answer. */
 export function rpc<T>(method: string, params: unknown, timeoutMs = 30_000): Promise<T> {

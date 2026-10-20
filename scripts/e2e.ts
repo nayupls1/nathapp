@@ -37,11 +37,28 @@ const port = await new Promise<number>((resolve) => {
   });
 });
 
-const electron = launchElectron({ GAPP_USER_DATA_DIR: profile }, [`--remote-debugging-port=${port}`]);
+// Keep painting while the window is covered or unfocused, or screenshots stall.
+const electron = launchElectron({ GAPP_USER_DATA_DIR: profile }, [
+  `--remote-debugging-port=${port}`,
+  "--disable-backgrounding-occluded-windows",
+  "--disable-renderer-backgrounding",
+]);
 
 const results: { name: string; ok: boolean; detail?: string }[] = [];
 const pageErrors: string[] = [];
 let page: Page | undefined;
+const skippedShots: string[] = [];
+
+/**
+ * Screenshots are for looking at, not assertions. A window the compositor
+ * doesn't paint (e.g. on another workspace) never delivers a frame, so give up
+ * after a few seconds instead of failing the check.
+ */
+async function shot(name: string) {
+  const timeout = new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 8000));
+  const result = await Promise.race([page!.screenshot(join(outDir, name)).catch(() => "timeout" as const), timeout]);
+  if (result === "timeout") skippedShots.push(name);
+}
 
 async function check(name: string, fn: () => Promise<string | void>) {
   const started = Date.now();
@@ -53,7 +70,7 @@ async function check(name: string, fn: () => Promise<string | void>) {
     const detail = err instanceof Error ? err.message : String(err);
     results.push({ name, ok: false, detail });
     console.log(`  ✗ ${name} — ${detail}`);
-    await page?.screenshot(join(outDir, `failure-${results.length}.png`)).catch(() => {});
+    if (page) await shot(`failure-${results.length}.png`);
   }
 }
 
@@ -120,7 +137,7 @@ try {
     );
     const statText = await page!.eval<string>(`document.querySelector('[data-catalog-component="stat"]').innerText`);
     if (!/\d/.test(statText)) throw new Error(`stat shows no number: ${statText}`);
-    await page!.screenshot(join(outDir, "catalog.png"));
+    await shot("catalog.png");
     return `${drawn} charts`;
   });
 
@@ -193,7 +210,7 @@ try {
     });
     const efforts = await page!.eval<number>(`document.querySelector('select[title="Effort"]')?.options.length ?? 0`);
     if (efforts < 2) throw new Error("effort picker missing");
-    await page!.screenshot(join(outDir, "new-app.png"));
+    await shot("new-app.png");
     return `${options - 1} models, ${efforts - 1} effort levels`;
   });
 
@@ -224,7 +241,7 @@ try {
       if (!chat.includes("Updated app")) throw new Error(`agent did not update the app:\n${chat.slice(-600)}`);
       const errors = await page!.eval<number>(`document.body.innerText.includes("failed to render")`);
       if (errors) throw new Error("generated app failed to render");
-      await page!.screenshot(join(outDir, "agent-app.png"));
+      await shot("agent-app.png");
       const name = await page!.eval<string>(`document.querySelector("nav li")?.innerText.split("\\n")[0].trim()`);
       return `built "${name}"`;
     });
@@ -283,6 +300,64 @@ try {
     if (after.length !== before.length) throw new Error(`expected ${before.length} apps, got ${after.join(", ")}`);
   });
 
+  await check("custom backend: runs, button calls it, data arrives live", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+    await click("nav button", "New app");
+    const appId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "new app in the sidebar" },
+    );
+    const spec = {
+      name: "Backend demo",
+      icon: "server",
+      tables: [{ name: "pings", columns: [{ name: "note", type: "text" }] }],
+      ui: {
+        type: "stack",
+        children: [
+          { type: "button", label: "Ping backend", action: { type: "backend", path: "/api/ping" } },
+          { type: "list", table: "pings", primary: "note" },
+        ],
+      },
+    };
+    const serverTs = [
+      'import { connect } from "./gapp";',
+      "const gapp = connect();",
+      "Bun.serve({",
+      "  port: Number(process.env.PORT),",
+      '  routes: { "/api/ping": { POST: async () => { await gapp.insert("pings", { note: "pong from backend" }); return Response.json({ ok: true }); } } },',
+      '  fetch: () => new Response("Not found", { status: 404 }),',
+      "});",
+      'console.log("backend up");',
+    ].join("\n");
+    await page!.eval(`(async () => {
+      const base = window.gapp.serverUrl + "/api/apps/${appId}";
+      const put = (path, body, type) => fetch(base + path, { method: "PUT", headers: { "Content-Type": type }, body });
+      const a = await put("/files/server.ts", ${JSON.stringify(serverTs)}, "text/plain");
+      const b = await put("/spec", ${JSON.stringify(JSON.stringify(spec))}, "application/json");
+      if (!a.ok || !b.ok) throw new Error("setup failed: " + a.status + " " + b.status);
+      return true;
+    })()`);
+    // The spec arrives over the realtime connection; opening it auto-starts the backend.
+    await page!.waitFor(`[...document.querySelectorAll("button")].some((b) => b.innerText.includes("Ping backend"))`, {
+      label: "imported app to render",
+    });
+    await page!.waitFor(`!!document.querySelector('[data-backend-pill="running"]')`, { timeoutMs: 20_000, label: "backend running" });
+    await click("button", "Ping backend");
+    await page!.waitFor(`document.body.innerText.includes("pong from backend")`, { label: "row written by the backend" });
+
+    await click("[data-backend-pill]");
+    await page!.waitFor(`document.querySelector("[data-backend-drawer]")?.innerText.includes("backend up")`, { label: "backend logs" });
+    await shot("backend.png");
+
+    // Collapsing the agent panel gives the app the whole width.
+    await click("[data-agent-hide]");
+    await page!.waitFor(`!document.querySelector("[data-agent-panel]") && !!document.querySelector("[data-agent-show]")`, {
+      label: "agent panel hidden",
+    });
+    await click("[data-agent-show]");
+    await page!.waitFor(`!!document.querySelector("[data-agent-panel]")`, { label: "agent panel shown" });
+  });
+
   await check("settings: theme presets apply and prompt additions are saved", async () => {
     await click("nav button", "Settings");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
@@ -292,7 +367,7 @@ try {
       label: "Midnight background",
     });
     await Bun.sleep(300); // let color transitions finish
-    await page!.screenshot(join(outDir, "settings.png"));
+    await shot("settings.png");
     await page!.eval(`(() => {
       const t = document.querySelector('textarea[name="instructions"]');
       t.value = "Amounts are in EUR.";
@@ -322,4 +397,5 @@ try {
 
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed. Screenshots in ${outDir}/`);
+if (skippedShots.length) console.log(`(window wasn't painting, skipped screenshots: ${skippedShots.join(", ")})`);
 process.exit(failed.length ? 1 : 0);

@@ -92,3 +92,24 @@ export type DataResponse =
   | { value: number | null }
   | { groups: { key: Value; series?: Value; value: number | null }[] }
   | { changes: number };
+
+// --- Custom app backends ----------------------------------------------------------
+
+/** Entry point of an app's custom backend. */
+export const BACKEND_ENTRY = "server.ts";
+
+export interface BackendStatus {
+  /** Whether the app has a server.ts at all. */
+  exists: boolean;
+  state: "stopped" | "starting" | "running" | "crashed";
+  port: number | null;
+  startedAt: string | null;
+  exitCode: number | null;
+  pid: number | null;
+}
+
+export interface RuntimeInfo {
+  status: BackendStatus;
+  logs: string[];
+  files: { path: string; size: number }[];
+}

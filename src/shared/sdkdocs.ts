@@ -15,7 +15,8 @@ gapp.onChange((tables) => …)                    // after any write to this app
 const room = gapp.channel("name")               // ephemeral messages between everything open (not stored)
 room.send(data); room.on((data) => …)
 await gapp.backend.fetch("/path", init?)        // the app's custom backend (custom components only need this)
-await gapp.backend.json("/path")                // GET + parse JSON`;
+await gapp.backend.json("/path")                // GET + parse JSON
+const ws = gapp.backend.socket("/ws")           // WebSocket to the backend`;
 
 export const customCssReference = `CSS variables (follow the user's theme): --gapp-bg --gapp-surface --gapp-surface-hover --gapp-text --gapp-muted --gapp-border --gapp-accent --gapp-accent-text --gapp-accent-soft --gapp-danger --gapp-success --gapp-warning --gapp-radius --gapp-radius-sm --gapp-font --gapp-mono
 Base styles already make buttons, inputs, selects and textareas look native; helpers: button.primary, .card, .row, .stack, .muted. The page background is transparent.`;

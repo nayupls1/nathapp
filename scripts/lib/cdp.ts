@@ -58,7 +58,15 @@ export class Page {
   send<T = any>(method: string, params: object = {}, sessionId?: string): Promise<T> {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      // A blocked renderer would otherwise hang the caller forever.
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`${method} got no response within 30s`));
+      }, 30_000);
+      this.pending.set(id, {
+        resolve: (v) => (clearTimeout(timer), resolve(v)),
+        reject: (e) => (clearTimeout(timer), reject(e)),
+      });
       this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
   }

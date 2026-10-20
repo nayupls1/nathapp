@@ -11,6 +11,7 @@ import { markdownToHtml } from "../../shared/markdown";
 import { Chart } from "./Chart";
 import { Custom } from "./Custom";
 import { Kanban } from "./Kanban";
+import { api } from "../lib/api";
 import {
   columnLabel,
   findColumn,
@@ -18,6 +19,7 @@ import {
   formatValue,
   framed,
   InCard,
+  useApp,
   useData,
   useMutate,
   useTable,
@@ -548,23 +550,41 @@ function Progress(props: Props<"progress">) {
 }
 
 function ActionButton(props: Props<"button">) {
+  const { appId } = useApp();
   const mutate = useMutate();
   const [busy, setBusy] = createSignal(false);
+  const [error, setError] = createSignal<string>();
   const run = async () => {
     if (props.node.confirm && !window.confirm(props.node.confirm)) return;
     setBusy(true);
+    setError();
     try {
-      await mutate({ op: "action", action: props.node.action });
+      const action = props.node.action;
+      if (action.type === "backend") {
+        // The backend writes through the SDK, so changes arrive via realtime.
+        const res = await api.backend(appId, action.path, {
+          method: action.method ?? "POST",
+          body: action.body && action.method !== "GET" ? JSON.stringify(action.body) : undefined,
+        });
+        if (!res.ok) throw new Error((await res.text()) || `${res.status} ${res.statusText}`);
+      } else {
+        await mutate({ op: "action", action });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
     }
   };
   return (
-    <div>
+    <div {...stylex.attrs(s.buttonRow)}>
       <Button variant={props.node.variant ?? "default"} disabled={busy()} onClick={run}>
         <Icon name={props.node.icon} size={15} />
         {props.node.label}
       </Button>
+      <Show when={error()}>
+        <span {...stylex.attrs(s.error)}>{error()}</span>
+      </Show>
     </div>
   );
 }
@@ -726,6 +746,7 @@ const s = stylex.create({
   labelInline: { flexDirection: "row-reverse", justifyContent: "flex-end", alignItems: "center", gap: space.sm, height: 34 },
   labelText: { fontSize: font.xs, fontWeight: 500, color: colors.muted },
   error: { color: colors.danger, fontSize: font.sm, marginRight: "auto" },
+  buttonRow: { display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" },
   compactField: { height: 28, fontSize: font.sm, paddingInline: space.sm, minWidth: 80 },
 
   tableWrap: {
