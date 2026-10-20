@@ -75,13 +75,34 @@ export type Action = z.infer<typeof Action>;
 // --- UI components ---------------------------------------------------------
 
 const Gap = z.enum(["sm", "md", "lg"]);
+const Align = z.enum(["start", "center", "end", "stretch"]);
+const Justify = z.enum(["start", "center", "end", "between"]);
+type Gap = z.infer<typeof Gap>;
+
+/** Name of a custom component, unique within an app (used in its URL). */
+export const CustomName = z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, "must be kebab-case, e.g. pomodoro-timer");
+
+const httpUrl = z.string().regex(/^(https?:\/\/|data:image\/)/, "must be an http(s) URL or a data:image URL");
 
 export type UINode =
-  | { type: "stack"; direction?: "row" | "column"; gap?: "sm" | "md" | "lg"; children: UINode[] }
-  | { type: "card"; title?: string; icon?: string; children: UINode[] }
+  | {
+      type: "stack";
+      direction?: "row" | "column";
+      gap?: Gap;
+      align?: "start" | "center" | "end" | "stretch";
+      justify?: "start" | "center" | "end" | "between";
+      children: UINode[];
+    }
+  | { type: "grid"; columns?: number; gap?: Gap; children: UINode[] }
+  | { type: "card"; title?: string; icon?: string; tone?: Tone; children: UINode[] }
+  | { type: "divider"; label?: string }
   | { type: "tabs"; tabs: { label: string; icon?: string; children: UINode[] }[] }
   | { type: "heading"; text: string; level?: 1 | 2 | 3; icon?: string }
   | { type: "text"; text: string; muted?: boolean }
+  | { type: "markdown"; text: string }
+  | { type: "badge"; text: string; tone?: Tone; icon?: string }
+  | { type: "image"; src: string; alt?: string; height?: number; fit?: "cover" | "contain"; rounded?: boolean }
+  | { type: "link"; text: string; href: string; icon?: string }
   | { type: "icon"; name: string; size?: "sm" | "md" | "lg"; tone?: Tone }
   | { type: "form"; table: string; fields?: string[]; title?: string; submitLabel?: string }
   | {
@@ -93,6 +114,7 @@ export type UINode =
       limit?: number;
       editable?: boolean;
       deletable?: boolean;
+      searchable?: boolean;
       emptyText?: string;
     }
   | {
@@ -106,7 +128,19 @@ export type UINode =
       sort?: Sort;
       limit?: number;
       deletable?: boolean;
+      searchable?: boolean;
       emptyText?: string;
+    }
+  | {
+      type: "kanban";
+      table: string;
+      groupBy: string;
+      title: string;
+      secondary?: string;
+      icon?: string;
+      where?: Where;
+      sort?: Sort;
+      deletable?: boolean;
     }
   | {
       type: "stat";
@@ -117,6 +151,17 @@ export type UINode =
       where?: Where;
       format?: "number" | "currency" | "percent";
       icon?: string;
+    }
+  | {
+      type: "progress";
+      label: string;
+      table: string;
+      aggregate: Aggregate;
+      column?: string;
+      where?: Where;
+      goal: number;
+      format?: "number" | "currency" | "percent";
+      tone?: Tone;
     }
   | {
       type: "chart";
@@ -138,7 +183,8 @@ export type UINode =
       confirm?: string;
       variant?: "primary" | "danger";
       icon?: string;
-    };
+    }
+  | { type: "custom"; name: string; html: string; height?: number };
 
 export const UINode: z.ZodType<UINode> = z.lazy(() =>
   z.discriminatedUnion("type", [
@@ -146,14 +192,24 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
       type: z.literal("stack"),
       direction: z.enum(["row", "column"]).optional(),
       gap: Gap.optional(),
+      align: Align.optional(),
+      justify: Justify.optional(),
+      children: z.array(UINode),
+    }),
+    z.object({
+      type: z.literal("grid"),
+      columns: z.number().int().min(1).max(6).optional(),
+      gap: Gap.optional(),
       children: z.array(UINode),
     }),
     z.object({
       type: z.literal("card"),
       title: z.string().optional(),
       icon: IconName.optional(),
+      tone: Tone.optional(),
       children: z.array(UINode),
     }),
+    z.object({ type: z.literal("divider"), label: z.string().optional() }),
     z.object({
       type: z.literal("tabs"),
       tabs: z
@@ -167,6 +223,22 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
       icon: IconName.optional(),
     }),
     z.object({ type: z.literal("text"), text: z.string(), muted: z.boolean().optional() }),
+    z.object({ type: z.literal("markdown"), text: z.string() }),
+    z.object({ type: z.literal("badge"), text: z.string(), tone: Tone.optional(), icon: IconName.optional() }),
+    z.object({
+      type: z.literal("image"),
+      src: httpUrl,
+      alt: z.string().optional(),
+      height: z.number().int().min(16).max(1200).optional(),
+      fit: z.enum(["cover", "contain"]).optional(),
+      rounded: z.boolean().optional(),
+    }),
+    z.object({
+      type: z.literal("link"),
+      text: z.string(),
+      href: z.string().regex(/^(https?:|mailto:)/, "must be an http(s) or mailto: link"),
+      icon: IconName.optional(),
+    }),
     z.object({
       type: z.literal("icon"),
       name: IconName,
@@ -189,6 +261,7 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
       limit: z.number().int().positive().optional(),
       editable: z.boolean().optional(),
       deletable: z.boolean().optional(),
+      searchable: z.boolean().optional(),
       emptyText: z.string().optional(),
     }),
     z.object({
@@ -202,7 +275,19 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
       sort: Sort.optional(),
       limit: z.number().int().positive().optional(),
       deletable: z.boolean().optional(),
+      searchable: z.boolean().optional(),
       emptyText: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal("kanban"),
+      table: z.string(),
+      groupBy: z.string(),
+      title: z.string(),
+      secondary: z.string().optional(),
+      icon: IconName.optional(),
+      where: Where.optional(),
+      sort: Sort.optional(),
+      deletable: z.boolean().optional(),
     }),
     z.object({
       type: z.literal("stat"),
@@ -213,6 +298,17 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
       where: Where.optional(),
       format: z.enum(["number", "currency", "percent"]).optional(),
       icon: IconName.optional(),
+    }),
+    z.object({
+      type: z.literal("progress"),
+      label: z.string(),
+      table: z.string(),
+      aggregate: Aggregate,
+      column: z.string().optional(),
+      where: Where.optional(),
+      goal: z.number().positive(),
+      format: z.enum(["number", "currency", "percent"]).optional(),
+      tone: Tone.optional(),
     }),
     z.object({
       type: z.literal("chart"),
@@ -234,6 +330,12 @@ export const UINode: z.ZodType<UINode> = z.lazy(() =>
       confirm: z.string().optional(),
       variant: z.enum(["primary", "danger"]).optional(),
       icon: IconName.optional(),
+    }),
+    z.object({
+      type: z.literal("custom"),
+      name: CustomName,
+      html: z.string().min(1).max(200_000),
+      height: z.number().int().min(24).max(2000).optional(),
     }),
   ]),
 ) as z.ZodType<UINode>;
@@ -293,14 +395,29 @@ export function checkReferences(spec: AppSpec, options: CheckOptions = {}): stri
     }
   };
 
+  const customNames = new Set<string>();
+
   const walk = (node: UINode, path: string) => {
     const at = `${path}(${node.type})`;
     if ("icon" in node) checkIcon(at, node.icon);
     switch (node.type) {
       case "stack":
+      case "grid":
       case "card":
         node.children.forEach((c, i) => walk(c, `${at}.children[${i}]`));
         break;
+      case "custom":
+        if (customNames.has(node.name)) problems.push(`${at}: duplicate custom component name "${node.name}"`);
+        customNames.add(node.name);
+        break;
+      case "kanban": {
+        checkColumns(at, node.table, [node.groupBy, node.title, node.secondary, ...Object.keys(node.where ?? {}), node.sort?.column]);
+        const col = spec.tables.find((t) => t.name === node.table)?.columns.find((c) => c.name === node.groupBy);
+        if (col && !col.options && col.type !== "boolean") {
+          problems.push(`${at}: groupBy "${node.groupBy}" needs a column with "options" (or a boolean column)`);
+        }
+        break;
+      }
       case "tabs":
         node.tabs.forEach((t, i) => {
           checkIcon(`${at}.tabs[${i}]`, t.icon);
@@ -326,6 +443,7 @@ export function checkReferences(spec: AppSpec, options: CheckOptions = {}): stri
         ]);
         break;
       case "stat":
+      case "progress":
       case "chart":
         checkColumns(at, node.table, [
           node.column,

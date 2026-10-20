@@ -9,6 +9,7 @@ import {
   componentDocs,
   type ComponentDoc,
 } from "../../shared/catalog";
+import { customCssReference, sdkReference } from "../../shared/sdkdocs";
 import type { UINode } from "../../shared/spec";
 import { Render } from "../catalog/components";
 import { AppContext } from "../catalog/context";
@@ -44,7 +45,7 @@ export function CatalogPage() {
             restarts.
           </p>
           <nav {...stylex.attrs(styles.jump)}>
-            <For each={[...categories, "Icons"]}>
+            <For each={[...categories, "SDK", "Icons"]}>
               {(c) => (
                 <a href={`#catalog-${c}`} {...stylex.attrs(styles.chip)}>
                   {c}
@@ -68,6 +69,16 @@ export function CatalogPage() {
             </section>
           )}
         </For>
+
+        <section id="catalog-SDK" {...stylex.attrs(styles.section)}>
+          <h2 {...stylex.attrs(styles.sectionTitle)}>Realtime SDK</h2>
+          <p {...stylex.attrs(styles.muted)}>
+            Custom components and app backends use this to read and write the app's data. Every write is pushed to all
+            open views immediately.
+          </p>
+          <pre {...stylex.attrs(styles.code)}>{sdkReference}</pre>
+          <p {...stylex.attrs(styles.muted)}>{customCssReference}</p>
+        </section>
 
         <IconBrowser />
       </div>

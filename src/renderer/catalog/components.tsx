@@ -7,7 +7,10 @@ import type { Column, Tone, UINode, Value } from "../../shared/spec";
 import { Icon } from "../components/Icon";
 import { Button, Checkbox, Input, Select } from "../components/ui";
 import { colors, font, radius, space } from "../theme.stylex";
+import { markdownToHtml } from "../../shared/markdown";
 import { Chart } from "./Chart";
+import { Custom } from "./Custom";
+import { Kanban } from "./Kanban";
 import {
   columnLabel,
   findColumn,
@@ -32,16 +35,27 @@ const RenderChildren = (props: { nodes: UINode[] }) => <Index each={props.nodes}
 
 // --- Layout --------------------------------------------------------------------
 
-const gaps = { sm: space.sm, md: space.lg, lg: space.xl } as const;
+// Static gap styles: dynamic StyleX values live in the style attribute, which
+// elements with inline styles (alignment, grid columns) would overwrite.
+const gapStyle = (gap: "sm" | "md" | "lg" | undefined) => ({ sm: s.gapSm, md: s.gapLg, lg: s.gapXl })[gap ?? "md"];
+const aligns = { start: "flex-start", center: "center", end: "flex-end", stretch: "stretch" } as const;
+const justifies = { start: "flex-start", center: "center", end: "flex-end", between: "space-between" } as const;
 
 function Stack(props: Props<"stack">) {
   const row = () => props.node.direction === "row";
+  const align = () => aligns[props.node.align ?? "stretch"];
+  const justify = () => justifies[props.node.justify ?? "start"];
+  // Rows with a justify keep children at their natural size instead of filling the row.
+  const natural = () => !!props.node.justify;
   return (
-    <div {...stylex.attrs(s.stack, row() && s.row, s.gap(gaps[props.node.gap ?? "md"]))}>
+    <div
+      {...stylex.attrs(s.stack, row() && s.row, gapStyle(props.node.gap))}
+      style={{ "align-items": align(), "justify-content": justify() }}
+    >
       <Index each={props.node.children}>
         {(child) => (
           <Show when={row()} fallback={<Render node={child()} />}>
-            <div {...stylex.attrs(s.rowItem)}>
+            <div {...stylex.attrs(s.rowItem, natural() && s.rowItemNatural)}>
               <Render node={child()} />
             </div>
           </Show>
@@ -51,16 +65,51 @@ function Stack(props: Props<"stack">) {
   );
 }
 
-function Card(props: Props<"card">) {
+const gapPx = { sm: 8, md: 16, lg: 24 } as const;
+
+function Grid(props: Props<"grid">) {
+  // Columns are at least 160px wide, so wide grids wrap to fewer columns on
+  // narrow screens. Sized with container units: Chromium can't resolve
+  // percentages when counting auto-fill tracks.
+  const template = () => {
+    const n = props.node.columns ?? 2;
+    const gutter = gapPx[props.node.gap ?? "md"] * (n - 1);
+    return `repeat(auto-fill, minmax(max(160px, calc((100cqi - ${gutter}px) / ${n} - 0.1px)), 1fr))`;
+  };
   return (
-    <section {...stylex.attrs(s.card)}>
+    <div {...stylex.attrs(s.gridWrap)}>
+      <div {...stylex.attrs(s.grid, gapStyle(props.node.gap))} style={{ "grid-template-columns": template() }}>
+        <RenderChildren nodes={props.node.children} />
+      </div>
+    </div>
+  );
+}
+
+function Divider(props: Props<"divider">) {
+  return (
+    <div {...stylex.attrs(s.divider)} role="separator">
+      <Show when={props.node.label}>
+        <span {...stylex.attrs(s.dividerLabel)}>{props.node.label}</span>
+      </Show>
+    </div>
+  );
+}
+
+function Card(props: Props<"card">) {
+  const tone = () => props.node.tone;
+  const tint = () => {
+    const t = tone();
+    return t && t !== "default" ? tinted(toneColor[t], 7) : undefined;
+  };
+  return (
+    <section {...stylex.attrs(s.card)} style={tint()}>
       <Show when={props.node.title}>
         <h3 {...stylex.attrs(s.cardTitle)}>
           <Icon name={props.node.icon} size={16} {...stylex.attrs(s.titleIcon)} />
           {props.node.title}
         </h3>
       </Show>
-      <div {...stylex.attrs(s.stack, s.gap(space.md))}>
+      <div {...stylex.attrs(s.stack, s.gapMd)}>
         <InCard.Provider value={true}>
           <RenderChildren nodes={props.node.children} />
         </InCard.Provider>
@@ -73,7 +122,7 @@ function Tabs(props: Props<"tabs">) {
   const [active, setActive] = createSignal(0);
   const current = () => props.node.tabs[Math.min(active(), props.node.tabs.length - 1)];
   return (
-    <div {...stylex.attrs(s.stack, s.gap(space.lg))}>
+    <div {...stylex.attrs(s.stack, s.gapLg)}>
       <div {...stylex.attrs(s.tabBar)}>
         <For each={props.node.tabs}>
           {(tab, i) => (
@@ -84,7 +133,7 @@ function Tabs(props: Props<"tabs">) {
           )}
         </For>
       </div>
-      <div {...stylex.attrs(s.stack, s.gap(space.lg))}>
+      <div {...stylex.attrs(s.stack, s.gapLg)}>
         <Show when={current()}>{(tab) => <RenderChildren nodes={tab().children} />}</Show>
       </div>
     </div>
@@ -104,6 +153,12 @@ function Heading(props: Props<"heading">) {
     </Dynamic>
   );
 }
+
+/** Border + background tinted with a color (inline: see the StyleX note in CLAUDE.md). */
+const tinted = (color: string, percent: number) => ({
+  "border-color": color,
+  "background-color": `color-mix(in oklab, ${colors.surface}, ${color} ${percent}%)`,
+});
 
 const toneColor: Record<Tone, string> = {
   default: colors.text,
@@ -128,6 +183,43 @@ function IconNode(props: Props<"icon">) {
 
 function Text(props: Props<"text">) {
   return <p {...stylex.attrs(s.text, props.node.muted && s.muted)}>{props.node.text}</p>;
+}
+
+function Markdown(props: Props<"markdown">) {
+  // markdownToHtml escapes its input; only a fixed set of tags is produced.
+  return <div class="gapp-markdown" {...stylex.attrs(s.markdown)} innerHTML={markdownToHtml(props.node.text)} />;
+}
+
+function Badge(props: Props<"badge">) {
+  const color = () => toneColor[props.node.tone ?? "accent"];
+  return (
+    <span {...stylex.attrs(s.badge)} style={{ ...tinted(color(), 14), color: color() }}>
+      <Icon name={props.node.icon} size={13} />
+      {props.node.text}
+    </span>
+  );
+}
+
+function Image(props: Props<"image">) {
+  return (
+    <img
+      src={props.node.src}
+      alt={props.node.alt ?? ""}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      {...stylex.attrs(s.image, props.node.rounded !== false && s.imageRounded)}
+      style={{ height: props.node.height ? `${props.node.height}px` : "auto", "object-fit": props.node.fit ?? "cover" }}
+    />
+  );
+}
+
+function Link(props: Props<"link">) {
+  return (
+    <a href={props.node.href} target="_blank" rel="noreferrer" {...stylex.attrs(s.link)}>
+      <Icon name={props.node.icon ?? "external-link"} size={14} />
+      {props.node.text}
+    </a>
+  );
 }
 
 // --- Data ----------------------------------------------------------------------
@@ -246,9 +338,38 @@ function useRows(node: () => NodeOf<"table"> | NodeOf<"list">) {
   return () => data.latest?.rows;
 }
 
+/** Client-side text filter over the shown columns of rows. */
+function useSearch(rows: () => Row[] | undefined, columns: () => (Column | undefined)[]) {
+  const [query, setQuery] = createSignal("");
+  const filtered = () => {
+    const q = query().trim().toLowerCase();
+    const list = rows();
+    if (!q || !list) return list;
+    return list.filter((row) =>
+      columns().some((col) => col && formatValue(col, row[col.name] ?? null).toLowerCase().includes(q)),
+    );
+  };
+  return { query, setQuery, filtered };
+}
+
+function SearchBox(props: { value: string; onInput: (value: string) => void }) {
+  return (
+    <div {...stylex.attrs(s.search)}>
+      <Icon name="search" size={15} {...stylex.attrs(s.searchIcon)} />
+      <Input
+        type="search"
+        placeholder="Search…"
+        value={props.value}
+        onInput={(e) => props.onInput(e.currentTarget.value)}
+        xstyle={s.searchInput}
+      />
+    </div>
+  );
+}
+
 function DataTable(props: Props<"table">) {
   const table = useTable(() => props.node.table);
-  const rows = useRows(() => props.node);
+  const allRows = useRows(() => props.node);
   const mutate = useMutate();
 
   const columns = createMemo(() => {
@@ -256,68 +377,80 @@ function DataTable(props: Props<"table">) {
     const names = props.node.columns ?? t?.columns.map((c) => c.name) ?? [];
     return names.map((n) => findColumn(t, n)).filter((c): c is Column => !!c);
   });
+  const search = useSearch(allRows, columns);
+  const rows = search.filtered;
 
   const update = (row: Row, col: Column, value: Value) =>
     mutate({ op: "action", action: { type: "update", table: props.node.table, where: { id: row.id }, values: { [col.name]: value } } });
   const remove = (row: Row) => mutate({ op: "action", action: { type: "delete", table: props.node.table, where: { id: row.id } } });
 
   return (
-    <div {...stylex.attrs(s.tableWrap)}>
-      <table {...stylex.attrs(s.table)}>
-        <thead>
-          <tr>
-            <For each={columns()}>{(col) => <th {...stylex.attrs(s.th)}>{columnLabel(col)}</th>}</For>
-            <Show when={props.node.deletable}>
-              <th {...stylex.attrs(s.th, s.actionCell)} />
-            </Show>
-          </tr>
-        </thead>
-        <tbody>
-          <For each={rows()}>
-            {(row) => (
-              <tr {...stylex.attrs(s.tr)}>
-                <For each={columns()}>
-                  {(col) => {
-                    const writable = () => props.node.editable && col.name !== "id" && col.name !== "created_at";
-                    return (
-                      <td {...stylex.attrs(s.td)}>
-                        <Show
-                          when={writable()}
-                          fallback={
-                            <Show when={col.type === "boolean"} fallback={formatValue(col, row[col.name] ?? null)}>
-                              <Checkbox checked={row[col.name] === true} disabled />
-                            </Show>
-                          }
-                        >
-                          <FieldInput col={col} value={row[col.name]} compact onChange={(v) => update(row, col, v)} />
-                        </Show>
-                      </td>
-                    );
-                  }}
-                </For>
-                <Show when={props.node.deletable}>
-                  <td {...stylex.attrs(s.td, s.actionCell)}>
-                    <Button variant="ghost" title="Delete" onClick={() => remove(row)} xstyle={s.iconButton}>
-                      ✕
-                    </Button>
-                  </td>
-                </Show>
-              </tr>
-            )}
-          </For>
-        </tbody>
-      </table>
-      <Show when={rows()?.length === 0}>
-        <p {...stylex.attrs(s.empty)}>{props.node.emptyText ?? "Nothing here yet."}</p>
+    <div {...stylex.attrs(s.stack, s.gapSm)}>
+      <Show when={props.node.searchable}>
+        <SearchBox value={search.query()} onInput={search.setQuery} />
       </Show>
+      <div {...stylex.attrs(s.tableWrap)}>
+        <table {...stylex.attrs(s.table)}>
+          <thead>
+            <tr>
+              <For each={columns()}>{(col) => <th {...stylex.attrs(s.th)}>{columnLabel(col)}</th>}</For>
+              <Show when={props.node.deletable}>
+                <th {...stylex.attrs(s.th, s.actionCell)} />
+              </Show>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={rows()}>
+              {(row) => (
+                <tr {...stylex.attrs(s.tr)}>
+                  <For each={columns()}>
+                    {(col) => {
+                      const writable = () => props.node.editable && col.name !== "id" && col.name !== "created_at";
+                      return (
+                        <td {...stylex.attrs(s.td)}>
+                          <Show
+                            when={writable()}
+                            fallback={
+                              <Show when={col.type === "boolean"} fallback={formatValue(col, row[col.name] ?? null)}>
+                                <Checkbox checked={row[col.name] === true} disabled />
+                              </Show>
+                            }
+                          >
+                            <FieldInput col={col} value={row[col.name]} compact onChange={(v) => update(row, col, v)} />
+                          </Show>
+                        </td>
+                      );
+                    }}
+                  </For>
+                  <Show when={props.node.deletable}>
+                    <td {...stylex.attrs(s.td, s.actionCell)}>
+                      <Button variant="ghost" title="Delete" onClick={() => remove(row)} xstyle={s.iconButton}>
+                        ✕
+                      </Button>
+                    </td>
+                  </Show>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+        <Show when={rows()?.length === 0}>
+          <p {...stylex.attrs(s.empty)}>{search.query() ? "No matches." : (props.node.emptyText ?? "Nothing here yet.")}</p>
+        </Show>
+      </div>
     </div>
   );
 }
 
 function List(props: Props<"list">) {
   const table = useTable(() => props.node.table);
-  const rows = useRows(() => props.node);
+  const allRows = useRows(() => props.node);
   const mutate = useMutate();
+  const search = useSearch(allRows, () => [
+    findColumn(table(), props.node.primary),
+    props.node.secondary ? findColumn(table(), props.node.secondary) : undefined,
+  ]);
+  const rows = search.filtered;
 
   const toggle = (row: Row, checked: boolean) =>
     mutate({
@@ -327,7 +460,10 @@ function List(props: Props<"list">) {
   const remove = (row: Row) => mutate({ op: "action", action: { type: "delete", table: props.node.table, where: { id: row.id } } });
 
   return (
-    <div>
+    <div {...stylex.attrs(s.stack, s.gapSm)}>
+      <Show when={props.node.searchable}>
+        <SearchBox value={search.query()} onInput={search.setQuery} />
+      </Show>
       <ul {...stylex.attrs(s.list)}>
         <For each={rows()}>
           {(row) => {
@@ -359,7 +495,7 @@ function List(props: Props<"list">) {
         </For>
       </ul>
       <Show when={rows()?.length === 0}>
-        <p {...stylex.attrs(s.empty)}>{props.node.emptyText ?? "Nothing here yet."}</p>
+        <p {...stylex.attrs(s.empty)}>{search.query() ? "No matches." : (props.node.emptyText ?? "Nothing here yet.")}</p>
       </Show>
     </div>
   );
@@ -380,6 +516,33 @@ function Stat(props: Props<"stat">) {
         {props.node.label}
       </span>
       <span {...stylex.attrs(s.statValue)}>{data.latest ? formatStat(data.latest.value, props.node.format) : "…"}</span>
+    </div>
+  );
+}
+
+function Progress(props: Props<"progress">) {
+  const data = useData<{ value: number | null }>(() => ({
+    op: "aggregate",
+    table: props.node.table,
+    aggregate: props.node.aggregate,
+    column: props.node.column,
+    where: props.node.where,
+  }));
+  const value = () => data.latest?.value ?? 0;
+  const pct = () => Math.max(0, Math.min(100, (value() / props.node.goal) * 100));
+  const color = () => toneColor[props.node.tone ?? "accent"];
+  return (
+    <div {...stylex.attrs(s.progress, framed() && s.frame)}>
+      <div {...stylex.attrs(s.progressHeader)}>
+        <span {...stylex.attrs(s.statLabel)}>{props.node.label}</span>
+        <span {...stylex.attrs(s.progressValue)}>
+          {data.latest ? formatStat(value(), props.node.format) : "…"}
+          <span {...stylex.attrs(s.muted)}> / {formatStat(props.node.goal, props.node.format)}</span>
+        </span>
+      </div>
+      <div {...stylex.attrs(s.track)} role="progressbar" aria-valuenow={value()} aria-valuemax={props.node.goal}>
+        <div {...stylex.attrs(s.bar)} style={{ width: `${pct()}%`, "background-color": color() }} />
+      </div>
     </div>
   );
 }
@@ -408,17 +571,26 @@ function ActionButton(props: Props<"button">) {
 
 const catalog: { [K in UINode["type"]]: Component<Props<K>> } = {
   stack: Stack,
+  grid: Grid,
   card: Card,
   tabs: Tabs,
+  divider: Divider,
   heading: Heading,
   text: Text,
+  markdown: Markdown,
+  badge: Badge,
+  image: Image,
+  link: Link,
   icon: IconNode,
   form: Form,
   table: DataTable,
   list: List,
+  kanban: Kanban,
   stat: Stat,
+  progress: Progress,
   chart: Chart,
   button: ActionButton,
+  custom: Custom,
 };
 
 // --- Styles --------------------------------------------------------------------
@@ -427,7 +599,61 @@ const s = stylex.create({
   stack: { display: "flex", flexDirection: "column", minWidth: 0 },
   row: { flexDirection: "row", flexWrap: "wrap", alignItems: "stretch" },
   rowItem: { flex: "1 1 220px", minWidth: 0, display: "flex", flexDirection: "column" },
-  gap: (gap: string) => ({ gap }),
+  rowItemNatural: { flex: "0 1 auto" },
+  gapSm: { gap: space.sm },
+  gapMd: { gap: space.md },
+  gapLg: { gap: space.lg },
+  gapXl: { gap: space.xl },
+  gridWrap: { containerType: "inline-size", minWidth: 0 },
+  grid: { display: "grid", minWidth: 0, alignItems: "start" },
+  divider: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.md,
+    color: colors.muted,
+    fontSize: font.xs,
+    fontWeight: 500,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+    "::before": { content: "''", flex: 1, height: 1, backgroundColor: colors.border },
+    "::after": { content: "''", flex: 1, height: 1, backgroundColor: colors.border },
+  },
+  dividerLabel: { flexShrink: 0 },
+  markdown: { fontSize: font.md, lineHeight: 1.6, minWidth: 0, overflowWrap: "anywhere" },
+  badge: {
+    display: "inline-flex",
+    alignSelf: "flex-start",
+    alignItems: "center",
+    gap: 4,
+    height: 24,
+    paddingInline: space.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderStyle: "solid",
+    fontSize: font.xs,
+    fontWeight: 600,
+    whiteSpace: "nowrap",
+  },
+  image: { display: "block", width: "100%", maxWidth: "100%", backgroundColor: colors.surfaceHover },
+  imageRounded: { borderRadius: radius.md },
+  link: {
+    display: "inline-flex",
+    alignSelf: "flex-start",
+    alignItems: "center",
+    gap: 6,
+    color: colors.accent,
+    fontSize: font.md,
+    fontWeight: 500,
+    textDecoration: { default: "none", ":hover": "underline" },
+  },
+  search: { position: "relative", display: "flex", alignItems: "center" },
+  searchIcon: { position: "absolute", left: 10, color: colors.muted, pointerEvents: "none" },
+  searchInput: { paddingLeft: 32 },
+  progress: { display: "flex", flexDirection: "column", gap: space.sm },
+  progressHeader: { display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: space.md },
+  progressValue: { fontSize: font.lg, fontWeight: 650, fontVariantNumeric: "tabular-nums" },
+  track: { height: 8, borderRadius: radius.full, backgroundColor: colors.surfaceHover, overflow: "hidden" },
+  bar: { height: "100%", borderRadius: radius.full, transition: "width 300ms ease" },
 
   card: {
     display: "flex",

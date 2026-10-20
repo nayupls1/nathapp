@@ -66,6 +66,28 @@ describe("spec validation", () => {
   });
 });
 
+describe("new components", () => {
+  test("kanban needs a choice or boolean column", () => {
+    const kanban = (groupBy: string) => problems({ ...base, ui: { type: "kanban", table: "todos", groupBy, title: "title" } });
+    expect(kanban("done")).toEqual([]);
+    expect(kanban("title")).toEqual(['ui(kanban): groupBy "title" needs a column with "options" (or a boolean column)']);
+  });
+
+  test("custom components need unique kebab-case names", () => {
+    const custom = { type: "custom", name: "timer", html: "<p>hi</p>" } as const;
+    expect(problems({ ...base, ui: { type: "stack", children: [custom, custom] } })).toEqual([
+      'ui(stack).children[1](custom): duplicate custom component name "timer"',
+    ]);
+    expect(AppSpec.safeParse({ ...base, ui: { ...custom, name: "My Timer" } }).success).toBe(false);
+  });
+
+  test("images and links only take safe URLs", () => {
+    expect(AppSpec.safeParse({ ...base, ui: { type: "image", src: "javascript:alert(1)" } }).success).toBe(false);
+    expect(AppSpec.safeParse({ ...base, ui: { type: "link", text: "x", href: "javascript:alert(1)" } }).success).toBe(false);
+    expect(AppSpec.safeParse({ ...base, ui: { type: "link", text: "x", href: "https://example.com" } }).success).toBe(true);
+  });
+});
+
 describe("themes and settings", () => {
   test("app themes take hex colors and known options", () => {
     expect(AppSpec.safeParse({ ...base, theme: { mode: "dark", accent: "#e11d48", radius: "lg", font: "serif" } }).success).toBe(true);

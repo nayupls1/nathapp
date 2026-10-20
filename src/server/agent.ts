@@ -9,6 +9,7 @@ import { DataError, migrate, rowCounts, runData } from "./appdata";
 import { agentDir, claudeExecutable } from "./config";
 import { addMessage, getApp, getSettings, updateApp } from "./db";
 import { agentEnv } from "./env";
+import { clearFrameErrors, frameErrors } from "./frames";
 import { specChanged } from "./hub";
 import { isIcon, searchIcons } from "./icons";
 import { buildSystemPrompt } from "./prompt";
@@ -60,6 +61,7 @@ function createTools(appId: string, emit: Emit) {
 
           const spec = parsed.data;
           migrate(appId, spec);
+          clearFrameErrors(appId); // errors from the previous version are moot
           const app = updateApp(appId, { spec, name: spec.name, icon: spec.icon ?? null })!;
           emit({ type: "spec", spec });
           emit({ type: "app", app });
@@ -68,6 +70,13 @@ function createTools(appId: string, emit: Emit) {
           return text("App updated.");
         },
       ),
+
+      tool("get_errors", "Errors reported by the app's custom components since the last update_app.", {}, async () => {
+        // Give freshly reloaded components a moment to run.
+        await Bun.sleep(1500);
+        const errors = frameErrors(appId);
+        return text(errors.length ? JSON.stringify(errors, null, 2) : "No errors reported.");
+      }),
 
       tool(
         "search_icons",
@@ -127,7 +136,7 @@ function createTools(appId: string, emit: Emit) {
   });
 }
 
-const toolNames = ["get_app", "update_app", "search_icons", "query_rows", "insert_rows", "update_rows", "delete_rows"].map(
+const toolNames = ["get_app", "update_app", "get_errors", "search_icons", "query_rows", "insert_rows", "update_rows", "delete_rows"].map(
   (name) => `mcp__gapp__${name}`,
 );
 

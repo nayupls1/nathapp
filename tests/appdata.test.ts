@@ -80,6 +80,13 @@ describe("app data", () => {
     expect(insert({ title: "Snack", amount: "4.5" })).toEqual({ changes: 1 });
   });
 
+  test("false matches unset booleans", () => {
+    const id = fresh();
+    runData(id, spec, { op: "action", action: { type: "insert", table: "expenses", values: { title: "No flag" } } });
+    const res = runData(id, spec, { op: "aggregate", table: "expenses", aggregate: "count", where: { paid: false } });
+    expect(res).toEqual({ value: 2 });
+  });
+
   test("rejects unknown tables and columns in reads", () => {
     const id = fresh();
     expect(() => runData(id, spec, { op: "query", table: "nope" })).toThrow('Unknown table "nope"');

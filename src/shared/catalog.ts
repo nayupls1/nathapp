@@ -18,7 +18,7 @@ export interface PropDoc {
 
 export interface ComponentDoc {
   type: ComponentType;
-  category: "Layout" | "Content" | "Data" | "Charts" | "Actions";
+  category: "Layout" | "Content" | "Data" | "Charts" | "Actions" | "Custom";
   summary: string;
   props: PropDoc[];
   example: UINode;
@@ -34,6 +34,32 @@ const limit: PropDoc = { name: "limit", type: "number" };
 const table: PropDoc = { name: "table", type: "table name", required: true };
 const aggregate: PropDoc = { name: "aggregate", type: "Aggregate", required: true };
 const aggColumn: PropDoc = { name: "column", type: "column", description: "required unless aggregate is count" };
+const tone: PropDoc = { name: "tone", type: '"default" | "muted" | "accent" | "success" | "warning" | "danger"' };
+const searchable: PropDoc = { name: "searchable", type: "boolean", description: "adds a search box filtering the rows" };
+
+/** A soft gradient as a data URL, so the image example works offline. */
+const demoImage = `data:image/svg+xml,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="300"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b70ff"/><stop offset="1" stop-color="#38bdf8"/></linearGradient></defs><rect width="800" height="300" fill="url(#g)"/><circle cx="640" cy="80" r="46" fill="#fff" opacity=".35"/><path d="M0 300 L220 150 L380 260 L520 170 L800 300Z" fill="#fff" opacity=".25"/></svg>',
+)}`;
+
+/** Custom component example: live open-task counter using the realtime SDK. */
+const customExample = `<div class="card row" style="justify-content: space-between">
+  <div>
+    <div style="font-size: 32px; font-weight: 700" id="count">…</div>
+    <div class="muted">open tasks, updated live</div>
+  </div>
+  <button class="primary" id="add">Add a random task</button>
+</div>
+<script type="module">
+  import { connect } from "/sdk/gapp.js";
+  const gapp = connect();
+  gapp.live("tasks", { where: { done: false } }, (rows) => {
+    document.getElementById("count").textContent = rows.length;
+  });
+  const ideas = ["Water the plants", "Reply to emails", "Stretch", "Back up photos"];
+  document.getElementById("add").onclick = () =>
+    gapp.insert("tasks", { title: ideas[Math.floor(Math.random() * ideas.length)], priority: "Low", done: false });
+</script>`;
 
 export const componentDocs: ComponentDoc[] = [
   // --- Layout
@@ -44,6 +70,12 @@ export const componentDocs: ComponentDoc[] = [
     props: [
       { name: "direction", type: '"column" | "row"', description: 'default "column"' },
       { name: "gap", type: '"sm" | "md" | "lg"', description: 'default "md"' },
+      { name: "align", type: '"start" | "center" | "end" | "stretch"', description: "cross-axis alignment, default stretch" },
+      {
+        name: "justify",
+        type: '"start" | "center" | "end" | "between"',
+        description: "main-axis distribution; in rows, setting it keeps children at their natural width instead of filling the row",
+      },
       { name: "children", type: "UINode[]", required: true },
     ],
     example: {
@@ -56,10 +88,34 @@ export const componentDocs: ComponentDoc[] = [
     },
   },
   {
+    type: "grid",
+    category: "Layout",
+    summary: "Children in equal columns that wrap to fewer columns on narrow screens. Good for dashboards of stats/charts.",
+    props: [
+      { name: "columns", type: "1-6", description: "default 2" },
+      { name: "gap", type: '"sm" | "md" | "lg"', description: 'default "md"' },
+      { name: "children", type: "UINode[]", required: true },
+    ],
+    example: {
+      type: "grid",
+      columns: 3,
+      children: [
+        { type: "stat", label: "Tasks", table: "tasks", aggregate: "count", icon: "list" },
+        { type: "stat", label: "Expenses", table: "expenses", aggregate: "count", icon: "receipt" },
+        { type: "stat", label: "Average expense", table: "expenses", aggregate: "avg", column: "amount", format: "currency", icon: "calculator" },
+      ],
+    },
+  },
+  {
     type: "card",
     category: "Layout",
     summary: "A framed section with an optional title. Forms, stats and charts inside drop their own frame.",
-    props: [{ name: "title", type: "string" }, icon, { name: "children", type: "UINode[]", required: true }],
+    props: [
+      { name: "title", type: "string" },
+      icon,
+      { ...tone, description: "tints the card, e.g. warning for alerts" },
+      { name: "children", type: "UINode[]", required: true },
+    ],
     example: {
       type: "card",
       title: "Getting started",
@@ -79,6 +135,14 @@ export const componentDocs: ComponentDoc[] = [
         { label: "Details", icon: "list", children: [{ type: "text", text: "Second tab content." }] },
       ],
     },
+  },
+
+  {
+    type: "divider",
+    category: "Layout",
+    summary: "A horizontal rule, optionally with a label in the middle.",
+    props: [{ name: "label", type: "string" }],
+    example: { type: "divider", label: "This week" },
   },
 
   // --- Content
@@ -102,6 +166,59 @@ export const componentDocs: ComponentDoc[] = [
       { name: "muted", type: "boolean", description: "secondary, greyed-out text" },
     ],
     example: { type: "text", text: "Plain text, for explanations and hints.", muted: true },
+  },
+  {
+    type: "markdown",
+    category: "Content",
+    summary: "Formatted text: # headings, **bold**, *italic*, `code`, lists, - [ ] tasks, > quotes, [links](https://…), code blocks.",
+    props: [{ name: "text", type: "string", required: true, description: "Markdown; raw HTML is shown as text" }],
+    example: {
+      type: "markdown",
+      text: "### Notes\nMarkdown is good for **instructions**, *hints* and `codes`.\n- Lists and [links](https://lucide.dev)\n- [x] Task lists too\n> And quotes.",
+    },
+  },
+  {
+    type: "badge",
+    category: "Content",
+    summary: "A small colored label, e.g. a status.",
+    props: [{ name: "text", type: "string", required: true }, { ...tone, description: 'default "accent"' }, icon],
+    example: {
+      type: "stack",
+      direction: "row",
+      gap: "sm",
+      justify: "start",
+      align: "center",
+      children: [
+        { type: "badge", text: "Active", tone: "success", icon: "circle-check" },
+        { type: "badge", text: "Due soon", tone: "warning", icon: "clock" },
+        { type: "badge", text: "Overdue", tone: "danger" },
+        { type: "badge", text: "New", tone: "accent" },
+      ],
+    },
+  },
+  {
+    type: "image",
+    category: "Content",
+    summary: "An image from an https URL (or a data:image URL).",
+    props: [
+      { name: "src", type: "string", required: true },
+      { name: "alt", type: "string" },
+      { name: "height", type: "number", description: "pixels; default: natural height" },
+      { name: "fit", type: '"cover" | "contain"', description: 'default "cover"' },
+      { name: "rounded", type: "boolean", description: "default true" },
+    ],
+    example: { type: "image", src: demoImage, alt: "Gradient landscape", height: 160 },
+  },
+  {
+    type: "link",
+    category: "Content",
+    summary: "A link that opens in a browser tab.",
+    props: [
+      { name: "text", type: "string", required: true },
+      { name: "href", type: "string", required: true, description: "http(s) or mailto: URL" },
+      { ...icon, description: 'default "external-link"' },
+    ],
+    example: { type: "link", text: "Browse all Lucide icons", href: "https://lucide.dev/icons", icon: "shapes" },
   },
   {
     type: "icon",
@@ -150,6 +267,7 @@ export const componentDocs: ComponentDoc[] = [
       limit,
       { name: "editable", type: "boolean", description: "edit cells inline" },
       { name: "deletable", type: "boolean" },
+      searchable,
       { name: "emptyText", type: "string" },
     ],
     example: {
@@ -160,6 +278,7 @@ export const componentDocs: ComponentDoc[] = [
       limit: 5,
       editable: true,
       deletable: true,
+      searchable: true,
     },
   },
   {
@@ -176,9 +295,26 @@ export const componentDocs: ComponentDoc[] = [
       sort,
       limit,
       { name: "deletable", type: "boolean" },
+      searchable,
       { name: "emptyText", type: "string" },
     ],
     example: { type: "list", table: "tasks", primary: "title", secondary: "priority", checkbox: "done", deletable: true },
+  },
+  {
+    type: "kanban",
+    category: "Data",
+    summary: "A board with one lane per value of a choice column; drag cards between lanes to update them.",
+    props: [
+      table,
+      { name: "groupBy", type: "column", required: true, description: 'a text column with "options", or a boolean column' },
+      { name: "title", type: "column", required: true, description: "card title" },
+      { name: "secondary", type: "column", description: "smaller line on the card" },
+      { ...icon, description: "Lucide icon on every card" },
+      where,
+      { name: "sort", type: "Sort", description: "default: oldest first" },
+      { name: "deletable", type: "boolean" },
+    ],
+    example: { type: "kanban", table: "tasks", groupBy: "priority", title: "title", secondary: "due", deletable: true },
   },
   {
     type: "stat",
@@ -201,6 +337,33 @@ export const componentDocs: ComponentDoc[] = [
       column: "amount",
       format: "currency",
       icon: "wallet",
+    },
+  },
+
+  {
+    type: "progress",
+    category: "Data",
+    summary: "An aggregated number as a bar towards a goal, e.g. budget used or pages read.",
+    props: [
+      { name: "label", type: "string", required: true },
+      table,
+      aggregate,
+      aggColumn,
+      where,
+      { name: "goal", type: "number", required: true },
+      { name: "format", type: '"number" | "currency" | "percent"' },
+      { ...tone, description: 'bar color, default "accent"' },
+    ],
+    example: {
+      type: "progress",
+      label: "October budget",
+      table: "expenses",
+      aggregate: "sum",
+      column: "amount",
+      where: { category: "Food" },
+      goal: 400,
+      format: "currency",
+      tone: "success",
     },
   },
 
@@ -255,6 +418,20 @@ export const componentDocs: ComponentDoc[] = [
       action: { type: "update", table: "tasks", where: { done: false }, values: { done: true } },
       confirm: "Mark every open task as done?",
     },
+  },
+
+  // --- Custom
+  {
+    type: "custom",
+    category: "Custom",
+    summary:
+      "Your own HTML/CSS/JS, for anything the other components can't do (timers, games, calculators, maps, special visualizations). Runs in an isolated frame; use the realtime SDK for the app's data.",
+    props: [
+      { name: "name", type: "string", required: true, description: "kebab-case, unique in the app" },
+      { name: "html", type: "string", required: true, description: "body HTML incl. <style> and <script type=\"module\">" },
+      { name: "height", type: "number", description: "pixels; default: grows with the content" },
+    ],
+    example: { type: "custom", name: "live-counter", html: customExample },
   },
 ];
 

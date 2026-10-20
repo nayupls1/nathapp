@@ -57,6 +57,17 @@ async function check(name: string, fn: () => Promise<string | void>) {
   }
 }
 
+/** Polls an async function until it returns something other than undefined. */
+async function waitForValue<T>(fn: () => Promise<T | undefined>, timeoutMs = 10_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const value = await fn().catch(() => undefined);
+    if (value !== undefined) return value;
+    if (Date.now() > deadline) throw new Error("timed out");
+    await Bun.sleep(100);
+  }
+}
+
 const click = (selector: string, text?: string) =>
   page!.eval(`(() => {
     const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
@@ -76,6 +87,7 @@ try {
   page.on("Runtime.consoleAPICalled", (e) => {
     if (e.type === "error") pageErrors.push(e.args.map((a: { value?: unknown; description?: string }) => a.value ?? a.description).join(" "));
   });
+  await page.attachChildren();
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 
   await check("app boots and shows the sidebar", async () => {
@@ -142,6 +154,21 @@ try {
     const after = await page!.eval<number>(`document.querySelectorAll('[data-catalog-component="list"] li').length`);
     if (after !== before + 1) throw new Error(`expected ${before + 1} rows, got ${after}`);
     return `${Date.now() - started}ms`;
+  });
+
+  await check("custom component runs and uses the realtime SDK", async () => {
+    // The example counts open tasks live and has a button that inserts one.
+    const frameUrl = "/frame/catalog/live-counter";
+    const count = () => page!.evalIn<string>(frameUrl, `document.getElementById("count").textContent`);
+    const before = Number(await waitForValue(async () => ((await count()).match(/^\d+$/) ? await count() : undefined)));
+    await page!.evalIn(frameUrl, `document.getElementById("add").click(), true`);
+    await waitForValue(async () => (Number(await count()) === before + 1 ? true : undefined));
+    await page!.waitFor(
+      `[...document.querySelectorAll('[data-catalog-component="list"] li')].length > 0 && !document.querySelector("[data-custom-component] [data-render-error]")`,
+    );
+    const height = await page!.eval<number>(`document.querySelector("[data-custom-component] iframe").getBoundingClientRect().height`);
+    if (height < 60) throw new Error(`iframe did not size to its content (${height}px)`);
+    return `${before} → ${before + 1} open tasks, ${Math.round(height)}px tall`;
   });
 
   await check("icon search", async () => {

@@ -5,9 +5,18 @@ export class Page {
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
   private listeners = new Map<string, ((params: any) => void)[]>();
 
+  /** Out-of-process iframes (custom components), by URL, once attachChildren() ran. */
+  readonly children = new Map<string, { sessionId: string; url: string; type: string }>();
+
   private constructor(private ws: WebSocket) {
     ws.onmessage = (event) => {
       const msg = JSON.parse(String(event.data));
+      if (msg.method === "Target.attachedToTarget") {
+        const { sessionId, targetInfo } = msg.params;
+        this.children.set(sessionId, { sessionId, url: targetInfo.url, type: targetInfo.type });
+      } else if (msg.method === "Target.detachedFromTarget") {
+        this.children.delete(msg.params.sessionId);
+      }
       if (msg.id !== undefined) {
         const p = this.pending.get(msg.id);
         this.pending.delete(msg.id);
@@ -46,12 +55,26 @@ export class Page {
     throw new Error(`No page on debugging port ${port}`);
   }
 
-  send<T = any>(method: string, params: object = {}): Promise<T> {
+  send<T = any>(method: string, params: object = {}, sessionId?: string): Promise<T> {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
+      this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
     });
+  }
+
+  /** Tracks cross-origin iframes as child sessions (see `children`, `evalIn`). */
+  attachChildren() {
+    return this.send("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: false, flatten: true });
+  }
+
+  /** Evaluates in the first child frame whose URL contains `urlPart`. */
+  async evalIn<T = unknown>(urlPart: string, expression: string): Promise<T> {
+    const child = [...this.children.values()].find((c) => c.url.includes(urlPart));
+    if (!child) throw new Error(`no child frame matching ${urlPart}`);
+    const res = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, child.sessionId);
+    if (res.exceptionDetails) throw new Error(res.exceptionDetails.exception?.description ?? res.exceptionDetails.text);
+    return res.result.value as T;
   }
 
   on(method: string, fn: (params: any) => void) {

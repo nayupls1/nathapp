@@ -179,6 +179,8 @@ function whereClause(table: Table, where: Where | undefined) {
     const col = getColumn(table, name);
     const v = toSql(col, value);
     if (v === null) parts.push(`${q(name)} IS NULL`);
+    // An unset checkbox counts as unchecked.
+    else if (col.type === "boolean" && v === 0) parts.push(`(${q(name)} = 0 OR ${q(name)} IS NULL)`);
     else parts.push(`${q(name)} = ?`), params.push(v);
   }
   return { sql: parts.length ? ` WHERE ${parts.join(" AND ")}` : "", params };

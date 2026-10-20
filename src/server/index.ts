@@ -20,9 +20,11 @@ import {
   saveSettings,
   updateApp,
 } from "./db";
+import { clearFrameErrors, findCustom, frameHtml, frameErrors, reportFrameError } from "./frames";
 import { attachHub, dataChanged, specChanged, websocket, type SocketData } from "./hub";
 import { isIcon } from "./icons";
 import { listModels } from "./models";
+import { sdkJs } from "./sdk";
 
 // Every write to app data is broadcast to realtime subscribers.
 onDataChange(dataChanged);
@@ -108,6 +110,33 @@ const server = Bun.serve<SocketData>({
       const renderer = new URL(req.url).searchParams.get("role") === "renderer" && req.headers.get("origin") === allowedOrigin;
       if (server.upgrade(req, { data: { renderer } })) return undefined;
       return new Response("Expected a WebSocket upgrade", { status: 426 });
+    },
+
+    // The realtime SDK for custom components: import { connect } from "/sdk/gapp.js"
+    "/sdk/gapp.js": () => new Response(sdkJs, { headers: { "Content-Type": "text/javascript; charset=utf-8" } }),
+
+    // A custom component's page, shown in an iframe by the renderer.
+    "/frame/:appId/:name": (req) => {
+      const spec = specFor(req.params.appId);
+      const node = spec && findCustom(spec, req.params.name);
+      if (!node) return new Response("Unknown component", { status: 404 });
+      return new Response(frameHtml(req.params.appId, node), {
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+      });
+    },
+
+    "/api/apps/:id/frame-errors": {
+      GET: (req) => json(frameErrors(req.params.id)),
+      POST: async (req) => {
+        const body = (await req.json()) as { component?: unknown; message?: unknown };
+        if (typeof body.message !== "string") return badRequest("message is required");
+        reportFrameError(req.params.id, String(body.component ?? "?"), body.message);
+        return noContent();
+      },
+      DELETE: (req) => {
+        clearFrameErrors(req.params.id);
+        return noContent();
+      },
     },
 
     "/api/models": async () => {

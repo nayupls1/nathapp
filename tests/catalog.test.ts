@@ -7,17 +7,26 @@ import { systemPrompt } from "../src/server/prompt";
 // Compile-time check: adding a UINode type without documenting it fails typecheck.
 const documented: Record<UINode["type"], true> = {
   stack: true,
+  grid: true,
   card: true,
   tabs: true,
+  divider: true,
   heading: true,
   text: true,
+  markdown: true,
+  badge: true,
+  image: true,
+  link: true,
   icon: true,
   form: true,
   table: true,
   list: true,
+  kanban: true,
   stat: true,
+  progress: true,
   chart: true,
   button: true,
+  custom: true,
 };
 
 describe("catalog", () => {
