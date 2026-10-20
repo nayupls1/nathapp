@@ -2,11 +2,13 @@ import { createContext, createResource, useContext, type Accessor } from "solid-
 import type { DataRequest, DataResponse } from "../../shared/api";
 import type { AppSpec, Bucket, Column, Table, Value } from "../../shared/spec";
 import { api } from "../lib/api";
+import { realtimeConnected } from "../lib/realtime";
 
 export interface AppContextValue {
   appId: string;
   spec: Accessor<AppSpec>;
-  dataVersion: Accessor<number>;
+  /** Changes whenever a table's data changes (pushed by the server over WebSocket). */
+  version: (table: string) => number;
   /** Marks data as changed so every data component refetches. */
   invalidate: () => void;
 }
@@ -40,22 +42,28 @@ export function findColumn(table: Table | undefined, name: string): Column | und
 export const columnLabel = (col: Column) =>
   col.label ?? col.name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
-/** Fetches app data and refetches whenever the request or data version changes. */
+/** Fetches app data and refetches whenever the request or the table's data changes. */
 export function useData<T extends DataResponse>(request: Accessor<DataRequest>) {
-  const { appId, dataVersion } = useApp();
+  const { appId, version } = useApp();
   const [data] = createResource(
-    () => ({ req: request(), v: dataVersion() }),
+    () => {
+      const req = request();
+      return { req, v: version("table" in req ? req.table : req.action.table) };
+    },
     ({ req }) => api.data<T>(appId, req),
   );
   return data;
 }
 
-/** Runs a mutation and refreshes all data components afterwards. */
+/**
+ * Runs a mutation. Components showing the data refresh when the server
+ * broadcasts the change; without a realtime connection they're refreshed here.
+ */
 export function useMutate() {
   const { appId, invalidate } = useApp();
   return async (req: DataRequest) => {
     const res = await api.data(appId, req);
-    invalidate();
+    if (!realtimeConnected()) invalidate();
     return res;
   };
 }

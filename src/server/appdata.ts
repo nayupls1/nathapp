@@ -13,6 +13,18 @@ type SqlValue = string | number | null;
 
 const handles = new Map<string, Database>();
 
+type ChangeListener = (appId: string, tables: string[]) => void;
+const changeListeners: ChangeListener[] = [];
+
+/** Called after every successful write to an app's data (used for realtime updates). */
+export function onDataChange(fn: ChangeListener) {
+  changeListeners.push(fn);
+}
+
+const notify = (appId: string, tables: string[]) => {
+  for (const fn of changeListeners) fn(appId, tables);
+};
+
 function open(appId: string): Database {
   let db = handles.get(appId);
   if (!db) {
@@ -231,7 +243,12 @@ export function runData(appId: string, spec: AppSpec, input: DataRequest): DataR
     return { value: row?.value ?? null };
   }
 
-  const action = req.action;
+  const res = runAction(db, spec, req.action);
+  if (res.changes > 0) notify(appId, [req.action.table]);
+  return res;
+}
+
+function runAction(db: Database, spec: AppSpec, action: Action): { changes: number } {
   const table = getTable(spec, action.table);
 
   if (action.type === "insert") {

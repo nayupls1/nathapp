@@ -1,19 +1,27 @@
 // Renders a generated app from its spec.
 import * as stylex from "@stylexjs/stylex";
-import { ErrorBoundary } from "solid-js";
+import { ErrorBoundary, onCleanup } from "solid-js";
 import type { AppSpec } from "../../shared/spec";
 import { AppContext } from "../catalog/context";
 import { Render } from "../catalog/components";
-import { bumpData, states } from "../lib/store";
+import { watchApp } from "../lib/realtime";
+import { bumpData, bumpTables, reloadSpec, tableVersion } from "../lib/store";
 import { colors, font, space } from "../theme.stylex";
 
 export function AppView(props: { appId: string; spec: AppSpec }) {
+  // Live data: the server pushes every change, from wherever it came.
+  const stop = watchApp(props.appId, {
+    tables: (tables) => bumpTables(props.appId, tables),
+    spec: () => reloadSpec(props.appId),
+  });
+  onCleanup(stop);
+
   return (
     <AppContext.Provider
       value={{
         appId: props.appId,
         spec: () => props.spec,
-        dataVersion: () => states[props.appId]?.dataVersion ?? 0,
+        version: (table) => tableVersion(props.appId, table),
         invalidate: () => bumpData(props.appId),
       }}
     >

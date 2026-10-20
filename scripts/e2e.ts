@@ -125,6 +125,25 @@ try {
     });
   });
 
+  await check("realtime: writes from elsewhere show up live", async () => {
+    // Another client (here: a plain fetch, like a backend would) inserts a row;
+    // the list must update from the server's WebSocket push alone.
+    const before = await page!.eval<number>(`document.querySelectorAll('[data-catalog-component="list"] li').length`);
+    const started = Date.now();
+    await page!.eval(`fetch(window.gapp.serverUrl + "/api/apps/catalog/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ op: "action", action: { type: "insert", table: "tasks", values: { title: "Pushed live" } } }),
+    }).then((r) => r.ok)`);
+    await page!.waitFor(`[...document.querySelectorAll('[data-catalog-component="list"] li')].some((li) => li.innerText.includes("Pushed live"))`, {
+      label: "pushed row",
+      timeoutMs: 3000,
+    });
+    const after = await page!.eval<number>(`document.querySelectorAll('[data-catalog-component="list"] li').length`);
+    if (after !== before + 1) throw new Error(`expected ${before + 1} rows, got ${after}`);
+    return `${Date.now() - started}ms`;
+  });
+
   await check("icon search", async () => {
     await page!.eval(`(() => {
       const input = document.querySelector('#catalog-Icons input');

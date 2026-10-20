@@ -14,8 +14,10 @@ export interface AppState {
   /** Assistant text currently being streamed. */
   draft: string;
   running: boolean;
-  /** Bumped whenever the app's data may have changed. */
+  /** Bumped whenever any of the app's data may have changed. */
   dataVersion: number;
+  /** Bumped per table when the server reports a change. */
+  tableVersions: Record<string, number>;
   /** Agent settings for this app; null means Claude Code's default. */
   model: string | null;
   effort: Effort | null;
@@ -84,6 +86,7 @@ const emptyState = (): AppState => ({
   draft: "",
   running: false,
   dataVersion: 0,
+  tableVersions: {},
   ...agentDefaults(),
 });
 
@@ -168,6 +171,24 @@ export function bumpData(id: string) {
   setStates(id, "dataVersion", (v) => v + 1);
 }
 
+export function bumpTables(id: string, tables: string[]) {
+  if (!states[id]) return;
+  setStates(id, "tableVersions", produce((t) => {
+    for (const name of tables) t[name] = (t[name] ?? 0) + 1;
+  }));
+}
+
+/** Data version of one table, for refetching only what changed. */
+export const tableVersion = (id: string, table: string) =>
+  (states[id]?.dataVersion ?? 0) + (states[id]?.tableVersions[table] ?? 0);
+
+/** Picks up a spec changed outside the agent stream (import, another window). */
+export async function reloadSpec(id: string) {
+  const detail = await api.getApp(id).catch(() => null);
+  if (detail && states[id]) setStates(id, { spec: detail.spec });
+  if (detail) upsertApp(detail);
+}
+
 export async function sendPrompt(id: string, prompt: string) {
   setStates(id, { running: true, draft: "" });
   const { model, effort } = states[id]!;
@@ -185,7 +206,6 @@ export async function sendPrompt(id: string, prompt: string) {
           break;
         case "spec":
           setStates(id, { spec: event.spec });
-          bumpData(id);
           break;
         case "app":
           upsertApp(event.app);

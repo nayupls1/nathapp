@@ -9,6 +9,7 @@ import { DataError, migrate, rowCounts, runData } from "./appdata";
 import { agentDir, claudeExecutable } from "./config";
 import { addMessage, getApp, getSettings, updateApp } from "./db";
 import { agentEnv } from "./env";
+import { specChanged } from "./hub";
 import { isIcon, searchIcons } from "./icons";
 import { buildSystemPrompt } from "./prompt";
 
@@ -62,6 +63,7 @@ function createTools(appId: string, emit: Emit) {
           const app = updateApp(appId, { spec, name: spec.name, icon: spec.icon ?? null })!;
           emit({ type: "spec", spec });
           emit({ type: "app", app });
+          specChanged(appId);
           log(`Updated app “${spec.name}”`);
           return text("App updated.");
         },
@@ -94,7 +96,6 @@ function createTools(appId: string, emit: Emit) {
         withSpec((spec, { table, rows }: { table: string; rows: Record<string, Value>[] }) => {
           for (const values of rows) runData(appId, spec, { op: "action", action: { type: "insert", table, values } });
           log(`Added ${rows.length} row${rows.length === 1 ? "" : "s"} to ${table}`);
-          emit({ type: "spec", spec }); // nudges the renderer to refresh data
           return text(`Inserted ${rows.length} rows.`);
         }),
       ),
@@ -107,7 +108,6 @@ function createTools(appId: string, emit: Emit) {
           const res = runData(appId, spec, { op: "action", action: { type: "update", ...action } });
           const changes = "changes" in res ? res.changes : 0;
           log(`Updated ${changes} row${changes === 1 ? "" : "s"} in ${action.table}`);
-          emit({ type: "spec", spec });
           return text(`Updated ${changes} rows.`);
         }),
       ),
@@ -120,7 +120,6 @@ function createTools(appId: string, emit: Emit) {
           const res = runData(appId, spec, { op: "action", action: { type: "delete", ...action } });
           const changes = "changes" in res ? res.changes : 0;
           log(`Deleted ${changes} row${changes === 1 ? "" : "s"} from ${action.table}`);
-          emit({ type: "spec", spec });
           return text(`Deleted ${changes} rows.`);
         }),
       ),

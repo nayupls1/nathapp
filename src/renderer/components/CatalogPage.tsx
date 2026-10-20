@@ -1,7 +1,7 @@
 // Browsable reference of everything the agent can build with: every catalog
 // component with a live example, its props, and all available icons.
 import * as stylex from "@stylexjs/stylex";
-import { createMemo, createSignal, ErrorBoundary, For, Show } from "solid-js";
+import { createMemo, createSignal, ErrorBoundary, For, onCleanup, Show } from "solid-js";
 import {
   CATALOG_APP_ID,
   catalogSpec,
@@ -12,6 +12,7 @@ import {
 import type { UINode } from "../../shared/spec";
 import { Render } from "../catalog/components";
 import { AppContext } from "../catalog/context";
+import { watchApp } from "../lib/realtime";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Icon, iconTags } from "./Icon";
 import { Input } from "./ui";
@@ -20,14 +21,16 @@ const categories = [...new Set(componentDocs.map((d) => d.category))];
 
 export function CatalogPage() {
   const [dataVersion, setDataVersion] = createSignal(0);
+  const bump = () => setDataVersion((v) => v + 1);
+  onCleanup(watchApp(CATALOG_APP_ID, { tables: bump }));
 
   return (
     <AppContext.Provider
       value={{
         appId: CATALOG_APP_ID,
         spec: () => catalogSpec,
-        dataVersion,
-        invalidate: () => setDataVersion((v) => v + 1),
+        version: () => dataVersion(),
+        invalidate: bump,
       }}
     >
       <div {...stylex.attrs(styles.page)}>

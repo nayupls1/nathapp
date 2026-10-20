@@ -1,9 +1,12 @@
+import type { Server } from "bun";
 import { z } from "zod";
 import { efforts, type AppDetail, type ChatEvent, type ChatRequest, type DataRequest, type HealthResponse } from "../shared/api";
 import { CATALOG_APP_ID, catalogSeed, catalogSpec } from "../shared/catalog";
 import { Settings } from "../shared/settings";
+import { AppSpec, checkReferences } from "../shared/spec";
 import { isRunning, runChat, stopChat } from "./agent";
-import { copyAppData, DataError, deleteAppData, resetAppData, runData } from "./appdata";
+import { copyAppData, DataError, deleteAppData, migrate, onDataChange, resetAppData, runData } from "./appdata";
+import { dataDir } from "./config";
 import {
   addMessage,
   clearMessages,
@@ -17,8 +20,12 @@ import {
   saveSettings,
   updateApp,
 } from "./db";
-import { dataDir } from "./config";
+import { attachHub, dataChanged, specChanged, websocket, type SocketData } from "./hub";
+import { isIcon } from "./icons";
 import { listModels } from "./models";
+
+// Every write to app data is broadcast to realtime subscribers.
+onDataChange(dataChanged);
 
 // The Catalog page renders its examples against a demo app, reset on every start.
 resetAppData(CATALOG_APP_ID, catalogSpec, catalogSeed);
@@ -29,6 +36,18 @@ const port = Number(process.env.PORT ?? 3000);
 
 // Only the app's own renderer may call the API from a browser context.
 const allowedOrigin = process.env.GAPP_ALLOWED_ORIGIN ?? "http://localhost:5173";
+// Pages served by this server itself (custom components) are trusted too.
+const trustedOrigins = new Set([allowedOrigin, `http://127.0.0.1:${port}`, `http://localhost:${port}`]);
+
+/**
+ * Websites open in web tabs can reach 127.0.0.1 too. Browsers always send an
+ * Origin header on cross-origin writes and WebSocket handshakes, so anything
+ * with a foreign Origin is refused. Local processes (backends, curl) send none.
+ */
+const foreignOrigin = (req: Request) => {
+  const origin = req.headers.get("origin");
+  return origin !== null && !trustedOrigins.has(origin);
+};
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": allowedOrigin,
@@ -40,16 +59,56 @@ function json<T>(data: T, init?: ResponseInit) {
   return Response.json(data, { ...init, headers: { ...corsHeaders, ...init?.headers } });
 }
 
+const noContent = () => new Response(null, { status: 204, headers: corsHeaders });
 const notFound = () => json({ error: "Not found" }, { status: 404 });
 const badRequest = (error: string) => json({ error }, { status: 400 });
 
-const server = Bun.serve({
+type Handler<P extends string> = (
+  req: Bun.BunRequest<P>,
+  server: Server<SocketData>,
+) => Response | Promise<Response | undefined> | undefined;
+type Route<P extends string> = Handler<P> | Partial<Record<"GET" | "POST" | "PUT" | "PATCH" | "DELETE", Handler<P>>>;
+
+/** Applies the origin check to every non-GET handler. */
+function guarded<R extends Record<string, unknown>>(routes: { [P in keyof R & string]: Route<P> }) {
+  const guard = (fn: Handler<string>): Handler<string> => (req, server) =>
+    req.method !== "GET" && foreignOrigin(req) ? json({ error: "Forbidden" }, { status: 403 }) : fn(req, server);
+  return Object.fromEntries(
+    Object.entries(routes as Record<string, Route<string>>).map(([path, route]) => [
+      path,
+      typeof route === "function"
+        ? guard(route)
+        : Object.fromEntries(Object.entries(route).map(([method, fn]) => [method, guard(fn!)])),
+    ]),
+  ) as unknown as Bun.Serve.Routes<SocketData, string>;
+}
+
+/** Validates a spec (shape, references, icons) and returns it or a list of problems. */
+export function validateSpec(input: unknown): { spec: AppSpec } | { problems: string } {
+  const parsed = AppSpec.safeParse(input);
+  if (!parsed.success) return { problems: z.prettifyError(parsed.error) };
+  const problems = checkReferences(parsed.data, { isIcon });
+  if (problems.length) return { problems: problems.map((p) => `- ${p}`).join("\n") };
+  return { spec: parsed.data };
+}
+
+const specFor = (appId: string) => (appId === CATALOG_APP_ID ? catalogSpec : getApp(appId)?.spec);
+
+const server = Bun.serve<SocketData>({
   hostname: "127.0.0.1",
   port,
   // Agent runs stream for a long time with quiet stretches; don't cut them off.
   idleTimeout: 0,
-  routes: {
+  websocket,
+  routes: guarded({
     "/api/health": () => json<HealthResponse>({ ok: true, uptime: process.uptime(), bun: Bun.version, dataDir }),
+
+    "/api/ws": (req, server) => {
+      if (foreignOrigin(req)) return new Response("Forbidden", { status: 403 });
+      const renderer = new URL(req.url).searchParams.get("role") === "renderer" && req.headers.get("origin") === allowedOrigin;
+      if (server.upgrade(req, { data: { renderer } })) return undefined;
+      return new Response("Expected a WebSocket upgrade", { status: 426 });
+    },
 
     "/api/models": async () => {
       try {
@@ -91,7 +150,21 @@ const server = Bun.serve({
         stopChat(req.params.id);
         deleteApp(req.params.id);
         deleteAppData(req.params.id);
-        return new Response(null, { status: 204, headers: corsHeaders });
+        return noContent();
+      },
+    },
+
+    // Replaces an app's spec directly (import, tests). The agent uses update_app.
+    "/api/apps/:id/spec": {
+      PUT: async (req) => {
+        const appId = req.params.id;
+        if (!getApp(appId)) return notFound();
+        const result = validateSpec(await req.json());
+        if ("problems" in result) return badRequest(`Invalid spec:\n${result.problems}`);
+        migrate(appId, result.spec);
+        const app = updateApp(appId, { spec: result.spec, name: result.spec.name, icon: result.spec.icon ?? null });
+        specChanged(appId);
+        return json(app);
       },
     },
 
@@ -148,7 +221,7 @@ const server = Bun.serve({
         if (!getApp(req.params.id)) return notFound();
         if (isRunning(req.params.id)) return json({ error: "Stop the agent before clearing the chat" }, { status: 409 });
         clearMessages(req.params.id);
-        return new Response(null, { status: 204, headers: corsHeaders });
+        return noContent();
       },
     },
 
@@ -161,17 +234,18 @@ const server = Bun.serve({
 
     "/api/apps/:id/data": {
       POST: async (req) => {
-        const spec = req.params.id === CATALOG_APP_ID ? catalogSpec : getApp(req.params.id)?.spec;
+        const spec = specFor(req.params.id);
         if (!spec) return notFound();
         try {
           return json(runData(req.params.id, spec, (await req.json()) as DataRequest));
         } catch (err) {
           if (err instanceof DataError) return badRequest(err.message);
+          if (err instanceof SyntaxError) return badRequest("Invalid JSON");
           throw err;
         }
       },
     },
-  },
+  }),
   fetch(req) {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
     return notFound();
@@ -182,6 +256,7 @@ const server = Bun.serve({
   },
 });
 
+attachHub(server);
 console.log(`[server] listening on ${server.url}`);
 
 // When spawned by Electron, stdin is a pipe owned by the main process. If the
