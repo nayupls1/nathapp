@@ -1,9 +1,10 @@
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, For, Match, on, Show, Switch } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
-import { sendPrompt, states, stopAgent } from "../lib/store";
+import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
+import { Icon } from "./Icon";
 
 export function Chat(props: { appId: string }) {
   const state = () => states[props.appId]!;
@@ -17,7 +18,20 @@ export function Chat(props: { appId: string }) {
   );
 
   return (
-    <aside {...stylex.attrs(styles.root)}>
+    <aside {...stylex.attrs(styles.root)} data-agent-panel>
+      <header {...stylex.attrs(styles.header)}>
+        <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
+        <span {...stylex.attrs(styles.headerTitle)}>Agent</span>
+        <button
+          type="button"
+          title="Hide agent (Ctrl+J)"
+          onClick={() => setAgentCollapsed(props.appId, true)}
+          {...stylex.attrs(styles.headerButton)}
+          data-agent-hide
+        >
+          <Icon name="panel-right-close" size={16} />
+        </button>
+      </header>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
         <For each={state().messages}>{(m) => <Message message={m} />}</For>
         <Show when={state().running}>
@@ -83,6 +97,61 @@ const styles = stylex.create({
     backgroundColor: colors.bg,
     minHeight: 0,
   },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    height: 44,
+    flexShrink: 0,
+    paddingInline: space.md,
+    borderBottomWidth: 1,
+    borderBottomStyle: "solid",
+    borderBottomColor: colors.border,
+  },
+  headerIcon: { color: colors.accent },
+  headerTitle: { flex: 1, fontSize: font.sm, fontWeight: 600 },
+  headerButton: {
+    display: "grid",
+    placeItems: "center",
+    width: 28,
+    height: 28,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.text },
+    cursor: "pointer",
+  },
+  showButton: {
+    position: "absolute",
+    top: space.md,
+    right: space.md,
+    zIndex: 10,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 32,
+    paddingInline: space.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: { default: colors.surface, ":hover": colors.surfaceHover },
+    boxShadow: "0 2px 8px rgb(0 0 0 / 0.08)",
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  showDot: {
+    width: 7,
+    height: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    animationName: pulse,
+    animationDuration: "1.2s",
+    animationIterationCount: "infinite",
+  },
   messages: {
     flex: 1,
     overflowY: "auto",
@@ -113,3 +182,23 @@ const styles = stylex.create({
     animationIterationCount: "infinite",
   },
 });
+
+/** Floating button that brings a hidden agent panel back. */
+export function ShowAgentButton(props: { appId: string }) {
+  const running = () => !!states[props.appId]?.running;
+  return (
+    <button
+      type="button"
+      title="Show agent (Ctrl+J)"
+      onClick={() => setAgentCollapsed(props.appId, false)}
+      {...stylex.attrs(styles.showButton)}
+      data-agent-show
+    >
+      <Icon name="bot" size={16} />
+      Agent
+      <Show when={running()}>
+        <span {...stylex.attrs(styles.showDot)} />
+      </Show>
+    </button>
+  );
+}

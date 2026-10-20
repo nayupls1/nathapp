@@ -31,6 +31,30 @@ const [modelsError, setModelsError] = createSignal<string>();
 
 export { apps, models, modelsError, selectedId, states };
 
+// Whether the agent panel is hidden, per tab. Remembered across restarts.
+const COLLAPSED_KEY = "gapp.agentCollapsed";
+const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>(
+  (() => {
+    try {
+      return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "{}");
+    } catch {
+      return {};
+    }
+  })(),
+);
+
+export const isAgentCollapsed = (id: string) => !!collapsed()[id];
+
+export function setAgentCollapsed(id: string, value: boolean) {
+  const next = { ...collapsed() };
+  if (value) next[id] = true;
+  else delete next[id];
+  setCollapsed(next);
+  localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+}
+
+export const toggleAgent = (id: string) => setAgentCollapsed(id, !isAgentCollapsed(id));
+
 // The last-used agent settings become the default for new apps.
 const DEFAULTS_KEY = "gapp.agentDefaults";
 const agentDefaults = (): { model: string | null; effort: Effort | null } => {

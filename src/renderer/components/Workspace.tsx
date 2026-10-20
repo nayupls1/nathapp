@@ -1,11 +1,11 @@
 // The content area for the selected app: a prompt for new apps, otherwise the
 // rendered app next to the agent chat.
 import * as stylex from "@stylexjs/stylex";
-import { For, Show } from "solid-js";
-import { sendPrompt, states, stopAgent } from "../lib/store";
+import { For, onCleanup, onMount, Show } from "solid-js";
+import { isAgentCollapsed, sendPrompt, states, stopAgent, toggleAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AppView } from "./AppView";
-import { Chat } from "./Chat";
+import { Chat, ShowAgentButton } from "./Chat";
 import { Composer } from "./Composer";
 
 const examples = [
@@ -14,23 +14,46 @@ const examples = [
   "A reading list with status (to read, reading, done) and ratings",
 ];
 
+/** Ctrl/Cmd+J toggles the agent panel of the given tab. */
+export function useAgentShortcut(appId: () => string) {
+  onMount(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") {
+        e.preventDefault();
+        toggleAgent(appId());
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
+}
+
 export function Workspace(props: { appId: string }) {
   const state = () => states[props.appId];
   const isNew = () => !state()?.spec && !state()?.messages.length;
+  const collapsed = () => isAgentCollapsed(props.appId);
+  useAgentShortcut(() => props.appId);
 
   return (
     <Show when={state()?.loaded}>
       <Show when={!isNew()} fallback={<NewApp appId={props.appId} />}>
         <div {...stylex.attrs(styles.split)}>
           <main {...stylex.attrs(styles.app)}>
-            <Show
-              when={state()!.spec}
-              fallback={<p {...stylex.attrs(styles.placeholder)}>{state()!.running ? "Building your app…" : "No app yet."}</p>}
-            >
-              {(spec) => <AppView appId={props.appId} spec={spec()} />}
+            <div {...stylex.attrs(styles.appScroll)}>
+              <Show
+                when={state()!.spec}
+                fallback={<p {...stylex.attrs(styles.placeholder)}>{state()!.running ? "Building your app…" : "No app yet."}</p>}
+              >
+                {(spec) => <AppView appId={props.appId} spec={spec()} />}
+              </Show>
+            </div>
+            <Show when={collapsed()}>
+              <ShowAgentButton appId={props.appId} />
             </Show>
           </main>
-          <Chat appId={props.appId} />
+          <Show when={!collapsed()}>
+            <Chat appId={props.appId} />
+          </Show>
         </div>
       </Show>
     </Show>
@@ -69,7 +92,8 @@ function NewApp(props: { appId: string }) {
 
 const styles = stylex.create({
   split: { display: "flex", height: "100%", minHeight: 0 },
-  app: { flex: 1, overflowY: "auto", minWidth: 0 },
+  app: { position: "relative", flex: 1, minWidth: 0, display: "flex", flexDirection: "column" },
+  appScroll: { flex: 1, minHeight: 0, overflowY: "auto" },
   placeholder: { margin: 0, padding: space.xxl, textAlign: "center", color: colors.muted },
   newRoot: {
     display: "flex",
