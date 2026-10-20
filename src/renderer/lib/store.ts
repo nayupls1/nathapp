@@ -5,6 +5,7 @@ import { createStore, produce, reconcile } from "solid-js/store";
 import type { AppSummary, ChatMessage, Effort, ModelOption } from "../../shared/api";
 import type { AppSpec } from "../../shared/spec";
 import { api } from "./api";
+import { settings } from "./settings";
 
 export interface AppState {
   loaded: boolean;
@@ -20,8 +21,10 @@ export interface AppState {
   effort: Effort | null;
 }
 
-/** Pseudo app id for the Catalog page in the sidebar. */
+/** Pseudo app ids for the pages at the bottom of the sidebar. */
 export const CATALOG_VIEW = "catalog";
+export const SETTINGS_VIEW = "settings";
+const isPage = (id: string) => id === CATALOG_VIEW || id === SETTINGS_VIEW;
 
 const [apps, setApps] = createStore<AppSummary[]>([]);
 const [states, setStates] = createStore<Record<string, AppState>>({});
@@ -55,15 +58,11 @@ export function setAgentCollapsed(id: string, value: boolean) {
 
 export const toggleAgent = (id: string) => setAgentCollapsed(id, !isAgentCollapsed(id));
 
-// The last-used agent settings become the default for new apps.
-const DEFAULTS_KEY = "gapp.agentDefaults";
-const agentDefaults = (): { model: string | null; effort: Effort | null } => {
-  try {
-    return { model: null, effort: null, ...JSON.parse(localStorage.getItem(DEFAULTS_KEY) ?? "{}") };
-  } catch {
-    return { model: null, effort: null };
-  }
-};
+// New tabs start with the default model/effort from Settings.
+const agentDefaults = (): { model: string | null; effort: Effort | null } => ({
+  model: settings().agent.model,
+  effort: settings().agent.effort,
+});
 
 export async function loadModels() {
   try {
@@ -76,7 +75,6 @@ export async function loadModels() {
 
 export function setAgentOptions(id: string, options: { model: string | null; effort: Effort | null }) {
   setStates(id, options);
-  localStorage.setItem(DEFAULTS_KEY, JSON.stringify(options));
 }
 
 const emptyState = (): AppState => ({
@@ -103,7 +101,7 @@ export async function loadApps() {
 
 export async function selectApp(id: string) {
   setSelectedId(id);
-  if (id === CATALOG_VIEW || states[id]?.loaded) return;
+  if (isPage(id) || states[id]?.loaded) return;
   const detail = await api.getApp(id);
   setStates(id, {
     ...emptyState(),

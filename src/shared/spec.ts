@@ -4,6 +4,7 @@
 //
 // The human/agent-facing docs for every component live in ./catalog.ts.
 import { z } from "zod";
+import { Theme } from "./settings";
 
 const identifier = z
   .string()
@@ -244,6 +245,8 @@ export const AppSpec = z.object({
   /** Lucide icon name shown in the sidebar. */
   icon: IconName.optional(),
   description: z.string().optional(),
+  /** Look of this app; unset fields follow the user's global theme. */
+  theme: Theme.optional(),
   tables: z.array(Table),
   ui: UINode,
 });

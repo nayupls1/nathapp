@@ -7,10 +7,10 @@ import type { ChatEvent, Effort } from "../shared/api";
 import { AppSpec, checkReferences, Value, Where } from "../shared/spec";
 import { DataError, migrate, rowCounts, runData } from "./appdata";
 import { agentDir, claudeExecutable } from "./config";
-import { addMessage, getApp, updateApp } from "./db";
+import { addMessage, getApp, getSettings, updateApp } from "./db";
 import { agentEnv } from "./env";
 import { isIcon, searchIcons } from "./icons";
-import { systemPrompt } from "./prompt";
+import { buildSystemPrompt } from "./prompt";
 
 type Emit = (event: ChatEvent) => void;
 
@@ -156,7 +156,7 @@ export async function runChat(appId: string, prompt: string, emit: Emit, { model
       options: {
         // Not snapshotted into the session: the catalog evolves, and resumed
         // conversations about older apps must see the current one.
-        systemPrompt: { type: "custom", prompt: systemPrompt, snapshot: false },
+        systemPrompt: { type: "custom", prompt: buildSystemPrompt(getSettings().agent.instructions), snapshot: false },
         resume: app.sessionId ?? undefined,
         tools: [], // no built-in tools (files, shell, web): only gApp's catalog
         mcpServers: { gapp: createTools(appId, emit) },

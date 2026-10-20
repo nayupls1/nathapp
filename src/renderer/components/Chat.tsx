@@ -1,6 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, For, Match, on, Show, Switch } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
+import { settings } from "../lib/settings";
 import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
@@ -33,7 +34,9 @@ export function Chat(props: { appId: string }) {
         </button>
       </header>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
-        <For each={state().messages}>{(m) => <Message message={m} />}</For>
+        <For each={state().messages.filter((m) => m.role !== "tool" || settings().agent.showToolMessages)}>
+          {(m) => <Message message={m} />}
+        </For>
         <Show when={state().running}>
           <Show when={state().draft} fallback={<p {...stylex.attrs(styles.working)}>Working…</p>}>
             <p {...stylex.attrs(styles.assistant)}>{state().draft}</p>

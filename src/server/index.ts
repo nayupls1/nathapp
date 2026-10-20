@@ -1,5 +1,7 @@
+import { z } from "zod";
 import { efforts, type AppDetail, type ChatEvent, type ChatRequest, type DataRequest, type HealthResponse } from "../shared/api";
 import { CATALOG_APP_ID, catalogSeed, catalogSpec } from "../shared/catalog";
+import { Settings } from "../shared/settings";
 import { isRunning, runChat, stopChat } from "./agent";
 import { copyAppData, DataError, deleteAppData, resetAppData, runData } from "./appdata";
 import {
@@ -9,10 +11,13 @@ import {
   deleteApp,
   duplicateApp,
   getApp,
+  getSettings,
   listApps,
   listMessages,
+  saveSettings,
   updateApp,
 } from "./db";
+import { dataDir } from "./config";
 import { listModels } from "./models";
 
 // The Catalog page renders its examples against a demo app, reset on every start.
@@ -44,7 +49,7 @@ const server = Bun.serve({
   // Agent runs stream for a long time with quiet stretches; don't cut them off.
   idleTimeout: 0,
   routes: {
-    "/api/health": () => json<HealthResponse>({ ok: true, uptime: process.uptime(), bun: Bun.version }),
+    "/api/health": () => json<HealthResponse>({ ok: true, uptime: process.uptime(), bun: Bun.version, dataDir }),
 
     "/api/models": async () => {
       try {
@@ -52,6 +57,16 @@ const server = Bun.serve({
       } catch (err) {
         return json({ error: `Could not load models: ${err instanceof Error ? err.message : err}` }, { status: 502 });
       }
+    },
+
+    "/api/settings": {
+      GET: () => json(getSettings()),
+      PUT: async (req) => {
+        const parsed = Settings.safeParse(await req.json());
+        if (!parsed.success) return badRequest(z.prettifyError(parsed.error));
+        saveSettings(parsed.data);
+        return json(parsed.data);
+      },
     },
 
     "/api/apps": {

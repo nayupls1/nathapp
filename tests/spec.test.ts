@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { isIcon, searchIcons } from "../src/server/icons";
+import { buildSystemPrompt, systemPrompt } from "../src/server/prompt";
+import { Settings } from "../src/shared/settings";
 import { AppSpec, checkReferences, type AppSpec as AppSpecType } from "../src/shared/spec";
 
 const base: AppSpecType = {
@@ -61,6 +63,22 @@ describe("spec validation", () => {
     expect(chart({ groupBy: "created_at", bucket: "week" })).toEqual([]);
     expect(chart({ aggregate: "sum" })).toEqual(['ui(chart): aggregate "sum" needs a column']);
     expect(chart({ kind: "pie", seriesBy: "done" })).toEqual(['ui(chart): "seriesBy" is not supported for pie charts']);
+  });
+});
+
+describe("themes and settings", () => {
+  test("app themes take hex colors and known options", () => {
+    expect(AppSpec.safeParse({ ...base, theme: { mode: "dark", accent: "#e11d48", radius: "lg", font: "serif" } }).success).toBe(true);
+    expect(AppSpec.safeParse({ ...base, theme: { accent: "red" } }).success).toBe(false);
+    expect(AppSpec.safeParse({ ...base, theme: { mode: "system" } }).success).toBe(false);
+  });
+
+  test("settings fill in defaults and prompt additions reach the prompt", () => {
+    const settings = Settings.parse({ agent: { instructions: "Use EUR." } });
+    expect(settings.theme.mode).toBe("system");
+    expect(settings.web.searchEngine).toBe("duckduckgo");
+    expect(buildSystemPrompt(settings.agent.instructions)).toEndWith("Use EUR.");
+    expect(buildSystemPrompt("  ")).toBe(systemPrompt);
   });
 });
 

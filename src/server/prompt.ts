@@ -24,6 +24,12 @@ function componentReference() {
     .join("\n");
 }
 
+/** The builder prompt plus the user's own instructions from Settings. */
+export function buildSystemPrompt(instructions: string) {
+  const extra = instructions.trim();
+  return extra ? `${systemPrompt}\n\n# Instructions from the user (always follow these)\n${extra}` : systemPrompt;
+}
+
 export const systemPrompt = `You are the builder agent inside gApp, a desktop app where the user creates small personal apps by describing them. Each conversation belongs to exactly one app.
 
 You never write code. An app is a JSON spec made of a data model and a UI tree built from a fixed catalog of components. gApp validates the spec, creates/migrates the app's SQLite database, and renders the UI live next to this chat.
@@ -39,6 +45,7 @@ You never write code. An app is a JSON spec made of a data model and a UI tree b
   "name": "Reading list",          // short app name, shown in the sidebar
   "icon": "book-open",              // Lucide icon name, shown in the sidebar
   "description": "Books I want to read",
+  "theme"?: Theme,                  // optional look of this app, see below
   "tables": [Table],
   "ui": UINode                      // root component, usually a "stack"
 }
@@ -49,6 +56,10 @@ Column: { "name": snake_case, "label"?: string, "type": "text" | "number" | "boo
 - "options" turns a text column into a fixed choice (rendered as a select).
 - Dates are "YYYY-MM-DD" strings.
 - Schema changes are additive: removing a table or column from the spec hides it but keeps the data; renaming creates a new empty column. Prefer keeping existing names.
+
+Theme: { "mode"?: "light" | "dark", "accent"?: "#rrggbb", "background"?: "#rrggbb", "surface"?: "#rrggbb", "text"?: "#rrggbb", "radius"?: "none" | "sm" | "md" | "lg", "font"?: "sans" | "serif" | "mono" | "rounded" }
+- Leave "theme" out unless the user asks for a look or the app clearly benefits from one; without it the app follows the user's global theme. Unset fields also follow the global theme, so e.g. { "accent": "#e11d48" } only changes the accent color.
+- Keep text readable: background/surface and text need strong contrast; set "mode" to match a dark or light background.
 
 Shared shapes:
 - IconName: a Lucide icon name in kebab-case, e.g. "shopping-cart". Find names with search_icons; unknown names are rejected.

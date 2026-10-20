@@ -3,6 +3,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 import type { AppSummary, ChatMessage, Effort } from "../shared/api";
+import { Settings } from "../shared/settings";
 import type { AppSpec } from "../shared/spec";
 import { dataDir } from "./config";
 
@@ -32,6 +33,8 @@ db.run(`
     created_at TEXT NOT NULL DEFAULT (${now})
   )
 `);
+
+db.run(`CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)`);
 
 // Columns added after the first release; created on existing databases.
 const appColumns = new Set(db.query<{ name: string }, []>("PRAGMA table_info(apps)").all().map((c) => c.name));
@@ -166,4 +169,19 @@ export function addMessage(appId: string, role: ChatMessage["role"], content: st
     )
     .get(appId, role, content)!;
   return toMessage(row);
+}
+
+// --- Settings --------------------------------------------------------------------
+
+/** The user's settings, with defaults for anything unset or invalid. */
+export function getSettings(): Settings {
+  const row = db.query<{ value: string }, []>("SELECT value FROM settings WHERE id = 1").get();
+  const parsed = Settings.safeParse(row ? JSON.parse(row.value) : {});
+  return parsed.success ? parsed.data : Settings.parse({});
+}
+
+export function saveSettings(settings: Settings) {
+  db.query("INSERT INTO settings (id, value) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET value = excluded.value").run(
+    JSON.stringify(settings),
+  );
 }

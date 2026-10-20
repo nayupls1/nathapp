@@ -2,7 +2,9 @@
 // rendered app next to the agent chat.
 import * as stylex from "@stylexjs/stylex";
 import { For, onCleanup, onMount, Show } from "solid-js";
+import { settings } from "../lib/settings";
 import { isAgentCollapsed, sendPrompt, states, stopAgent, toggleAgent } from "../lib/store";
+import { appThemeVars, systemDark } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AppView } from "./AppView";
 import { Chat, ShowAgentButton } from "./Chat";
@@ -33,12 +35,15 @@ export function Workspace(props: { appId: string }) {
   const isNew = () => !state()?.spec && !state()?.messages.length;
   const collapsed = () => isAgentCollapsed(props.appId);
   useAgentShortcut(() => props.appId);
+  // The app's own theme (if the agent gave it one) applies to the app area only.
+  const appTheme = () =>
+    settings().appThemes ? appThemeVars(state()?.spec?.theme, settings().theme, systemDark()) : {};
 
   return (
     <Show when={state()?.loaded}>
       <Show when={!isNew()} fallback={<NewApp appId={props.appId} />}>
         <div {...stylex.attrs(styles.split)}>
-          <main {...stylex.attrs(styles.app)}>
+          <main {...stylex.attrs(styles.app)} style={appTheme()} data-app-area>
             <div {...stylex.attrs(styles.appScroll)}>
               <Show
                 when={state()!.spec}
@@ -92,7 +97,16 @@ function NewApp(props: { appId: string }) {
 
 const styles = stylex.create({
   split: { display: "flex", height: "100%", minHeight: 0 },
-  app: { position: "relative", flex: 1, minWidth: 0, display: "flex", flexDirection: "column" },
+  app: {
+    position: "relative",
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: colors.bg,
+    color: colors.text,
+    fontFamily: font.sans,
+  },
   appScroll: { flex: 1, minHeight: 0, overflowY: "auto" },
   placeholder: { margin: 0, padding: space.xxl, textAlign: "center", color: colors.muted },
   newRoot: {

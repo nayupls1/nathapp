@@ -5,7 +5,7 @@ import { loadModels, models, setAgentOptions, states } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Button } from "./ui";
 
-const effortLabels: Record<Effort, string> = {
+export const effortLabels: Record<Effort, string> = {
   low: "Low",
   medium: "Medium",
   high: "High",

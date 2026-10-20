@@ -237,6 +237,31 @@ try {
     if (after.length !== before.length) throw new Error(`expected ${before.length} apps, got ${after.join(", ")}`);
   });
 
+  await check("settings: theme presets apply and prompt additions are saved", async () => {
+    await click("nav button", "Settings");
+    await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
+    const rootBg = () => page!.eval<string>(`getComputedStyle(document.querySelector("#root > div")).backgroundColor`);
+    await click("[data-preset]", "Midnight");
+    await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor === "rgb(11, 16, 32)"`, {
+      label: "Midnight background",
+    });
+    await Bun.sleep(300); // let color transitions finish
+    await page!.screenshot(join(outDir, "settings.png"));
+    await page!.eval(`(() => {
+      const t = document.querySelector('textarea[name="instructions"]');
+      t.value = "Amounts are in EUR.";
+      t.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return true;
+    })()`);
+    await page!.waitFor(
+      `fetch(window.gapp.serverUrl + "/api/settings").then((r) => r.json()).then((s) => s.agent.instructions === "Amounts are in EUR." && s.theme.background === "#0b1020")`,
+      { label: "settings saved on the server" },
+    );
+    await click("[data-preset]", "Default");
+    await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
+    return `background ${await rootBg()} after reset`;
+  });
+
   await check("no uncaught errors in the renderer", async () => {
     // Expected noise from Electron itself isn't an app bug.
     const real = pageErrors.filter((e) => !/Electron Security Warning/.test(e));

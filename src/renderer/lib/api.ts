@@ -1,3 +1,4 @@
+import type { Settings } from "../../shared/settings";
 import type {
   AppDetail,
   AppSummary,
@@ -5,6 +6,7 @@ import type {
   ChatRequest,
   DataRequest,
   DataResponse,
+  HealthResponse,
   ModelOption,
 } from "../../shared/api";
 
@@ -23,7 +25,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  health: () => request<HealthResponse>("/api/health"),
   listModels: () => request<ModelOption[]>("/api/models"),
+  getSettings: () => request<Settings>("/api/settings"),
+  saveSettings: (settings: Settings) => request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
   listApps: () => request<AppSummary[]>("/api/apps"),
   createApp: () => request<AppSummary>("/api/apps", { method: "POST" }),
   getApp: (id: string) => request<AppDetail>(`/api/apps/${id}`),

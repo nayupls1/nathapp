@@ -5,6 +5,7 @@ export interface HealthResponse {
   ok: true;
   uptime: number;
   bun: string;
+  dataDir: string;
 }
 
 /** API exposed on `window.gapp` by the preload script. */

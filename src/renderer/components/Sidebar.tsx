@@ -11,6 +11,7 @@ import {
   renameApp,
   selectApp,
   selectedId,
+  SETTINGS_VIEW,
   states,
 } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -32,16 +33,24 @@ export function Sidebar() {
         <For each={apps}>{(app) => <Item app={app} />}</For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
-        <button
-          type="button"
-          onClick={() => selectApp(CATALOG_VIEW)}
-          {...stylex.attrs(styles.item, styles.footerItem, selectedId() === CATALOG_VIEW && styles.selected)}
-        >
-          <Icon name="book-open" size={16} {...stylex.attrs(styles.icon)} />
-          <span {...stylex.attrs(styles.name)}>Catalog</span>
-        </button>
+        <PageLink id={CATALOG_VIEW} icon="book-open" label="Catalog" />
+        <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
     </nav>
+  );
+}
+
+function PageLink(props: { id: string; icon: string; label: string }) {
+  const selected = () => selectedId() === props.id;
+  return (
+    <button
+      type="button"
+      onClick={() => selectApp(props.id)}
+      {...stylex.attrs(styles.item, styles.footerItem, selected() && styles.selected)}
+    >
+      <Icon name={props.icon} size={16} {...stylex.attrs(styles.icon)} />
+      <span {...stylex.attrs(styles.name)}>{props.label}</span>
+    </button>
   );
 }
 
@@ -180,6 +189,9 @@ const styles = stylex.create({
   },
   icon: { width: 18, textAlign: "center", flexShrink: 0, color: colors.muted },
   footer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
     marginTop: "auto",
     paddingTop: space.sm,
     borderTopWidth: 1,

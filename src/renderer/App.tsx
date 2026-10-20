@@ -1,14 +1,19 @@
 import * as stylex from "@stylexjs/stylex";
 import { onMount, Show } from "solid-js";
 import { CatalogPage } from "./components/CatalogPage";
+import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { Button } from "./components/ui";
 import { Workspace } from "./components/Workspace";
-import { apps, CATALOG_VIEW, loadApps, newApp, selectedId } from "./lib/store";
+import { loadSettings } from "./lib/settings";
+import { apps, CATALOG_VIEW, loadApps, newApp, selectedId, SETTINGS_VIEW } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
-  onMount(loadApps);
+  onMount(async () => {
+    await loadSettings().catch((err) => console.error("Loading settings failed:", err));
+    await loadApps();
+  });
 
   return (
     <div {...stylex.attrs(styles.root)}>
@@ -26,11 +31,9 @@ export default function App() {
             </div>
           }
         >
-          {(id) => (
-            <Show when={id !== CATALOG_VIEW} fallback={<CatalogPage />}>
-              <Workspace appId={id} />
-            </Show>
-          )}
+          {(id) =>
+            id === CATALOG_VIEW ? <CatalogPage /> : id === SETTINGS_VIEW ? <SettingsPage /> : <Workspace appId={id} />
+          }
         </Show>
       </div>
     </div>
