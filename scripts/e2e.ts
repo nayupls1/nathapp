@@ -4,6 +4,7 @@
 //   bun run e2e                 UI checks (catalog, icons, new app, models)
 //   bun run e2e --agent         also has the agent build an app (uses your Claude plan)
 //   bun run e2e --agent "..."   ...with a custom prompt
+//   bun run e2e --visible       show the window while testing (default: offscreen)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -37,8 +38,10 @@ const port = await new Promise<number>((resolve) => {
   });
 });
 
-// Keep painting while the window is covered or unfocused, or screenshots stall.
-const electron = launchElectron({ GAPP_USER_DATA_DIR: profile }, [
+// Rendered offscreen by default: always painted (reliable screenshots) and no
+// window pops up. --visible shows the window instead.
+const visible = args.includes("--visible");
+const electron = launchElectron({ GAPP_USER_DATA_DIR: profile, GAPP_OFFSCREEN: visible ? undefined : "1" }, [
   `--remote-debugging-port=${port}`,
   "--disable-backgrounding-occluded-windows",
   "--disable-renderer-backgrounding",
@@ -286,6 +289,8 @@ try {
     const copyIndex = (await appNames()).indexOf("E2E renamed copy");
     await openMenu(copyIndex);
     await choose("Delete");
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
     await page!.waitFor(`![...document.querySelectorAll("nav li")].some((li) => li.innerText.includes("E2E renamed copy"))`, {
       label: "delete",
     });

@@ -1,6 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { onMount, Show } from "solid-js";
 import { CatalogPage } from "./components/CatalogPage";
+import { ConfirmHost } from "./components/ConfirmDialog";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { Button } from "./components/ui";
@@ -18,6 +19,7 @@ export default function App() {
   return (
     <div {...stylex.attrs(styles.root)}>
       <Sidebar />
+      <ConfirmHost />
       <div {...stylex.attrs(styles.content)}>
         <Show
           when={selectedId()}

@@ -49,10 +49,14 @@ function createWindow(serverUrl: string) {
       nodeIntegration: false,
       // Agent runs stream into the window while it's in the background.
       backgroundThrottling: false,
+      // Tests render without a visible window (always painted, nothing pops up).
+      offscreen: process.env.GAPP_OFFSCREEN === "1",
     },
   });
 
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => {
+    if (process.env.GAPP_OFFSCREEN !== "1") win.show();
+  });
 
   // Open external links in the user's browser rather than inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {

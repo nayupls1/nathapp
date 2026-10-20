@@ -4,6 +4,7 @@ import { createMemo, createSignal, For, Index, Show, type Component } from "soli
 import { Dynamic } from "solid-js/web";
 import type { Row } from "../../shared/api";
 import type { Column, Tone, UINode, Value } from "../../shared/spec";
+import { confirmDialog } from "../components/ConfirmDialog";
 import { Icon } from "../components/Icon";
 import { Button, Checkbox, Input, Select } from "../components/ui";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -555,7 +556,7 @@ function ActionButton(props: Props<"button">) {
   const [busy, setBusy] = createSignal(false);
   const [error, setError] = createSignal<string>();
   const run = async () => {
-    if (props.node.confirm && !window.confirm(props.node.confirm)) return;
+    if (props.node.confirm && !(await confirmDialog(props.node.confirm, { danger: props.node.variant === "danger" }))) return;
     setBusy(true);
     setError();
     try {

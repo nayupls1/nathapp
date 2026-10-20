@@ -15,6 +15,7 @@ import {
   states,
 } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
+import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
@@ -76,10 +77,12 @@ function Item(props: { app: AppSummary }) {
       label: "Clear chat",
       icon: "message-square-x",
       disabled: running() || states[props.app.id]?.messages.length === 0,
-      onSelect: () => {
-        if (window.confirm(`Clear the chat for “${props.app.name}”? The app and its data stay; the agent starts a fresh conversation.`)) {
-          clearChat(props.app.id);
-        }
+      onSelect: async () => {
+        const ok = await confirmDialog(
+          `Clear the chat for “${props.app.name}”? The app and its data stay; the agent starts a fresh conversation.`,
+          { confirmLabel: "Clear chat" },
+        );
+        if (ok) clearChat(props.app.id);
       },
     },
     "separator",
@@ -87,8 +90,9 @@ function Item(props: { app: AppSummary }) {
       label: "Delete",
       icon: "trash",
       danger: true,
-      onSelect: () => {
-        if (window.confirm(`Delete “${props.app.name}” and all its data?`)) deleteApp(props.app.id);
+      onSelect: async () => {
+        const ok = await confirmDialog(`Delete “${props.app.name}” and all its data?`, { confirmLabel: "Delete", danger: true });
+        if (ok) deleteApp(props.app.id);
       },
     },
   ];
