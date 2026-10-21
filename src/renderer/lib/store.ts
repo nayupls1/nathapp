@@ -2,7 +2,8 @@
 // into its tab while you look at another one.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
-import type { AppSummary, ChatMessage, Effort, ModelOption } from "../../shared/api";
+import type { AppSummary, ChatMessage, Effort, ModelOption, PageContext } from "../../shared/api";
+import { normalizeUrl } from "../../shared/web";
 import type { AppSpec } from "../../shared/spec";
 import { api } from "./api";
 import { onConnected, watchApp } from "./realtime";
@@ -36,6 +37,19 @@ const [models, setModels] = createSignal<ModelOption[]>([]);
 const [modelsError, setModelsError] = createSignal<string>();
 
 export { apps, models, modelsError, selectedId, states };
+
+export const appById = (id: string | null) => (id ? apps.find((a) => a.id === id) : undefined);
+export const isWebTab = (id: string | null) => appById(id)?.kind === "web";
+
+// Web tabs stay alive (page state, scroll, logins) once opened, until deleted.
+const [openedWeb, setOpenedWeb] = createSignal<string[]>([]);
+export const openWebTabs = () => apps.filter((a) => a.kind === "web" && openedWeb().includes(a.id));
+const markOpened = (id: string) => {
+  if (isWebTab(id) && !openedWeb().includes(id)) setOpenedWeb([...openedWeb(), id]);
+};
+
+/** Tabs (app or web) as opposed to the Catalog/Settings pages. */
+export const isTab = (id: string | null): id is string => !!id && !isPage(id);
 
 // Whether the agent panel is hidden, per tab. Remembered across restarts.
 const COLLAPSED_KEY = "gapp.agentCollapsed";
@@ -115,6 +129,7 @@ export async function loadApps() {
 
 export async function selectApp(id: string) {
   setSelectedId(id);
+  markOpened(id);
   if (isPage(id) || states[id]?.loaded) return;
   const detail = await api.getApp(id);
   watch(id);
@@ -152,6 +167,43 @@ export async function newApp() {
   setSelectedId(app.id);
 }
 
+/** Opens a web tab: the given URL, or the home page from Settings. */
+export async function newWebTab(url?: string) {
+  const target = url ?? normalizeUrl(settings().web.homePage, settings().web.searchEngine);
+  const app = await api.createApp({ kind: "web", url: /^https?:\/\//i.test(target) ? target : undefined });
+  upsertApp(app);
+  setStates(app.id, { ...emptyState(), loaded: true });
+  watch(app.id);
+  setSelectedId(app.id);
+  markOpened(app.id);
+}
+
+// Web tab navigation is saved (debounced) so tabs reopen where they were.
+const pageTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingPages = new Map<string, { url?: string; title?: string; favicon?: string | null }>();
+export function updatePage(id: string, page: { url?: string; title?: string; favicon?: string | null }) {
+  const app = appById(id);
+  if (!app) return;
+  const next = { ...pendingPages.get(id), ...page };
+  pendingPages.set(id, next);
+  // Show it right away; the server decides the name (renamed tabs keep theirs).
+  setApps(
+    (a) => a.id === id,
+    produce((a) => {
+      if (page.url !== undefined) a.url = page.url;
+      if (page.favicon !== undefined) a.favicon = page.favicon;
+    }),
+  );
+  clearTimeout(pageTimers.get(id));
+  pageTimers.set(
+    id,
+    setTimeout(() => {
+      pendingPages.delete(id);
+      api.updatePage(id, next).then(upsertApp, () => {});
+    }, 400),
+  );
+}
+
 export async function renameApp(id: string, name: string) {
   upsertApp(await api.renameApp(id, name));
 }
@@ -172,6 +224,7 @@ export async function deleteApp(id: string) {
   await api.deleteApp(id);
   const index = apps.findIndex((a) => a.id === id);
   setApps((list) => list.filter((a) => a.id !== id));
+  setOpenedWeb(openedWeb().filter((x) => x !== id));
   watchers.get(id)?.();
   watchers.delete(id);
   setStates(produce((s) => void delete s[id]));
@@ -204,11 +257,11 @@ export async function reloadSpec(id: string) {
   if (detail) upsertApp(detail);
 }
 
-export async function sendPrompt(id: string, prompt: string) {
+export async function sendPrompt(id: string, prompt: string, page?: PageContext) {
   setStates(id, { running: true, draft: "" });
   const { model, effort } = states[id]!;
   try {
-    await api.chat(id, { prompt, model: model ?? undefined, effort: effort ?? undefined }, (event) => {
+    await api.chat(id, { prompt, model: model ?? undefined, effort: effort ?? undefined, page }, (event) => {
       switch (event.type) {
         case "message":
           setStates(id, produce((s) => {

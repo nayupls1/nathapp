@@ -46,7 +46,7 @@ export function BackendPill(props: { appId: string; open: boolean; onToggle: () 
 }
 
 /** Loads and live-updates an app's backend runtime info. */
-export function useRuntime(appId: () => string) {
+export function useRuntime(appId: () => string | null) {
   const [runtime, setRuntime] = createStore<{ info?: RuntimeInfo }>({});
   const [loaded] = createResource(appId, (id) => api.runtime(id).catch(() => undefined));
   createEffect(() => {
@@ -56,14 +56,16 @@ export function useRuntime(appId: () => string) {
   // Re-check after agent runs (it may have created or changed the backend).
   createEffect(
     on(
-      () => states[appId()]?.running,
+      () => states[appId() ?? ""]?.running,
       (running, wasRunning) => {
-        if (wasRunning && !running) api.runtime(appId()).then((info) => setRuntime({ info }), () => {});
+        const id = appId();
+        if (id && wasRunning && !running) api.runtime(id).then((info) => setRuntime({ info }), () => {});
       },
     ),
   );
   createEffect(() => {
     const id = appId();
+    if (!id) return;
     const stop = watchTopic(`backend:${id}`, (msg) => {
       if (msg.type !== "backend") return;
       setRuntime(

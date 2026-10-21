@@ -8,6 +8,7 @@ import {
   deleteApp,
   duplicateApp,
   newApp,
+  newWebTab,
   renameApp,
   selectApp,
   selectedId,
@@ -21,15 +22,32 @@ import { Icon } from "./Icon";
 import { Button } from "./ui";
 
 export function Sidebar() {
+  const [newMenu, setNewMenu] = createSignal<MenuPosition>();
+  const newItems: MenuItem[] = [
+    { label: "New app", icon: "sparkles", onSelect: () => newApp() },
+    { label: "New web tab", icon: "globe", onSelect: () => newWebTab() },
+  ];
   return (
     <nav {...stylex.attrs(styles.root)}>
       <div {...stylex.attrs(styles.header)}>
         <span {...stylex.attrs(styles.brand)}>gApp</span>
       </div>
-      <Button onClick={() => newApp()} xstyle={styles.newButton}>
+      <Button
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setNewMenu({ x: r.left, y: r.bottom + 4 });
+        }}
+        xstyle={styles.newButton}
+        aria-haspopup="menu"
+        data-new-tab
+      >
         <Icon name="plus" size={15} />
-        New app
+        New tab
+        <Icon name="chevron-down" size={14} {...stylex.attrs(styles.chevron)} />
       </Button>
+      <Show when={newMenu()}>
+        {(position) => <ContextMenu items={newItems} position={position()} onClose={() => setNewMenu()} />}
+      </Show>
       <ul {...stylex.attrs(styles.list)}>
         <For each={apps}>{(app) => <Item app={app} />}</For>
       </ul>
@@ -108,12 +126,19 @@ function Item(props: { app: AppSummary }) {
       }}
       data-app-id={props.app.id}
     >
-      <Icon
-        name={props.app.icon ?? "app-window"}
-        size={16}
-        {...stylex.attrs(styles.icon)}
-        fallback={<span {...stylex.attrs(styles.icon)}>{props.app.icon}</span>}
-      />
+      <Show
+        when={props.app.kind === "web"}
+        fallback={
+          <Icon
+            name={props.app.icon ?? "app-window"}
+            size={16}
+            {...stylex.attrs(styles.icon)}
+            fallback={<span {...stylex.attrs(styles.icon)}>{props.app.icon}</span>}
+          />
+        }
+      >
+        <Favicon url={props.app.favicon} />
+      </Show>
       <Show when={editing()} fallback={<span {...stylex.attrs(styles.name)}>{props.app.name}</span>}>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
@@ -150,6 +175,15 @@ function Item(props: { app: AppSummary }) {
   );
 }
 
+function Favicon(props: { url: string | null }) {
+  const [broken, setBroken] = createSignal<string | null>(null);
+  return (
+    <Show when={props.url && broken() !== props.url} fallback={<Icon name="globe" size={16} {...stylex.attrs(styles.icon)} />}>
+      <img src={props.url!} alt="" onError={() => setBroken(props.url)} {...stylex.attrs(styles.favicon)} />
+    </Show>
+  );
+}
+
 const pulse = stylex.keyframes({
   "0%": { opacity: 0.3 },
   "50%": { opacity: 1 },
@@ -173,6 +207,8 @@ const styles = stylex.create({
   header: { display: "flex", alignItems: "center", height: 32, paddingInline: space.sm },
   brand: { fontWeight: 700, fontSize: font.lg, letterSpacing: "-0.02em" },
   newButton: { justifyContent: "flex-start", width: "100%" },
+  chevron: { marginLeft: "auto", opacity: 0.6 },
+  favicon: { width: 16, height: 16, marginInline: 1, flexShrink: 0, objectFit: "contain", borderRadius: 3 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 },
   item: {
     display: "flex",

@@ -1,14 +1,16 @@
 // The Settings tab: appearance, agent defaults and prompt additions, web tabs, backends.
 import * as stylex from "@stylexjs/stylex";
-import { createResource, For, onMount, Show, type JSX } from "solid-js";
+import { createResource, For, onCleanup, onMount, Show, type JSX } from "solid-js";
 import type { Effort } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
+import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
 import { loadModels, models } from "../lib/store";
 import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { effortLabels } from "./Composer";
+import { confirmDialog } from "./ConfirmDialog";
 import { Icon } from "./Icon";
 import { Select } from "./ui";
 
@@ -166,6 +168,7 @@ export function SettingsPage() {
         <Row label="Site customizations" description="Apply the CSS/JS changes the agent made to websites.">
           <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
         </Row>
+        <SiteRows />
       </Section>
 
       <Section title="App backends" icon="server">
@@ -185,6 +188,36 @@ export function SettingsPage() {
         </dl>
       </Section>
     </div>
+  );
+}
+
+/** Sites the website agent customized, each with its own on/off switch. */
+function SiteRows() {
+  const [sites, { refetch }] = createResource(() => api.listSites());
+  onCleanup(watchTopic("sites", () => void refetch()));
+  const size = (n: number) => (n ? `${n.toLocaleString()} chars` : "none");
+  return (
+    <For each={sites()}>
+      {(site) => (
+        <Row label={site.host} description={`CSS ${size(site.css.length)} · JS ${size(site.js.length)}`}>
+          <div {...stylex.attrs(styles.siteControls)} data-site={site.host}>
+            <Toggle checked={site.enabled} onChange={(enabled) => void api.saveSite(site.host, { enabled })} />
+            <button
+              type="button"
+              title="Remove customizations"
+              onClick={async () => {
+                if (await confirmDialog(`Remove all customizations of ${site.host}?`, { confirmLabel: "Remove", danger: true })) {
+                  await api.deleteSite(site.host);
+                }
+              }}
+              {...stylex.attrs(styles.iconButton)}
+            >
+              <Icon name="trash" size={15} />
+            </button>
+          </div>
+        </Row>
+      )}
+    </For>
   );
 }
 
@@ -351,6 +384,19 @@ const styles = stylex.create({
   control: { display: "flex", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
   controlWide: { width: "100%" },
   select: { width: 220 },
+  siteControls: { display: "flex", alignItems: "center", gap: space.sm },
+  iconButton: {
+    display: "grid",
+    placeItems: "center",
+    width: 30,
+    height: 30,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.danger },
+    cursor: "pointer",
+  },
   textInput: {
     width: 280,
     height: 34,

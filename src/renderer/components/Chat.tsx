@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
+import { createEffect, createSignal, For, Match, on, Show, Switch, type JSX } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
 import { settings } from "../lib/settings";
 import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
@@ -8,9 +8,13 @@ import { BackendDrawer, BackendPill, useRuntime } from "./BackendPanel";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 
-export function Chat(props: { appId: string }) {
+export function Chat(props: {
+  appId: string;
+  /** Web tabs: the website agent, with picked elements above the composer. */
+  web?: { top: JSX.Element; tools: JSX.Element; onSend: (prompt: string) => void };
+}) {
   const state = () => states[props.appId]!;
-  const runtime = useRuntime(() => props.appId);
+  const runtime = useRuntime(() => (props.web ? null : props.appId));
   const [backendOpen, setBackendOpen] = createSignal(false);
   let scroller!: HTMLDivElement;
 
@@ -25,7 +29,7 @@ export function Chat(props: { appId: string }) {
     <aside {...stylex.attrs(styles.root)} data-agent-panel>
       <header {...stylex.attrs(styles.header)}>
         <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
-        <span {...stylex.attrs(styles.headerTitle)}>Agent</span>
+        <span {...stylex.attrs(styles.headerTitle)}>{props.web ? "Website agent" : "Agent"}</span>
         <BackendPill appId={props.appId} runtime={runtime()} open={backendOpen()} onToggle={() => setBackendOpen((o) => !o)} />
         <button
           type="button"
@@ -41,6 +45,12 @@ export function Chat(props: { appId: string }) {
         {(info) => <BackendDrawer appId={props.appId} runtime={info()} />}
       </Show>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
+        <Show when={props.web && !state().messages.length && !state().running}>
+          <p {...stylex.attrs(styles.hint)}>
+            Ask about this page, or pick elements with the crosshair and say how they should look or work. Changes are saved
+            as customizations for the site.
+          </p>
+        </Show>
         <For each={state().messages.filter((m) => m.role !== "tool" || settings().agent.showToolMessages)}>
           {(m) => <Message message={m} />}
         </For>
@@ -54,7 +64,10 @@ export function Chat(props: { appId: string }) {
         <Composer
           appId={props.appId}
           running={state().running}
-          onSend={(prompt) => sendPrompt(props.appId, prompt)}
+          placeholder={props.web ? "Ask about or change this page…" : undefined}
+          top={props.web?.top}
+          tools={props.web?.tools}
+          onSend={(prompt) => (props.web ? props.web.onSend(prompt) : sendPrompt(props.appId, prompt))}
           onStop={() => stopAgent(props.appId)}
         />
       </div>
@@ -77,7 +90,48 @@ function Message(props: { message: ChatMessage }) {
       <Match when={props.message.role === "error"}>
         <p {...stylex.attrs(styles.errorMsg)}>{props.message.content}</p>
       </Match>
+      <Match when={props.message.role === "context"}>
+        <PickedContext content={props.message.content} />
+      </Match>
     </Switch>
+  );
+}
+
+/** The elements the user picked with a message (stored as JSON). */
+function PickedContext(props: { content: string }) {
+  const picked = () => {
+    try {
+      return (JSON.parse(props.content) as { selection: { selector: string; tag: string; text: string }[] }).selection;
+    } catch {
+      return [];
+    }
+  };
+  return (
+    <div {...stylex.attrs(styles.context)}>
+      <For each={picked()}>
+        {(el) => (
+          <span {...stylex.attrs(styles.chip)} title={el.selector}>
+            <Icon name="crosshair" size={12} />
+            {el.text ? `${el.tag} “${el.text.slice(0, 30)}${el.text.length > 30 ? "…" : ""}”` : el.selector}
+          </span>
+        )}
+      </For>
+    </div>
+  );
+}
+
+/** A picked element shown as a removable chip. */
+export function Chip(props: { label: string; title?: string; onRemove?: () => void }) {
+  return (
+    <span {...stylex.attrs(styles.chip)} title={props.title} data-picked-chip>
+      <Icon name="crosshair" size={12} />
+      <span {...stylex.attrs(styles.chipLabel)}>{props.label}</span>
+      <Show when={props.onRemove}>
+        <button type="button" title="Remove" onClick={() => props.onRemove!()} {...stylex.attrs(styles.chipRemove)}>
+          <Icon name="x" size={12} />
+        </button>
+      </Show>
+    </span>
   );
 }
 
@@ -183,6 +237,35 @@ const styles = stylex.create({
   assistant: { ...bubble },
   tool: { ...bubble, fontSize: font.xs, color: colors.success },
   errorMsg: { ...bubble, fontSize: font.sm, color: colors.danger },
+  hint: { ...bubble, fontSize: font.sm, color: colors.muted },
+  context: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 4, marginBottom: -8 },
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    maxWidth: "100%",
+    height: 22,
+    paddingInline: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSoft,
+    color: colors.text,
+    fontSize: font.xs,
+    whiteSpace: "nowrap",
+  },
+  chipLabel: { overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 },
+  chipRemove: {
+    display: "grid",
+    placeItems: "center",
+    width: 16,
+    height: 16,
+    marginRight: -3,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.full,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: colors.muted,
+    cursor: "pointer",
+  },
   working: {
     ...bubble,
     fontSize: font.sm,

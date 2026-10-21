@@ -1,13 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
-import { onMount, Show } from "solid-js";
+import { For, onMount, Show } from "solid-js";
 import { CatalogPage } from "./components/CatalogPage";
 import { ConfirmHost } from "./components/ConfirmDialog";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { Button } from "./components/ui";
+import { WebTab } from "./components/WebTab";
 import { Workspace } from "./components/Workspace";
 import { loadSettings } from "./lib/settings";
-import { apps, CATALOG_VIEW, loadApps, newApp, selectedId, SETTINGS_VIEW } from "./lib/store";
+import { apps, CATALOG_VIEW, isWebTab, loadApps, newApp, newWebTab, openWebTabs, selectedId, SETTINGS_VIEW } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -22,14 +23,17 @@ export default function App() {
       <ConfirmHost />
       <div {...stylex.attrs(styles.content)}>
         <Show
-          when={selectedId()}
+          when={!isWebTab(selectedId()) && selectedId()}
           keyed
           fallback={
             <div {...stylex.attrs(styles.empty)}>
-              <p>{apps.length ? "Select an app" : "No apps yet"}</p>
-              <Button variant="primary" onClick={() => newApp()}>
-                + New app
-              </Button>
+              <p>{apps.length ? "Select a tab" : "Nothing open yet"}</p>
+              <div {...stylex.attrs(styles.emptyActions)}>
+                <Button variant="primary" onClick={() => newApp()}>
+                  + New app
+                </Button>
+                <Button onClick={() => newWebTab()}>+ New web tab</Button>
+              </div>
             </div>
           }
         >
@@ -37,6 +41,14 @@ export default function App() {
             id === CATALOG_VIEW ? <CatalogPage /> : id === SETTINGS_VIEW ? <SettingsPage /> : <Workspace appId={id} />
           }
         </Show>
+        {/* Web tabs stay mounted (hidden) so pages keep their state between visits. */}
+        <For each={openWebTabs()}>
+          {(tab) => (
+            <div {...stylex.attrs(styles.webLayer, selectedId() !== tab.id && styles.webHidden)}>
+              <WebTab appId={tab.id} active={selectedId() === tab.id} />
+            </div>
+          )}
+        </For>
       </div>
     </div>
   );
@@ -51,7 +63,11 @@ const styles = stylex.create({
     color: colors.text,
     backgroundColor: colors.bg,
   },
-  content: { flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" },
+  content: { position: "relative", flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" },
+  webLayer: { position: "absolute", inset: 0, zIndex: 1, backgroundColor: colors.bg },
+  // Not display:none: webviews must keep their size to stay rendered.
+  webHidden: { visibility: "hidden", pointerEvents: "none", zIndex: 0 },
+  emptyActions: { display: "flex", gap: space.sm },
   empty: {
     display: "flex",
     flexDirection: "column",

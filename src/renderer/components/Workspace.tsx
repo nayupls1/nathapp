@@ -1,9 +1,9 @@
 // The content area for the selected app: a prompt for new apps, otherwise the
 // rendered app next to the agent chat.
 import * as stylex from "@stylexjs/stylex";
-import { For, onCleanup, onMount, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import { settings } from "../lib/settings";
-import { isAgentCollapsed, sendPrompt, states, stopAgent, toggleAgent } from "../lib/store";
+import { isAgentCollapsed, sendPrompt, states, stopAgent } from "../lib/store";
 import { appThemeVars, systemDark } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AppView } from "./AppView";
@@ -16,25 +16,10 @@ const examples = [
   "A reading list with status (to read, reading, done) and ratings",
 ];
 
-/** Ctrl/Cmd+J toggles the agent panel of the given tab. */
-export function useAgentShortcut(appId: () => string) {
-  onMount(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "j") {
-        e.preventDefault();
-        toggleAgent(appId());
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    onCleanup(() => window.removeEventListener("keydown", onKey));
-  });
-}
-
 export function Workspace(props: { appId: string }) {
   const state = () => states[props.appId];
   const isNew = () => !state()?.spec && !state()?.messages.length;
   const collapsed = () => isAgentCollapsed(props.appId);
-  useAgentShortcut(() => props.appId);
   // The app's own theme (if the agent gave it one) applies to the app area only.
   const appTheme = () =>
     settings().appThemes ? appThemeVars(state()?.spec?.theme, settings().theme, systemDark()) : {};

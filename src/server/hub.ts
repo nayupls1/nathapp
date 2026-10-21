@@ -27,10 +27,12 @@ export const topics = {
   app: (appId: string) => `app:${appId}`,
   channel: (appId: string, name: string) => `channel:${appId}:${name}`,
   backend: (appId: string) => `backend:${appId}`,
+  /** Site customizations for web tabs changed. */
+  sites: "sites",
 };
 
 const validTopic = (topic: unknown): topic is string =>
-  typeof topic === "string" && topic.length < 300 && /^(app|channel|backend):/.test(topic);
+  typeof topic === "string" && topic.length < 300 && (/^(app|channel|backend):/.test(topic) || topic === topics.sites);
 
 export function attachHub(s: Server<SocketData>) {
   server = s;
@@ -48,6 +50,10 @@ export function dataChanged(appId: string, tables: string[]) {
 
 export function specChanged(appId: string) {
   publish({ type: "spec", topic: topics.app(appId), appId });
+}
+
+export function siteChanged(host: string) {
+  publish({ type: "site", topic: topics.sites, host });
 }
 
 export const websocket: WebSocketHandler<SocketData> = {

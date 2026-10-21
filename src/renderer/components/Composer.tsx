@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { createSignal, For, onMount, Show } from "solid-js";
+import { createSignal, For, onMount, Show, type JSX } from "solid-js";
 import type { Effort } from "../../shared/api";
 import { loadModels, models, setAgentOptions, states } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -70,6 +70,10 @@ export function Composer(props: {
   placeholder?: string;
   autofocus?: boolean;
   large?: boolean;
+  /** Shown above the text field (e.g. picked elements). */
+  top?: JSX.Element;
+  /** Extra buttons next to the model pickers. */
+  tools?: JSX.Element;
   onSend: (prompt: string) => void;
   onStop: () => void;
 }) {
@@ -91,6 +95,7 @@ export function Composer(props: {
 
   return (
     <div {...stylex.attrs(styles.root, props.large && styles.large)}>
+      {props.top}
       <textarea
         ref={(el) => {
           textarea = el;
@@ -112,7 +117,10 @@ export function Composer(props: {
         {...stylex.attrs(styles.input, props.large && styles.inputLarge)}
       />
       <div {...stylex.attrs(styles.actions)}>
-        <AgentOptions appId={props.appId} />
+        <div {...stylex.attrs(styles.options)}>
+          {props.tools}
+          <AgentOptions appId={props.appId} />
+        </div>
         <Show
           when={props.running}
           fallback={

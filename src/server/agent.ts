@@ -3,7 +3,7 @@
 // (subscription), so no API key is involved.
 import { createSdkMcpServer, query, tool, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import type { ChatEvent, Effort } from "../shared/api";
+import type { ChatEvent, Effort, PageContext } from "../shared/api";
 import { AppSpec, checkReferences, Value, Where } from "../shared/spec";
 import { DataError, migrate, rowCounts, runData } from "./appdata";
 import {
@@ -27,6 +27,7 @@ import { clearFrameErrors, frameErrors } from "./frames";
 import { specChanged } from "./hub";
 import { isIcon, searchIcons } from "./icons";
 import { buildSystemPrompt } from "./prompt";
+import { buildWebPrompt, contextSummary, createWebTools, webToolNames, withPageContext } from "./webagent";
 
 type Emit = (event: ChatEvent) => void;
 
@@ -303,28 +304,38 @@ function errorText(err: unknown) {
 export interface ChatOptions {
   model?: string;
   effort?: Effort;
+  /** Web tabs: the page and what the user picked on it. */
+  page?: PageContext;
 }
 
-export async function runChat(appId: string, prompt: string, emit: Emit, { model, effort }: ChatOptions = {}) {
+export async function runChat(appId: string, prompt: string, emit: Emit, { model, effort, page }: ChatOptions = {}) {
   const app = getApp(appId);
   if (!app) throw new Error("App not found");
   if (running.has(appId)) throw new Error("The agent is already working on this app");
 
   const abortController = new AbortController();
   running.set(appId, abortController);
+  // Web tabs get the website agent: page tools only, no files or shell.
+  const web = app.kind === "web";
+  if (web && page?.selection.length) emit({ type: "message", message: addMessage(appId, "context", contextSummary(page)) });
   emit({ type: "message", message: addMessage(appId, "user", prompt) });
+  const { instructions, webInstructions } = getSettings().agent;
 
   try {
     const messages = query({
-      prompt,
+      prompt: web ? withPageContext(prompt, page) : prompt,
       options: {
         // Not snapshotted into the session: the catalog evolves, and resumed
         // conversations about older apps must see the current one.
-        systemPrompt: { type: "custom", prompt: buildSystemPrompt(getSettings().agent.instructions), snapshot: false },
+        systemPrompt: {
+          type: "custom",
+          prompt: web ? buildWebPrompt(webInstructions) : buildSystemPrompt(instructions),
+          snapshot: false,
+        },
         resume: app.sessionId ?? undefined,
-        tools: [], // no built-in tools (files, shell, web): only gApp's catalog
-        mcpServers: { gapp: createTools(appId, emit) },
-        allowedTools: toolNames,
+        tools: [], // no built-in tools (files, shell, web): only gApp's own
+        mcpServers: web ? { web: createWebTools(appId, emit) } : { gapp: createTools(appId, emit) },
+        allowedTools: web ? webToolNames : toolNames,
         settingSources: [], // ignore the user's CLAUDE.md, skills, settings
         cwd: agentDir,
         env: agentEnv(),

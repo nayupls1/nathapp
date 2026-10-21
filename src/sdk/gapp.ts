@@ -42,6 +42,7 @@ export type ServerMessage =
   | { type: "spec"; topic: string; appId: string }
   | { type: "message"; topic: string; data: unknown }
   | { type: "backend"; topic: string; appId: string; status?: unknown; log?: string }
+  | { type: "site"; topic: string; host: string }
   | { type: "rpc"; id: number; method: string; params: unknown };
 
 // --- Socket ----------------------------------------------------------------------

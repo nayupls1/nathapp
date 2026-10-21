@@ -10,6 +10,8 @@ import type {
   DataResponse,
   HealthResponse,
   ModelOption,
+  SiteOverride,
+  TabKind,
 } from "../../shared/api";
 
 const url = (path: string) => `${window.gapp.serverUrl}${path}`;
@@ -32,7 +34,15 @@ export const api = {
   getSettings: () => request<Settings>("/api/settings"),
   saveSettings: (settings: Settings) => request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
   listApps: () => request<AppSummary[]>("/api/apps"),
-  createApp: () => request<AppSummary>("/api/apps", { method: "POST" }),
+  createApp: (body: { kind?: TabKind; url?: string } = {}) =>
+    request<AppSummary>("/api/apps", { method: "POST", body: JSON.stringify(body) }),
+  updatePage: (id: string, page: { url?: string; title?: string; favicon?: string | null }) =>
+    request<AppSummary>(`/api/apps/${id}/page`, { method: "PATCH", body: JSON.stringify(page) }),
+  listSites: () => request<SiteOverride[]>("/api/sites"),
+  getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),
+  saveSite: (host: string, fields: Partial<Pick<SiteOverride, "css" | "js" | "enabled">>) =>
+    request<SiteOverride>(`/api/sites/${encodeURIComponent(host)}`, { method: "PUT", body: JSON.stringify(fields) }),
+  deleteSite: (host: string) => request<void>(`/api/sites/${encodeURIComponent(host)}`, { method: "DELETE" }),
   getApp: (id: string) => request<AppDetail>(`/api/apps/${id}`),
   renameApp: (id: string, name: string) =>
     request<AppSummary>(`/api/apps/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),

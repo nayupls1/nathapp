@@ -47,6 +47,23 @@ const electron = launchElectron({ GAPP_USER_DATA_DIR: profile, GAPP_OFFSCREEN: v
   "--disable-renderer-backgrounding",
 ]);
 
+// A small website for the web tab checks.
+const site = Bun.serve({
+  hostname: "127.0.0.1",
+  port: 0,
+  fetch(req) {
+    const path = new URL(req.url).pathname;
+    const body =
+      path === "/second"
+        ? `<title>Second page</title><h1>Second</h1>`
+        : `<title>Test site</title><main><h1 id="headline">Hello from the test site</h1><p class="lead">Plain text</p>
+           <button class="cta">Buy now</button> <a id="popup" href="/second" target="_blank">open popup</a></main>`;
+    return new Response(`<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,">${body}`, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  },
+});
+
 const results: { name: string; ok: boolean; detail?: string }[] = [];
 const pageErrors: string[] = [];
 let page: Page | undefined;
@@ -88,11 +105,18 @@ async function waitForValue<T>(fn: () => Promise<T | undefined>, timeoutMs = 10_
   }
 }
 
+/** Opens the sidebar's "New tab" menu and picks an entry. */
+async function newTab(label: "New app" | "New web tab") {
+  await click("[data-new-tab]");
+  await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "new tab menu" });
+  await click("[data-context-menu] button", label);
+}
+
 const click = (selector: string, text?: string) =>
   page!.eval(`(() => {
     const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
     const el = ${text ? `els.find((e) => e.textContent.includes(${JSON.stringify(text)}))` : "els[0]"};
-    if (!el) throw new Error("not found: ${selector} ${text ?? ""}");
+    if (!el) throw new Error(${JSON.stringify(`not found: ${selector} ${text ?? ""}`)});
     el.click();
     return true;
   })()`);
@@ -180,7 +204,8 @@ try {
     // The example counts open tasks live and has a button that inserts one.
     const frameUrl = "/frame/catalog/live-counter";
     const count = () => page!.evalIn<string>(frameUrl, `document.getElementById("count").textContent`);
-    const before = Number(await waitForValue(async () => ((await count()).match(/^\d+$/) ? await count() : undefined)));
+    // The frame loads after the catalog renders; on a cold start that can take a while.
+    const before = Number(await waitForValue(async () => ((await count()).match(/^\d+$/) ? await count() : undefined), 30_000));
     await page!.evalIn(frameUrl, `document.getElementById("add").click(), true`);
     await waitForValue(async () => (Number(await count()) === before + 1 ? true : undefined));
     await page!.waitFor(
@@ -205,7 +230,7 @@ try {
   });
 
   await check("new app screen with model and effort pickers", async () => {
-    await click("nav button", "New app");
+    await newTab("New app");
     await page!.waitFor(`document.body.innerText.includes("What do you want to build?")`);
     const options = await page!.waitFor<number>(`document.querySelector('select[title="Model"]')?.options.length > 1 && document.querySelector('select[title="Model"]').options.length`, {
       timeoutMs: 20_000,
@@ -307,7 +332,7 @@ try {
 
   await check("custom backend: runs, button calls it, data arrives live", async () => {
     const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
-    await click("nav button", "New app");
+    await newTab("New app");
     const appId = await page!.waitFor<string>(
       `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
       { label: "new app in the sidebar" },
@@ -363,6 +388,77 @@ try {
     await page!.waitFor(`!!document.querySelector("[data-agent-panel]")`, { label: "agent panel shown" });
   });
 
+  await check("web tab: browse, pick an element, site customization applies", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+    await newTab("New web tab");
+    const tabId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "web tab in the sidebar" },
+    );
+    const tab = `[data-web-tab="${tabId}"]`;
+    // In the page: runs code inside the tab's webview.
+    const inPage = <T>(code: string, gesture = false) =>
+      page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)}, ${gesture})`);
+
+    await page!.waitFor(`!!document.querySelector('${tab} [data-address]')`, { label: "address bar" });
+    await page!.eval(`(() => {
+      const input = document.querySelector('${tab} [data-address]');
+      input.value = "${site.url.origin}/";
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      input.form.requestSubmit();
+      return true;
+    })()`);
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${tabId}"]')?.innerText.includes("Test site")`, {
+      timeoutMs: 20_000,
+      label: "page title as the tab name",
+    });
+    await waitForValue(async () => ((await inPage<string>(`document.querySelector("h1")?.textContent`)) ? true : undefined));
+
+    // Pick the button: the picker resolves on a click inside the page.
+    await click(`${tab} [data-pick-element]`);
+    await waitForValue(async () => ((await inPage<boolean>(`!!window.__gappPicker`)) ? true : undefined));
+    await inPage(`document.querySelector(".cta").click(), true`);
+    await page!.waitFor(`document.querySelector('${tab} [data-picked-chip]')?.innerText.includes("Buy now")`, {
+      label: "picked element chip",
+    });
+    const outlined = await inPage<boolean>(`document.querySelector(".cta").hasAttribute("data-gapp-picked")`);
+    if (!outlined) throw new Error("picked element isn't marked");
+
+    // A customization (as the agent would save it) applies live: CSS now, JS after a reload.
+    await page!.eval(`fetch(window.gapp.serverUrl + "/api/sites/127.0.0.1", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ css: "h1 { color: rgb(220, 20, 60) !important }", js: "onElement('.lead', (el) => { el.textContent = 'Changed by override'; });" }),
+    }).then((r) => r.ok)`);
+    await waitForValue(
+      async () =>
+        (await inPage<string>(`getComputedStyle(document.querySelector("h1")).color + "|" + document.querySelector(".lead").textContent`)) ===
+        "rgb(220, 20, 60)|Changed by override"
+          ? true
+          : undefined,
+      15_000,
+    );
+    await page!.waitFor(`!!document.querySelector('${tab} [data-customized="on"]')`, { label: "customized indicator" });
+    await shot("web-tab.png");
+
+    // Links that open a new window become web tabs.
+    await inPage(`document.querySelector("#popup").click(), true`, true);
+    await page!.waitFor(`[...document.querySelectorAll("nav li")].some((li) => li.innerText.includes("Second page"))`, {
+      timeoutMs: 15_000,
+      label: "popup opened as a new tab",
+    });
+
+    // Turning customizations off in the tab's menu removes them.
+    await click(`${tab} [data-customized]`);
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`);
+    await click("[data-context-menu] button", "Turn off");
+    await waitForValue(
+      async () => ((await inPage<string>(`getComputedStyle(document.querySelector("h1")).color`)) !== "rgb(220, 20, 60)" ? true : undefined),
+      15_000,
+    );
+    return "picked, customized, popup";
+  });
+
   await check("settings: theme presets apply and prompt additions are saved", async () => {
     await click("nav button", "Settings");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
@@ -395,6 +491,7 @@ try {
   });
 } finally {
   page?.close();
+  site.stop(true);
   electron.kill();
   await electron.exited;
   rmSync(profile, { recursive: true, force: true });

@@ -1,7 +1,8 @@
-import { app, BrowserWindow, dialog, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, net, protocol } from "electron";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { startServer, type ServerHandle } from "./server";
+import { guardWindow, setupWebTabs } from "./web";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
@@ -23,6 +24,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let server: ServerHandle | undefined;
+let mainWindow: BrowserWindow | undefined;
 
 function registerAppProtocol() {
   const root = join(distDir, "renderer");
@@ -47,6 +49,8 @@ function createWindow(serverUrl: string) {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      // Web tabs are <webview> guests (locked down in web.ts).
+      webviewTag: true,
       // Agent runs stream into the window while it's in the background.
       backgroundThrottling: false,
       // Tests render without a visible window (always painted, nothing pops up).
@@ -58,11 +62,11 @@ function createWindow(serverUrl: string) {
     if (process.env.GAPP_OFFSCREEN !== "1") win.show();
   });
 
-  // Open external links in the user's browser rather than inside the app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http:") || url.startsWith("https:")) shell.openExternal(url);
-    return { action: "deny" };
+  mainWindow = win;
+  win.on("closed", () => {
+    if (mainWindow === win) mainWindow = undefined;
   });
+  guardWindow(win, rendererOrigin);
 
   if (devServerUrl) {
     win.loadURL(devServerUrl);
@@ -74,6 +78,7 @@ function createWindow(serverUrl: string) {
 
 app.whenReady().then(async () => {
   if (!devServerUrl) registerAppProtocol();
+  setupWebTabs(() => mainWindow);
 
   try {
     server = await startServer(rendererOrigin);

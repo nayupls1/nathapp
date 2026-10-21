@@ -32,17 +32,23 @@ import {
   deleteApp,
   duplicateApp,
   getApp,
+  deleteOverride,
+  getOverride,
   getSettings,
   listApps,
   listMessages,
+  listOverrides,
+  saveOverride,
   saveSettings,
   updateApp,
+  updateWebTab,
 } from "./db";
 import { clearFrameErrors, findCustom, frameHtml, frameErrors, reportFrameError } from "./frames";
-import { attachHub, dataChanged, specChanged, websocket, type SocketData } from "./hub";
+import { attachHub, dataChanged, siteChanged, specChanged, websocket, type SocketData } from "./hub";
 import { isIcon } from "./icons";
 import { listModels } from "./models";
 import { sdkJs } from "./sdk";
+import { PageContextInput } from "./webagent";
 
 // Every write to app data is broadcast to realtime subscribers.
 onDataChange(dataChanged);
@@ -219,7 +225,23 @@ const server = Bun.serve<SocketData>({
 
     "/api/apps": {
       GET: () => json(listApps()),
-      POST: () => json(createApp(), { status: 201 }),
+      // Body (optional): { kind: "web", url? } for a web tab.
+      POST: async (req) => {
+        const raw = await req.text();
+        let body: { kind?: unknown; url?: unknown };
+        try {
+          body = raw ? JSON.parse(raw) : {};
+        } catch {
+          return badRequest("Invalid JSON");
+        }
+        if (body.kind !== undefined && body.kind !== "app" && body.kind !== "web") return badRequest('kind must be "app" or "web"');
+        if (body.url !== undefined && (typeof body.url !== "string" || !/^https?:\/\//i.test(body.url))) {
+          return badRequest("url must be an http(s) URL");
+        }
+        return json(createApp(body.kind ?? "app", body.kind === "web" ? ((body.url as string | undefined) ?? null) : null), {
+          status: 201,
+        });
+      },
     },
 
     "/api/apps/:id": {
@@ -247,6 +269,40 @@ const server = Bun.serve<SocketData>({
       },
     },
 
+    // Web tabs report navigation: URL, page title (renames the tab) and favicon.
+    "/api/apps/:id/page": {
+      PATCH: async (req) => {
+        const body = (await req.json()) as { url?: unknown; title?: unknown; favicon?: unknown };
+        const str = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : undefined);
+        const tab = updateWebTab(req.params.id, {
+          url: str(body.url, 8000),
+          title: str(body.title, 1000),
+          favicon: body.favicon === null ? null : str(body.favicon, 8000),
+        });
+        return tab ? json(tab) : notFound();
+      },
+    },
+
+    // Site customizations (CSS/JS) for web tabs, by hostname.
+    "/api/sites": { GET: () => json(listOverrides()) },
+    "/api/sites/:host": {
+      GET: (req) => json(getOverride(req.params.host)),
+      PUT: async (req) => {
+        const body = (await req.json()) as { css?: unknown; js?: unknown; enabled?: unknown };
+        if (body.css !== undefined && typeof body.css !== "string") return badRequest("css must be a string");
+        if (body.js !== undefined && typeof body.js !== "string") return badRequest("js must be a string");
+        if (body.enabled !== undefined && typeof body.enabled !== "boolean") return badRequest("enabled must be a boolean");
+        const saved = saveOverride(req.params.host, body as { css?: string; js?: string; enabled?: boolean });
+        siteChanged(saved.host);
+        return json(saved);
+      },
+      DELETE: (req) => {
+        deleteOverride(req.params.host);
+        siteChanged(req.params.host);
+        return noContent();
+      },
+    },
+
     // Replaces an app's spec directly (import, tests). The agent uses update_app.
     "/api/apps/:id/spec": {
       PUT: async (req) => {
@@ -270,8 +326,10 @@ const server = Bun.serve<SocketData>({
         if (typeof body.prompt !== "string" || !body.prompt.trim()) return badRequest("prompt is required");
         if (body.model !== undefined && typeof body.model !== "string") return badRequest("invalid model");
         if (body.effort !== undefined && !efforts.includes(body.effort)) return badRequest("invalid effort");
+        const page = body.page === undefined ? undefined : PageContextInput.safeParse(body.page);
+        if (page && !page.success) return badRequest(`invalid page context: ${z.prettifyError(page.error)}`);
         const prompt = body.prompt.trim();
-        const options = { model: body.model || undefined, effort: body.effort };
+        const options = { model: body.model || undefined, effort: body.effort, page: page?.data };
         updateApp(appId, { model: options.model ?? null, effort: options.effort ?? null });
 
         // NDJSON stream of ChatEvents. The run continues even if the client
