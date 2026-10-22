@@ -2,6 +2,7 @@
 // server), browser shortcuts and site customization updates can reach them.
 import { createStore } from "solid-js/store";
 import type { SiteOverride, WebShortcut } from "../../shared/api";
+import { hostOf } from "../../shared/web";
 import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { isTab, newWebTab, selectedId, toggleAgent } from "./store";
@@ -46,7 +47,14 @@ handleRpc("page.eval", ({ tabId, code }) => page(tabId).eval(String(code)));
 handleRpc("page.capture", ({ tabId }) => page(tabId).capture());
 handleRpc("page.navigate", ({ tabId, url }) => page(tabId).navigate(String(url)));
 handleRpc("page.reload", ({ tabId }) => page(tabId).reload());
-handleRpc("page.applyOverride", ({ tabId }) => page(tabId).applyOverride());
+// The agent just saved the site's customization: apply the fresh version (the
+// realtime notification may not have arrived yet).
+handleRpc("page.applyOverride", async ({ tabId }) => {
+  const handle = page(tabId);
+  const host = hostOf(handle.info().url);
+  if (host) setOverrides(host, await api.getSite(host));
+  return handle.applyOverride();
+});
 
 // --- Site customizations ---------------------------------------------------------
 

@@ -65,6 +65,7 @@ const site = Bun.serve({
 });
 
 const results: { name: string; ok: boolean; detail?: string }[] = [];
+let webTabId: string | undefined;
 const pageErrors: string[] = [];
 let page: Page | undefined;
 const skippedShots: string[] = [];
@@ -261,7 +262,7 @@ try {
         return true;
       })()`);
       await page!.waitFor(`!!document.querySelector("aside textarea")`, { label: "chat to open" });
-      await page!.waitFor(`!document.querySelector("aside")?.innerText.includes("Working…") && document.querySelector("aside button")?.textContent === "Send"`, {
+      await page!.waitFor(`!document.querySelector("aside")?.innerText.includes("Working…") && [...document.querySelectorAll("aside button")].some((b) => b.textContent === "Send")`, {
         timeoutMs: 240_000,
         label: "agent to finish",
       });
@@ -395,6 +396,7 @@ try {
       `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
       { label: "web tab in the sidebar" },
     );
+    webTabId = tabId;
     const tab = `[data-web-tab="${tabId}"]`;
     // In the page: runs code inside the tab's webview.
     const inPage = <T>(code: string, gesture = false) =>
@@ -458,6 +460,53 @@ try {
     );
     return "picked, customized, popup";
   });
+
+  if (agentPrompt && webTabId) {
+    await check("website agent customizes a picked element", async () => {
+      const tab = `[data-web-tab="${webTabId}"]`;
+      const inPage = <T>(code: string) =>
+        page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+      await click(`nav li[data-app-id="${webTabId}"]`);
+      await click(`${tab} [data-pick-element]`);
+      await waitForValue(async () => ((await inPage<boolean>(`!!window.__gappPicker`)) ? true : undefined));
+      await inPage(`document.querySelector("#headline").click(), true`);
+      await page!.waitFor(`!!document.querySelector('${tab} [data-picked-chip]')`, { label: "picked heading" });
+      await page!.eval(`(() => {
+        const root = document.querySelector('${tab} [data-agent-panel]');
+        const select = (title, value) => {
+          const el = root.querySelector('select[title="' + title + '"]');
+          if (![...el.options].some((o) => o.value === value)) return;
+          el.value = value;
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        };
+        select("Model", "haiku");
+        select("Effort", "low");
+        const t = root.querySelector("textarea");
+        t.value = "Make this heading green (#16a34a) and give it a dashed border underneath.";
+        t.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        t.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        return true;
+      })()`);
+      await page!.waitFor(`document.querySelector('${tab} [data-agent-panel] button')?.textContent !== "Send"`, { label: "agent to start" }).catch(() => {});
+      await page!.waitFor(
+        `[...document.querySelectorAll('${tab} [data-agent-panel] button')].some((b) => b.textContent === "Send") && !document.querySelector('${tab} [data-agent-panel]').innerText.includes("Working…")`,
+        { timeoutMs: 240_000, label: "agent to finish" },
+      );
+      const chat = await page!.eval<string>(`document.querySelector('${tab} [data-agent-panel]').innerText`);
+      const color = await waitForValue(async () => {
+        const c = await inPage<string>(`getComputedStyle(document.querySelector("#headline")).color`);
+        return c === "rgb(22, 163, 74)" ? c : undefined;
+      }, 15_000).catch(() => undefined);
+      await shot("web-agent.png");
+      if (!color) throw new Error(`heading isn't green:\n${chat.slice(-800)}`);
+      const saved = await page!.eval<{ css: string; js: string } | null>(
+        `fetch(window.gapp.serverUrl + "/api/sites/127.0.0.1").then((r) => r.json())`,
+      );
+      if (!saved?.css.includes("16a34a")) throw new Error("customization wasn't saved");
+      const reply = await page!.eval<string>(`[...document.querySelectorAll('${tab} [data-agent-panel] p')].at(-1)?.innerText ?? ""`);
+      return reply.slice(0, 140);
+    });
+  }
 
   await check("settings: theme presets apply and prompt additions are saved", async () => {
     await click("nav button", "Settings");
