@@ -129,7 +129,6 @@ export const ClaudeDriver: ProviderDriver = {
         // The website agent only gets gApp's tools (pages, customizations).
         ...(workspace ? {} : { tools: [] }),
         mcpServers: { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } },
-        allowedTools: [`mcp__${input.mcp.name}`],
         settingSources: [], // ignore the user's CLAUDE.md, skills, settings
         cwd: input.cwd,
         env: claudeEnv(input.env),

@@ -50,7 +50,7 @@ function NewApp(props: { appId: string }) {
   };
 
   return (
-    <div {...stylex.attrs(styles.newRoot)}>
+    <div {...stylex.attrs(styles.newRoot)} data-app-tab={props.appId}>
       <div {...stylex.attrs(styles.newInner)}>
         <h1 {...stylex.attrs(styles.title)}>What do you want to build?</h1>
         <p {...stylex.attrs(styles.subtitle)}>

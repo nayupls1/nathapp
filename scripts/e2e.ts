@@ -435,7 +435,8 @@ try {
       if (!color) throw new Error(`heading isn't green:\n${chat.slice(-800)}`);
       const saved = await apiCall<{ css: string; js: string } | null>("/api/sites/127.0.0.1");
       if (!saved?.css.includes("16a34a")) throw new Error("customization wasn't saved");
-      return chat.trim().split("\n").at(-3)?.slice(0, 140) ?? "";
+      const reply = await page!.eval<string>(`[...document.querySelectorAll('${tab} [data-agent-panel] .gapp-markdown')].at(-1)?.innerText ?? ""`);
+      return reply.slice(0, 140);
     });
   }
 
