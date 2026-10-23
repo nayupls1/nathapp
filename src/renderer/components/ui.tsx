@@ -1,4 +1,4 @@
-// Small styled primitives shared by the host UI and the generated-app catalog.
+// Small styled primitives for the host UI.
 import * as stylex from "@stylexjs/stylex";
 import { splitProps, type JSX } from "solid-js";
 import { colors, font, radius, space } from "../theme.stylex";

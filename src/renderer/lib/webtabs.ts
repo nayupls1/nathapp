@@ -112,7 +112,7 @@ function runShortcut(name: WebShortcut) {
 
 // From web pages (keys pressed while a page has focus) and Ctrl+R in gApp itself.
 window.gapp.web.onShortcut(runShortcut);
-// Links that want a new window (pages, custom components, catalog links).
+// Links that want a new window (web pages, app previews, chat links).
 window.gapp.web.onOpenTab((url) => void newWebTab(url));
 
 window.addEventListener("keydown", (e) => {

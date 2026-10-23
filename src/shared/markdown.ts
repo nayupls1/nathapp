@@ -1,4 +1,4 @@
-// Minimal Markdown → HTML for the "markdown" catalog component. Input is
+// Minimal Markdown → HTML for agent replies. Input is
 // escaped first, so the agent (or data) can never inject markup; only the
 // constructs below are produced. Links must be http(s) or mailto.
 
