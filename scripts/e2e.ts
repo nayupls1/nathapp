@@ -462,6 +462,8 @@ try {
     });
     const rows = await page!.eval<string[]>(`[...document.querySelectorAll("[data-provider-row]")].map((r) => r.dataset.providerRow + ":" + r.querySelector("[data-provider-state]")?.dataset.providerState)`);
     if (rows.length !== 3) throw new Error(`provider rows: ${rows.join(", ")}`);
+    await page!.eval(`document.querySelector("[data-provider-row]").scrollIntoView({ block: "start" }), true`);
+    await shot("settings-providers.png");
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
     return `${rows.join(", ")}; background ${await rootBg()} after reset`;

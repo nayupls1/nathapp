@@ -133,7 +133,7 @@ export function SettingsPage() {
             name="webInstructions"
           />
         </Row>
-        <Row label="Show tool activity" description='Lines like "Updated app" or "Added 3 rows" in the chat.'>
+        <Row label="Show tool activity" description='Lines like "Edited src/App.tsx" or "Ran bun add zod" in the chat.'>
           <Toggle checked={settings().agent.showToolMessages} onChange={(showToolMessages) => set("agent", { showToolMessages })} />
         </Row>
       </Section>
@@ -423,12 +423,11 @@ const styles = stylex.create({
     display: "flex",
     flexDirection: "column",
     gap: space.sm,
-    padding: space.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    paddingBlock: space.md,
+    paddingInline: space.lg,
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.border,
   },
   providerHead: { display: "flex", alignItems: "center", gap: space.md },
   providerIcon: {
