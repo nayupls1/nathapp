@@ -1,92 +1,39 @@
-// Runtime theming. StyleX compiles `defineVars` to CSS custom properties, so a
-// theme is applied by overriding those properties on an element: the document
-// root for the global theme, an app's container for an app theme.
+// Runtime theming. StyleX compiles `defineVars` to CSS custom properties, so the
+// theme is applied by overriding those properties on the document root.
 import { createSignal } from "solid-js";
 import type { GlobalTheme, Theme } from "../../shared/settings";
-import { chartColors, colors, font, radius } from "../theme.stylex";
-
-type Mode = "light" | "dark";
-
-const base: Record<Mode, { bg: string; surface: string; text: string; accent: string; danger: string; success: string; warning: string }> = {
-  light: { bg: "#fafafa", surface: "#ffffff", text: "#18181b", accent: "#6d4aff", danger: "#dc2626", success: "#16a34a", warning: "#d97706" },
-  dark: { bg: "#111113", surface: "#18181b", text: "#ececef", accent: "#8b70ff", danger: "#f05252", success: "#3ecf73", warning: "#f5a524" },
-};
-
-const radii = {
-  none: ["0px", "0px", "0px"],
-  sm: ["4px", "6px", "8px"],
-  md: ["6px", "10px", "14px"],
-  lg: ["10px", "16px", "22px"],
-} as const;
-
-const fonts = {
-  sans: 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
-  serif: 'ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif',
-  mono: 'ui-monospace, "JetBrains Mono", "SF Mono", monospace',
-  rounded: 'ui-rounded, "SF Pro Rounded", Nunito, "Varela Round", system-ui, sans-serif',
-} as const;
+import { palette, resolveMode, type Mode } from "../../shared/theme";
+import { colors, font, radius } from "../theme.stylex";
 
 /** `var(--x1abc)` → `--x1abc` */
 const varName = (ref: string) => /var\((--[^),\s]+)/.exec(ref)?.[1] ?? ref;
 
-const mix = (a: string, b: string, pct: number) => `color-mix(in oklab, ${a}, ${b} ${pct}%)`;
-
-/** Black or white, whichever reads better on the given hex color. */
-function readableOn(hex: string) {
-  const n = Number.parseInt(hex.slice(1), 16);
-  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => {
-    const v = c / 255;
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.45 ? "#111111" : "#ffffff";
-}
-
 /** CSS custom properties (StyleX var name → value) for a theme. */
 export function themeVars(theme: Omit<Theme, "mode">, mode: Mode): Record<string, string> {
-  const b = base[mode];
-  const bg = theme.background ?? b.bg;
-  const surface = theme.surface ?? b.surface;
-  const text = theme.text ?? b.text;
-  const accent = theme.accent ?? b.accent;
-  const dark = mode === "dark";
-  const [sm, md, lg] = radii[theme.radius ?? "md"];
-
+  const p = palette(theme, mode);
   const vars: Record<string, string> = {
-    [colors.bg]: bg,
-    [colors.surface]: surface,
-    [colors.surfaceHover]: mix(surface, text, dark ? 8 : 5),
-    [colors.sidebar]: dark ? mix(bg, "#000000", 30) : mix(bg, text, 4),
-    [colors.border]: mix(surface, text, dark ? 14 : 12),
-    [colors.text]: text,
-    [colors.muted]: mix(text, bg, 45),
-    [colors.accent]: accent,
-    [colors.accentText]: readableOn(accent),
-    [colors.accentSoft]: mix(surface, accent, dark ? 22 : 12),
-    [colors.danger]: b.danger,
-    [colors.success]: b.success,
-    [colors.warning]: b.warning,
-    [chartColors.c1]: accent,
-    [radius.sm]: sm,
-    [radius.md]: md,
-    [radius.lg]: lg,
-    [font.sans]: fonts[theme.font ?? "sans"],
+    [colors.bg]: p.bg,
+    [colors.surface]: p.surface,
+    [colors.surfaceHover]: p.surfaceHover,
+    [colors.sidebar]: p.sidebar,
+    [colors.border]: p.border,
+    [colors.text]: p.text,
+    [colors.muted]: p.muted,
+    [colors.accent]: p.accent,
+    [colors.accentText]: p.accentText,
+    [colors.accentSoft]: p.accentSoft,
+    [colors.danger]: p.danger,
+    [colors.success]: p.success,
+    [colors.warning]: p.warning,
+    [radius.sm]: p.radiusSm,
+    [radius.md]: p.radiusMd,
+    [radius.lg]: p.radiusLg,
+    [font.sans]: p.font,
   };
   return Object.fromEntries(Object.entries(vars).map(([k, v]) => [varName(k), v]));
 }
 
-/** Like themeVars, but only for what an app theme actually sets on top of the global theme. */
-export function appThemeVars(app: Theme | undefined, global: GlobalTheme, systemDark: boolean): Record<string, string> {
-  if (!app || !Object.keys(app).length) return {};
-  // App colors are layered over the global theme; an app that picks a mode
-  // gets that mode's base palette instead of the user's custom colors.
-  const merged: Omit<Theme, "mode"> = app.mode ? app : { ...global, ...app };
-  const mode = app.mode ?? resolveMode(global, systemDark);
-  return { ...themeVars(merged, mode), "color-scheme": mode };
-}
-
-export const resolveMode = (theme: GlobalTheme, systemDark: boolean): Mode =>
-  theme.mode === "system" ? (systemDark ? "dark" : "light") : theme.mode;
+export { resolveMode };
 
 // --- System preference ---------------------------------------------------------------
 

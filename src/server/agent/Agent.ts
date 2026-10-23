@@ -1,0 +1,170 @@
+// Runs agent turns: picks the provider, gives it gApp's instructions and tools,
+// persists the conversation and pushes everything to the renderer on the hub
+// (topic app:<id>). A turn runs in the background; stopping interrupts it.
+import { Context, Data, Effect, FiberMap, Layer, Stream } from "effect";
+import type { AgentChoice, ChatEvent, ChatMessage, PageContext, ProviderId } from "../../shared/api";
+import { topics } from "../../shared/hub";
+import { ServerConfig } from "../Config";
+import { Apps, type AppRecord } from "../db/Apps";
+import { Settings } from "../db/Settings";
+import { Sites } from "../db/Sites";
+import { Hub } from "../Hub";
+import type { TurnInput } from "../providers/Provider";
+import { Providers } from "../providers/Providers";
+import { Runtime } from "../workspace/Runtime";
+import { Sandbox } from "../workspace/Sandbox";
+import { Workspace } from "../workspace/Workspace";
+import { Mcp } from "./Mcp";
+import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
+import { appTools, pageTools, siteTools, type ToolEnv } from "./tools";
+
+export class AgentError extends Data.TaggedError("AgentError")<{ readonly status: 404 | 409 | 400; readonly message: string }> {}
+
+export interface TurnRequest {
+  readonly prompt: string;
+  readonly agent?: Partial<AgentChoice>;
+  readonly page?: PageContext;
+}
+
+export interface AgentShape {
+  /** Starts a turn in the background. Fails if the tab is busy or the provider can't run. */
+  readonly start: (appId: string, request: TurnRequest) => Effect.Effect<void, AgentError>;
+  readonly stop: (appId: string) => Effect.Effect<void>;
+  readonly isRunning: (appId: string) => Effect.Effect<boolean>;
+}
+
+export class Agent extends Context.Service<Agent, AgentShape>()("gapp/Agent") {}
+
+export const make = Effect.gen(function* () {
+  const config = yield* ServerConfig;
+  const apps = yield* Apps;
+  const settings = yield* Settings;
+  const hub = yield* Hub;
+  const providers = yield* Providers;
+  const mcp = yield* Mcp;
+  const workspace = yield* Workspace;
+  const runtime = yield* Runtime;
+  const sandbox = yield* Sandbox;
+  const running = yield* FiberMap.make<string>();
+  // Tools need the services; captured once.
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites>();
+
+  const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
+  const message = (appId: string, role: ChatMessage["role"], content: string) =>
+    apps.addMessage(appId, role, content).pipe(Effect.tap((m) => emit(appId, { type: "message", message: m })));
+
+  /** The request's choice, else the tab's last one, else the defaults from Settings. */
+  const resolveChoice = (request: Partial<AgentChoice> | undefined, app: AppRecord, defaults: AgentChoice): AgentChoice => {
+    const provider: ProviderId = request?.provider ?? app.agent?.provider ?? defaults.provider;
+    const previous = app.agent?.provider === provider ? app.agent : provider === defaults.provider ? defaults : null;
+    return {
+      provider,
+      model: request?.model !== undefined ? request.model : (previous?.model ?? null),
+      effort: request?.effort !== undefined ? request.effort : (previous?.effort ?? null),
+    };
+  };
+
+  const turn = (app: AppRecord, choice: AgentChoice, request: TurnRequest) =>
+    Effect.gen(function* () {
+      const appId = app.id;
+      const s = yield* settings.get();
+      yield* emit(appId, { type: "started" });
+      if (request.page?.selection.length) yield* message(appId, "context", contextSummary(request.page));
+      yield* message(appId, "user", request.prompt);
+      yield* apps.touch(appId);
+
+      const env: ToolEnv = { tabId: appId, log: (line) => Effect.asVoid(message(appId, "tool", line)) };
+      const web = app.kind === "web";
+      const tools = web
+        ? [...(yield* Effect.provide(pageTools(env, { site: true }), context)), ...(yield* Effect.provide(siteTools(env), context))]
+        : [...(yield* Effect.provide(appTools(env), context)), ...(yield* Effect.provide(pageTools(env, { site: false }), context))];
+      const mcpUrl = yield* mcp.register(tools);
+
+      let cwd: string;
+      let instructions: string;
+      if (web) {
+        cwd = config.agentDir;
+        instructions = buildWebPrompt(s.agent.webInstructions);
+      } else {
+        cwd = yield* workspace.ensureDir(appId);
+        const project = yield* workspace.info(appId);
+        instructions = buildAppPrompt({ instructions: s.agent.instructions, dir: cwd, hasProject: !!project });
+        // The agent works against the dev server (live updates in the preview).
+        if (project) yield* Effect.forkDetach(app.mode === "live" ? runtime.setMode(appId, "dev") : runtime.ensure(appId));
+      }
+
+      const driver = providers.driver(choice.provider);
+      const input = (resume: string | null): TurnInput => ({
+        cwd,
+        prompt: withPageContext(request.prompt, request.page),
+        instructions,
+        model: choice.model,
+        effort: choice.effort,
+        resume,
+        mcp: { name: "gapp", url: mcpUrl, headers: {} },
+        access: web ? "none" : "workspace",
+        env: { PATH: `${process.env.PATH ?? ""}:${sandbox.binDir}` },
+      });
+
+      let heard = false;
+      const run = (resume: string | null) =>
+        driver.run(input(resume), s.providers[choice.provider]).pipe(
+          Stream.runForEach((event) => {
+            heard = heard || event.type !== "session";
+            switch (event.type) {
+              case "session":
+                return apps.setSession(appId, { provider: choice.provider, id: event.id });
+              case "delta":
+                return emit(appId, { type: "delta", text: event.text });
+              case "text":
+                return Effect.asVoid(message(appId, "assistant", event.text));
+              case "tool":
+                return Effect.asVoid(message(appId, "tool", event.title));
+              case "error":
+                return Effect.asVoid(message(appId, "error", event.message));
+            }
+          }),
+        );
+
+      const resume = app.session?.provider === choice.provider ? app.session.id : null;
+      yield* run(resume).pipe(
+        // A session the provider no longer knows: start a fresh one.
+        Effect.catch((err) => (resume && !heard ? run(null) : Effect.fail(err))),
+        Effect.catch((err) => Effect.asVoid(message(appId, "error", `${driver.label} failed: ${err.message}`))),
+      );
+
+      if (!web && s.apps.autoPublish && (yield* workspace.info(appId))) yield* Effect.forkDetach(runtime.setMode(appId, "live"));
+    }).pipe(
+      Effect.scoped,
+      Effect.onInterrupt(() => Effect.asVoid(message(app.id, "error", "Stopped."))),
+      Effect.ensuring(emit(app.id, { type: "done" })),
+    );
+
+  return {
+    isRunning: (appId) => FiberMap.has(running, appId),
+
+    stop: (appId) => FiberMap.remove(running, appId),
+
+    start: (appId, request) =>
+      Effect.gen(function* () {
+        const app = yield* apps.get(appId);
+        if (!app) return yield* new AgentError({ status: 404, message: "Not found" });
+        if (yield* FiberMap.has(running, appId)) {
+          return yield* new AgentError({ status: 409, message: "The agent is already working on this tab" });
+        }
+        const s = yield* settings.get();
+        const choice = resolveChoice(request.agent, app, s.agent);
+        const status = (yield* providers.list).find((p) => p.id === choice.provider)!;
+        if (status.state !== "ready" && status.state !== "checking") {
+          return yield* new AgentError({
+            status: 400,
+            message: `${status.label} can't run: ${status.state === "disabled" ? "it's turned off in Settings" : (status.message ?? status.state)}`,
+          });
+        }
+        yield* apps.setAgent(appId, choice);
+        yield* FiberMap.run(running, appId, turn(app, choice, request), { onlyIfMissing: true });
+      }),
+  } satisfies AgentShape;
+});
+
+export const layer = Layer.effect(Agent, make);

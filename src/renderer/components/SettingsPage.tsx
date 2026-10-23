@@ -1,23 +1,22 @@
-// The Settings tab: appearance, agent defaults and prompt additions, web tabs, backends.
+// The Settings tab: appearance, providers, agent defaults and prompt
+// additions, apps, web tabs.
 import * as stylex from "@stylexjs/stylex";
-import { createResource, For, onCleanup, onMount, Show, type JSX } from "solid-js";
-import type { Effort } from "../../shared/api";
+import { createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { providerIds, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
-import { loadModels, models } from "../lib/store";
+import { providerById, refreshProviders } from "../lib/store";
 import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
-import { effortLabels } from "./Composer";
+import { AgentPicker } from "./AgentPicker";
 import { confirmDialog } from "./ConfirmDialog";
 import { Icon } from "./Icon";
+import { ProviderIcon } from "./ProviderIcon";
 import { Select } from "./ui";
 
 export function SettingsPage() {
-  onMount(() => {
-    if (!models().length) loadModels();
-  });
   const [health] = createResource(() => api.health());
   const set = <K extends keyof Settings>(key: K, value: Partial<Settings[K]>) =>
     updateSettings((s) => ({ ...s, [key]: typeof value === "object" ? { ...(s[key] as object), ...value } : value }));
@@ -95,33 +94,24 @@ export function SettingsPage() {
             onChange={(font) => setTheme({ font })}
           />
         </Row>
-        <Row label="App themes" description="Let apps use a look their agent picked instead of your theme.">
-          <Toggle checked={settings().appThemes} onChange={(appThemes) => updateSettings((s) => ({ ...s, appThemes }))} />
-        </Row>
+        <p {...stylex.attrs(styles.muted, styles.note)}>New apps start with this look as their design tokens (src/tokens.css); the agent can change an app's tokens when you ask for a different style.</p>
+      </Section>
+
+      <Section title="Providers" icon="plug">
+        <p {...stylex.attrs(styles.muted, styles.note)}>
+          The coding agents gApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
+        </p>
+        <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
       </Section>
 
       <Section title="Agent" icon="bot">
-        <Row label="Default model" description="For new tabs. Each tab remembers its own choice.">
-          <Select
-            value={settings().agent.model ?? ""}
-            onChange={(e) => set("agent", { model: e.currentTarget.value || null, effort: null })}
-            xstyle={styles.select}
-          >
-            <option value="">Claude Code default</option>
-            <For each={models().filter((m) => m.value !== "default")}>{(m) => <option value={m.value}>{m.displayName}</option>}</For>
-          </Select>
-        </Row>
-        <Row label="Default effort">
-          <Select
-            value={settings().agent.effort ?? ""}
-            onChange={(e) => set("agent", { effort: (e.currentTarget.value || null) as Effort | null })}
-            xstyle={styles.select}
-          >
-            <option value="">Model default</option>
-            <For each={models().find((m) => m.value === (settings().agent.model ?? "default"))?.efforts ?? []}>
-              {(level) => <option value={level}>{effortLabels[level]}</option>}
-            </For>
-          </Select>
+        <Row label="Default agent" description="For new tabs. Each tab remembers its own choice.">
+          <div {...stylex.attrs(styles.pickerBox)} data-default-agent>
+            <AgentPicker
+              choice={{ provider: settings().agent.provider, model: settings().agent.model, effort: settings().agent.effort }}
+              onChange={(choice) => set("agent", choice)}
+            />
+          </div>
         </Row>
         <Row
           label="Instructions for building apps"
@@ -171,9 +161,23 @@ export function SettingsPage() {
         <SiteRows />
       </Section>
 
-      <Section title="App backends" icon="server">
-        <Row label="Start automatically" description="Start an app's custom backend when you open the app.">
-          <Toggle checked={settings().backends.autoStart} onChange={(autoStart) => set("backends", { autoStart })} />
+      <Section title="Apps" icon="box">
+        <Row label="Sandbox" description="How app processes are isolated. Bubblewrap gives every app its own view of the system: only its project folder is writable, your files are invisible.">
+          <Segmented
+            value={settings().apps.sandbox}
+            options={[
+              ["auto", "Automatic"],
+              ["bwrap", "Bubblewrap"],
+              ["none", "Off"],
+            ]}
+            onChange={(sandbox) => set("apps", { sandbox })}
+          />
+        </Row>
+        <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
+          <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
+        </Row>
+        <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn.">
+          <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
         </Row>
       </Section>
 
@@ -187,6 +191,71 @@ export function SettingsPage() {
           </dd>
         </dl>
       </Section>
+    </div>
+  );
+}
+
+const stateLabels: Record<ProviderStatus["state"], string> = {
+  ready: "Ready",
+  checking: "Checking…",
+  missing: "Not installed",
+  "signed-out": "Not signed in",
+  error: "Error",
+  disabled: "Off",
+};
+
+/** One provider: status, on/off, and where its CLI is. */
+function ProviderRow(props: { id: ProviderId }) {
+  const status = () => providerById(props.id);
+  const config = () => settings().providers[props.id];
+  const [checking, setChecking] = createSignal(false);
+  const setConfig = (value: Partial<Settings["providers"][ProviderId]>) =>
+    updateSettings((s) => ({ ...s, providers: { ...s.providers, [props.id]: { ...s.providers[props.id], ...value } } }));
+  const isReady = () => status()?.state === "ready";
+  const isBad = () => ["missing", "signed-out", "error"].includes(status()?.state ?? "");
+  const details = () =>
+    [status()?.version && `v${status()!.version}`, status()?.models.length && `${status()!.models.length} models`, status()?.message]
+      .filter(Boolean)
+      .join(" · ");
+
+  return (
+    <div {...stylex.attrs(styles.provider)} data-provider-row={props.id}>
+      <div {...stylex.attrs(styles.providerHead)}>
+        <span {...stylex.attrs(styles.providerIcon)}>
+          <ProviderIcon provider={props.id} size={20} />
+        </span>
+        <div {...stylex.attrs(styles.rowText)}>
+          <span {...stylex.attrs(styles.rowLabel)}>
+            {status()?.label ?? props.id}
+            <span {...stylex.attrs(styles.pill, isReady() && styles.pillReady, isBad() && styles.pillBad)} data-provider-state={status()?.state}>
+              {stateLabels[status()?.state ?? "checking"]}
+            </span>
+          </span>
+          <span {...stylex.attrs(styles.muted)}>{details()}</span>
+        </div>
+        <button
+          type="button"
+          title="Check again"
+          disabled={checking()}
+          onClick={async () => {
+            setChecking(true);
+            await refreshProviders(props.id).finally(() => setChecking(false));
+          }}
+          {...stylex.attrs(styles.iconButton)}
+        >
+          <Icon name="refresh-cw" size={15} />
+        </button>
+        <Toggle checked={config().enabled} onChange={(enabled) => setConfig({ enabled })} />
+      </div>
+      <label {...stylex.attrs(styles.providerPath)}>
+        <span {...stylex.attrs(styles.muted)}>Binary</span>
+        <input
+          value={config().binaryPath}
+          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with gApp" : `${props.id} on your PATH`)}
+          onChange={(e) => setConfig({ binaryPath: e.currentTarget.value.trim() })}
+          {...stylex.attrs(styles.textInput, styles.mono)}
+        />
+      </label>
     </div>
   );
 }
@@ -339,6 +408,52 @@ function PresetButton(props: { name: string; theme: GlobalTheme; onClick: () => 
 const varOf = (ref: string) => /var\((--[^),\s]+)/.exec(ref)?.[1] ?? ref;
 
 const styles = stylex.create({
+  note: { margin: 0, paddingBlock: space.md, paddingInline: space.lg, lineHeight: 1.5 },
+  pickerBox: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: 2,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  provider: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.sm,
+    padding: space.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  providerHead: { display: "flex", alignItems: "center", gap: space.md },
+  providerIcon: {
+    display: "grid",
+    placeItems: "center",
+    width: 36,
+    height: 36,
+    flexShrink: 0,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bg,
+    color: colors.text,
+  },
+  providerPath: { display: "flex", alignItems: "center", gap: space.sm, fontSize: font.xs },
+  pill: {
+    marginLeft: space.sm,
+    paddingInline: 7,
+    paddingBlock: 1,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceHover,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: 500,
+  },
+  pillReady: { backgroundColor: colors.accentSoft, color: colors.success },
+  pillBad: { color: colors.danger },
   page: {
     maxWidth: 820,
     marginInline: "auto",

@@ -1,8 +1,8 @@
 // End-to-end check of the built app: launches Electron against a throwaway
 // profile and drives the real UI over the DevTools protocol.
 //
-//   bun run e2e                 UI checks (catalog, icons, new app, models)
-//   bun run e2e --agent         also has the agent build an app (uses your Claude plan)
+//   bun run e2e                 UI checks (providers, app previews, dev/live, web tabs, settings)
+//   bun run e2e --agent         also has the agents build an app and customize a site (uses your Claude plan)
 //   bun run e2e --agent "..."   ...with a custom prompt
 //   bun run e2e --visible       show the window while testing (default: offscreen)
 //
@@ -11,7 +11,6 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { chartExamples, componentDocs } from "../src/shared/catalog";
 import { launchElectron } from "./electron";
 import { Page } from "./lib/cdp";
 
@@ -38,10 +37,13 @@ const port = await new Promise<number>((resolve) => {
   });
 });
 
-// Rendered offscreen by default: always painted (reliable screenshots) and no
-// window pops up. --visible shows the window instead.
+// Rendered offscreen by default: always painted (reliable screenshots). The
+// headless ozone platform doesn't connect to the display server at all, so no
+// window can show up on the user's screen (Wayland compositors ignore window
+// positions and would open it wherever the user is). --visible shows it.
 const visible = args.includes("--visible");
 const electron = launchElectron({ GAPP_USER_DATA_DIR: profile, GAPP_OFFSCREEN: visible ? undefined : "1" }, [
+  ...(visible ? [] : ["--ozone-platform=headless", "--ozone-override-screen-size=1920,1080"]),
   `--remote-debugging-port=${port}`,
   "--disable-backgrounding-occluded-windows",
   "--disable-renderer-backgrounding",
@@ -113,6 +115,54 @@ async function newTab(label: "New app" | "New web tab") {
   await click("[data-context-menu] button", label);
 }
 
+/** Authenticated request to the gApp server, made from the renderer. */
+const apiCall = <T>(path: string, init: { method?: string; body?: unknown } = {}) =>
+  page!.eval<T>(`fetch(window.gapp.serverUrl + ${JSON.stringify(path)}, {
+    method: ${JSON.stringify(init.method ?? "GET")},
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + window.gapp.token },
+    ${init.body !== undefined ? `body: ${JSON.stringify(JSON.stringify(init.body))},` : ""}
+  }).then(async (r) => { if (!r.ok) throw new Error(r.status + " " + (await r.text())); return r.status === 204 ? null : r.json(); })`);
+
+/** Picks provider, model and effort in the agent picker inside `root`. */
+async function chooseAgent(root: string, provider: string, model: string, effort?: string) {
+  await click(`${root} [data-agent-picker]`);
+  await page!.waitFor(`!!document.querySelector("[data-agent-popover]")`, { label: "agent picker" });
+  await click(`[data-agent-popover] [data-provider="${provider}"]`);
+  await page!.waitFor(`!!document.querySelector('[data-agent-popover] [data-model="${model}"]')`, { timeoutMs: 30_000, label: `${model} in the list` });
+  await click(`[data-agent-popover] [data-model="${model}"]`);
+  await page!.waitFor(`!document.querySelector("[data-agent-popover]")`);
+  if (effort) {
+    await click(`${root} [data-effort-picker]`);
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`);
+    await click("[data-context-menu] button", effort);
+  }
+}
+
+/** Types a prompt into the composer inside `root` and sends it. */
+const sendPrompt = (root: string, prompt: string) =>
+  page!.eval(`(() => {
+    const t = document.querySelector(${JSON.stringify(`${root} textarea`)});
+    t.value = ${JSON.stringify(prompt)};
+    t.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    t.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    return true;
+  })()`);
+
+/** Waits until the agent in `root` started and finished. */
+async function agentDone(root: string) {
+  const panel = `${root} [data-agent-panel]`;
+  await page!.waitFor(`!!document.querySelector(${JSON.stringify(panel)})`, { label: "chat to open", timeoutMs: 15_000 });
+  await page!.waitFor(
+    `[...document.querySelectorAll(${JSON.stringify(`${panel} button`)})].some((b) => b.textContent === "Send") && !document.querySelector(${JSON.stringify(panel)}).innerText.includes("Working…")`,
+    { timeoutMs: 300_000, label: "agent to finish" },
+  );
+  return page!.eval<string>(`document.querySelector(${JSON.stringify(panel)}).innerText`);
+}
+
+/** Runs code in the webview inside `root` (an app preview or web tab). */
+const inView = <T>(root: string, code: string, gesture = false) =>
+  page!.eval<T>(`document.querySelector(${JSON.stringify(`${root} webview`)}).executeJavaScript(${JSON.stringify(code)}, ${gesture})`);
+
 const click = (selector: string, text?: string) =>
   page!.eval(`(() => {
     const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
@@ -136,143 +186,105 @@ try {
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 
   await check("app boots and shows the sidebar", async () => {
-    await page!.waitFor(`document.querySelector("nav")?.innerText.includes("Catalog")`, { timeoutMs: 20_000 });
+    await page!.waitFor(`document.querySelector("nav")?.innerText.includes("Settings")`, { timeoutMs: 20_000 });
   });
 
-  await check("catalog renders every component", async () => {
-    await click("nav button", "Catalog");
-    await page!.waitFor(`document.querySelectorAll("[data-catalog-component]").length`);
-    const found = await page!.eval<string[]>(
-      `[...document.querySelectorAll("[data-catalog-component]")].map((e) => e.dataset.catalogComponent)`,
-    );
-    const missing = componentDocs.map((d) => d.type).filter((t) => !found.includes(t));
-    if (missing.length) throw new Error(`missing: ${missing.join(", ")}`);
-    const errors = await page!.eval<string[]>(`[...document.querySelectorAll("[data-render-error]")].map((e) => e.textContent)`);
-    if (errors.length) throw new Error(errors.join("; "));
-    return `${found.length} components`;
+  await check("providers are detected", async () => {
+    const providers = await waitForValue(async () => {
+      const list = await apiCall<{ id: string; state: string; models: unknown[] }[]>("/api/providers");
+      return list.every((p) => p.state !== "checking") ? list : undefined;
+    }, 60_000);
+    const claude = providers.find((p) => p.id === "claude");
+    if (claude?.state !== "ready" || !claude.models.length) throw new Error(`Claude isn't ready: ${JSON.stringify(claude)}`);
+    return providers.map((p) => `${p.id} ${p.state} (${p.models.length})`).join(", ");
   });
 
-  await check("catalog data loads and charts draw", async () => {
-    const expected = 1 + chartExamples.length;
-    // Every chart example renders an SVG with marks once its data arrives.
-    const drawn = await page!.waitFor<number>(
-      `(() => {
-        const charts = [...document.querySelectorAll("[data-catalog-example] .ts-chart-host svg")]
-          .filter((svg) => svg.querySelectorAll("path, rect, circle").length > 0);
-        return charts.length >= ${expected} && charts.length;
-      })()`,
-      { label: `${expected} drawn charts` },
-    );
-    const statText = await page!.eval<string>(`document.querySelector('[data-catalog-component="stat"]').innerText`);
-    if (!/\d/.test(statText)) throw new Error(`stat shows no number: ${statText}`);
-    await shot("catalog.png");
-    return `${drawn} charts`;
-  });
+  let appId = "";
+  const appTab = () => `[data-app-tab="${appId}"]`;
 
-  await check("catalog form inserts a row", async () => {
-    const before = await page!.eval<number>(`document.querySelectorAll('[data-catalog-component="list"] li').length`);
-    await page!.eval(`(() => {
-      const form = document.querySelector('[data-catalog-component="form"] form');
-      form.querySelector('[name="title"]').value = "E2E task";
-      form.requestSubmit();
-      return true;
-    })()`);
-    await page!.waitFor(`document.querySelectorAll('[data-catalog-component="list"] li').length === ${before + 1}`, {
-      label: "list to grow by one",
-    });
-  });
-
-  await check("realtime: writes from elsewhere show up live", async () => {
-    // Another client (here: a plain fetch, like a backend would) inserts a row;
-    // the list must update from the server's WebSocket push alone.
-    const before = await page!.eval<number>(`document.querySelectorAll('[data-catalog-component="list"] li').length`);
-    const started = Date.now();
-    await page!.eval(`fetch(window.gapp.serverUrl + "/api/apps/catalog/data", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ op: "action", action: { type: "insert", table: "tasks", values: { title: "Pushed live" } } }),
-    }).then((r) => r.ok)`);
-    await page!.waitFor(`[...document.querySelectorAll('[data-catalog-component="list"] li')].some((li) => li.innerText.includes("Pushed live"))`, {
-      label: "pushed row",
-      timeoutMs: 3000,
-    });
-    const after = await page!.eval<number>(`document.querySelectorAll('[data-catalog-component="list"] li').length`);
-    if (after !== before + 1) throw new Error(`expected ${before + 1} rows, got ${after}`);
-    return `${Date.now() - started}ms`;
-  });
-
-  await check("custom component runs and uses the realtime SDK", async () => {
-    // The example counts open tasks live and has a button that inserts one.
-    const frameUrl = "/frame/catalog/live-counter";
-    const count = () => page!.evalIn<string>(frameUrl, `document.getElementById("count").textContent`);
-    // The frame loads after the catalog renders; on a cold start that can take a while.
-    const before = Number(await waitForValue(async () => ((await count()).match(/^\d+$/) ? await count() : undefined), 30_000));
-    await page!.evalIn(frameUrl, `document.getElementById("add").click(), true`);
-    await waitForValue(async () => (Number(await count()) === before + 1 ? true : undefined));
-    await page!.waitFor(
-      `[...document.querySelectorAll('[data-catalog-component="list"] li')].length > 0 && !document.querySelector("[data-custom-component] [data-render-error]")`,
-    );
-    const height = await page!.eval<number>(`document.querySelector("[data-custom-component] iframe").getBoundingClientRect().height`);
-    if (height < 60) throw new Error(`iframe did not size to its content (${height}px)`);
-    return `${before} → ${before + 1} open tasks, ${Math.round(height)}px tall`;
-  });
-
-  await check("icon search", async () => {
-    await page!.eval(`(() => {
-      const input = document.querySelector('#catalog-Icons input');
-      input.value = "wallet";
-      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
-      return true;
-    })()`);
-    const names = await page!.waitFor<string[]>(
-      `(() => { const n = [...document.querySelectorAll('#catalog-Icons button')].map((b) => b.title); return n.includes("wallet") && n; })()`,
-    );
-    return `${names.length} matches for "wallet"`;
-  });
-
-  await check("new app screen with model and effort pickers", async () => {
+  await check("new app screen with the agent picker", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
     await newTab("New app");
     await page!.waitFor(`document.body.innerText.includes("What do you want to build?")`);
-    const options = await page!.waitFor<number>(`document.querySelector('select[title="Model"]')?.options.length > 1 && document.querySelector('select[title="Model"]').options.length`, {
-      timeoutMs: 20_000,
-      label: "models to load",
-    });
-    const efforts = await page!.eval<number>(`document.querySelector('select[title="Effort"]')?.options.length ?? 0`);
-    if (efforts < 2) throw new Error("effort picker missing");
+    appId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "new app in the sidebar" },
+    );
+    await click("[data-agent-picker]");
+    await page!.waitFor(`!!document.querySelector("[data-agent-popover]")`, { label: "picker popover" });
+    const rail = await page!.eval<number>(`document.querySelectorAll("[data-agent-popover] [data-provider]").length`);
+    const models = await page!.waitFor<number>(`document.querySelectorAll("[data-agent-popover] [data-model]").length`, { label: "models" });
+    await shot("agent-picker.png");
+    await page!.eval(`document.querySelector("[data-agent-popover] input").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    await page!.waitFor(`!document.querySelector("[data-agent-popover]")`, { label: "Escape to close" });
     await shot("new-app.png");
-    return `${options - 1} models, ${efforts - 1} effort levels`;
+    return `${rail} providers, ${models} Claude models`;
+  });
+
+  await check("a template runs in the preview (dev server)", async () => {
+    await click('[data-template="vanilla"]');
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 120_000, label: "app running" });
+    await page!.waitFor(`!!document.querySelector('${appTab()} webview')`, { label: "preview" });
+    const heading = await waitForValue(async () => (await inView<string>(appTab(), `document.querySelector("h1")?.textContent || undefined`)) ?? undefined, 20_000);
+    await shot("app-dev.png");
+    return `"${heading}"`;
+  });
+
+  await check("edits show up live in dev mode", async () => {
+    const file = join(profile, "data", "apps", appId, "src", "main.ts");
+    const source = await Bun.file(file).text();
+    if (!source.includes("A starting point:")) throw new Error("template changed; update this check");
+    await Bun.write(file, source.replace("A starting point:", "Edited live:"));
+    await waitForValue(async () => ((await inView<string>(appTab(), `document.body.innerText`)).includes("Edited live:") ? true : undefined), 20_000);
+  });
+
+  await check("element picker in the preview", async () => {
+    await click(`${appTab()} [data-pick-element]`);
+    await waitForValue(async () => ((await inView<boolean>(appTab(), `!!window.__gappPicker`)) ? true : undefined));
+    await inView(appTab(), `document.querySelector("h1").click(), true`);
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-picked-chip]')`, { label: "picked chip" });
+  });
+
+  await check("done: the app is built and served by its start command", async () => {
+    await click(`${appTab()} [data-mode="live"]`);
+    await page!.waitFor(`!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { label: "restart", timeoutMs: 10_000 }).catch(() => {});
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 120_000, label: "live app running" });
+    const status = await apiCall<{ status: { mode: string; state: string } }>(`/api/apps/${appId}/runtime`);
+    if (status.status.mode !== "live") throw new Error(`mode is ${status.status.mode}`);
+    await waitForValue(async () => ((await inView<string>(appTab(), `document.body.innerText`)).includes("Edited live:") ? true : undefined), 20_000);
+    await click(`${appTab()} [data-logs]`);
+    await page!.waitFor(`document.querySelector('${appTab()} [data-logs-panel]')?.innerText.includes("bun run start")`, { label: "logs" });
+    await shot("app-live.png");
+    await click(`${appTab()} [data-logs]`);
+    await click(`${appTab()} [data-mode="dev"]`);
+  });
+
+  await check("agent panel collapses and comes back", async () => {
+    await click(`${appTab()} [data-agent-hide]`);
+    await page!.waitFor(`!document.querySelector('${appTab()} [data-agent-panel]') && !!document.querySelector('${appTab()} [data-agent-show]')`, {
+      label: "agent panel hidden",
+    });
+    await click(`${appTab()} [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-agent-panel]')`, { label: "agent panel shown" });
   });
 
   if (agentPrompt) {
     await check("agent builds an app", async () => {
+      const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+      await newTab("New app");
+      const id = await page!.waitFor<string>(
+        `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      );
+      const root = `[data-app-tab="${id}"]`;
       // Fastest model keeps this cheap; any model exercises the same path.
-      await page!.eval(`(() => {
-        const select = (title, value) => {
-          const el = document.querySelector('select[title="' + title + '"]');
-          if (![...el.options].some((o) => o.value === value)) return;
-          el.value = value;
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        };
-        select("Model", "haiku");
-        select("Effort", "low");
-        const t = document.querySelector("textarea");
-        t.value = ${JSON.stringify(agentPrompt)};
-        t.dispatchEvent(new InputEvent("input", { bubbles: true }));
-        t.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        return true;
-      })()`);
-      await page!.waitFor(`!!document.querySelector("aside textarea")`, { label: "chat to open" });
-      await page!.waitFor(`!document.querySelector("aside")?.innerText.includes("Working…") && [...document.querySelectorAll("aside button")].some((b) => b.textContent === "Send")`, {
-        timeoutMs: 240_000,
-        label: "agent to finish",
-      });
-      const chat = await page!.eval<string>(`document.querySelector("aside").innerText`);
-      if (!chat.includes("Updated app")) throw new Error(`agent did not update the app:\n${chat.slice(-600)}`);
-      const errors = await page!.eval<number>(`document.body.innerText.includes("failed to render")`);
-      if (errors) throw new Error("generated app failed to render");
+      await chooseAgent(root, "claude", "haiku", "Low");
+      await sendPrompt(root, agentPrompt);
+      const chat = await agentDone(root);
+      await page!.waitFor(`!!document.querySelector('${root} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: `app running:\n${chat.slice(-600)}` });
+      const text = await waitForValue(async () => (await inView<string>(root, `document.body.innerText`)) || undefined, 20_000);
       await shot("agent-app.png");
-      const name = await page!.eval<string>(`document.querySelector("nav li")?.innerText.split("\\n")[0].trim()`);
-      return `built "${name}"`;
+      const name = await page!.eval<string>(`document.querySelector('nav li[data-app-id="${id}"]').innerText.split("\\n")[0].trim()`);
+      return `built "${name}": ${text.slice(0, 80).replace(/\s+/g, " ")}`;
     });
   }
 
@@ -331,64 +343,6 @@ try {
     if (after.length !== before.length) throw new Error(`expected ${before.length} apps, got ${after.join(", ")}`);
   });
 
-  await check("custom backend: runs, button calls it, data arrives live", async () => {
-    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
-    await newTab("New app");
-    const appId = await page!.waitFor<string>(
-      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
-      { label: "new app in the sidebar" },
-    );
-    const spec = {
-      name: "Backend demo",
-      icon: "server",
-      tables: [{ name: "pings", columns: [{ name: "note", type: "text" }] }],
-      ui: {
-        type: "stack",
-        children: [
-          { type: "button", label: "Ping backend", action: { type: "backend", path: "/api/ping" } },
-          { type: "list", table: "pings", primary: "note" },
-        ],
-      },
-    };
-    const serverTs = [
-      'import { connect } from "./gapp";',
-      "const gapp = connect();",
-      "Bun.serve({",
-      "  port: Number(process.env.PORT),",
-      '  routes: { "/api/ping": { POST: async () => { await gapp.insert("pings", { note: "pong from backend" }); return Response.json({ ok: true }); } } },',
-      '  fetch: () => new Response("Not found", { status: 404 }),',
-      "});",
-      'console.log("backend up");',
-    ].join("\n");
-    await page!.eval(`(async () => {
-      const base = window.gapp.serverUrl + "/api/apps/${appId}";
-      const put = (path, body, type) => fetch(base + path, { method: "PUT", headers: { "Content-Type": type }, body });
-      const a = await put("/files/server.ts", ${JSON.stringify(serverTs)}, "text/plain");
-      const b = await put("/spec", ${JSON.stringify(JSON.stringify(spec))}, "application/json");
-      if (!a.ok || !b.ok) throw new Error("setup failed: " + a.status + " " + b.status);
-      return true;
-    })()`);
-    // The spec arrives over the realtime connection; opening it auto-starts the backend.
-    await page!.waitFor(`[...document.querySelectorAll("button")].some((b) => b.innerText.includes("Ping backend"))`, {
-      label: "imported app to render",
-    });
-    await page!.waitFor(`!!document.querySelector('[data-backend-pill="running"]')`, { timeoutMs: 20_000, label: "backend running" });
-    await click("button", "Ping backend");
-    await page!.waitFor(`document.body.innerText.includes("pong from backend")`, { label: "row written by the backend" });
-
-    await click("[data-backend-pill]");
-    await page!.waitFor(`document.querySelector("[data-backend-drawer]")?.innerText.includes("backend up")`, { label: "backend logs" });
-    await shot("backend.png");
-
-    // Collapsing the agent panel gives the app the whole width.
-    await click("[data-agent-hide]");
-    await page!.waitFor(`!document.querySelector("[data-agent-panel]") && !!document.querySelector("[data-agent-show]")`, {
-      label: "agent panel hidden",
-    });
-    await click("[data-agent-show]");
-    await page!.waitFor(`!!document.querySelector("[data-agent-panel]")`, { label: "agent panel shown" });
-  });
-
   await check("web tab: browse, pick an element, site customization applies", async () => {
     const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
     await newTab("New web tab");
@@ -427,11 +381,10 @@ try {
     if (!outlined) throw new Error("picked element isn't marked");
 
     // A customization (as the agent would save it) applies live: CSS now, JS after a reload.
-    await page!.eval(`fetch(window.gapp.serverUrl + "/api/sites/127.0.0.1", {
+    await apiCall("/api/sites/127.0.0.1", {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ css: "h1 { color: rgb(220, 20, 60) !important }", js: "onElement('.lead', (el) => { el.textContent = 'Changed by override'; });" }),
-    }).then((r) => r.ok)`);
+      body: { css: "h1 { color: rgb(220, 20, 60) !important }", js: "onElement('.lead', (el) => { el.textContent = 'Changed by override'; });" },
+    });
     await waitForValue(
       async () =>
         (await inPage<string>(`getComputedStyle(document.querySelector("h1")).color + "|" + document.querySelector(".lead").textContent`)) ===
@@ -471,40 +424,18 @@ try {
       await waitForValue(async () => ((await inPage<boolean>(`!!window.__gappPicker`)) ? true : undefined));
       await inPage(`document.querySelector("#headline").click(), true`);
       await page!.waitFor(`!!document.querySelector('${tab} [data-picked-chip]')`, { label: "picked heading" });
-      await page!.eval(`(() => {
-        const root = document.querySelector('${tab} [data-agent-panel]');
-        const select = (title, value) => {
-          const el = root.querySelector('select[title="' + title + '"]');
-          if (![...el.options].some((o) => o.value === value)) return;
-          el.value = value;
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        };
-        select("Model", "haiku");
-        select("Effort", "low");
-        const t = root.querySelector("textarea");
-        t.value = "Make this heading green (#16a34a) and give it a dashed border underneath.";
-        t.dispatchEvent(new InputEvent("input", { bubbles: true }));
-        t.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        return true;
-      })()`);
-      await page!.waitFor(`document.querySelector('${tab} [data-agent-panel] button')?.textContent !== "Send"`, { label: "agent to start" }).catch(() => {});
-      await page!.waitFor(
-        `[...document.querySelectorAll('${tab} [data-agent-panel] button')].some((b) => b.textContent === "Send") && !document.querySelector('${tab} [data-agent-panel]').innerText.includes("Working…")`,
-        { timeoutMs: 240_000, label: "agent to finish" },
-      );
-      const chat = await page!.eval<string>(`document.querySelector('${tab} [data-agent-panel]').innerText`);
+      await chooseAgent(`${tab} [data-agent-panel]`, "claude", "haiku", "Low");
+      await sendPrompt(`${tab} [data-agent-panel]`, "Make this heading green (#16a34a) and give it a dashed border underneath.");
+      const chat = await agentDone(tab);
       const color = await waitForValue(async () => {
         const c = await inPage<string>(`getComputedStyle(document.querySelector("#headline")).color`);
         return c === "rgb(22, 163, 74)" ? c : undefined;
       }, 15_000).catch(() => undefined);
       await shot("web-agent.png");
       if (!color) throw new Error(`heading isn't green:\n${chat.slice(-800)}`);
-      const saved = await page!.eval<{ css: string; js: string } | null>(
-        `fetch(window.gapp.serverUrl + "/api/sites/127.0.0.1").then((r) => r.json())`,
-      );
+      const saved = await apiCall<{ css: string; js: string } | null>("/api/sites/127.0.0.1");
       if (!saved?.css.includes("16a34a")) throw new Error("customization wasn't saved");
-      const reply = await page!.eval<string>(`[...document.querySelectorAll('${tab} [data-agent-panel] p')].at(-1)?.innerText ?? ""`);
-      return reply.slice(0, 140);
+      return chat.trim().split("\n").at(-3)?.slice(0, 140) ?? "";
     });
   }
 
@@ -524,13 +455,15 @@ try {
       t.dispatchEvent(new InputEvent("input", { bubbles: true }));
       return true;
     })()`);
-    await page!.waitFor(
-      `fetch(window.gapp.serverUrl + "/api/settings").then((r) => r.json()).then((s) => s.agent.instructions === "Amounts are in EUR." && s.theme.background === "#0b1020")`,
-      { label: "settings saved on the server" },
-    );
+    await waitForValue(async () => {
+      const s = await apiCall<{ agent: { instructions: string }; theme: { background?: string } }>("/api/settings");
+      return s.agent.instructions === "Amounts are in EUR." && s.theme.background === "#0b1020" ? true : undefined;
+    });
+    const rows = await page!.eval<string[]>(`[...document.querySelectorAll("[data-provider-row]")].map((r) => r.dataset.providerRow + ":" + r.querySelector("[data-provider-state]")?.dataset.providerState)`);
+    if (rows.length !== 3) throw new Error(`provider rows: ${rows.join(", ")}`);
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
-    return `background ${await rootBg()} after reset`;
+    return `${rows.join(", ")}; background ${await rootBg()} after reset`;
   });
 
   await check("no uncaught errors in the renderer", async () => {

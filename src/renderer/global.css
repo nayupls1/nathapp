@@ -28,7 +28,7 @@
   }
 }
 
-/* Content of the "markdown" catalog component (generated HTML, so it can't
+/* Markdown in agent replies (generated HTML, so it can't
    carry StyleX classes). */
 .gapp-markdown > :first-child { margin-top: 0; }
 .gapp-markdown > :last-child { margin-bottom: 0; }

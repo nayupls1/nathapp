@@ -17,8 +17,9 @@ export async function startServer() {
   const port = await freePort();
   const dataDir = mkdtempSync(join(tmpdir(), "gapp-server-test-"));
   const url = `http://127.0.0.1:${port}`;
+  const token = crypto.randomUUID();
   const proc = Bun.spawn([process.execPath, "src/server/index.ts"], {
-    env: { ...process.env, PORT: String(port), GAPP_DATA_DIR: dataDir, GAPP_ALLOWED_ORIGIN: "app://gapp" },
+    env: { ...process.env, PORT: String(port), GAPP_DATA_DIR: dataDir, GAPP_ALLOWED_ORIGIN: "app://gapp", GAPP_TOKEN: token },
     stdout: "ignore",
     stderr: "inherit",
   });
@@ -37,7 +38,7 @@ export async function startServer() {
     const res = await fetch(`${url}${path}`, {
       ...init,
       body: init?.json !== undefined ? JSON.stringify(init.json) : init?.body,
-      headers: { "Content-Type": "application/json", ...init?.headers },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, ...init?.headers },
     });
     const text = await res.text();
     if (!res.ok) throw new Error(`${res.status} ${text}`);
@@ -47,6 +48,9 @@ export async function startServer() {
   return {
     url,
     port,
+    token,
+    /** The hub WebSocket URL (authenticated). */
+    wsUrl: `${url.replace("http", "ws")}/api/ws?token=${token}`,
     dataDir,
     api,
     async stop() {

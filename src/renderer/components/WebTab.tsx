@@ -389,7 +389,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
       <Show when={!collapsed() && state()?.loaded}>
         <Chat
           appId={props.appId}
-          web={{
+          web
+          page={{
             onSend: send,
             tools: pickButton(15),
             top: (

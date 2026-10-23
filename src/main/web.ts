@@ -1,7 +1,8 @@
-// Web tabs: websites shown in <webview> guests. They get no preload, no Node
-// and their own session; popups become new tabs, browser shortcuts are
-// forwarded to the gApp window, and the renderer can screenshot them for the
-// website agent.
+// Web tabs and app previews: pages shown in <webview> guests. They get no
+// preload and no Node. Websites share one session; every app preview gets a
+// session of its own (apps all run on 127.0.0.1, and cookies don't separate
+// ports). Popups become new tabs, browser shortcuts are forwarded to the gApp
+// window, and the renderer can screenshot them for the agents.
 import {
   app,
   clipboard,
@@ -16,9 +17,11 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import { WEB_PARTITION, type WebShortcut } from "../shared/api";
+import { APP_PARTITION_PATTERN, WEB_PARTITION, type WebShortcut } from "../shared/api";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
+/** Where gApp serves apps (see the server's runtime). */
+const isAppUrl = (url: string) => /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/i.test(url);
 
 // Websites get the harmless permissions only (no camera, location, notifications…).
 const allowedPermissions = new Set(["fullscreen", "clipboard-sanitized-write", "pointerLock"]);
@@ -51,22 +54,27 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       prefs.sandbox = true;
       prefs.webSecurity = true;
       const src = params.src ?? "";
-      if (params.partition !== WEB_PARTITION || !(isWebUrl(src) || src === "about:blank")) {
-        event.preventDefault();
-      }
+      const partition = params.partition ?? "";
+      const web = partition === WEB_PARTITION && (isWebUrl(src) || src === "about:blank");
+      const preview = APP_PARTITION_PATTERN.test(partition) && (isAppUrl(src) || src === "about:blank");
+      if (!web && !preview) return event.preventDefault();
+      if (preview) lockDown(session.fromPartition(partition));
     });
     if (contents.getType() === "webview") setupGuest(contents);
   });
 
   function setupGuest(contents: WebContents) {
+    const isPreview = () => contents.session !== web;
     contents.setWindowOpenHandler(({ url }) => {
       openTab(url);
       return { action: "deny" };
     });
     contents.on("will-navigate", (event, url) => {
-      if (isWebUrl(url) || url.startsWith("about:")) return;
+      // App previews stay on the app; links elsewhere open as web tabs.
+      if (isPreview() ? isAppUrl(url) : isWebUrl(url) || url.startsWith("about:")) return;
       event.preventDefault();
       if (/^(mailto|tel):/i.test(url)) shell.openExternal(url);
+      else openTab(url);
     });
     contents.on("before-input-event", (event, input) => {
       const name = shortcutFor(input);
@@ -119,11 +127,23 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     return items;
   }
 
+  const lockedDown = new WeakSet<Electron.Session>();
+  function lockDown(s: Electron.Session) {
+    if (lockedDown.has(s)) return;
+    lockedDown.add(s);
+    s.setPermissionRequestHandler((_contents, permission, callback) => callback(allowedPermissions.has(permission)));
+    s.setPermissionCheckHandler((_contents, permission) => allowedPermissions.has(permission));
+  }
+
   const web = session.fromPartition(WEB_PARTITION);
-  web.setPermissionRequestHandler((_contents, permission, callback) => callback(allowedPermissions.has(permission)));
-  web.setPermissionCheckHandler((_contents, permission) => allowedPermissions.has(permission));
+  lockDown(web);
   // A plain Chrome user agent: some sites turn away unknown browsers.
   web.setUserAgent(app.userAgentFallback.replace(/ (gapp|Electron)\/\S+/gi, ""));
+
+  ipcMain.on("gapp:open-external", (event, url: unknown) => {
+    if (event.sender !== getWindow()?.webContents) return;
+    if (typeof url === "string" && isWebUrl(url)) void shell.openExternal(url);
+  });
 
   ipcMain.handle("gapp:capture", async (event, id: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;

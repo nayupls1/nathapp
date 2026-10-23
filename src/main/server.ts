@@ -1,10 +1,13 @@
 import { app } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { join } from "node:path";
 
 export interface ServerHandle {
   url: string;
+  /** Required on every API request; only gApp's own window gets it. */
+  token: string;
   stop: () => void;
 }
 
@@ -56,6 +59,7 @@ async function waitForHealthy(url: string, child: ChildProcess, timeoutMs = 10_0
 export async function startServer(allowedOrigin: string): Promise<ServerHandle> {
   const port = await getFreePort();
   const url = `http://127.0.0.1:${port}`;
+  const token = randomBytes(32).toString("hex");
   const { command, args } = serverCommand();
 
   const child = spawn(command, args, {
@@ -63,6 +67,7 @@ export async function startServer(allowedOrigin: string): Promise<ServerHandle> 
       ...process.env,
       PORT: String(port),
       GAPP_ALLOWED_ORIGIN: allowedOrigin,
+      GAPP_TOKEN: token,
       GAPP_PARENT: "electron",
       GAPP_DATA_DIR: join(app.getPath("userData"), "data"),
     },
@@ -82,5 +87,5 @@ export async function startServer(allowedOrigin: string): Promise<ServerHandle> 
     throw err;
   }
 
-  return { url, stop };
+  return { url, token, stop };
 }

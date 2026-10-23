@@ -1,21 +1,21 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, createSignal, For, Match, on, Show, Switch, type JSX } from "solid-js";
+import { createEffect, For, Match, on, Show, Switch, type JSX } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
+import { markdownToHtml } from "../../shared/markdown";
 import { settings } from "../lib/settings";
 import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
-import { BackendDrawer, BackendPill, useRuntime } from "./BackendPanel";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 
 export function Chat(props: {
   appId: string;
-  /** Web tabs: the website agent, with picked elements above the composer. */
-  web?: { top: JSX.Element; tools: JSX.Element; onSend: (prompt: string) => void };
+  /** Web tabs: the website agent. */
+  web?: boolean;
+  /** Picked elements above the composer, the picker button next to it, and how to send (with the page). */
+  page?: { top: JSX.Element; tools: JSX.Element; onSend: (prompt: string) => void };
 }) {
   const state = () => states[props.appId]!;
-  const runtime = useRuntime(() => (props.web ? null : props.appId));
-  const [backendOpen, setBackendOpen] = createSignal(false);
   let scroller!: HTMLDivElement;
 
   // Keep the newest message in view while the agent is talking.
@@ -30,7 +30,6 @@ export function Chat(props: {
       <header {...stylex.attrs(styles.header)}>
         <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
         <span {...stylex.attrs(styles.headerTitle)}>{props.web ? "Website agent" : "Agent"}</span>
-        <BackendPill appId={props.appId} runtime={runtime()} open={backendOpen()} onToggle={() => setBackendOpen((o) => !o)} />
         <button
           type="button"
           title="Hide agent (Ctrl+J)"
@@ -41,9 +40,6 @@ export function Chat(props: {
           <Icon name="panel-right-close" size={16} />
         </button>
       </header>
-      <Show when={backendOpen() && runtime()?.status.exists && runtime()}>
-        {(info) => <BackendDrawer appId={props.appId} runtime={info()} />}
-      </Show>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
         <Show when={props.web && !state().messages.length && !state().running}>
           <p {...stylex.attrs(styles.hint)}>
@@ -56,7 +52,7 @@ export function Chat(props: {
         </For>
         <Show when={state().running}>
           <Show when={state().draft} fallback={<p {...stylex.attrs(styles.working)}>Working…</p>}>
-            <p {...stylex.attrs(styles.assistant)}>{state().draft}</p>
+            <Markdown text={state().draft} />
           </Show>
         </Show>
       </div>
@@ -65,9 +61,9 @@ export function Chat(props: {
           appId={props.appId}
           running={state().running}
           placeholder={props.web ? "Ask about or change this page…" : undefined}
-          top={props.web?.top}
-          tools={props.web?.tools}
-          onSend={(prompt) => (props.web ? props.web.onSend(prompt) : sendPrompt(props.appId, prompt))}
+          top={props.page?.top}
+          tools={props.page?.tools}
+          onSend={(prompt) => (props.page ? props.page.onSend(prompt) : sendPrompt(props.appId, prompt))}
           onStop={() => stopAgent(props.appId)}
         />
       </div>
@@ -82,7 +78,7 @@ function Message(props: { message: ChatMessage }) {
         <p {...stylex.attrs(styles.user)}>{props.message.content}</p>
       </Match>
       <Match when={props.message.role === "assistant"}>
-        <p {...stylex.attrs(styles.assistant)}>{props.message.content}</p>
+        <Markdown text={props.message.content} />
       </Match>
       <Match when={props.message.role === "tool"}>
         <p {...stylex.attrs(styles.tool)}>✓ {props.message.content}</p>
@@ -94,6 +90,15 @@ function Message(props: { message: ChatMessage }) {
         <PickedContext content={props.message.content} />
       </Match>
     </Switch>
+  );
+}
+
+/** Assistant text (Markdown; escaped, so it can't inject markup). Links open as web tabs. */
+function Markdown(props: { text: string }) {
+  return (
+    <div {...stylex.attrs(styles.assistant, styles.markdown)}>
+      <div class="gapp-markdown" innerHTML={markdownToHtml(props.text)} />
+    </div>
   );
 }
 
@@ -235,6 +240,7 @@ const styles = stylex.create({
     backgroundColor: colors.accentSoft,
   },
   assistant: { ...bubble },
+  markdown: { whiteSpace: "normal" },
   tool: { ...bubble, fontSize: font.xs, color: colors.success },
   errorMsg: { ...bubble, fontSize: font.sm, color: colors.danger },
   hint: { ...bubble, fontSize: font.sm, color: colors.muted },

@@ -1,0 +1,120 @@
+// Projects, the sandbox and the runtime: a preset is scaffolded, runs in dev
+// mode, is built and started in live mode; sandboxed processes can't see the
+// rest of the machine.
+import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect, Layer, ManagedRuntime } from "effect";
+import { readConfig, ServerConfig } from "../src/server/Config";
+import * as Apps from "../src/server/db/Apps";
+import * as Db from "../src/server/db/Db";
+import * as Settings from "../src/server/db/Settings";
+import * as Hub from "../src/server/Hub";
+import * as Runtime from "../src/server/workspace/Runtime";
+import * as Sandbox from "../src/server/workspace/Sandbox";
+import * as Workspace from "../src/server/workspace/Workspace";
+import { presets } from "../src/server/workspace/presets";
+
+const dataDir = mkdtempSync(join(tmpdir(), "gapp-workspace-test-"));
+const config = readConfig({ GAPP_DATA_DIR: dataDir, PORT: "1" });
+
+const layer = Runtime.layer.pipe(
+  Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
+  Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Hub.layer)),
+  Layer.provideMerge(Db.layer),
+  Layer.provideMerge(Layer.succeed(ServerConfig, config)),
+);
+const runtime = ManagedRuntime.make(layer);
+const run = <A, E>(effect: Effect.Effect<A, E, Runtime.Runtime | Workspace.Workspace | Sandbox.Sandbox | Apps.Apps>) =>
+  runtime.runPromise(effect);
+
+afterAll(async () => {
+  await runtime.dispose();
+  rmSync(dataDir, { recursive: true, force: true });
+});
+
+const createApp = () => run(Effect.flatMap(Apps.Apps, (apps) => apps.create("app", null)));
+
+describe("presets", () => {
+  test("every preset has a manifest and a server", () => {
+    for (const preset of presets) {
+      expect(preset.manifest.dev).toBeTruthy();
+      expect(preset.manifest.start).toBeTruthy();
+      expect(Object.keys(preset.files)).toContain("src/server.ts");
+    }
+  });
+
+  test("scaffolding writes the files, gapp.json and the design tokens", async () => {
+    const app = await createApp();
+    const project = await run(Effect.flatMap(Workspace.Workspace, (w) => w.scaffold(app.id, "react", "Plant <Diary>")));
+    expect(existsSync(join(project.dir, "src/App.tsx"))).toBe(true);
+    expect(JSON.parse(readFileSync(join(project.dir, "gapp.json"), "utf8")).dev).toBe("bun run dev");
+    expect(readFileSync(join(project.dir, "src/tokens.css"), "utf8")).toContain("--color-accent");
+    expect(readFileSync(join(project.dir, "src/index.html"), "utf8")).toContain("Plant &lt;Diary&gt;");
+    expect(JSON.parse(readFileSync(join(project.dir, "package.json"), "utf8")).name).toBe("plant-diary");
+    // A second scaffold would clobber the agent's work.
+    await expect(run(Effect.flatMap(Workspace.Workspace, (w) => w.scaffold(app.id, "vanilla", "x")))).rejects.toThrow(
+      "already set up",
+    );
+  });
+});
+
+const hasBwrap = await run(Effect.flatMap(Sandbox.Sandbox, (s) => s.kind)).then((k) => k === "bwrap");
+
+describe.if(hasBwrap)("sandbox", () => {
+  test("app processes only see their own project", async () => {
+    const app = await createApp();
+    const dir = await run(Effect.flatMap(Workspace.Workspace, (w) => w.ensureDir(app.id)));
+    process.env.GAPP_TEST_SECRET = "hunter2";
+    const exec = (command: string) => run(Effect.flatMap(Runtime.Runtime, (r) => r.exec(app.id, command, 20_000)));
+
+    expect((await exec("echo hi > note.txt && cat note.txt")).output.trim()).toBe("hi");
+    expect(readFileSync(join(dir, "note.txt"), "utf8")).toBe("hi\n");
+
+    // Only the bun binary is bound from outside; the user's files aren't there.
+    const outside = await exec(`cat ${JSON.stringify(join(process.cwd(), "package.json"))} 2>&1; ls -A ${JSON.stringify(homedir())}`);
+    expect(outside.output).toContain("No such file");
+    expect(outside.output).not.toContain("gapp");
+    const otherApp = await exec(`ls ${JSON.stringify(config.appsDir)} 2>&1`);
+    expect(otherApp.output.trim().split("\n")).toEqual([app.id]);
+    expect((await exec("touch /usr/x 2>&1; echo code=$?")).output).toContain("code=1");
+    expect((await exec("echo ${GAPP_TEST_SECRET:-unset}")).output.trim()).toBe("unset");
+    expect((await exec("cat /proc/1/cmdline | tr '\\0' ' '")).output).toContain("bwrap");
+    expect((await exec("bun -e 'console.log(6 * 7)'")).output.trim()).toBe("42");
+  });
+});
+
+describe("runtime", () => {
+  test("dev mode serves the app; live mode builds and starts it", async () => {
+    const app = await createApp();
+    await run(Effect.flatMap(Workspace.Workspace, (w) => w.scaffold(app.id, "vanilla", "Runtime test")));
+    const status = await run(
+      Effect.gen(function* () {
+        const r = yield* Runtime.Runtime;
+        yield* r.ensure(app.id);
+        return yield* r.settled(app.id, 90_000);
+      }),
+    );
+    if (status.state !== "running") console.log(await run(Effect.map(Runtime.Runtime, (r) => r.logs(app.id))));
+    expect(status).toMatchObject({ mode: "dev", state: "running" });
+    const dev = await fetch(status.url!).then((r) => r.text());
+    expect(dev).toContain("Runtime test");
+
+    const live = await run(
+      Effect.gen(function* () {
+        const r = yield* Runtime.Runtime;
+        yield* r.setMode(app.id, "live");
+        return yield* r.settled(app.id, 90_000);
+      }),
+    );
+    expect(live).toMatchObject({ mode: "live", state: "running", port: status.port });
+    expect(await fetch(live.url!).then((r) => r.text())).toContain("Runtime test");
+    expect(existsSync(join(config.appsDir, app.id, "dist/server.js"))).toBe(true);
+
+    await run(Effect.flatMap(Runtime.Runtime, (r) => r.stop(app.id)));
+    const stopped = await run(Effect.flatMap(Runtime.Runtime, (r) => r.status(app.id)));
+    expect(stopped.state).toBe("stopped");
+    expect(await fetch(live.url!).then(() => "up", () => "down")).toBe("down");
+  }, 180_000);
+});

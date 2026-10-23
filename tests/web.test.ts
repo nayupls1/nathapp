@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { Socket, type ServerMessage } from "../src/sdk/gapp";
+import { Socket, type TopicMessage } from "../src/shared/hub";
 import type { AppSummary, PageContext, SiteOverride } from "../src/shared/api";
 import { hostOf, normalizeUrl, overrideScript } from "../src/shared/web";
-import { contextSummary, withPageContext } from "../src/server/webagent";
+import { contextSummary, withPageContext } from "../src/server/agent/prompts";
 import { startServer } from "./lib/server";
 
 describe("address bar input", () => {
@@ -108,8 +108,8 @@ describe("web tab routes", () => {
   });
 
   test("site customizations are stored per host and broadcast", async () => {
-    const socket = new Socket(`${server.url.replace("http", "ws")}/api/ws`);
-    const messages: ServerMessage[] = [];
+    const socket = new Socket(server.wsUrl);
+    const messages: TopicMessage[] = [];
     socket.subscribe("sites", (msg) => messages.push(msg));
     await new Promise<void>((resolve) => socket.onConnection((c) => c && resolve()));
     await Bun.sleep(50);
@@ -131,9 +131,15 @@ describe("web tab routes", () => {
   test("websites can't change customizations", async () => {
     const res = await fetch(`${server.url}/api/sites/evil.com`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Origin: "https://evil.com" },
+      headers: { "Content-Type": "application/json", Origin: "https://evil.com", Authorization: `Bearer ${server.token}` },
       body: JSON.stringify({ js: "alert(1)" }),
     });
     expect(res.status).toBe(403);
+  });
+
+  test("the API needs the token", async () => {
+    expect((await fetch(`${server.url}/api/apps`)).status).toBe(401);
+    expect((await fetch(`${server.url}/api/apps`, { headers: { Authorization: "Bearer nope" } })).status).toBe(401);
+    expect((await fetch(`${server.url}/api/health`)).status).toBe(200);
   });
 });

@@ -3,7 +3,6 @@ import { createSignal, For, Show } from "solid-js";
 import type { AppSummary } from "../../shared/api";
 import {
   apps,
-  CATALOG_VIEW,
   clearChat,
   deleteApp,
   duplicateApp,
@@ -52,7 +51,6 @@ export function Sidebar() {
         <For each={apps}>{(app) => <Item app={app} />}</For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
-        <PageLink id={CATALOG_VIEW} icon="book-open" label="Catalog" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
     </nav>

@@ -37,7 +37,7 @@ function registerAppProtocol() {
   });
 }
 
-function createWindow(serverUrl: string) {
+function createWindow(server: ServerHandle) {
   const win = new BrowserWindow({
     width: 1100,
     height: 750,
@@ -45,7 +45,7 @@ function createWindow(serverUrl: string) {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
-      additionalArguments: [`--gapp-server-url=${serverUrl}`],
+      additionalArguments: [`--gapp-server-url=${server.url}`, `--gapp-token=${server.token}`],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -88,10 +88,10 @@ app.whenReady().then(async () => {
     return;
   }
 
-  createWindow(server.url);
+  createWindow(server);
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0 && server) createWindow(server.url);
+    if (BrowserWindow.getAllWindows().length === 0 && server) createWindow(server);
   });
 });
 

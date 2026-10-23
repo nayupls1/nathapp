@@ -1,21 +1,15 @@
-// The renderer's realtime connection to the server: data change notifications
-// for open apps, and RPC requests from the server (used by the website agent).
+// The renderer's connection to the hub: agent output, app status and logs,
+// tab list changes, and requests from the server (the agents' page tools).
 import { createSignal } from "solid-js";
-import { Socket, type ServerMessage } from "../../sdk/gapp";
+import { Socket, type TopicMessage } from "../../shared/hub";
 
-const socket = new Socket(`${window.gapp.serverUrl.replace(/^http/, "ws")}/api/ws?role=renderer`);
+const socket = new Socket(
+  `${window.gapp.serverUrl.replace(/^http/, "ws")}/api/ws?role=renderer&token=${encodeURIComponent(window.gapp.token)}`,
+);
 
 const [connected, setConnected] = createSignal(false);
 socket.onConnection(setConnected);
 export { connected as realtimeConnected };
-
-/** Calls `onChange` with changed table names (or "spec") for an app. Returns an unsubscribe function. */
-export function watchApp(appId: string, handlers: { tables: (tables: string[]) => void; spec?: () => void }) {
-  return socket.subscribe(`app:${appId}`, (msg: ServerMessage) => {
-    if (msg.type === "change") handlers.tables(msg.tables);
-    else if (msg.type === "spec") handlers.spec?.();
-  });
-}
 
 /** Calls `fn` whenever the connection (re)opens, e.g. to refetch what may have been missed. */
 export function onConnected(fn: () => void) {
@@ -24,7 +18,7 @@ export function onConnected(fn: () => void) {
   });
 }
 
-export function watchTopic(topic: string, fn: (msg: ServerMessage) => void) {
+export function watchTopic(topic: string, fn: (msg: TopicMessage) => void) {
   return socket.subscribe(topic, fn);
 }
 

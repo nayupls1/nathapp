@@ -23,7 +23,7 @@ console.log("› server");
 await Bun.$`bun build --compile --minify --sourcemap src/server/index.ts --outfile dist/server/${serverBinary}`.quiet();
 
 // The compiled server can't resolve the SDK's platform package at runtime, so
-// ship the binary next to it (see claudeExecutable() in src/server/config.ts).
+// ship the binary next to it (see bundledBinary() in src/server/providers/Claude.ts).
 console.log("› claude binary");
 const sdkPlatformPackage = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;
 const claudeBinary = createRequire(import.meta.url).resolve(`${sdkPlatformPackage}/claude${exe}`);

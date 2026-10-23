@@ -1,55 +1,49 @@
 // Global UI state. Lives outside components so an agent run keeps streaming
-// into its tab while you look at another one.
+// into its tab while you look at another one. Everything the server changes
+// (agent output, app status, the tab list) arrives on the hub.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile } from "solid-js/store";
-import type { AppSummary, ChatMessage, Effort, ModelOption, PageContext } from "../../shared/api";
+import type { AgentChoice, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus } from "../../shared/api";
+import { topics } from "../../shared/hub";
 import { normalizeUrl } from "../../shared/web";
-import type { AppSpec } from "../../shared/spec";
 import { api } from "./api";
-import { onConnected, watchApp } from "./realtime";
+import { onConnected, watchTopic } from "./realtime";
 import { settings } from "./settings";
 
-export interface AppState {
+export interface TabState {
   loaded: boolean;
-  spec: AppSpec | null;
   messages: ChatMessage[];
   /** Assistant text currently being streamed. */
   draft: string;
   running: boolean;
-  /** Bumped whenever any of the app's data may have changed. */
-  dataVersion: number;
-  /** Bumped per table when the server reports a change. */
-  tableVersions: Record<string, number>;
-  /** Agent settings for this app; null means Claude Code's default. */
-  model: string | null;
-  effort: Effort | null;
+  /** Who answers in this tab: provider, model and effort. */
+  agent: AgentChoice;
+  /** Apps: the project (null until the agent set one up) and how it runs. */
+  project: ProjectInfo | null;
+  runtime: RuntimeStatus | null;
 }
 
-/** Pseudo app ids for the pages at the bottom of the sidebar. */
-export const CATALOG_VIEW = "catalog";
+/** Pseudo tab id for the Settings page at the bottom of the sidebar. */
 export const SETTINGS_VIEW = "settings";
-const isPage = (id: string) => id === CATALOG_VIEW || id === SETTINGS_VIEW;
 
 const [apps, setApps] = createStore<AppSummary[]>([]);
-const [states, setStates] = createStore<Record<string, AppState>>({});
+const [states, setStates] = createStore<Record<string, TabState>>({});
 const [selectedId, setSelectedId] = createSignal<string | null>(null);
-const [models, setModels] = createSignal<ModelOption[]>([]);
-const [modelsError, setModelsError] = createSignal<string>();
+const [providers, setProviders] = createSignal<ProviderStatus[]>([]);
 
-export { apps, models, modelsError, selectedId, states };
+export { apps, providers, selectedId, states };
 
 export const appById = (id: string | null) => (id ? apps.find((a) => a.id === id) : undefined);
 export const isWebTab = (id: string | null) => appById(id)?.kind === "web";
+/** Tabs (app or web) as opposed to the Settings page. */
+export const isTab = (id: string | null): id is string => !!id && id !== SETTINGS_VIEW;
 
-// Web tabs stay alive (page state, scroll, logins) once opened, until deleted.
-const [openedWeb, setOpenedWeb] = createSignal<string[]>([]);
-export const openWebTabs = () => apps.filter((a) => a.kind === "web" && openedWeb().includes(a.id));
+// Tabs stay alive (pages, previews, scroll) once opened, until deleted.
+const [opened, setOpened] = createSignal<string[]>([]);
+export const openTabs = () => apps.filter((a) => opened().includes(a.id));
 const markOpened = (id: string) => {
-  if (isWebTab(id) && !openedWeb().includes(id)) setOpenedWeb([...openedWeb(), id]);
+  if (isTab(id) && !opened().includes(id)) setOpened([...opened(), id]);
 };
-
-/** Tabs (app or web) as opposed to the Catalog/Settings pages. */
-export const isTab = (id: string | null): id is string => !!id && !isPage(id);
 
 // Whether the agent panel is hidden, per tab. Remembered across restarts.
 const COLLAPSED_KEY = "gapp.agentCollapsed";
@@ -75,45 +69,43 @@ export function setAgentCollapsed(id: string, value: boolean) {
 
 export const toggleAgent = (id: string) => setAgentCollapsed(id, !isAgentCollapsed(id));
 
-// New tabs start with the default model/effort from Settings.
-const agentDefaults = (): { model: string | null; effort: Effort | null } => ({
-  model: settings().agent.model,
-  effort: settings().agent.effort,
+// --- Providers -------------------------------------------------------------------------
+
+export const providerById = (id: string) => providers().find((p) => p.id === id);
+
+export async function loadProviders() {
+  setProviders(await api.providers());
+}
+
+export async function refreshProviders(id?: ProviderStatus["id"]) {
+  setProviders(await api.refreshProviders(id));
+}
+
+watchTopic(topics.providers, (msg) => {
+  if (msg.type === "providers") setProviders(msg.providers);
 });
 
-export async function loadModels() {
-  try {
-    setModels(await api.listModels());
-    setModelsError();
-  } catch (err) {
-    setModelsError(err instanceof Error ? err.message : String(err));
-  }
+/** The agent new tabs start with (Settings). */
+const defaultAgent = (): AgentChoice => {
+  const { provider, model, effort } = settings().agent;
+  return { provider, model, effort };
+};
+
+export function setAgentChoice(id: string, choice: AgentChoice) {
+  setStates(id, "agent", choice);
 }
 
-export function setAgentOptions(id: string, options: { model: string | null; effort: Effort | null }) {
-  setStates(id, options);
-}
+// --- Tabs ------------------------------------------------------------------------------
 
-const emptyState = (): AppState => ({
+const emptyState = (): TabState => ({
   loaded: false,
-  spec: null,
   messages: [],
   draft: "",
   running: false,
-  dataVersion: 0,
-  tableVersions: {},
-  ...agentDefaults(),
+  agent: defaultAgent(),
+  project: null,
+  runtime: null,
 });
-
-// Realtime updates for every loaded app: data changes and specs changed elsewhere.
-const watchers = new Map<string, () => void>();
-function watch(id: string) {
-  if (watchers.has(id)) return;
-  const stopApp = watchApp(id, { tables: (tables) => bumpTables(id, tables), spec: () => void reloadSpec(id) });
-  // After a reconnect, refetch everything: changes in between weren't pushed.
-  const stopReconnect = onConnected(() => bumpData(id));
-  watchers.set(id, () => (stopApp(), stopReconnect()));
-}
 
 function upsertApp(app: AppSummary) {
   const i = apps.findIndex((a) => a.id === app.id);
@@ -121,61 +113,117 @@ function upsertApp(app: AppSummary) {
   else setApps(i, reconcile(app));
 }
 
+function forgetApp(id: string) {
+  const index = apps.findIndex((a) => a.id === id);
+  if (index === -1) return;
+  setApps((list) => list.filter((a) => a.id !== id));
+  setOpened(opened().filter((x) => x !== id));
+  watchers.get(id)?.();
+  watchers.delete(id);
+  setStates(produce((s) => void delete s[id]));
+  if (selectedId() === id) {
+    const next = apps[Math.min(index, apps.length - 1)];
+    setSelectedId(null);
+    if (next) void selectApp(next.id);
+  }
+}
+
+// The tab list changes from elsewhere too (the agent names apps, duplicates…).
+watchTopic(topics.apps, (msg) => {
+  if (msg.type === "app") upsertApp(msg.app);
+  else if (msg.type === "app-deleted") forgetApp(msg.appId);
+});
+onConnected(() => void api.listApps().then((list) => setApps(reconcile(list)), () => {}));
+
+const addMessage = (id: string, message: ChatMessage) =>
+  setStates(
+    id,
+    produce((s) => {
+      if (s.messages.some((m) => m.id === message.id)) return;
+      s.messages.push(message);
+      if (message.role === "assistant") s.draft = "";
+    }),
+  );
+
+// Agent output and app status for every loaded tab.
+const watchers = new Map<string, () => void>();
+function watch(id: string) {
+  if (watchers.has(id)) return;
+  const stopTopic = watchTopic(topics.app(id), (msg) => {
+    if (!states[id]) return;
+    if (msg.type === "runtime") {
+      setStates(id, "runtime", msg.status);
+      // The agent just set up the project.
+      if (!states[id].project) void refreshDetail(id);
+      return;
+    }
+    if (msg.type !== "chat") return;
+    const event = msg.event;
+    if (event.type === "started") setStates(id, { running: true, draft: "" });
+    else if (event.type === "message") addMessage(id, event.message);
+    else if (event.type === "delta") setStates(id, "draft", (d) => d + event.text);
+    else if (event.type === "done") {
+      setStates(id, { running: false, draft: "" });
+      // The agent may have set up the project.
+      if (appById(id)?.kind === "app") void refreshDetail(id);
+    }
+  });
+  // After a reconnect, refetch: what happened in between wasn't pushed.
+  const stopReconnect = onConnected(() => void refreshDetail(id));
+  watchers.set(id, () => (stopTopic(), stopReconnect()));
+}
+
+async function refreshDetail(id: string) {
+  const detail = await api.getApp(id).catch(() => null);
+  if (!detail || !states[id]) return;
+  setStates(id, {
+    messages: detail.messages,
+    running: detail.running,
+    project: detail.project,
+    runtime: detail.runtime,
+    ...(detail.running ? {} : { draft: "" }),
+  });
+}
+
 export async function loadApps() {
   const list = await api.listApps();
   setApps(reconcile(list));
-  if (!selectedId()) await selectApp(list.length ? list[list.length - 1]!.id : CATALOG_VIEW);
+  if (!selectedId()) await selectApp(list.length ? list[list.length - 1]!.id : SETTINGS_VIEW);
 }
 
 export async function selectApp(id: string) {
   setSelectedId(id);
   markOpened(id);
-  if (isPage(id) || states[id]?.loaded) return;
-  const detail = await api.getApp(id);
+  if (!isTab(id) || states[id]?.loaded) return;
   watch(id);
+  const detail = await api.getApp(id);
   setStates(id, {
     ...emptyState(),
     loaded: true,
-    spec: detail.spec,
     messages: detail.messages,
     running: detail.running,
-    ...(detail.model || detail.effort ? { model: detail.model, effort: detail.effort } : {}),
+    agent: detail.agent ?? defaultAgent(),
+    project: detail.project,
+    runtime: detail.runtime,
   });
-  // A run started before a reload: we can't reattach to its stream, so poll
-  // until it finishes and then pick up the results.
-  if (detail.running) void pollUntilIdle(id);
 }
 
-async function pollUntilIdle(id: string) {
-  for (;;) {
-    await new Promise((r) => setTimeout(r, 1500));
-    const detail = await api.getApp(id).catch(() => null);
-    if (!detail) return;
-    if (!detail.running) {
-      setStates(id, { spec: detail.spec, messages: detail.messages, running: false });
-      bumpData(id);
-      return;
-    }
-  }
+function showNewTab(app: AppSummary) {
+  upsertApp(app);
+  watch(app.id);
+  setStates(app.id, { ...emptyState(), loaded: true });
+  setSelectedId(app.id);
+  markOpened(app.id);
 }
 
 export async function newApp() {
-  const app = await api.createApp();
-  upsertApp(app);
-  setStates(app.id, { ...emptyState(), loaded: true });
-  watch(app.id);
-  setSelectedId(app.id);
+  showNewTab(await api.createApp());
 }
 
 /** Opens a web tab: the given URL, or the home page from Settings. */
 export async function newWebTab(url?: string) {
   const target = url ?? normalizeUrl(settings().web.homePage, settings().web.searchEngine);
-  const app = await api.createApp({ kind: "web", url: /^https?:\/\//i.test(target) ? target : undefined });
-  upsertApp(app);
-  setStates(app.id, { ...emptyState(), loaded: true });
-  watch(app.id);
-  setSelectedId(app.id);
-  markOpened(app.id);
+  showNewTab(await api.createApp({ kind: "web", url: /^https?:\/\//i.test(target) ? target : undefined }));
 }
 
 // Web tab navigation is saved (debounced) so tabs reopen where they were.
@@ -211,7 +259,6 @@ export async function renameApp(id: string, name: string) {
 export async function duplicateApp(id: string) {
   const copy = await api.duplicateApp(id);
   upsertApp(copy); // the list is ordered by creation, so it goes last
-
   await selectApp(copy.id);
 }
 
@@ -222,66 +269,15 @@ export async function clearChat(id: string) {
 
 export async function deleteApp(id: string) {
   await api.deleteApp(id);
-  const index = apps.findIndex((a) => a.id === id);
-  setApps((list) => list.filter((a) => a.id !== id));
-  setOpenedWeb(openedWeb().filter((x) => x !== id));
-  watchers.get(id)?.();
-  watchers.delete(id);
-  setStates(produce((s) => void delete s[id]));
-  if (selectedId() === id) {
-    const next = apps[Math.min(index, apps.length - 1)];
-    setSelectedId(null);
-    if (next) await selectApp(next.id);
-  }
+  forgetApp(id);
 }
 
-export function bumpData(id: string) {
-  setStates(id, "dataVersion", (v) => v + 1);
-}
-
-export function bumpTables(id: string, tables: string[]) {
-  if (!states[id]) return;
-  setStates(id, "tableVersions", produce((t) => {
-    for (const name of tables) t[name] = (t[name] ?? 0) + 1;
-  }));
-}
-
-/** Data version of one table, for refetching only what changed. */
-export const tableVersion = (id: string, table: string) =>
-  (states[id]?.dataVersion ?? 0) + (states[id]?.tableVersions[table] ?? 0);
-
-/** Picks up a spec changed outside the agent stream (import, another window). */
-export async function reloadSpec(id: string) {
-  const detail = await api.getApp(id).catch(() => null);
-  if (detail && states[id]) setStates(id, { spec: detail.spec });
-  if (detail) upsertApp(detail);
-}
+// --- Agent -------------------------------------------------------------------------------
 
 export async function sendPrompt(id: string, prompt: string, page?: PageContext) {
   setStates(id, { running: true, draft: "" });
-  const { model, effort } = states[id]!;
   try {
-    await api.chat(id, { prompt, model: model ?? undefined, effort: effort ?? undefined, page }, (event) => {
-      switch (event.type) {
-        case "message":
-          setStates(id, produce((s) => {
-            s.messages.push(event.message);
-            if (event.message.role === "assistant") s.draft = "";
-          }));
-          break;
-        case "delta":
-          setStates(id, "draft", (d) => d + event.text);
-          break;
-        case "spec":
-          setStates(id, { spec: event.spec });
-          break;
-        case "app":
-          upsertApp(event.app);
-          break;
-        case "done":
-          break;
-      }
-    });
+    await api.chat(id, { prompt, agent: states[id]!.agent, page });
   } catch (err) {
     const message: ChatMessage = {
       id: -Date.now(),
@@ -289,12 +285,17 @@ export async function sendPrompt(id: string, prompt: string, page?: PageContext)
       content: err instanceof Error ? err.message : String(err),
       createdAt: new Date().toISOString(),
     };
-    setStates(id, "messages", (m) => [...m, message]);
-  } finally {
     setStates(id, { running: false, draft: "" });
+    setStates(id, "messages", (m) => [...m, message]);
   }
 }
 
 export function stopAgent(id: string) {
   return api.stop(id);
+}
+
+// --- Apps --------------------------------------------------------------------------------
+
+export function setRuntime(id: string, status: RuntimeStatus) {
+  if (states[id]) setStates(id, "runtime", status);
 }
