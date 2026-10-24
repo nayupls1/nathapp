@@ -5,6 +5,7 @@ import { createResource, createSignal, For, onCleanup, Show, type JSX } from "so
 import { defaultAppModel, providerIds, workspaceScope, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
+import { topics } from "../../shared/hub";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
@@ -169,6 +170,16 @@ export function SettingsPage() {
           <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
         </Row>
         <SiteRows />
+      </Section>
+
+      <Section title="Network" icon="network" anchor="network">
+        <Row
+          label="Record web tabs' traffic"
+          description="Keep each web tab's recent requests (in memory, bounded) for the Network panel and the website agent, which only ever sees them with credentials hidden."
+        >
+          <Toggle checked={settings().web.recordNetwork} onChange={(recordNetwork) => set("web", { recordNetwork })} />
+        </Row>
+        <NetworkRules />
       </Section>
 
       <Section title="Apps" icon="box">
@@ -483,7 +494,13 @@ function GlobalSecrets() {
 }
 
 const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
-  g.action === "app.ai" ? "Use AI" : g.action === "app.secret" ? `Use the global secret ${g.resource}` : `Customize ${g.resource}`;
+  g.action === "app.ai"
+    ? "Use AI"
+    : g.action === "app.secret"
+      ? `Use the global secret ${g.resource}`
+      : g.action === "agent.network"
+        ? `Send requests to ${g.resource}`
+        : `Customize ${g.resource}`;
 
 /** Remembered decisions, each revocable. */
 function PermissionRows() {
@@ -500,6 +517,135 @@ function PermissionRows() {
         )}
       </For>
     </Show>
+  );
+}
+
+/** "Name: value" per line; a name without a value removes the header. */
+const parseHeaders = (text: string) =>
+  Object.fromEntries(
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.includes(":"))
+      .map((line) => {
+        const i = line.indexOf(":");
+        const value = line.slice(i + 1).trim();
+        return [line.slice(0, i).trim(), value || null] as const;
+      })
+      .filter(([name]) => name),
+  );
+
+const headersLabel = (headers: Record<string, string | null>) =>
+  Object.entries(headers)
+    .map(([name, value]) => (value === null ? `−${name}` : `${name}: ${value}`))
+    .join(", ");
+
+/** Rules that block or change web tabs' requests, everywhere or in one workspace. */
+function NetworkRules() {
+  const [rules, { refetch }] = createResource(() => api.networkRules());
+  onCleanup(
+    watchTopic(topics.network, (msg) => {
+      if (msg.type === "network-changed" && msg.what === "rules") void refetch();
+    }),
+  );
+  const [pattern, setPattern] = createSignal("");
+  const [action, setAction] = createSignal<"block" | "modify">("block");
+  const [scope, setScope] = createSignal("");
+  const [requestHeaders, setRequestHeaders] = createSignal("");
+  const [responseHeaders, setResponseHeaders] = createSignal("");
+  const [error, setError] = createSignal<string>();
+  const workspaceName = (id: string | null) => (id ? (workspaces.find((w) => w.id === id)?.name ?? "a deleted workspace") : "every workspace");
+  const modifying = () => action() === "modify";
+
+  const add = async (e: SubmitEvent) => {
+    e.preventDefault();
+    setError();
+    try {
+      await api.addNetworkRule({
+        workspaceId: scope() || null,
+        pattern: pattern().trim(),
+        action: action(),
+        requestHeaders: modifying() ? parseHeaders(requestHeaders()) : {},
+        responseHeaders: modifying() ? parseHeaders(responseHeaders()) : {},
+      });
+      setPattern("");
+      setRequestHeaders("");
+      setResponseHeaders("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <>
+      <For each={rules()}>
+        {(rule) => (
+          <Row
+            label={rule.pattern}
+            description={`${rule.action === "block" ? "Blocked" : `Changed: ${headersLabel({ ...rule.requestHeaders, ...rule.responseHeaders }) || "nothing"}`} · in ${workspaceName(rule.workspaceId)}`}
+          >
+            <div {...stylex.attrs(styles.siteControls)} data-network-rule={rule.pattern}>
+              <Toggle checked={rule.enabled} onChange={(enabled) => void api.updateNetworkRule(rule.id, { enabled })} />
+              <button
+                type="button"
+                title="Delete the rule"
+                onClick={() => void api.deleteNetworkRule(rule.id)}
+                {...stylex.attrs(styles.iconButton)}
+              >
+                <Icon name="trash" size={15} />
+              </button>
+            </div>
+          </Row>
+        )}
+      </For>
+      <form onSubmit={add} {...stylex.attrs(styles.ruleForm)} data-network-rule-form>
+        <div {...stylex.attrs(styles.ruleLine)}>
+          <input
+            value={pattern()}
+            onInput={(e) => setPattern(e.currentTarget.value)}
+            placeholder="*://*.tracker.example/*  or  /api/ads"
+            spellcheck={false}
+            {...stylex.attrs(styles.textInput, styles.ruleInput)}
+          />
+          <Segmented
+            value={action()}
+            options={[
+              ["block", "Block"],
+              ["modify", "Change headers"],
+            ]}
+            onChange={setAction}
+          />
+          <Select value={scope()} onChange={(e) => setScope(e.currentTarget.value)} xstyle={styles.ruleSelect}>
+            <option value="">Every workspace</option>
+            <For each={workspaces}>{(w) => <option value={w.id}>{w.name}</option>}</For>
+          </Select>
+          <button type="submit" disabled={!pattern().trim()} {...stylex.attrs(styles.linkButton)}>
+            Add rule
+          </button>
+        </div>
+        <Show when={modifying()}>
+          <div {...stylex.attrs(styles.ruleLine)}>
+            <textarea
+              value={requestHeaders()}
+              onInput={(e) => setRequestHeaders(e.currentTarget.value)}
+              placeholder={"Request headers, one per line:\nDNT: 1\nReferer:   (empty removes it)"}
+              rows={3}
+              {...stylex.attrs(styles.textarea, styles.ruleHeaders)}
+            />
+            <textarea
+              value={responseHeaders()}
+              onInput={(e) => setResponseHeaders(e.currentTarget.value)}
+              placeholder={"Response headers:\nContent-Security-Policy:"}
+              rows={3}
+              {...stylex.attrs(styles.textarea, styles.ruleHeaders)}
+            />
+          </div>
+        </Show>
+        <p {...stylex.attrs(styles.muted)}>
+          {error() ?? "A pattern with * matches the whole URL; without one, any URL containing it. Blocked requests show a shield in the Network panel."}
+        </p>
+      </form>
+    </>
   );
 }
 
@@ -780,6 +926,11 @@ const styles = stylex.create({
     outline: "none",
     fontSize: font.sm,
   },
+  ruleForm: { display: "flex", flexDirection: "column", gap: space.sm, paddingBlock: space.md, paddingInline: space.lg },
+  ruleLine: { display: "flex", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
+  ruleInput: { flex: "1 1 260px", fontFamily: font.mono },
+  ruleSelect: { width: 180 },
+  ruleHeaders: { flex: "1 1 240px", width: "auto", minHeight: 0, fontFamily: font.mono, fontSize: font.xs },
   textarea: {
     width: "100%",
     minHeight: 88,

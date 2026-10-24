@@ -14,6 +14,7 @@ const icons: Record<PermissionRequest["action"], string> = {
   "app.ai": "sparkles",
   "app.secret": "key-round",
   "agent.site": "paintbrush",
+  "agent.network": "network",
 };
 
 /** Mount once at the app root. */

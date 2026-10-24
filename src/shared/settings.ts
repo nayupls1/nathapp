@@ -74,6 +74,8 @@ export const Settings = Schema.Struct({
     searchEngine: SearchEngine.pipe(withDefault("duckduckgo")),
     /** Apply site customizations (CSS/JS overrides) in web tabs. */
     overrides: Schema.Boolean.pipe(withDefault(true)),
+    /** Keep web tabs' recent network traffic (in memory, bounded) for the Network panel and the website agent. */
+    recordNetwork: Schema.Boolean.pipe(withDefault(true)),
   }).pipe(withDefault({})),
   apps: Schema.Struct({
     /** How app processes are isolated. auto: bubblewrap when it's installed. */

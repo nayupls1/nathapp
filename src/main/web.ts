@@ -18,7 +18,8 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import { APP_PARTITION_PATTERN, WEB_PARTITION_PATTERN, webPartition, type WebShortcut } from "../shared/api";
+import { APP_PARTITION_PATTERN, DEFAULT_WORKSPACE, WEB_PARTITION, WEB_PARTITION_PATTERN, webPartition, type WebShortcut } from "../shared/api";
+import { setupNetwork } from "./network";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
 /** Where NathApp serves apps (see the server's runtime). */
@@ -46,6 +47,11 @@ function shortcutFor(input: Input): WebShortcut | undefined {
 export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   const send = (channel: string, ...args: unknown[]) => getWindow()?.webContents.send(channel, ...args);
   const openTab = (url: string) => isWebUrl(url) && send("nathapp:open-tab", url);
+  const network = setupNetwork({
+    getWindow,
+    webSession: (workspaceId) => webSession(webPartition(workspaceId)),
+    workspaceOf: (s) => webSessions.get(s),
+  });
 
   app.on("web-contents-created", (_event, contents) => {
     contents.on("will-attach-webview", (event, prefs, params) => {
@@ -68,6 +74,7 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
 
   function setupGuest(contents: WebContents) {
     const isPreview = () => !webSessions.has(contents.session);
+    if (!isPreview()) network.watch(contents);
     contents.setWindowOpenHandler(({ url }) => {
       openTab(url);
       return { action: "deny" };
@@ -138,13 +145,14 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     s.setPermissionCheckHandler((_contents, permission) => allowedPermissions.has(permission));
   }
 
-  /** The session of a workspace's web tabs, set up on first use. */
-  const webSessions = new WeakSet<Electron.Session>();
+  /** The session of a workspace's web tabs, set up on first use. Maps to the workspace. */
+  const webSessions = new WeakMap<Electron.Session, string>();
   function webSession(partition: string) {
     const s = session.fromPartition(partition);
     if (webSessions.has(s)) return s;
-    webSessions.add(s);
+    webSessions.set(s, partition === WEB_PARTITION ? DEFAULT_WORKSPACE : partition.slice(WEB_PARTITION.length + 1));
     lockDown(s);
+    network.hookSession(s);
     // A plain Chrome user agent: some sites turn away unknown browsers.
     s.setUserAgent(app.userAgentFallback.replace(/ (nathapp|Electron)\/\S+/gi, ""));
     return s;

@@ -26,6 +26,8 @@ export const topics = {
   history: "history",
   /** The settings were changed by the server (restored from history). */
   settings: "settings",
+  /** Network rules or saved requests changed (refetch). */
+  network: "network",
 } as const;
 
 export const isValidTopic = (topic: unknown): topic is string =>
@@ -58,6 +60,7 @@ export type ServerMessage =
   /** Snapshots were restored or removed (refetch). */
   | { type: "history-changed"; topic: string; target: string }
   | { type: "settings"; topic: string; settings: Settings }
+  | { type: "network-changed"; topic: string; what: "rules" | "requests" }
   | { type: "rpc"; id: number; method: string; params: unknown };
 
 export type TopicMessage = Exclude<ServerMessage, { type: "rpc" }>;

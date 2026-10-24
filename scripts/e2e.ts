@@ -51,14 +51,30 @@ const electron = launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCR
   "--disable-renderer-backgrounding",
 ]);
 
-// A small website for the web tab checks.
+// A small website for the web tab checks. /feed loads its data from /api/feed
+// with credentials of every kind (a cookie, a key in the URL, a bearer token).
+const siteSeen: { url: string; authorization: string | null; cookie: string | null }[] = [];
+const feedPage = `<title>Feed</title><h1>Feed</h1><p id="status">Loading…</p><script>
+  document.cookie = "sid=cookie-secret-1; path=/";
+  fetch("/api/feed?page=1&api_key=key-secret-2", { headers: { Authorization: "Bearer bearer-secret-3" } })
+    .then((r) => r.json())
+    .then((d) => (document.getElementById("status").textContent = "Loaded " + d.items.length + " items"))
+    .catch(() => (document.getElementById("status").textContent = "Failed to load"));
+</script>`;
 const site = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
   fetch(req) {
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url);
+    const path = url.pathname;
+    if (path === "/api/feed") {
+      siteSeen.push({ url: req.url, authorization: req.headers.get("authorization"), cookie: req.headers.get("cookie") });
+      return Response.json({ items: [{ id: 1, title: "First post" }, { id: 2, title: "Second post" }], page: Number(url.searchParams.get("page")), sessionToken: "resp-secret-4" });
+    }
     const body =
-      path === "/second"
+      path === "/feed"
+        ? feedPage
+        : path === "/second"
         ? `<title>Second page</title><h1>Second</h1>`
         : `<title>Test site</title><main><h1 id="headline">Hello from the test site</h1><p class="lead">Plain text</p>
            <button class="cta">Buy now</button> <a id="popup" href="/second" target="_blank">open popup</a></main>`;
@@ -510,6 +526,99 @@ try {
       15_000,
     );
     return "picked, customized, popup";
+  });
+
+  await check("network: requests with their data, credentials hidden, sent again, saved, blocked", async () => {
+    if (!webTabId) throw new Error("needs the web tab");
+    const tab = `[data-web-tab="${webTabId}"]`;
+    const panel = `${tab} [data-network-panel]`;
+    const inPage = <T>(code: string) => page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+    const panelText = () => page!.eval<string>(`document.querySelector('${panel}')?.innerText ?? ""`);
+    const secrets = ["cookie-secret-1", "key-secret-2", "bearer-secret-3", "resp-secret-4"];
+    const leaked = (text: string) => secrets.filter((s) => text.includes(s));
+    const status = () => inPage<string>(`document.getElementById("status")?.textContent ?? ""`);
+    const goTo = async (url: string) => {
+      await inPage(`location.href = ${JSON.stringify(url)}, true`);
+      await waitForValue(async () => ((await inPage<string>("location.href")) === url ? true : undefined), 15_000);
+    };
+
+    await click(`nav li[data-app-id="${webTabId}"]`);
+    await click(`${tab} [data-network-button]`);
+    await page!.waitFor(`!!document.querySelector('${panel}')`, { label: "network panel" });
+    await goTo(`${site.url.origin}/feed`);
+    await waitForValue(async () => ((await status()) === "Loaded 2 items" ? true : undefined), 15_000);
+    const feedRow = `[...document.querySelectorAll('${panel} [data-network-entry]')].find((r) => r.title.includes("/api/feed"))`;
+    await page!.waitFor(`!!${feedRow}`, { label: "the feed request", timeoutMs: 10_000 });
+    await page!.eval(`${feedRow}.click(), true`);
+    await page!.waitFor(`document.querySelector('${panel} [data-network-response]')?.innerText.includes("Second post")`, { label: "the response data" });
+    const hidden = await panelText();
+    if (leaked(hidden).length) throw new Error(`credentials shown without asking: ${leaked(hidden).join(", ")}`);
+    if (!hidden.includes("[redacted]")) throw new Error("nothing redacted");
+    await shot("network.png");
+
+    // Shown when asked.
+    await click(`${panel} [data-network-reveal]`);
+    await page!.waitFor(`document.querySelector('${panel} [data-network-detail]')?.innerText.includes("bearer-secret-3")`, { label: "revealed credentials" });
+    await click(`${panel} [data-network-reveal]`);
+    await page!.waitFor(`!document.querySelector('${panel} [data-network-detail]')?.innerText.includes("bearer-secret-3")`, { label: "hidden again" });
+
+    // Sent again: the session's cookie and the original token go along.
+    const before = siteSeen.length;
+    await click(`${panel} [data-network-replay]`);
+    await page!.waitFor(`document.querySelector('${panel} [data-network-result]')?.innerText.includes("HTTP 200")`, { label: "replay result" });
+    const replayed = siteSeen[before];
+    if (replayed?.authorization !== "Bearer bearer-secret-3" || !replayed.cookie?.includes("sid=cookie-secret-1") || !replayed.url.includes("api_key=key-secret-2")) {
+      throw new Error(`the replay didn't carry the session: ${JSON.stringify(replayed)}`);
+    }
+
+    // Saved: its credentials are sealed, and it's sent later without the page.
+    await click(`${panel} [data-network-save]`);
+    await page!.waitFor(`!!document.querySelector('${panel} [data-network-save-name]')`, { label: "name field" });
+    await page!.eval(`(() => {
+      const input = document.querySelector('${panel} [data-network-save-name]');
+      input.value = "Feed page 1";
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      return true;
+    })()`);
+    const saved = await waitForValue(async () => (await apiCall<{ id: string; name: string; hasCredentials: boolean }[]>("/api/network/requests")).find((r) => r.name === "Feed page 1"));
+    const stored = JSON.stringify(await apiCall("/api/network/requests"));
+    if (leaked(stored).length || !saved.hasCredentials) throw new Error(`saved request: ${stored}`);
+    await goTo(`${site.url.origin}/second`);
+    await click(`${panel} [data-network-saved-tab]`);
+    await page!.waitFor(`!!document.querySelector('${panel} [data-saved-request="Feed page 1"] [data-send-saved]')`, { label: "saved list" });
+    const beforeSaved = siteSeen.length;
+    await click(`${panel} [data-saved-request="Feed page 1"] [data-send-saved]`);
+    await page!.waitFor(`document.querySelector('${panel} [data-saved-request="Feed page 1"] [data-network-result]')?.innerText.includes("HTTP 200")`, {
+      label: "saved request result",
+    });
+    const sent = siteSeen[beforeSaved];
+    if (sent?.authorization !== "Bearer bearer-secret-3" || !sent.cookie?.includes("sid=cookie-secret-1") || !sent.url.includes("api_key=key-secret-2")) {
+      throw new Error(`the saved request didn't carry the session: ${JSON.stringify(sent)}`);
+    }
+    const sentText = await panelText();
+    if (leaked(sentText).length) throw new Error(`the saved request's result shows credentials: ${leaked(sentText).join(", ")}`);
+
+    // Blocked by a rule.
+    await click(`${panel} [role="tab"]`, "Requests");
+    await goTo(`${site.url.origin}/feed`);
+    await waitForValue(async () => ((await status()) === "Loaded 2 items" ? true : undefined), 15_000);
+    await page!.waitFor(`!!${feedRow}`, { label: "the feed request again" });
+    await page!.eval(`${feedRow}.click(), true`);
+    await page!.waitFor(`!!document.querySelector('${panel} [data-network-block]')`);
+    await click(`${panel} [data-network-block]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    const rule = await waitForValue(async () => (await apiCall<{ id: string; pattern: string }[]>("/api/network/rules")).find((r) => r.pattern.includes("/api/feed")));
+    await Bun.sleep(300); // the rules reach the main process over the hub
+    const beforeBlock = siteSeen.length;
+    await inPage("location.reload(), true");
+    await waitForValue(async () => ((await status()) === "Failed to load" ? true : undefined), 15_000);
+    if (siteSeen.length !== beforeBlock) throw new Error("the blocked request reached the site");
+    await apiCall(`/api/network/rules/${rule.id}`, { method: "DELETE" });
+
+    await click(`${tab} [data-network-button]`);
+    await goTo(`${site.url.origin}/`);
+    return `${secrets.length} kinds of credentials hidden, replayed and saved with the session, blocked by ${rule.pattern}`;
   });
 
   if (agentPrompt && webTabId) {

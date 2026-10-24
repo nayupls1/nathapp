@@ -16,6 +16,7 @@ import { Chat, Chip } from "./Chat";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { NetworkPanel } from "./NetworkPanel";
 
 export function WebTab(props: { appId: string; active: boolean }) {
   const initialUrl = untrack(() => appById(props.appId)?.url ?? "");
@@ -27,6 +28,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const [loading, setLoading] = createSignal(false);
   const [history, setHistory] = createSignal({ back: false, forward: false });
   const [picking, setPicking] = createSignal(false);
+  const [networkOpen, setNetworkOpen] = createSignal(false);
   const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
   const [menu, setMenu] = createSignal<MenuPosition>();
@@ -202,6 +204,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
       if (changed === host()) void applyOverride();
     },
     send,
+    webContentsId: () => requireReady().getWebContentsId(),
   });
   onCleanup(unregister);
 
@@ -347,6 +350,15 @@ export function WebTab(props: { appId: string; active: boolean }) {
             </Show>
           </form>
           {pickButton(16)}
+          <button
+            type="button"
+            title="Network: the page's requests and data"
+            onClick={() => setNetworkOpen(!networkOpen())}
+            {...stylex.attrs(styles.iconButton, networkOpen() && styles.iconButtonOn)}
+            data-network-button
+          >
+            <Icon name="network" size={16} />
+          </button>
           <Show when={collapsed()}>
             <button
               type="button"
@@ -388,6 +400,19 @@ export function WebTab(props: { appId: string; active: boolean }) {
             </div>
           </Show>
         </div>
+        <Show when={networkOpen()}>
+          <NetworkPanel
+            webContentsId={() => {
+              try {
+                return webview?.getWebContentsId() ?? null;
+              } catch {
+                return null;
+              }
+            }}
+            workspaceId={() => appById(props.appId)?.workspaceId ?? DEFAULT_WORKSPACE}
+            onClose={() => setNetworkOpen(false)}
+          />
+        </Show>
       </div>
       <Show when={!collapsed() && state()?.loaded}>
         <Chat

@@ -37,6 +37,21 @@ export interface NathAppBridge {
     capture: (webContentsId: number) => Promise<string>;
     /** Opens a URL in the system browser. */
     openExternal: (url: string) => void;
+    /** The traffic of web tabs (see main/network.ts). Agents only ever get it with reveal off. */
+    network: {
+      list: (webContentsId: number, filter?: NetworkFilter) => Promise<NetworkEntrySummary[]>;
+      /** reveal: with credentials (only for the user's own eyes). */
+      get: (webContentsId: number, id: string, reveal: boolean) => Promise<NetworkEntry | null>;
+      clear: (webContentsId: number) => Promise<void>;
+      /** Sends a captured request (or a saved one, in its workspace's session) again. */
+      replay: (target: ReplayTarget, overrides: ReplayOverrides, reveal: boolean) => Promise<ReplayResult>;
+      /** A captured request ready to be saved: its credentials sealed (only NathApp's main process can open them). */
+      draft: (webContentsId: number, id: string) => Promise<RequestDraft>;
+      setRules: (rules: NetworkRule[]) => void;
+      setRecording: (enabled: boolean) => void;
+      /** A tab's captured traffic changed (throttled). */
+      onChanged: (fn: (webContentsId: number) => void) => () => void;
+    };
   };
 }
 
@@ -342,14 +357,122 @@ export const isReservedSecretName = (name: string) =>
   /^(NATHAPP_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
   ["PORT", "HOST", "APP_URL", "DATABASE_PATH", "DATABASE_URL", "PATH", "HOME", "TMPDIR", "LANG", "NO_COLOR", "SHELL", "USER"].includes(name);
 
+// --- Network (web tabs' traffic) ---------------------------------------------------
+
+export interface NetworkEntrySummary {
+  id: string;
+  method: string;
+  url: string;
+  /** Chrome's resource type: Document, XHR, Fetch, Script, Image… */
+  type: string;
+  /** null while it's pending (or when it failed). */
+  status: number | null;
+  mimeType: string;
+  /** Bytes received over the network. */
+  size: number;
+  /** Epoch ms. */
+  startedAt: number;
+  durationMs: number | null;
+  error: string | null;
+  /** The pattern of the rule that blocked or changed it. */
+  rule: string | null;
+  /** The response body was kept (structured data only). */
+  hasBody: boolean;
+}
+
+export interface NetworkEntry extends NetworkEntrySummary {
+  requestHeaders: Record<string, string>;
+  responseHeaders: Record<string, string>;
+  requestBody: string | null;
+  responseBody: string | null;
+  /** Why there's no response body (not structured data, too large, dropped to save memory). */
+  bodyNote: string | null;
+  /** Credentials (cookies, tokens, passwords) were replaced with "[redacted]". */
+  redacted: boolean;
+}
+
+export interface NetworkFilter {
+  /** Text in the URL, method, type or status. */
+  query?: string;
+  /** data: fetch/XHR and other structured responses only. */
+  kind?: "data" | "all";
+  limit?: number;
+}
+
+export type ReplayTarget = { webContentsId: number; id: string } | { workspaceId: string; draft: RequestDraft };
+
+export interface ReplayOverrides {
+  url?: string;
+  method?: string;
+  /** Headers to set; null removes one. */
+  headers?: Record<string, string | null>;
+  body?: string | null;
+}
+
+export interface ReplayResult {
+  url: string;
+  status: number;
+  statusText: string;
+  mimeType: string;
+  headers: Record<string, string>;
+  /** Text responses only, up to 512 kB. */
+  body: string | null;
+  truncated: boolean;
+  size: number;
+  durationMs: number;
+  redacted: boolean;
+}
+
+/** A captured request, prepared to be saved. */
+export interface RequestDraft {
+  method: string;
+  url: string;
+  /** Without cookies (the session sends its own) and credentials (sealed). */
+  headers: Record<string, string>;
+  body: string | null;
+  /** Credential headers (Authorization…), encrypted with a key only NathApp's main process uses. */
+  sealed: string | null;
+}
+
+/** A request kept to be sent again later with the workspace's session, without opening the site. */
+export interface SavedRequest {
+  id: string;
+  workspaceId: string;
+  name: string;
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  body: string | null;
+  /** It carries credentials besides the session's cookies (sealed, never shown). */
+  hasCredentials: boolean;
+  createdAt: string;
+}
+
+/** Blocks or changes web tabs' requests. */
+export interface NetworkRule {
+  id: string;
+  /** null: every workspace. */
+  workspaceId: string | null;
+  /** "*" wildcards over the whole URL ("*://*.doubleclick.net/*"), or text the URL contains. */
+  pattern: string;
+  action: "block" | "modify";
+  /** modify: request headers to set (null removes one). */
+  requestHeaders: Record<string, string | null>;
+  /** modify: response headers to set (null removes one). */
+  responseHeaders: Record<string, string | null>;
+  enabled: boolean;
+  createdAt: string;
+}
+
 // --- Permissions and audit log ----------------------------------------------------
 
 /**
  * app.ai: an app's server uses AI (resource: "").
  * app.secret: an app uses a global secret (resource: its name).
  * agent.site: the website agent customizes a site (subject "website-agent", resource: the host).
+ * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network";
 
 export interface PermissionGrant {
   id: number;

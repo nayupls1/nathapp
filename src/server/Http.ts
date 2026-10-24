@@ -8,6 +8,9 @@ import {
   workspaceOfScope,
   workspaceScope,
   type AppActionInfo,
+  type NetworkRule,
+  type ReplayOverrides,
+  type ReplayResult,
   type AppActionResult,
   type AppDetail,
   type AppSummary,
@@ -28,6 +31,7 @@ import { Permissions, WEBSITE_AGENT } from "./security/Permissions";
 import { Secrets } from "./security/Secrets";
 import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
+import { Network } from "./db/Network";
 import { Settings } from "./db/Settings";
 import { Sites } from "./db/Sites";
 import { Workspaces } from "./db/Workspaces";
@@ -906,6 +910,7 @@ const workspaceRoutes = HttpRouter.addAll([
         for (const appId of yield* workspaces.appIds(id)) yield* removeApp(appId);
         yield* secrets.removeScope(workspaceScope(id));
         yield* permissions.forget(workspaceScope(id));
+        yield* (yield* Network).removeWorkspace(id);
         yield* workspaces.remove(id);
         yield* youDid(null, "workspace.delete", space.name);
         yield* snapshot("settings", `Deleted the workspace ${space.name}`);
@@ -1009,7 +1014,7 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site"] as const satisfies readonly PermissionAction[];
+const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network"] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(
@@ -1096,7 +1101,192 @@ const permissionRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
+// --- Network: rules for web tabs' requests, saved requests ------------------------------------
+
+const headerValue = str(8000).check(Schema.isPattern(/^[^\r\n]*$/, { message: "header values can't contain line breaks" }));
+const HeaderChanges = Schema.Record(Schema.String, Schema.NullOr(headerValue));
+const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
+/** Record keys aren't checked by the schema: header names are, here. */
+const checkHeaderNames = (...records: (Record<string, unknown> | undefined)[]) =>
+  Effect.gen(function* () {
+    for (const record of records) {
+      const keys = Object.keys(record ?? {});
+      if (keys.length > 50) return yield* fail(400, "Too many headers");
+      const bad = keys.find((k) => !HEADER_NAME.test(k));
+      if (bad !== undefined) return yield* fail(400, `Invalid header name: ${bad.slice(0, 100)}`);
+    }
+  });
+const RuleFields = Schema.Struct({
+  workspaceId: Schema.NullOr(str(100)),
+  pattern: str(500).check(Schema.isPattern(/\S/, { message: "pattern is required" })),
+  action: Schema.Literals(["block", "modify"]),
+  requestHeaders: Schema.optionalKey(HeaderChanges),
+  responseHeaders: Schema.optionalKey(HeaderChanges),
+  enabled: Schema.optionalKey(Schema.Boolean),
+});
+const Draft = Schema.Struct({
+  method: Schema.String.check(Schema.isPattern(/^[A-Za-z]{1,16}$/, { message: "invalid method" })),
+  url: str(8000).check(Schema.isPattern(/^https?:\/\//i, { message: "only http(s) URLs" })),
+  headers: Schema.Record(Schema.String, headerValue),
+  body: Schema.NullOr(str(200_000)),
+  sealed: Schema.NullOr(str(400_000)),
+});
+const Overrides = Schema.Struct({
+  url: Schema.optionalKey(str(8000).check(Schema.isPattern(/^https?:\/\//i, { message: "only http(s) URLs" }))),
+  method: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[A-Za-z]{1,16}$/, { message: "invalid method" }))),
+  headers: Schema.optionalKey(HeaderChanges),
+  body: Schema.optionalKey(Schema.NullOr(str(200_000))),
+});
+
+const publishNetwork = (what: "rules" | "requests") =>
+  Effect.gen(function* () {
+    const hub = yield* Hub;
+    yield* hub.publish({ type: "network-changed", topic: topics.network, what });
+  });
+
+const ruleLabel = (rule: NetworkRule) => `${rule.action === "block" ? "Block" : "Change"} ${rule.pattern}`;
+
+const ensureWorkspace = (id: string | null) =>
+  Effect.gen(function* () {
+    if (id !== null && !(yield* (yield* Workspaces).get(id))) return yield* fail(404, "No such workspace");
+  });
+
+/** Sends a saved request with its workspace's session (in Electron's main process, through the NathApp window). */
+export const sendSaved = (id: string, overrides: ReplayOverrides) =>
+  Effect.gen(function* () {
+    const network = yield* Network;
+    const hub = yield* Hub;
+    const saved = yield* network.draftOf(id);
+    if (!saved) return yield* fail(404, "Not found");
+    const result = yield* hub
+      .rpc<ReplayResult>("network.replay", { workspaceId: saved.request.workspaceId, draft: saved.draft, overrides }, 45_000)
+      .pipe(Effect.mapError((err) => new HttpFail({ status: 502, message: err.message })));
+    return { request: saved.request, result };
+  });
+
+const networkRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/network/rules",
+    Effect.gen(function* () {
+      const network = yield* Network;
+      return json(yield* network.rules());
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/network/rules",
+    handle(
+      Effect.gen(function* () {
+        const network = yield* Network;
+        const fields = yield* decodeBody(RuleFields);
+        yield* checkHeaderNames(fields.requestHeaders, fields.responseHeaders);
+        yield* ensureWorkspace(fields.workspaceId);
+        if ((yield* network.countRules()) >= 500) return yield* fail(400, "Too many rules");
+        const rule = yield* network.addRule({
+          workspaceId: fields.workspaceId,
+          pattern: fields.pattern.trim(),
+          action: fields.action,
+          requestHeaders: fields.requestHeaders ?? {},
+          responseHeaders: fields.responseHeaders ?? {},
+          enabled: fields.enabled ?? true,
+        });
+        yield* youDid(rule.workspaceId ? workspaceScope(rule.workspaceId) : null, "network.rule.create", ruleLabel(rule));
+        yield* publishNetwork("rules");
+        return json(rule, 201);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "PATCH",
+    "/api/network/rules/:id",
+    handle(
+      Effect.gen(function* () {
+        const network = yield* Network;
+        const fields = yield* decodeBody(Schema.Struct({ ...RuleFields.fields, workspaceId: Schema.optionalKey(Schema.NullOr(str(100))), pattern: Schema.optionalKey(RuleFields.fields.pattern), action: Schema.optionalKey(RuleFields.fields.action) }));
+        yield* checkHeaderNames(fields.requestHeaders, fields.responseHeaders);
+        if (fields.workspaceId !== undefined) yield* ensureWorkspace(fields.workspaceId);
+        const rule = yield* network.updateRule(yield* param("id"), { ...fields, ...(fields.pattern ? { pattern: fields.pattern.trim() } : {}) });
+        if (!rule) return yield* fail(404, "Not found");
+        yield* youDid(rule.workspaceId ? workspaceScope(rule.workspaceId) : null, "network.rule.update", ruleLabel(rule), rule.enabled ? "on" : "off");
+        yield* publishNetwork("rules");
+        return json(rule);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/network/rules/:id",
+    handle(
+      Effect.gen(function* () {
+        const network = yield* Network;
+        const rule = yield* network.getRule(yield* param("id"));
+        if (!rule) return yield* fail(404, "Not found");
+        yield* network.removeRule(rule.id);
+        yield* youDid(rule.workspaceId ? workspaceScope(rule.workspaceId) : null, "network.rule.delete", ruleLabel(rule));
+        yield* publishNetwork("rules");
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/network/requests",
+    Effect.gen(function* () {
+      const network = yield* Network;
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+      return json(yield* network.saved(params.get("workspace") ?? undefined));
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/network/requests",
+    handle(
+      Effect.gen(function* () {
+        const network = yield* Network;
+        const { workspaceId, name, draft } = yield* decodeBody(
+          Schema.Struct({ workspaceId: str(100), name: str(120).check(Schema.isPattern(/\S/, { message: "name is required" })), draft: Draft }),
+        );
+        yield* checkHeaderNames(draft.headers);
+        yield* ensureWorkspace(workspaceId);
+        const saved = yield* network.save(workspaceId, name.trim(), { ...draft, method: draft.method.toUpperCase() });
+        yield* youDid(workspaceScope(workspaceId), "network.request.save", saved.name, `${saved.method} ${saved.url}`);
+        yield* publishNetwork("requests");
+        return json(saved, 201);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/network/requests/:id",
+    handle(
+      Effect.gen(function* () {
+        const network = yield* Network;
+        const saved = yield* network.getSaved(yield* param("id"));
+        if (!saved) return yield* fail(404, "Not found");
+        yield* network.removeSaved(saved.id);
+        yield* youDid(workspaceScope(saved.workspaceId), "network.request.delete", saved.name);
+        yield* publishNetwork("requests");
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/network/requests/:id/send",
+    handle(
+      Effect.gen(function* () {
+        const overrides = yield* decodeBody(Schema.Struct({ overrides: Schema.optionalKey(Overrides) }));
+        yield* checkHeaderNames(overrides.overrides?.headers);
+        const { request, result } = yield* sendSaved(yield* param("id"), overrides.overrides ?? {});
+        yield* youDid(workspaceScope(request.workspaceId), "network.request.send", request.name, `HTTP ${result.status}`);
+        return json(result);
+      }),
+    ),
+  ),
+]);
+
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

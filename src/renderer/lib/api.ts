@@ -18,11 +18,16 @@ import type {
   HistoryDetail,
   HistoryEntry,
   LogLine,
+  NetworkRule,
   PresetInfo,
   ProjectInfo,
   ProviderId,
   ProviderStatus,
+  ReplayOverrides,
+  ReplayResult,
+  RequestDraft,
   RuntimeStatus,
+  SavedRequest,
   SiteOverride,
   TabKind,
   WorkspaceInfo,
@@ -121,6 +126,17 @@ export const api = {
   actions: () => request<AppActionInfo[]>("/api/actions"),
   runAction: (id: string, actionId: string, input?: string) =>
     post<AppActionResult>(`/api/apps/${id}/actions/${encodeURIComponent(actionId)}`, input === undefined ? {} : { input }),
+
+  networkRules: () => request<NetworkRule[]>("/api/network/rules"),
+  addNetworkRule: (rule: Omit<NetworkRule, "id" | "createdAt" | "enabled"> & { enabled?: boolean }) => post<NetworkRule>("/api/network/rules", rule),
+  updateNetworkRule: (id: string, fields: Partial<Omit<NetworkRule, "id" | "createdAt">>) =>
+    request<NetworkRule>(`/api/network/rules/${id}`, { method: "PATCH", body: JSON.stringify(fields) }),
+  deleteNetworkRule: (id: string) => request<void>(`/api/network/rules/${id}`, { method: "DELETE" }),
+  savedRequests: (workspaceId?: string) => request<SavedRequest[]>(`/api/network/requests${workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : ""}`),
+  saveRequest: (workspaceId: string, name: string, draft: RequestDraft) => post<SavedRequest>("/api/network/requests", { workspaceId, name, draft }),
+  deleteSavedRequest: (id: string) => request<void>(`/api/network/requests/${id}`, { method: "DELETE" }),
+  /** Sends a saved request with its workspace's session (credentials stay in NathApp's main process). */
+  sendSavedRequest: (id: string, overrides?: ReplayOverrides) => post<ReplayResult>(`/api/network/requests/${id}/send`, overrides ? { overrides } : {}),
 
   listSites: () => request<SiteOverride[]>("/api/sites"),
   getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),

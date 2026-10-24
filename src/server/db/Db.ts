@@ -125,6 +125,30 @@ const migrate = Effect.gen(function* () {
       created_at TEXT NOT NULL DEFAULT (${now})
     )`);
   yield* sql.unsafe(`INSERT INTO workspaces (id, name) SELECT '${DEFAULT_WORKSPACE}', 'Personal' WHERE NOT EXISTS (SELECT 1 FROM workspaces)`);
+  // The network layer (db/Network.ts): rules for web tabs' requests, and requests saved to send again.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS network_rules (
+      id               TEXT PRIMARY KEY,
+      workspace_id     TEXT,
+      pattern          TEXT NOT NULL,
+      action           TEXT NOT NULL,
+      request_headers  TEXT NOT NULL DEFAULT '{}',
+      response_headers TEXT NOT NULL DEFAULT '{}',
+      enabled          INTEGER NOT NULL DEFAULT 1,
+      created_at       TEXT NOT NULL DEFAULT (${now})
+    )`);
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS saved_requests (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      method       TEXT NOT NULL,
+      url          TEXT NOT NULL,
+      headers      TEXT NOT NULL DEFAULT '{}',
+      body         TEXT,
+      sealed       TEXT,
+      created_at   TEXT NOT NULL DEFAULT (${now})
+    )`);
 
   // Columns added over time; created on existing databases.
   const columnsOf = (table: string) => sql.unsafe<{ name: string }>(`PRAGMA table_info(${table})`).pipe(Effect.map((rows) => new Set(rows.map((c) => c.name))));

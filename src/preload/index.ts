@@ -27,6 +27,16 @@ const bridge: NathAppBridge = {
     onShortcut: listen("nathapp:shortcut"),
     capture: (webContentsId) => ipcRenderer.invoke("nathapp:capture", webContentsId),
     openExternal: (url) => ipcRenderer.send("nathapp:open-external", url),
+    network: {
+      list: (webContentsId, filter) => ipcRenderer.invoke("nathapp:network-list", webContentsId, filter),
+      get: (webContentsId, id, reveal) => ipcRenderer.invoke("nathapp:network-get", webContentsId, id, reveal),
+      clear: (webContentsId) => ipcRenderer.invoke("nathapp:network-clear", webContentsId),
+      replay: (target, overrides, reveal) => ipcRenderer.invoke("nathapp:network-replay", target, overrides, reveal),
+      draft: (webContentsId, id) => ipcRenderer.invoke("nathapp:network-draft", webContentsId, id),
+      setRules: (rules) => ipcRenderer.send("nathapp:network-rules", rules),
+      setRecording: (enabled) => ipcRenderer.send("nathapp:network-recording", enabled),
+      onChanged: listen("nathapp:network-changed"),
+    },
   },
 };
 

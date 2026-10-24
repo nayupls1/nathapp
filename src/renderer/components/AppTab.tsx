@@ -197,6 +197,9 @@ function Workbench(props: { appId: string; active: boolean }) {
     applyOverride: async () => ({ applied: false }),
     overrideChanged: () => {},
     send,
+    webContentsId: () => {
+      throw new Error("Network traffic is only recorded in web tabs");
+    },
   });
   onCleanup(unregister);
 

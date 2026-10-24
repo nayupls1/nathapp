@@ -1,11 +1,14 @@
 // Open web tabs register a handle here so the website agent (RPC from the
 // server), browser shortcuts and site customization updates can reach them.
 import { createStore } from "solid-js/store";
-import type { SiteOverride, WebShortcut } from "../../shared/api";
+import { createEffect, createRoot } from "solid-js";
+import type { NetworkFilter, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
+import { topics } from "../../shared/hub";
 import { hostOf } from "../../shared/web";
 import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
+import { settings, settingsLoaded } from "./settings";
 import { isTab, newWebTab, selectedId, toggleAgent } from "./store";
 
 export interface PageInfo {
@@ -28,6 +31,8 @@ export interface PageHandle {
   overrideChanged: (host: string) => void;
   /** Sends a prompt to the tab's agent, with the page and picked elements, like its chat does. */
   send: (prompt: string) => void;
+  /** The page's webContents (web tabs only: their traffic is recorded). */
+  webContentsId: () => number;
 }
 
 const pages = new Map<string, PageHandle>();
@@ -60,6 +65,34 @@ handleRpc("page.applyOverride", async ({ tabId }) => {
   const host = hostOf(handle.info().url);
   if (host) setOverrides(host, await api.getSite(host));
   return handle.applyOverride();
+});
+
+// --- Network (main/network.ts) ---------------------------------------------------------
+// What the website agent gets is always redacted (reveal: false).
+
+const network = window.nathapp.web.network;
+handleRpc("network.list", ({ tabId, filter }) => network.list(page(tabId).webContentsId(), (filter ?? {}) as NetworkFilter));
+handleRpc("network.get", ({ tabId, id }) => network.get(page(tabId).webContentsId(), String(id), false));
+handleRpc("network.draft", ({ tabId, id }) => network.draft(page(tabId).webContentsId(), String(id)));
+handleRpc("network.replay", ({ tabId, id, workspaceId, draft, overrides }) =>
+  network.replay(
+    typeof workspaceId === "string" ? { workspaceId, draft: draft as RequestDraft } : { webContentsId: page(tabId).webContentsId(), id: String(id) },
+    (overrides ?? {}) as ReplayOverrides,
+    false,
+  ),
+);
+
+// Rules live on the server; the main process applies them.
+const syncRules = () => api.networkRules().then(network.setRules, (err) => console.error("Loading network rules failed:", err));
+watchTopic(topics.network, (msg) => {
+  if (msg.type === "network-changed" && msg.what === "rules") void syncRules();
+});
+onConnected(() => void syncRules());
+
+createRoot(() => {
+  createEffect(() => {
+    if (settingsLoaded()) network.setRecording(settings().web.recordNetwork);
+  });
 });
 
 // --- Site customizations ---------------------------------------------------------
