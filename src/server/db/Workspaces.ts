@@ -1,0 +1,88 @@
+// Workspaces: groups of tabs, each with its own agent defaults and
+// instructions, secrets shared by its apps, remembered permissions and web
+// session. (Not to be confused with workspace/Workspace.ts, an app's project
+// folder.) There is always at least one.
+import { Context, Effect, Layer } from "effect";
+import { SqlClient } from "effect/sql";
+import type { WorkspaceInfo } from "../../shared/api";
+import { decodeWorkspaceSettings, type WorkspaceSettings } from "../../shared/settings";
+import { orDieAll, type OrDie } from "./Db";
+
+interface WorkspaceRow {
+  id: string;
+  name: string;
+  icon: string | null;
+  settings: string;
+  position: number;
+  created_at: string;
+}
+
+const parseSettings = (json: string): WorkspaceSettings => {
+  try {
+    return decodeWorkspaceSettings(JSON.parse(json));
+  } catch {
+    return decodeWorkspaceSettings({});
+  }
+};
+
+const toInfo = (r: WorkspaceRow): WorkspaceInfo => ({
+  id: r.id,
+  name: r.name,
+  icon: r.icon,
+  settings: parseSettings(r.settings),
+  createdAt: r.created_at,
+});
+
+export const make = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+
+  const get = (id: string) => sql<WorkspaceRow>`SELECT * FROM workspaces WHERE id = ${id}`.pipe(Effect.map((rows) => (rows[0] ? toInfo(rows[0]) : null)));
+
+  return {
+    /** In the user's order. */
+    list: () => sql<WorkspaceRow>`SELECT * FROM workspaces ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map(toInfo))),
+
+    get,
+
+    /** The workspace a tab belongs to. */
+    ofApp: (appId: string) =>
+      sql<WorkspaceRow>`SELECT w.* FROM workspaces w JOIN apps a ON a.workspace_id = w.id WHERE a.id = ${appId}`.pipe(
+        Effect.map((rows) => (rows[0] ? toInfo(rows[0]) : null)),
+      ),
+
+    /** Where tabs go when no workspace is given. */
+    first: () => sql<WorkspaceRow>`SELECT * FROM workspaces ORDER BY position, created_at, rowid LIMIT 1`.pipe(Effect.map((rows) => toInfo(rows[0]!))),
+
+    create: (name: string, icon: string | null) =>
+      Effect.gen(function* () {
+        const id = crypto.randomUUID();
+        yield* sql`INSERT INTO workspaces (id, name, icon, position)
+          VALUES (${id}, ${name}, ${icon}, (SELECT COALESCE(MAX(position), 0) + 1 FROM workspaces))`;
+        return (yield* get(id))!;
+      }),
+
+    update: (id: string, fields: { name?: string; icon?: string | null; settings?: WorkspaceSettings }) =>
+      Effect.gen(function* () {
+        const current = yield* get(id);
+        if (!current) return null;
+        yield* sql`UPDATE workspaces SET
+          name = ${fields.name ?? current.name},
+          icon = ${fields.icon !== undefined ? fields.icon : current.icon},
+          settings = ${JSON.stringify(fields.settings ?? current.settings)}
+          WHERE id = ${id}`;
+        return yield* get(id);
+      }),
+
+    /** The ids of its tabs. */
+    appIds: (id: string) => sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id}`.pipe(Effect.map((rows) => rows.map((r) => r.id))),
+
+    count: () => sql<{ n: number }>`SELECT COUNT(*) AS n FROM workspaces`.pipe(Effect.map((rows) => rows[0]!.n)),
+
+    /** Only the row: its tabs, secrets and permissions are removed by the caller first. */
+    remove: (id: string) => sql`DELETE FROM workspaces WHERE id = ${id}`.pipe(Effect.asVoid),
+  };
+});
+
+export class Workspaces extends Context.Service<Workspaces, OrDie<Effect.Success<typeof make>>>()("nathapp/Workspaces") {}
+
+export const layer = Layer.effect(Workspaces, Effect.map(make, orDieAll));

@@ -98,4 +98,22 @@ export type Settings = typeof Settings.Type;
 
 export const decodeSettings = Schema.decodeUnknownSync(Settings);
 
+/** A workspace's own settings, on top of the global ones. */
+export const WorkspaceSettings = Schema.Struct({
+  /** Default agent for new tabs in the workspace; null = the global default. */
+  agent: Schema.NullOr(
+    Schema.Struct({
+      provider: Schema.Literals(providerIds),
+      model: Schema.NullOr(Schema.String),
+      effort: Schema.NullOr(Schema.String),
+    }),
+  ).pipe(withDefault(null)),
+  /** Added after the global instructions in the workspace's tabs. */
+  instructions: Instructions,
+  webInstructions: Instructions,
+});
+export type WorkspaceSettings = typeof WorkspaceSettings.Type;
+
+export const decodeWorkspaceSettings = Schema.decodeUnknownSync(WorkspaceSettings);
+
 export const defaultSettings = (): Settings => decodeSettings({});

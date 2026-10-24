@@ -2,7 +2,7 @@
 
 Desktop app for building small personal apps by talking to a coding agent, and
 for browsing the web with an agent that can customize sites. Each sidebar tab
-is an app or a web tab. Describe an app and the agent builds it: a real project
+is an app or a web tab, grouped into workspaces. Describe an app and the agent builds it: a real project
 with its own server and SQLite database, running in a light sandbox and shown
 next to the chat in a live preview.
 
@@ -54,7 +54,7 @@ src/
     services.ts      How the services are wired together
     Http.ts          Routes, auth (token + origin), MCP endpoint
     Hub.ts           WebSocket hub: pushes agent output, app status, logs; RPC to the renderer
-    db/              Host database (tabs, chat, settings, site customizations)
+    db/              Host database (workspaces, tabs, chat, settings, site customizations)
     providers/       Claude, Codex, OpenCode drivers behind one event stream
     agent/           Agent turns, prompts, NathApp's MCP tools
     workspace/       Projects, presets (templates/), sandbox, runtime
@@ -62,6 +62,18 @@ src/
 scripts/             Bun scripts for dev / build / start / e2e
 tests/               bun:test tests
 ```
+
+### Workspaces
+
+Workspaces keep projects and contexts apart (switcher at the top of the sidebar). Each has:
+- its own tabs. Tabs can be moved between workspaces (tab menu → Move to);
+- its own default agent and instructions, added after the global ones (Settings → Workspace);
+- secrets every app in it gets (an app's own secret of the same name wins);
+- remembered permissions: an answer can be remembered for one app or for every app in the workspace (the app's own choice wins);
+- its own web session, so cookies and logins don't cross workspaces. The first workspace keeps the original session;
+- its own view of the Activity page (plus what belongs to no workspace, like global secrets).
+
+Switching keeps every opened tab running, and each workspace reopens on the tab you were last on. Deleting a workspace deletes its tabs with their projects and data, its secrets and permissions, and clears its web session. The last workspace can't be deleted. In the code, `db/Workspaces.ts` is this grouping; `workspace/Workspace.ts` is an app's project folder.
 
 ### Apps
 
@@ -131,7 +143,7 @@ GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
 
 ### Secrets
 
-Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.
+Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab), to a workspace (Settings → Workspace, for all its apps) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.
 
 - **At rest:** values are encrypted with AES-256-GCM, bound to the secret's scope and name.
   - Electron keeps the key in the OS keychain (`safeStorage`) and passes it to the server over stdin.
@@ -166,7 +178,7 @@ Agents' processes don't get NathApp's own environment variables (`NATHAPP_*`). I
 
 ### Web tabs
 
-Web tabs are `<webview>`s in their own session. The website agent works on the
+Web tabs are `<webview>`s in their workspace's session, separate from NathApp's own. The website agent works on the
 open page and saves site customizations (CSS/JS per hostname) that apply on
 every visit. It gets only the page tools, no files or shell.
 

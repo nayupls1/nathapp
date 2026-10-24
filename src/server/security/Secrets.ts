@@ -1,12 +1,13 @@
 // Secrets: environment variables for apps (API keys, passwords), encrypted at
-// rest by the Vault. A secret belongs to one app tab, or is global; an app
-// gets its own secrets plus the global ones the user allowed it to use, and
-// only in its own processes' environment (dev, build, start), never in
-// agents' prompts, commands, process arguments or logs. Values can be
-// replaced or deleted but never read back through the API.
+// rest by the Vault. A secret belongs to one app tab, to a workspace (shared
+// by all its apps) or is global; an app gets its own secrets, its
+// workspace's, and the global ones the user allowed it to use, and only in
+// its own processes' environment (dev, build, start), never in agents'
+// prompts, commands, process arguments or logs. Values can be replaced or
+// deleted but never read back through the API.
 import { Context, Data, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
-import { isReservedSecretName, SECRET_NAME_PATTERN, type SecretInfo, type SecretScope } from "../../shared/api";
+import { isReservedSecretName, SECRET_NAME_PATTERN, workspaceScope, type SecretInfo, type SecretScope } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { Hub } from "../Hub";
 import { now } from "../db/Db";
@@ -57,8 +58,8 @@ export interface SecretsShape {
   readonly set: (scope: SecretScope, name: string, value: string) => Effect.Effect<SecretInfo, SecretError>;
   readonly remove: (id: string) => Effect.Effect<SecretInfo | null>;
   readonly removeScope: (scope: string) => Effect.Effect<void>;
-  /** The names an app can use: its own and the allowed global ones. */
-  readonly available: (appId: string) => Effect.Effect<{ own: string[]; global: string[]; globalNotAllowed: string[] }>;
+  /** The names an app can use: its own, its workspace's and the allowed global ones. */
+  readonly available: (appId: string) => Effect.Effect<{ own: string[]; workspace: string[]; global: string[]; globalNotAllowed: string[] }>;
   /** The environment for an app's processes (marks the secrets as used). */
   readonly envFor: (appId: string) => Effect.Effect<Record<string, string>, VaultLocked>;
 }
@@ -73,6 +74,11 @@ export const make = Effect.gen(function* () {
 
   const changed = (scope: string) => hub.publish({ type: "secrets-changed", topic: topics.activity, scope });
   const rowsOf = (scope: string) => sql<SecretRow>`SELECT * FROM secrets WHERE scope = ${scope} ORDER BY name`.pipe(Effect.orDie);
+  const workspaceRows = (appId: string) =>
+    sql<{ workspace_id: string }>`SELECT workspace_id FROM apps WHERE id = ${appId}`.pipe(
+      Effect.orDie,
+      Effect.flatMap((rows) => (rows[0] ? rowsOf(workspaceScope(rows[0].workspace_id)) : Effect.succeed([]))),
+    );
 
   const allowedGlobals = (appId: string) =>
     Effect.gen(function* () {
@@ -118,23 +124,28 @@ export const make = Effect.gen(function* () {
     available: (appId) =>
       Effect.gen(function* () {
         const own = (yield* rowsOf(appId)).map((r) => r.name);
+        const workspace = (yield* workspaceRows(appId)).map((r) => r.name).filter((n) => !own.includes(n));
+        const shadowed = new Set([...own, ...workspace]);
         const { globals, allowed } = yield* allowedGlobals(appId);
         const allowedNames = new Set(allowed.map((r) => r.name));
         return {
           own,
-          global: [...allowedNames].filter((n) => !own.includes(n)),
-          globalNotAllowed: globals.map((r) => r.name).filter((n) => !allowedNames.has(n) && !own.includes(n)),
+          workspace,
+          global: [...allowedNames].filter((n) => !shadowed.has(n)),
+          globalNotAllowed: globals.map((r) => r.name).filter((n) => !allowedNames.has(n) && !shadowed.has(n)),
         };
       }),
 
     envFor: (appId) =>
       Effect.gen(function* () {
         const own = yield* rowsOf(appId);
+        const workspace = yield* workspaceRows(appId);
         const { allowed } = yield* allowedGlobals(appId);
         const env: Record<string, string> = {};
-        // The app's own secrets win over global ones of the same name.
-        for (const row of [...allowed, ...own]) env[row.name] = yield* vault.decrypt(row.value, context(row.scope, row.name));
-        const used = [...allowed, ...own].map((r) => r.id);
+        // The app's own secrets win over its workspace's, and those over global ones of the same name.
+        const rows = [...allowed, ...workspace, ...own];
+        for (const row of rows) env[row.name] = yield* vault.decrypt(row.value, context(row.scope, row.name));
+        const used = rows.map((r) => r.id);
         if (used.length) yield* sql`UPDATE secrets SET last_used_at = ${sql.literal(now)} WHERE id IN ${sql.in(used)}`.pipe(Effect.orDie);
         return env;
       }),

@@ -13,9 +13,10 @@ export async function freePort() {
   });
 }
 
-export async function startServer() {
+/** `dataDir`: an existing one (e.g. an old database to migrate); removed on stop either way. */
+export async function startServer(options: { dataDir?: string } = {}) {
   const port = await freePort();
-  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-server-test-"));
+  const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), "nathapp-server-test-"));
   const url = `http://127.0.0.1:${port}`;
   const token = crypto.randomUUID();
   const proc = Bun.spawn([process.execPath, "src/server/index.ts"], {

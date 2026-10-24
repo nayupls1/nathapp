@@ -1,10 +1,12 @@
 // Permissions: what an app or agent may do beyond its own sandbox. When
 // something new is requested, the user is asked in the UI (allow once,
 // always allow, deny); remembered choices are stored and can be revoked.
-// Unanswered requests are denied after a timeout.
+// A choice can be remembered for one app or for every app in its workspace
+// (subject "workspace:<id>"); the app's own choice wins. Unanswered requests
+// are denied after a timeout.
 import { Context, Deferred, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
-import type { PermissionAction, PermissionGrant, PermissionRequest } from "../../shared/api";
+import { workspaceOfScope, workspaceScope, type PermissionAction, type PermissionGrant, type PermissionRequest } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { Apps } from "../db/Apps";
 import { Hub } from "../Hub";
@@ -21,7 +23,16 @@ interface GrantRow {
   decision: "allow" | "deny";
   created_at: string;
   app_name: string | null;
+  app_workspace: string | null;
+  workspace_name: string | null;
 }
+
+/** Grants with the names of their app or workspace. */
+const GRANTS = `
+  SELECT p.*, a.name AS app_name, a.workspace_id AS app_workspace, w.name AS workspace_name
+  FROM permissions p
+  LEFT JOIN apps a ON a.id = p.subject
+  LEFT JOIN workspaces w ON 'workspace:' || w.id = p.subject`;
 
 export interface AskInput {
   readonly subject: string;
@@ -37,7 +48,8 @@ export interface PermissionsShape {
   readonly decision: (subject: string, action: PermissionAction, resource: string) => Effect.Effect<"allow" | "deny" | null>;
   /** The remembered decision, else asks the user (false if they deny or don't answer in time). */
   readonly ask: (input: AskInput) => Effect.Effect<boolean>;
-  readonly answer: (id: string, allow: boolean, remember: boolean) => Effect.Effect<boolean>;
+  /** remember: for this subject, or (apps) for every app in its workspace. */
+  readonly answer: (id: string, allow: boolean, remember: false | "subject" | "workspace") => Effect.Effect<boolean>;
   readonly pending: Effect.Effect<PermissionRequest[]>;
   readonly list: Effect.Effect<PermissionGrant[]>;
   /** Remembers a decision (from the UI, e.g. letting an app use a global secret). */
@@ -49,7 +61,12 @@ export interface PermissionsShape {
 
 export class Permissions extends Context.Service<Permissions, PermissionsShape>()("nathapp/Permissions") {}
 
-export const subjectName = (subject: string, appName: string | null) => (subject === WEBSITE_AGENT ? "Website agent" : (appName ?? "A deleted app"));
+export const subjectName = (subject: string, appName: string | null, workspaceName: string | null = null) =>
+  subject === WEBSITE_AGENT
+    ? "Website agent"
+    : workspaceOfScope(subject)
+      ? `Apps in ${workspaceName ?? "a deleted workspace"}`
+      : (appName ?? "A deleted app");
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -61,7 +78,8 @@ export const make = Effect.gen(function* () {
   const toGrant = (r: GrantRow): PermissionGrant => ({
     id: r.id,
     subject: r.subject,
-    subjectName: subjectName(r.subject, r.app_name),
+    subjectName: subjectName(r.subject, r.app_name, r.workspace_name),
+    workspaceId: workspaceOfScope(r.subject) ?? r.app_workspace,
     action: r.action,
     resource: r.resource,
     decision: r.decision,
@@ -70,8 +88,13 @@ export const make = Effect.gen(function* () {
 
   const changed = hub.publish({ type: "permissions-changed", topic: topics.activity });
 
+  // The subject's own decision, else (apps) the one for its workspace.
   const decision = (subject: string, action: PermissionAction, resource: string) =>
-    sql<{ decision: "allow" | "deny" }>`SELECT decision FROM permissions WHERE subject = ${subject} AND action = ${action} AND resource = ${resource}`.pipe(
+    sql<{ decision: "allow" | "deny" }>`
+      SELECT decision FROM permissions
+      WHERE action = ${action} AND resource = ${resource}
+        AND (subject = ${subject} OR subject = (SELECT 'workspace:' || workspace_id FROM apps WHERE id = ${subject}))
+      ORDER BY subject = ${subject} DESC LIMIT 1`.pipe(
       Effect.map((rows) => rows[0]?.decision ?? null),
       Effect.orDie,
     );
@@ -85,6 +108,12 @@ export const make = Effect.gen(function* () {
 
   const nameOf = (subject: string) =>
     subject === WEBSITE_AGENT ? Effect.succeed("Website agent") : apps.get(subject).pipe(Effect.map((a) => a?.name ?? "A deleted app"));
+
+  const workspaceOf = (subject: string) =>
+    sql<{ id: string; name: string }>`SELECT w.id, w.name FROM workspaces w JOIN apps a ON a.workspace_id = w.id WHERE a.id = ${subject}`.pipe(
+      Effect.map((rows) => rows[0] ?? null),
+      Effect.orDie,
+    );
 
   const resolve = (id: string, allow: boolean) =>
     Effect.gen(function* () {
@@ -113,6 +142,7 @@ export const make = Effect.gen(function* () {
             id: crypto.randomUUID(),
             subject: input.subject,
             subjectName: yield* nameOf(input.subject),
+            workspace: yield* workspaceOf(input.subject),
             action: input.action,
             resource: input.resource,
             title: input.title,
@@ -151,14 +181,18 @@ export const make = Effect.gen(function* () {
         const entry = waiting.get(id);
         if (!entry) return false;
         const { request } = entry;
-        if (remember) yield* set(request.subject, request.action, request.resource, allow ? "allow" : "deny");
+        const forWorkspace = remember === "workspace" && request.workspace;
+        if (remember) {
+          const subject = forWorkspace ? workspaceScope(request.workspace!.id) : request.subject;
+          yield* set(subject, request.action, request.resource, allow ? "allow" : "deny");
+        }
         yield* audit.record({
           actor: "user",
           actorLabel: "You",
           tabId: request.subject === WEBSITE_AGENT ? null : request.subject,
           action: allow ? "permission.allow" : "permission.deny",
           target: `${request.action}${request.resource ? ` ${request.resource}` : ""}`,
-          detail: `${request.subjectName}${remember ? " (remembered)" : " (once)"}`,
+          detail: `${request.subjectName}${forWorkspace ? ` (remembered for all apps in ${request.workspace!.name})` : remember ? " (remembered)" : " (once)"}`,
           outcome: allow ? "ok" : "denied",
         });
         return yield* resolve(id, allow);
@@ -166,14 +200,11 @@ export const make = Effect.gen(function* () {
 
     pending: Effect.sync(() => [...waiting.values()].map((w) => w.request)),
 
-    list: sql<GrantRow>`
-      SELECT p.*, a.name AS app_name FROM permissions p LEFT JOIN apps a ON a.id = p.subject
-      ORDER BY p.created_at DESC`.pipe(Effect.map((rows) => rows.map(toGrant)), Effect.orDie),
+    list: sql.unsafe<GrantRow>(`${GRANTS} ORDER BY p.created_at DESC`).pipe(Effect.map((rows) => rows.map(toGrant)), Effect.orDie),
 
     revoke: (id) =>
       Effect.gen(function* () {
-        const rows = yield* sql<GrantRow>`
-          SELECT p.*, a.name AS app_name FROM permissions p LEFT JOIN apps a ON a.id = p.subject WHERE p.id = ${id}`;
+        const rows = yield* sql.unsafe<GrantRow>(`${GRANTS} WHERE p.id = ?`, [id]);
         const row = rows[0];
         if (!row) return null;
         yield* sql`DELETE FROM permissions WHERE id = ${id}`;

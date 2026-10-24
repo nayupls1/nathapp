@@ -1,10 +1,12 @@
-// The host database (nathapp.sqlite): tabs, chat history, settings and site
-// customizations. Apps keep their own data inside their project folders.
+// The host database (nathapp.sqlite): workspaces, tabs, chat history, settings,
+// site customizations, secrets, permissions and the audit log. Apps keep
+// their own data inside their project folders.
 import { existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteClient } from "@effect/sql-sqlite-bun";
 import { Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
+import { DEFAULT_WORKSPACE } from "../../shared/api";
 import { ServerConfig } from "../Config";
 
 export const now = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
@@ -95,9 +97,21 @@ const migrate = Effect.gen(function* () {
       outcome     TEXT NOT NULL DEFAULT 'ok'
     )`);
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_tab ON audit (tab_id, id)");
+  // Groups of tabs. A database from before workspaces gets one for its tabs.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      icon       TEXT,
+      settings   TEXT NOT NULL DEFAULT '{}',
+      position   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (${now})
+    )`);
+  yield* sql.unsafe(`INSERT INTO workspaces (id, name) SELECT '${DEFAULT_WORKSPACE}', 'Personal' WHERE NOT EXISTS (SELECT 1 FROM workspaces)`);
 
   // Columns added over time; created on existing databases.
-  const columns = new Set((yield* sql.unsafe<{ name: string }>("PRAGMA table_info(apps)")).map((c) => c.name));
+  const columnsOf = (table: string) => sql.unsafe<{ name: string }>(`PRAGMA table_info(${table})`).pipe(Effect.map((rows) => new Set(rows.map((c) => c.name))));
+  const columns = yield* columnsOf("apps");
   const added: [string, string][] = [
     ["kind", "TEXT NOT NULL DEFAULT 'app'"],
     ["url", "TEXT"],
@@ -112,10 +126,16 @@ const migrate = Effect.gen(function* () {
     ["session_provider", "TEXT"],
     // dev (being edited: dev server) or live (done: built and started).
     ["mode", "TEXT NOT NULL DEFAULT 'dev'"],
+    ["workspace_id", `TEXT NOT NULL DEFAULT '${DEFAULT_WORKSPACE}'`],
   ];
   for (const [name, type] of added) {
     if (!columns.has(name)) yield* sql.unsafe(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);
   }
+  if (!(yield* columnsOf("audit")).has("workspace_id")) {
+    yield* sql.unsafe("ALTER TABLE audit ADD COLUMN workspace_id TEXT");
+    yield* sql.unsafe("UPDATE audit SET workspace_id = (SELECT workspace_id FROM apps WHERE apps.id = audit.tab_id) WHERE tab_id IS NOT NULL");
+  }
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_workspace ON audit (workspace_id, id)");
 });
 
 export const layer = Layer.unwrap(

@@ -1,11 +1,13 @@
 import * as stylex from "@stylexjs/stylex";
 import { createSignal, For, Show } from "solid-js";
-import type { AppSummary } from "../../shared/api";
+import type { AppSummary, WorkspaceInfo } from "../../shared/api";
 import {
-  apps,
   clearChat,
+  createWorkspace,
+  currentWorkspace,
   deleteApp,
   duplicateApp,
+  moveApp,
   newApp,
   newWebTab,
   renameApp,
@@ -13,7 +15,11 @@ import {
   selectedId,
   SETTINGS_VIEW,
   ACTIVITY_VIEW,
+  showWorkspace,
   states,
+  updateWorkspace,
+  workspaces,
+  workspaceTabs,
 } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
@@ -29,9 +35,7 @@ export function Sidebar() {
   ];
   return (
     <nav {...stylex.attrs(styles.root)}>
-      <div {...stylex.attrs(styles.header)}>
-        <span {...stylex.attrs(styles.brand)}>NathApp</span>
-      </div>
+      <WorkspaceSwitcher />
       <Button
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
@@ -49,13 +53,103 @@ export function Sidebar() {
         {(position) => <ContextMenu items={newItems} position={position()} onClose={() => setNewMenu()} />}
       </Show>
       <ul {...stylex.attrs(styles.list)}>
-        <For each={apps}>{(app) => <Item app={app} />}</For>
+        <For each={workspaceTabs()}>{(app) => <Item app={app} />}</For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
         <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
     </nav>
+  );
+}
+
+/** The current workspace; its menu switches between them and creates new ones. */
+function WorkspaceSwitcher() {
+  const [menu, setMenu] = createSignal<MenuPosition>();
+  const [naming, setNaming] = createSignal(false);
+  const current = () => currentWorkspace();
+
+  const items = (): (MenuItem | "separator")[] => [
+    ...workspaces.map((w) => ({
+      label: w.name,
+      icon: w.icon ?? "layers",
+      checked: w.id === current()?.id,
+      onSelect: () => void showWorkspace(w.id),
+    })),
+    "separator",
+    {
+      label: "New workspace",
+      icon: "plus",
+      onSelect: async () => {
+        await createWorkspace("New workspace");
+        setNaming(true);
+      },
+    },
+    { label: "Rename workspace", icon: "pencil", onSelect: () => setNaming(true) },
+    { label: "Workspace settings", icon: "settings-2", onSelect: () => void openWorkspaceSettings() },
+  ];
+
+  const commit = (value: string) => {
+    if (!naming()) return;
+    setNaming(false);
+    const name = value.trim();
+    const workspace = current();
+    if (workspace && name && name !== workspace.name) void updateWorkspace(workspace.id, { name });
+  };
+
+  return (
+    <div {...stylex.attrs(styles.header)}>
+      <Show
+        when={naming()}
+        fallback={
+          <button
+            type="button"
+            aria-haspopup="menu"
+            title="Switch workspace"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu({ x: r.left, y: r.bottom + 4 });
+            }}
+            onDblClick={() => setNaming(true)}
+            {...stylex.attrs(styles.switcher, menu() !== undefined && styles.switcherOpen)}
+            data-workspace-switcher
+          >
+            <Show when={current()}>{(w) => <WorkspaceBadge workspace={w()} />}</Show>
+            <span {...stylex.attrs(styles.workspaceName)}>{current()?.name}</span>
+            <Icon name="chevrons-up-down" size={14} {...stylex.attrs(styles.chevron)} />
+          </button>
+        }
+      >
+        <input
+          ref={(el) => queueMicrotask(() => el.select())}
+          value={current()?.name ?? ""}
+          aria-label="Workspace name"
+          onBlur={(e) => commit(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit(e.currentTarget.value);
+            if (e.key === "Escape") setNaming(false);
+          }}
+          {...stylex.attrs(styles.rename, styles.workspaceRename)}
+          data-workspace-name
+        />
+      </Show>
+      <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
+    </div>
+  );
+}
+
+/** Opens Settings at the current workspace's section. */
+async function openWorkspaceSettings() {
+  await selectApp(SETTINGS_VIEW);
+  requestAnimationFrame(() => document.querySelector('[data-section="workspace"]')?.scrollIntoView({ block: "start" }));
+}
+
+/** The workspace's icon, or its initial. */
+export function WorkspaceBadge(props: { workspace: WorkspaceInfo }) {
+  return (
+    <span {...stylex.attrs(styles.badge)} aria-hidden="true">
+      <Icon name={props.workspace.icon} size={13} fallback={<>{props.workspace.icon ?? props.workspace.name.trim().charAt(0).toUpperCase()}</>} />
+    </span>
   );
 }
 
@@ -91,6 +185,9 @@ function Item(props: { app: AppSummary }) {
   const menuItems = (): (MenuItem | "separator")[] => [
     { label: "Rename", icon: "pencil", onSelect: () => setEditing(true) },
     { label: "Duplicate", icon: "copy", onSelect: () => duplicateApp(props.app.id) },
+    ...workspaces
+      .filter((w) => w.id !== props.app.workspaceId)
+      .map((w) => ({ label: `Move to ${w.name}`, icon: "folder-input", onSelect: () => void moveApp(props.app.id, w.id) })),
     {
       label: "Clear chat",
       icon: "message-square-x",
@@ -124,6 +221,7 @@ function Item(props: { app: AppSummary }) {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
       }}
+      aria-current={selected() ? "page" : undefined}
       data-app-id={props.app.id}
     >
       <Show
@@ -204,8 +302,40 @@ const styles = stylex.create({
     borderRightColor: colors.border,
     overflowY: "auto",
   },
-  header: { display: "flex", alignItems: "center", height: 32, paddingInline: space.sm },
-  brand: { fontWeight: 700, fontSize: font.lg, letterSpacing: "-0.02em" },
+  header: { display: "flex", alignItems: "center", height: 34 },
+  switcher: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    width: "100%",
+    height: 34,
+    paddingInline: space.sm,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: colors.text,
+    fontFamily: font.sans,
+    fontSize: font.md,
+    fontWeight: 650,
+    letterSpacing: "-0.01em",
+    textAlign: "left",
+    cursor: "pointer",
+  },
+  switcherOpen: { backgroundColor: colors.surfaceHover },
+  workspaceName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  workspaceRename: { height: 30, fontSize: font.md },
+  badge: {
+    display: "grid",
+    placeItems: "center",
+    width: 22,
+    height: 22,
+    flexShrink: 0,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSoft,
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: 700,
+  },
   newButton: { justifyContent: "flex-start", width: "100%" },
   chevron: { marginLeft: "auto", opacity: 0.6 },
   favicon: { width: 16, height: 16, marginInline: 1, flexShrink: 0, objectFit: "contain", borderRadius: 3 },

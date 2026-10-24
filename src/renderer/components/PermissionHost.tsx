@@ -27,9 +27,12 @@ export function PermissionHost() {
 
 function Prompt(props: { request: PermissionRequest; more: number }) {
   const [remember, setRemember] = createSignal(false);
+  const [wholeWorkspace, setWholeWorkspace] = createSignal(false);
   let allowButton!: HTMLButtonElement;
   onMount(() => allowButton.focus());
-  const answer = (allow: boolean, always = false) => void answerPermission(props.request.id, allow, always || remember());
+  const answer = (allow: boolean) =>
+    void answerPermission(props.request.id, allow, remember() && wholeWorkspace() && props.request.workspace ? "workspace" : remember());
+  const showWorkspaceOption = () => remember() && !!props.request.workspace;
 
   return (
     <Portal>
@@ -48,9 +51,15 @@ function Prompt(props: { request: PermissionRequest; more: number }) {
           </div>
           <p {...stylex.attrs(styles.detail)}>{props.request.detail}</p>
           <label {...stylex.attrs(styles.remember)}>
-            <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} />
+            <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} data-remember />
             Remember my choice (you can change it in Settings → Permissions)
           </label>
+          <Show when={showWorkspaceOption()}>
+            <label {...stylex.attrs(styles.remember, styles.indented)}>
+              <input type="checkbox" checked={wholeWorkspace()} onChange={(e) => setWholeWorkspace(e.currentTarget.checked)} data-remember-workspace />
+              For every app in the workspace {props.request.workspace!.name}
+            </label>
+          </Show>
           <div {...stylex.attrs(styles.actions)}>
             <Show when={props.more > 0}>
               <span {...stylex.attrs(styles.more)}>{props.more} more waiting</span>
@@ -113,6 +122,7 @@ const styles = stylex.create({
   title: { margin: 0, fontSize: font.lg, fontWeight: 600, lineHeight: 1.3, overflowWrap: "anywhere" },
   detail: { margin: 0, color: colors.muted, fontSize: font.sm, lineHeight: 1.5 },
   remember: { display: "flex", alignItems: "center", gap: space.sm, fontSize: font.sm, cursor: "pointer" },
+  indented: { marginTop: -4, paddingLeft: 22 },
   actions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: space.sm },
   more: { marginRight: "auto", color: colors.muted, fontSize: font.xs },
 });

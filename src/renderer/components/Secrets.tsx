@@ -3,9 +3,10 @@
 // Values go to the server once and are never shown again.
 import * as stylex from "@stylexjs/stylex";
 import { createResource, createSignal, For, Show } from "solid-js";
-import { isReservedSecretName, SECRET_NAME_PATTERN, type SecretInfo } from "../../shared/api";
+import { isReservedSecretName, SECRET_NAME_PATTERN, workspaceScope, type SecretInfo } from "../../shared/api";
 import { api } from "../lib/api";
 import { securityVersion } from "../lib/security";
+import { appById, workspaceById } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
 import { Icon } from "./Icon";
@@ -130,13 +131,22 @@ export function SecretRow(props: { secret: SecretInfo; scopeLabel: string }) {
   );
 }
 
-/** The app tab's secrets: its own, and which global ones it may use. */
+/** The app tab's secrets: its own, its workspace's, and which global ones it may use. */
 export function SecretsPanel(props: { appId: string; onClose: () => void }) {
+  const workspace = () => workspaceById(appById(props.appId)?.workspaceId ?? null);
   const [own] = createResource(() => [props.appId, securityVersion()] as const, ([id]) => api.secrets(id));
+  const [shared] = createResource(
+    () => (workspace() ? ([workspace()!.id, securityVersion()] as const) : undefined),
+    ([id]) => api.secrets(workspaceScope(id)),
+  );
   const [globals] = createResource(securityVersion, () => api.secrets("global"));
   const [grants] = createResource(securityVersion, () => api.permissions());
   const grantFor = (name: string) => grants()?.find((g) => g.subject === props.appId && g.action === "app.secret" && g.resource === name);
-  const allowed = (name: string) => grantFor(name)?.decision === "allow";
+  // The app's own choice wins; else the one for its whole workspace.
+  const workspaceGrant = (name: string) =>
+    grants()?.find((g) => workspace() && g.subject === workspaceScope(workspace()!.id) && g.action === "app.secret" && g.resource === name);
+  const allowed = (name: string) => (grantFor(name) ?? workspaceGrant(name))?.decision === "allow";
+  const viaWorkspace = (name: string) => !grantFor(name) && !!workspaceGrant(name);
 
   const toggle = async (name: string) => {
     const grant = grantFor(name);
@@ -164,13 +174,27 @@ export function SecretsPanel(props: { appId: string; onClose: () => void }) {
         </Show>
         <For each={own()?.secrets}>{(secret) => <SecretRow secret={secret} scopeLabel="this app" />}</For>
         <SecretForm onSave={(name, value) => api.saveSecret(props.appId, name, value)} saveLabel="Add" />
+        <Show when={shared()?.secrets.length}>
+          <span {...stylex.attrs(styles.subhead)}>Shared by the workspace {workspace()?.name} (managed in Settings)</span>
+          <For each={shared()!.secrets}>
+            {(secret) => (
+              <div {...stylex.attrs(styles.globalRow)} data-workspace-secret={secret.name}>
+                <Icon name="layers" size={13} {...stylex.attrs(styles.rowIcon)} />
+                <code {...stylex.attrs(styles.name)}>{secret.name}</code>
+              </div>
+            )}
+          </For>
+        </Show>
         <Show when={globals()?.secrets.length}>
           <span {...stylex.attrs(styles.subhead)}>Global secrets this app may use</span>
           <For each={globals()!.secrets}>
             {(secret) => (
               <label {...stylex.attrs(styles.globalRow)} data-global-secret={secret.name}>
-                <input type="checkbox" checked={allowed(secret.name)} onChange={() => void toggle(secret.name)} />
+                <input type="checkbox" checked={allowed(secret.name)} disabled={viaWorkspace(secret.name)} onChange={() => void toggle(secret.name)} />
                 <code {...stylex.attrs(styles.name)}>{secret.name}</code>
+                <Show when={viaWorkspace(secret.name)}>
+                  <span {...stylex.attrs(styles.meta)}>{allowed(secret.name) ? "allowed" : "denied"} for the whole workspace</span>
+                </Show>
               </label>
             )}
           </For>

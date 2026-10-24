@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { WEB_PARTITION, type NathAppBridge } from "../shared/api";
+import type { NathAppBridge } from "../shared/api";
 
 const arg = (name: string) => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? "";
 
@@ -20,7 +20,7 @@ const bridge: NathAppBridge = {
     node: process.versions.node ?? "",
   },
   web: {
-    partition: WEB_PARTITION,
+    clearWorkspace: (workspaceId) => ipcRenderer.invoke("nathapp:clear-workspace", workspaceId),
     onOpenTab: listen("nathapp:open-tab"),
     onShortcut: listen("nathapp:shortcut"),
     capture: (webContentsId) => ipcRenderer.invoke("nathapp:capture", webContentsId),

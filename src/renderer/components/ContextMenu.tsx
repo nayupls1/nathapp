@@ -10,6 +10,8 @@ export interface MenuItem {
   icon?: string;
   danger?: boolean;
   disabled?: boolean;
+  /** Shows a check mark (the current choice). */
+  checked?: boolean;
   onSelect: () => void;
 }
 
@@ -85,7 +87,10 @@ export function ContextMenu(props: { items: (MenuItem | "separator")[]; position
                   {...stylex.attrs(styles.item, entry().danger && styles.danger)}
                 >
                   <Icon name={entry().icon} size={15} {...stylex.attrs(styles.icon)} />
-                  {entry().label}
+                  <span {...stylex.attrs(styles.label)}>{entry().label}</span>
+                  <Show when={entry().checked}>
+                    <Icon name="check" size={14} {...stylex.attrs(styles.check)} />
+                  </Show>
                 </button>
               )}
             </Show>
@@ -101,6 +106,7 @@ const styles = stylex.create({
     position: "fixed",
     zIndex: 1000,
     minWidth: 180,
+    maxWidth: 320,
     padding: space.xs,
     display: "flex",
     flexDirection: "column",
@@ -132,5 +138,7 @@ const styles = stylex.create({
   },
   danger: { color: colors.danger },
   icon: { flexShrink: 0, opacity: 0.8 },
+  label: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  check: { flexShrink: 0, color: colors.accent },
   separator: { height: 1, marginBlock: space.xs, backgroundColor: colors.border },
 });

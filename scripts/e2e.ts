@@ -509,6 +509,63 @@ try {
     });
   }
 
+  await check("workspaces: own tabs and web logins, switching keeps state", async () => {
+    const tabIds = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.dataset.appId)`);
+    const selected = () => page!.eval<string | undefined>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
+    const switcherText = () => page!.eval<string>(`document.querySelector("[data-workspace-switcher]").innerText.trim().split("\\n").pop()`);
+    const pick = async (label: string) => {
+      await click("[data-workspace-switcher]");
+      await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "workspace menu" });
+      await click("[data-context-menu] button", label);
+    };
+    const personalTabs = await tabIds();
+    const personalSelected = await selected();
+
+    await pick("New workspace");
+    await page!.waitFor(`!!document.querySelector("[data-workspace-name]")`, { label: "workspace name field" });
+    await page!.eval(`(() => {
+      const input = document.querySelector("[data-workspace-name]");
+      input.value = "Client";
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      return true;
+    })()`);
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`, { label: "renamed workspace" });
+    if ((await tabIds()).length) throw new Error("a new workspace should have no tabs");
+
+    // A web tab here gets its own session: cookies set in Personal's web tab aren't there.
+    const client = (await apiCall<{ id: string; name: string }[]>("/api/workspaces")).find((w) => w.name === "Client")!;
+    const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/`, workspaceId: client.id } });
+    await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${tab.id}"]')`, { label: "tab in the sidebar" });
+    await click(`nav li[data-app-id="${tab.id}"]`);
+    const view = `[data-web-tab="${tab.id}"] webview`;
+    await page!.waitFor(`document.querySelector('${view}')?.getAttribute("partition") === "persist:web-${client.id}"`, { label: "workspace session" });
+    await waitForValue(async () => ((await inView<string>(`[data-web-tab="${tab.id}"]`, `document.querySelector("h1")?.textContent`)) ? true : undefined), 20_000);
+    if (webTabId) await inView(`[data-web-tab="${webTabId}"]`, `document.cookie = "space=personal; path=/"`);
+    const clientCookies = await inView<string>(`[data-web-tab="${tab.id}"]`, `document.cookie`);
+    if (clientCookies.includes("space=personal")) throw new Error("the Client workspace sees Personal's cookies");
+
+    await click("[data-workspace-switcher]");
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`);
+    await shot("workspaces.png");
+    await click("[data-context-menu] button", "Personal");
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "back to Personal" });
+    const back = await tabIds();
+    if (back.join() !== personalTabs.join()) throw new Error(`Personal's tabs changed: ${back.join()} vs ${personalTabs.join()}`);
+    if ((await selected()) !== personalSelected) throw new Error("the tab selected in Personal wasn't restored");
+
+    // Deleted from its settings, with its tabs.
+    await pick("Client");
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`);
+    await pick("Workspace settings");
+    await page!.waitFor(`!!document.querySelector("[data-delete-workspace]")`, { label: "workspace settings" });
+    await click("[data-delete-workspace]");
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "deleted, back to Personal" });
+    if ((await apiCall<unknown[]>("/api/workspaces")).length !== 1) throw new Error("the workspace wasn't deleted");
+    return `separate cookies; ${await switcherText()} and its selected tab restored`;
+  });
+
   await check("settings: theme presets apply and prompt additions are saved", async () => {
     await click("nav button", "Settings");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });

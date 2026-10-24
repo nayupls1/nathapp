@@ -39,5 +39,6 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 - Server code is Effect v4 (`effect@4`, `effect/http`, `effect/sql`):
   - Services are `Context.Service` + `Layer`, wired in `src/server/services.ts`.
   - v4 names differ from v3 (e.g. `Effect.catch`, `Effect.forkDetach`, `Schema.optionalKey`); check `node_modules/effect` when unsure.
+- Naming: a *workspace* (`db/Workspaces.ts`, `WorkspaceInfo`) groups tabs; `workspace/Workspace.ts` is an app's project folder. New per-tab features should consider which workspace they belong to (secrets, permissions and the audit log are scoped by it).
 - Presets live in `src/server/workspace/presets.ts`, with their files in `templates/` (`*.tpl`, imported as text so they're bundled into the compiled server).
 - NathApp's agent tools are in `src/server/agent/tools.ts`. They're served over MCP, and their input schemas must be object schemas: one bad schema makes clients drop every tool.

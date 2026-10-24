@@ -1,6 +1,7 @@
 // Web tabs and app previews: pages shown in <webview> guests. They get no
-// preload and no Node. Websites share one session; every app preview gets a
-// session of its own (apps all run on 127.0.0.1, and cookies don't separate
+// preload and no Node. The web tabs of a workspace share one session (each
+// workspace has its own cookies and logins); every app preview gets a session
+// of its own (apps all run on 127.0.0.1, and cookies don't separate
 // ports). Popups become new tabs, browser shortcuts are forwarded to the NathApp
 // window, and the renderer can screenshot them for the agents.
 import {
@@ -17,7 +18,7 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import { APP_PARTITION_PATTERN, WEB_PARTITION, type WebShortcut } from "../shared/api";
+import { APP_PARTITION_PATTERN, WEB_PARTITION_PATTERN, webPartition, type WebShortcut } from "../shared/api";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
 /** Where NathApp serves apps (see the server's runtime). */
@@ -55,16 +56,17 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       prefs.webSecurity = true;
       const src = params.src ?? "";
       const partition = params.partition ?? "";
-      const web = partition === WEB_PARTITION && (isWebUrl(src) || src === "about:blank");
+      const web = WEB_PARTITION_PATTERN.test(partition) && (isWebUrl(src) || src === "about:blank");
       const preview = APP_PARTITION_PATTERN.test(partition) && (isAppUrl(src) || src === "about:blank");
       if (!web && !preview) return event.preventDefault();
-      if (preview) lockDown(session.fromPartition(partition));
+      if (web) webSession(partition);
+      else lockDown(session.fromPartition(partition));
     });
     if (contents.getType() === "webview") setupGuest(contents);
   });
 
   function setupGuest(contents: WebContents) {
-    const isPreview = () => contents.session !== web;
+    const isPreview = () => !webSessions.has(contents.session);
     contents.setWindowOpenHandler(({ url }) => {
       openTab(url);
       return { action: "deny" };
@@ -135,10 +137,25 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     s.setPermissionCheckHandler((_contents, permission) => allowedPermissions.has(permission));
   }
 
-  const web = session.fromPartition(WEB_PARTITION);
-  lockDown(web);
-  // A plain Chrome user agent: some sites turn away unknown browsers.
-  web.setUserAgent(app.userAgentFallback.replace(/ (nathapp|Electron)\/\S+/gi, ""));
+  /** The session of a workspace's web tabs, set up on first use. */
+  const webSessions = new WeakSet<Electron.Session>();
+  function webSession(partition: string) {
+    const s = session.fromPartition(partition);
+    if (webSessions.has(s)) return s;
+    webSessions.add(s);
+    lockDown(s);
+    // A plain Chrome user agent: some sites turn away unknown browsers.
+    s.setUserAgent(app.userAgentFallback.replace(/ (nathapp|Electron)\/\S+/gi, ""));
+    return s;
+  }
+
+  // A deleted workspace's cookies, logins and cache go with it.
+  ipcMain.handle("nathapp:clear-workspace", async (event, workspaceId: unknown) => {
+    if (event.sender !== getWindow()?.webContents || typeof workspaceId !== "string" || !/^[\w-]+$/.test(workspaceId)) return;
+    const s = session.fromPartition(webPartition(workspaceId));
+    await s.clearStorageData();
+    await s.clearCache();
+  });
 
   ipcMain.on("nathapp:open-external", (event, url: unknown) => {
     if (event.sender !== getWindow()?.webContents) return;

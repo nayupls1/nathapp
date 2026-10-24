@@ -1,21 +1,32 @@
 // The HTTP API (for the renderer), the hub WebSocket and the MCP endpoint.
 import { Data, Effect, Layer, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-import { providerIds, type AppDetail, type AppSummary, type HealthResponse, type PermissionAction, type ProviderId, type SecretsOverview } from "../shared/api";
+import {
+  providerIds,
+  workspaceOfScope,
+  workspaceScope,
+  type AppDetail,
+  type AppSummary,
+  type HealthResponse,
+  type PermissionAction,
+  type ProviderId,
+  type SecretsOverview,
+} from "../shared/api";
 import { topics } from "../shared/hub";
-import { Settings as SettingsSchema } from "../shared/settings";
+import { Settings as SettingsSchema, WorkspaceSettings } from "../shared/settings";
 import { Agent } from "./agent/Agent";
 import { Mcp } from "./agent/Mcp";
 import { PageContextInput } from "./agent/prompts";
 import { Ai, type AiEvent } from "./ai/Ai";
 import { AiTokens } from "./ai/AiTokens";
 import { Audit } from "./security/Audit";
-import { Permissions } from "./security/Permissions";
+import { Permissions, WEBSITE_AGENT } from "./security/Permissions";
 import { Secrets } from "./security/Secrets";
 import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
 import { Settings } from "./db/Settings";
 import { Sites } from "./db/Sites";
+import { Workspaces } from "./db/Workspaces";
 import { Hub } from "./Hub";
 import { Providers } from "./providers/Providers";
 import { presetInfo, presets } from "./workspace/presets";
@@ -210,6 +221,25 @@ const publishApp = (summary: AppSummary | null) =>
     if (summary) yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
   });
 
+/** Deletes a tab with everything that belongs to it: chat, project folder, secrets, permissions. */
+const removeApp = (id: string) =>
+  Effect.gen(function* () {
+    const apps = yield* Apps;
+    const agent = yield* Agent;
+    const runtime = yield* Runtime;
+    const workspace = yield* Workspace;
+    const secrets = yield* Secrets;
+    const permissions = yield* Permissions;
+    const hub = yield* Hub;
+    yield* agent.stop(id);
+    yield* runtime.forget(id);
+    yield* apps.remove(id);
+    yield* workspace.remove(id);
+    yield* secrets.removeScope(id);
+    yield* permissions.forget(id);
+    yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
+  });
+
 const appRoutes = HttpRouter.addAll([
   HttpRouter.route(
     "GET",
@@ -226,14 +256,18 @@ const appRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const apps = yield* Apps;
+        const workspaces = yield* Workspaces;
         const input = yield* decodeBody(
           Schema.Struct({
             kind: Schema.optionalKey(Schema.Literals(["app", "web"])),
             url: Schema.optionalKey(str(8000).check(Schema.isPattern(/^https?:\/\//i, { message: "url must be an http(s) URL" }))),
+            workspaceId: Schema.optionalKey(str(100)),
           }),
         );
+        const space = input.workspaceId ? yield* workspaces.get(input.workspaceId) : yield* workspaces.first();
+        if (!space) return yield* fail(404, "No such workspace");
         const kind = input.kind ?? "app";
-        const app = yield* apps.create(kind, kind === "web" ? (input.url ?? null) : null);
+        const app = yield* apps.create(space.id, kind, kind === "web" ? (input.url ?? null) : null);
         yield* publishApp(app);
         return json(app, 201);
       }),
@@ -278,23 +312,37 @@ const appRoutes = HttpRouter.addAll([
     "DELETE",
     "/api/apps/:id",
     Effect.gen(function* () {
-      const id = yield* param("id");
-      const apps = yield* Apps;
-      const agent = yield* Agent;
-      const runtime = yield* Runtime;
-      const workspace = yield* Workspace;
-      const hub = yield* Hub;
-      yield* agent.stop(id);
-      yield* runtime.forget(id);
-      yield* apps.remove(id);
-      yield* workspace.remove(id);
-      const secrets = yield* Secrets;
-      const permissions = yield* Permissions;
-      yield* secrets.removeScope(id);
-      yield* permissions.forget(id);
-      yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
+      yield* removeApp(yield* param("id"));
       return noContent;
     }),
+  ),
+
+  // Moving a tab to another workspace: it gets that workspace's secrets and permissions.
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/move",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const workspaces = yield* Workspaces;
+        const runtime = yield* Runtime;
+        const id = yield* param("id");
+        const { workspaceId } = yield* decodeBody(Schema.Struct({ workspaceId: str(100) }));
+        const target = yield* workspaces.get(workspaceId);
+        if (!target) return yield* fail(404, "No such workspace");
+        const app = yield* apps.get(id);
+        if (!app) return yield* fail(404, "Not found");
+        if (app.workspaceId === workspaceId) return json(app);
+        const moved = yield* apps.move(id, workspaceId);
+        yield* youDid(id, "tab.move", target.name);
+        yield* publishApp(moved);
+        if (app.kind === "app") {
+          const status = yield* runtime.status(id);
+          if (status.state !== "stopped" && status.state !== "crashed") yield* Effect.forkDetach(runtime.restart(id));
+        }
+        return json(moved);
+      }),
+    ),
   ),
 
   // Web tabs report navigation: URL, page title (renames the tab) and favicon.
@@ -599,24 +647,122 @@ const aiRoutes = HttpRouter.addAll([
   ),
 ]);
 
-// --- Secrets, permissions and the audit log ----------------------------------------------
+// --- Workspaces ----------------------------------------------------------------------------
 
-/** An audit entry for something the user did in the UI. */
-const youDid = (tabId: string | null, action: string, target: string | null, detail: string | null = null) =>
+const publishWorkspace = (id: string) =>
   Effect.gen(function* () {
-    const audit = yield* Audit;
-    yield* audit.record({ actor: "user", actorLabel: "You", tabId, action, target, detail });
+    const workspaces = yield* Workspaces;
+    const hub = yield* Hub;
+    const space = yield* workspaces.get(id);
+    if (space) yield* hub.publish({ type: "workspace", topic: topics.workspaces, workspace: space });
+    return space;
   });
 
-/** Running apps that use a secret get restarted, so their environment changes right away. */
+const workspaceName = str(80).check(Schema.isPattern(/\S/, { message: "name is required" }));
+
+const workspaceRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/workspaces",
+    Effect.gen(function* () {
+      const workspaces = yield* Workspaces;
+      return json(yield* workspaces.list());
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/workspaces",
+    handle(
+      Effect.gen(function* () {
+        const workspaces = yield* Workspaces;
+        const input = yield* decodeBody(Schema.Struct({ name: workspaceName, icon: Schema.optionalKey(Schema.NullOr(str(80))) }));
+        const created = yield* workspaces.create(input.name.trim(), input.icon ?? null);
+        yield* publishWorkspace(created.id);
+        return json(created, 201);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "PATCH",
+    "/api/workspaces/:id",
+    handle(
+      Effect.gen(function* () {
+        const workspaces = yield* Workspaces;
+        const input = yield* decodeBody(
+          Schema.Struct({
+            name: Schema.optionalKey(workspaceName),
+            icon: Schema.optionalKey(Schema.NullOr(str(80))),
+            settings: Schema.optionalKey(WorkspaceSettings),
+          }),
+        );
+        const id = yield* param("id");
+        if (!(yield* workspaces.update(id, { ...input, name: input.name?.trim() }))) return yield* fail(404, "Not found");
+        return json(yield* publishWorkspace(id));
+      }),
+    ),
+  ),
+  // Deletes the workspace with its tabs (and their data), its secrets and its permissions.
+  HttpRouter.route(
+    "DELETE",
+    "/api/workspaces/:id",
+    handle(
+      Effect.gen(function* () {
+        const workspaces = yield* Workspaces;
+        const secrets = yield* Secrets;
+        const permissions = yield* Permissions;
+        const hub = yield* Hub;
+        const id = yield* param("id");
+        const space = yield* workspaces.get(id);
+        if (!space) return yield* fail(404, "Not found");
+        if ((yield* workspaces.count()) <= 1) return yield* fail(400, "The last workspace can't be deleted");
+        for (const appId of yield* workspaces.appIds(id)) yield* removeApp(appId);
+        yield* secrets.removeScope(workspaceScope(id));
+        yield* permissions.forget(workspaceScope(id));
+        yield* workspaces.remove(id);
+        yield* youDid(null, "workspace.delete", space.name);
+        yield* hub.publish({ type: "workspace-deleted", topic: topics.workspaces, workspaceId: id });
+        return noContent;
+      }),
+    ),
+  ),
+]);
+
+// --- Secrets, permissions and the audit log ----------------------------------------------
+
+/**
+ * An audit entry for something the user did in the UI. `where`: a tab id, a
+ * secret scope or permission subject ("global", "workspace:<id>",
+ * "website-agent"), or null.
+ */
+const youDid = (where: string | null, action: string, target: string | null, detail: string | null = null) =>
+  Effect.gen(function* () {
+    const audit = yield* Audit;
+    const workspaceId = where ? workspaceOfScope(where) : null;
+    const tabId = where && !workspaceId && where !== "global" && where !== WEBSITE_AGENT ? where : null;
+    yield* audit.record({ actor: "user", actorLabel: "You", tabId, workspaceId, action, target, detail });
+  });
+
+/** "global KEY", "workspace KEY", "app KEY" for the audit log. */
+const secretLabel = (scope: string, name: string) => `${scope === "global" ? "global" : workspaceOfScope(scope) ? "workspace" : "app"} ${name}`;
+
+/**
+ * Running apps that use a secret get restarted, so their environment changes
+ * right away. `scope`: the secret's scope, or the subject of a permission.
+ */
 const restartUsers = (scope: string, name: string) =>
   Effect.gen(function* () {
     const runtime = yield* Runtime;
     const permissions = yield* Permissions;
-    const appIds =
-      scope === "global"
-        ? (yield* permissions.list).filter((g) => g.action === "app.secret" && g.resource === name && g.decision === "allow").map((g) => g.subject)
-        : [scope];
+    const apps = yield* Apps;
+    const workspaces = yield* Workspaces;
+    const space = workspaceOfScope(scope);
+    let appIds: string[];
+    if (scope === "global") {
+      appIds = [];
+      for (const app of yield* apps.list()) {
+        if (app.kind === "app" && (yield* permissions.decision(app.id, "app.secret", name)) === "allow") appIds.push(app.id);
+      }
+    } else appIds = space ? yield* workspaces.appIds(space) : [scope];
     for (const id of appIds) {
       const status = yield* runtime.status(id);
       if (status.state !== "stopped" && status.state !== "crashed") yield* Effect.forkDetach(runtime.restart(id));
@@ -641,14 +787,18 @@ const secretRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const secrets = yield* Secrets;
         const apps = yield* Apps;
-        const input = yield* decodeBody(Schema.Struct({ scope: str(100), name: str(100), value: str(70_000) }));
-        if (input.scope !== "global") {
+        const workspaces = yield* Workspaces;
+        const input = yield* decodeBody(Schema.Struct({ scope: str(150), name: str(100), value: str(70_000) }));
+        const space = workspaceOfScope(input.scope);
+        if (space) {
+          if (!(yield* workspaces.get(space))) return yield* fail(404, "No such workspace");
+        } else if (input.scope !== "global") {
           const app = yield* apps.get(input.scope);
           if (!app || app.kind !== "app") return yield* fail(404, "No such app");
         }
         const existed = (yield* secrets.list(input.scope)).some((x) => x.name === input.name);
         const saved = yield* secrets.set(input.scope, input.name, input.value).pipe(Effect.catchTag("SecretError", (e) => fail(400, e.message)));
-        yield* youDid(input.scope === "global" ? null : input.scope, existed ? "secret.replace" : "secret.create", `${input.scope === "global" ? "global" : "app"} ${input.name}`);
+        yield* youDid(input.scope, existed ? "secret.replace" : "secret.create", secretLabel(input.scope, input.name));
         yield* restartUsers(input.scope, input.name);
         return json(saved);
       }),
@@ -662,7 +812,7 @@ const secretRoutes = HttpRouter.addAll([
         const secrets = yield* Secrets;
         const removed = yield* secrets.remove(yield* param("id"));
         if (!removed) return yield* fail(404, "Not found");
-        yield* youDid(removed.scope === "global" ? null : removed.scope, "secret.delete", `${removed.scope === "global" ? "global" : "app"} ${removed.name}`);
+        yield* youDid(removed.scope, "secret.delete", secretLabel(removed.scope, removed.name));
         yield* restartUsers(removed.scope, removed.name);
         return noContent;
       }),
@@ -727,8 +877,12 @@ const permissionRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const permissions = yield* Permissions;
-        const { allow, remember } = yield* decodeBody(Schema.Struct({ allow: Schema.Boolean, remember: Schema.Boolean }));
-        if (!(yield* permissions.answer(yield* param("id"), allow, remember))) return yield* fail(404, "The request is no longer waiting");
+        // remember: true (this app or agent) or "workspace" (every app in its workspace).
+        const { allow, remember } = yield* decodeBody(
+          Schema.Struct({ allow: Schema.Boolean, remember: Schema.Union([Schema.Boolean, Schema.Literal("workspace")]) }),
+        );
+        const scope = remember === "workspace" ? "workspace" : remember ? "subject" : false;
+        if (!(yield* permissions.answer(yield* param("id"), allow, scope))) return yield* fail(404, "The request is no longer waiting");
         return noContent;
       }),
     ),
@@ -743,6 +897,7 @@ const permissionRoutes = HttpRouter.addAll([
       return json(
         yield* audit.list({
           tabId: params.get("tab") ?? undefined,
+          workspaceId: params.get("workspace") ?? undefined,
           actor: actor === "user" || actor === "agent" || actor === "app" || actor === "nathapp" ? actor : undefined,
           before: params.get("before") ? Number(params.get("before")) : undefined,
           limit: params.get("limit") ? Number(params.get("limit")) : undefined,
@@ -752,7 +907,7 @@ const permissionRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

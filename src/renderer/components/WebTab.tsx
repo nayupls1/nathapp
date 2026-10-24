@@ -4,7 +4,7 @@
 import * as stylex from "@stylexjs/stylex";
 import type { DidFailLoadEvent, PageFaviconUpdatedEvent, PageTitleUpdatedEvent, WebviewTag } from "electron";
 import { createEffect, createSignal, For, on, onCleanup, Show, untrack } from "solid-js";
-import type { ElementInfo, PageContext } from "../../shared/api";
+import { DEFAULT_WORKSPACE, webPartition, type ElementInfo, type PageContext } from "../../shared/api";
 import { hostOf, normalizeUrl, overrideScript } from "../../shared/web";
 import { api } from "../lib/api";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
@@ -19,6 +19,8 @@ import { Icon } from "./Icon";
 
 export function WebTab(props: { appId: string; active: boolean }) {
   const initialUrl = untrack(() => appById(props.appId)?.url ?? "");
+  // The workspace's session (cookies, logins). A tab moved to another workspace is closed and reopened with the new one.
+  const partition = untrack(() => webPartition(appById(props.appId)?.workspaceId ?? DEFAULT_WORKSPACE));
   const [src, setSrc] = createSignal(initialUrl);
   const [address, setAddress] = createSignal(initialUrl);
   const [currentUrl, setCurrentUrl] = createSignal(initialUrl);
@@ -368,7 +370,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
             <webview
               ref={attach}
               src={src()}
-              partition={window.nathapp.web.partition}
+              partition={partition}
               {...{ allowpopups: "" }}
               {...stylex.attrs(styles.webview)}
             />

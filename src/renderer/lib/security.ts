@@ -27,7 +27,7 @@ watchTopic(topics.activity, (msg) => {
 // What was asked while disconnected.
 onConnected(() => void api.pendingPermissions().then(setRequests, () => {}));
 
-export async function answerPermission(id: string, allow: boolean, remember: boolean) {
+export async function answerPermission(id: string, allow: boolean, remember: boolean | "workspace") {
   setRequests((list) => list.filter((r) => r.id !== id));
   await api.answerPermission(id, allow, remember).catch(() => {});
 }

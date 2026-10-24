@@ -1,4 +1,5 @@
 // Types shared between the Bun server, the Electron main/preload and the renderer.
+import type { WorkspaceSettings } from "./settings";
 
 export interface HealthResponse {
   ok: true;
@@ -18,8 +19,8 @@ export interface NathAppBridge {
     node: string;
   };
   web: {
-    /** Session partition of web tabs (separate cookies/storage from NathApp itself). */
-    partition: string;
+    /** Deletes the cookies and storage of a workspace's web tabs (the workspace was deleted). */
+    clearWorkspace: (workspaceId: string) => Promise<void>;
     /** A page asked to open a link in a new window: open it in a new web tab. */
     onOpenTab: (fn: (url: string) => void) => () => void;
     /** A browser shortcut pressed while a web page had focus. */
@@ -32,6 +33,9 @@ export interface NathAppBridge {
 }
 
 export const WEB_PARTITION = "persist:web";
+/** Web tabs of each workspace get their own session (cookies, logins); the first workspace keeps the original one. */
+export const webPartition = (workspaceId: string) => (workspaceId === DEFAULT_WORKSPACE ? WEB_PARTITION : `persist:web-${workspaceId}`);
+export const WEB_PARTITION_PATTERN = /^persist:web(-[\w-]+)?$/;
 /** Each app's preview gets its own session: apps all live on 127.0.0.1, and cookies don't separate ports. */
 export const appPartition = (appId: string) => `persist:app-${appId}`;
 export const APP_PARTITION_PATTERN = /^persist:app-[\w-]+$/;
@@ -101,12 +105,31 @@ export interface AgentChoice {
   effort: Effort | null;
 }
 
+// --- Workspaces -------------------------------------------------------------------
+
+/** The workspace existing tabs moved into when workspaces were introduced. */
+export const DEFAULT_WORKSPACE = "default";
+
+/**
+ * A group of tabs with its own agent defaults and instructions, secrets shared
+ * by its apps, and its own web session (logins).
+ */
+export interface WorkspaceInfo {
+  id: string;
+  name: string;
+  /** Lucide icon name or an emoji. */
+  icon: string | null;
+  settings: WorkspaceSettings;
+  createdAt: string;
+}
+
 // --- Apps and web tabs (one per sidebar tab) ------------------------------------
 
 export type TabKind = "app" | "web";
 
 export interface AppSummary {
   id: string;
+  workspaceId: string;
   /** "app": a project built by the agent; "web": a browser tab. */
   kind: TabKind;
   name: string;
@@ -241,8 +264,11 @@ export interface SiteOverride {
 
 // --- Secrets ----------------------------------------------------------------------
 
-/** "global", or the id of the app tab the secret belongs to. */
-export type SecretScope = "global" | (string & {});
+/** "global", "workspace:<id>" (shared by the workspace's apps), or the id of the app tab the secret belongs to. */
+export type SecretScope = "global" | `workspace:${string}` | (string & {});
+
+export const workspaceScope = (workspaceId: string) => `workspace:${workspaceId}` as const;
+export const workspaceOfScope = (scope: string) => (scope.startsWith("workspace:") ? scope.slice("workspace:".length) : null);
 
 /** A secret without its value: values never leave the server once saved. */
 export interface SecretInfo {
@@ -284,9 +310,11 @@ export type PermissionAction = "app.ai" | "app.secret" | "agent.site";
 
 export interface PermissionGrant {
   id: number;
-  /** An app id, or "website-agent". */
+  /** An app id, "workspace:<id>" (every app in it), or "website-agent". */
   subject: string;
   subjectName: string;
+  /** The workspace the subject is in (or is); null for the website agent. */
+  workspaceId: string | null;
   action: PermissionAction;
   resource: string;
   decision: "allow" | "deny";
@@ -298,6 +326,8 @@ export interface PermissionRequest {
   id: string;
   subject: string;
   subjectName: string;
+  /** The app's workspace (its answer can be remembered for the whole workspace); null for the website agent. */
+  workspace: { id: string; name: string } | null;
   action: PermissionAction;
   resource: string;
   title: string;
@@ -314,6 +344,8 @@ export interface AuditEntry {
   actorLabel: string;
   /** The tab it happened in, if any. */
   tabId: string | null;
+  /** The workspace of that tab (or of the workspace secret), if any. */
+  workspaceId: string | null;
   /** e.g. "tool.run_command", "secret.create", "ai.request", "permission.allow". */
   action: string;
   /** What was affected (file, secret name, host…). Never secret values. */

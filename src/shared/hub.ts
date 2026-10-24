@@ -2,7 +2,7 @@
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
-import type { AppSummary, AuditEntry, ChatEvent, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus } from "./api";
+import type { AppSummary, AuditEntry, ChatEvent, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "./api";
 
 export const topics = {
   /** Chat events and runtime status of an app or web tab. */
@@ -13,8 +13,10 @@ export const topics = {
   sites: "sites",
   /** Provider status (installed, signed in, models) changed. */
   providers: "providers",
-  /** The list of tabs changed (created, renamed, deleted). */
+  /** The list of tabs changed (created, renamed, moved, deleted). */
   apps: "apps",
+  /** Workspaces were created, changed or deleted. */
+  workspaces: "workspaces",
   /** Permission requests waiting for the user, and answers. */
   permissions: "permissions",
   /** New audit log entries; secrets and permissions changed. */
@@ -39,6 +41,8 @@ export type ServerMessage =
   | { type: "providers"; topic: string; providers: ProviderStatus[] }
   | { type: "app"; topic: string; app: AppSummary }
   | { type: "app-deleted"; topic: string; appId: string }
+  | { type: "workspace"; topic: string; workspace: WorkspaceInfo }
+  | { type: "workspace-deleted"; topic: string; workspaceId: string }
   | { type: "permission-request"; topic: string; request: PermissionRequest }
   | { type: "permission-resolved"; topic: string; id: string }
   | { type: "audit"; topic: string; entry: AuditEntry }

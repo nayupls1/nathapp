@@ -13,6 +13,7 @@ import * as Runtime from "../src/server/workspace/Runtime";
 import * as Sandbox from "../src/server/workspace/Sandbox";
 import * as Workspace from "../src/server/workspace/Workspace";
 import { presets } from "../src/server/workspace/presets";
+import { DEFAULT_WORKSPACE } from "../src/shared/api";
 
 const dataDir = mkdtempSync(join(tmpdir(), "nathapp-workspace-test-"));
 const config = readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" });
@@ -27,7 +28,7 @@ afterAll(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const createApp = () => run(Effect.flatMap(Apps.Apps, (apps) => apps.create("app", null)));
+const createApp = () => run(Effect.flatMap(Apps.Apps, (apps) => apps.create(DEFAULT_WORKSPACE, "app", null)));
 
 describe("presets", () => {
   test("every preset has a manifest and a server", () => {

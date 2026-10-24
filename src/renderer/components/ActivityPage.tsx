@@ -1,12 +1,13 @@
-// The audit log: everything agents, apps and the user did, newest first,
-// filterable by tab and by who did it. New entries appear live.
+// The audit log: everything agents, apps and the user did, newest first.
+// Shows the current workspace (plus what belongs to none, like global
+// secrets), filterable by tab and by who did it. New entries appear live.
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import type { AuditEntry } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { api } from "../lib/api";
 import { watchTopic } from "../lib/realtime";
-import { apps } from "../lib/store";
+import { apps, currentWorkspace, workspaces } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Icon } from "./Icon";
 
@@ -30,6 +31,8 @@ const actions: Record<string, string> = {
   "runtime.stop": "Stopped the app",
   "runtime.restart": "Restarted the app",
   "runtime.mode": "Switched mode",
+  "tab.move": "Moved the tab to",
+  "workspace.delete": "Deleted the workspace",
 };
 
 const describe = (action: string) => actions[action] ?? (action.startsWith("tool.") ? `Used ${action.slice(5).replaceAll("_", " ")}` : action);
@@ -38,15 +41,19 @@ export function ActivityPage() {
   const [entries, setEntries] = createSignal<AuditEntry[]>([]);
   const [tab, setTab] = createSignal("");
   const [actor, setActor] = createSignal<"" | AuditEntry["actor"]>("");
+  const [everywhere, setEverywhere] = createSignal(false);
   const [more, setMore] = createSignal(false);
-  const matches = (e: AuditEntry) => (!tab() || e.tabId === tab()) && (!actor() || e.actor === actor());
+  const workspace = () => (everywhere() ? undefined : currentWorkspace()?.id);
+  const matches = (e: AuditEntry) =>
+    (!tab() || e.tabId === tab()) && (!actor() || e.actor === actor()) && (!workspace() || !e.workspaceId || e.workspaceId === workspace());
+  const tabs = () => apps.filter((a) => !workspace() || a.workspaceId === workspace());
 
   const load = async (before?: number) => {
-    const page = await api.audit({ tab: tab() || undefined, actor: actor() || undefined, before, limit: PAGE });
+    const page = await api.audit({ tab: tab() || undefined, workspace: workspace(), actor: actor() || undefined, before, limit: PAGE });
     setEntries((list) => (before ? [...list, ...page] : page));
     setMore(page.length === PAGE);
   };
-  createEffect(on([tab, actor], () => void load()));
+  createEffect(on([tab, actor, workspace], () => void load()));
 
   onCleanup(
     watchTopic(topics.activity, (msg) => {
@@ -66,9 +73,23 @@ export function ActivityPage() {
         <p {...stylex.attrs(styles.muted)}>What agents, apps and you did: tools used, AI requests, secrets, permissions. Secret values are never logged.</p>
       </header>
       <div {...stylex.attrs(styles.filters)}>
+        <select
+          value={everywhere() ? "all" : "current"}
+          onChange={(e) => {
+            setEverywhere(e.currentTarget.value === "all");
+            setTab("");
+          }}
+          {...stylex.attrs(styles.select)}
+          data-activity-workspace
+        >
+          <option value="current">{currentWorkspace()?.name ?? "This workspace"}</option>
+          <Show when={workspaces.length > 1}>
+            <option value="all">All workspaces</option>
+          </Show>
+        </select>
         <select value={tab()} onChange={(e) => setTab(e.currentTarget.value)} {...stylex.attrs(styles.select)} data-activity-tab>
           <option value="">All tabs</option>
-          <For each={apps}>{(a) => <option value={a.id}>{a.name}</option>}</For>
+          <For each={tabs()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
         </select>
         <select value={actor()} onChange={(e) => setActor(e.currentTarget.value as "" | AuditEntry["actor"])} {...stylex.attrs(styles.select)}>
           <option value="">Everyone</option>

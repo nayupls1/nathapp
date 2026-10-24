@@ -1,14 +1,14 @@
-// The Settings tab: appearance, providers, agent defaults and prompt
-// additions, apps, web tabs.
+// The Settings tab: the current workspace, appearance, providers, agent
+// defaults and prompt additions, apps, web tabs, secrets and permissions.
 import * as stylex from "@stylexjs/stylex";
 import { createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
-import { defaultAppModel, providerIds, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
+import { defaultAppModel, providerIds, workspaceScope, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
-import { providerById, refreshProviders } from "../lib/store";
+import { currentWorkspace, deleteWorkspace, editWorkspaceSettings, providerById, refreshProviders, updateWorkspace, workspaces } from "../lib/store";
 import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AgentPicker } from "./AgentPicker";
@@ -40,6 +40,8 @@ export function SettingsPage() {
         </h1>
         <p {...stylex.attrs(styles.muted)}>Changes are saved automatically.</p>
       </header>
+
+      <WorkspaceSection />
 
       <Section title="Appearance" icon="palette">
         <Row label="Theme presets" description="A starting point; tweak the colors below." wide>
@@ -310,6 +312,125 @@ function ProviderRow(props: { id: ProviderId }) {
   );
 }
 
+/** The current workspace: its name, agent defaults and instructions, shared secrets; deleting it. */
+function WorkspaceSection() {
+  return (
+    <Show when={currentWorkspace()} keyed>
+      {(workspace) => {
+        const edit = (patch: Partial<typeof workspace.settings>) => editWorkspaceSettings(workspace.id, (s) => ({ ...s, ...patch }));
+        const current = () => workspaces.find((w) => w.id === workspace.id) ?? workspace;
+        const agent = () => current().settings.agent;
+        return (
+          <Section title={`Workspace: ${current().name}`} icon="layers" anchor="workspace">
+            <p {...stylex.attrs(styles.muted, styles.note)}>
+              Workspaces keep projects apart: each has its own tabs, agent defaults and instructions, secrets for its apps, and
+              its own web logins (cookies). Switch between them at the top of the sidebar.
+            </p>
+            <Row label="Name">
+              <input
+                value={current().name}
+                onChange={(e) => {
+                  const name = e.currentTarget.value.trim();
+                  if (name) void updateWorkspace(workspace.id, { name });
+                }}
+                {...stylex.attrs(styles.textInput)}
+                data-workspace-field="name"
+              />
+            </Row>
+            <Row label="Default agent" description="For new tabs in this workspace. Off: the default from Agent below.">
+              <Show when={agent()}>
+                {(choice) => (
+                  <div {...stylex.attrs(styles.pickerBox)}>
+                    <AgentPicker choice={choice()} onChange={(next) => edit({ agent: next })} />
+                  </div>
+                )}
+              </Show>
+              <Toggle
+                checked={!!agent()}
+                onChange={(on) =>
+                  edit({ agent: on ? { provider: settings().agent.provider, model: settings().agent.model, effort: settings().agent.effort } : null })
+                }
+              />
+            </Row>
+            <Row label="Instructions for building apps" description="Added after the global instructions in this workspace's tabs." wide>
+              <TextArea
+                value={current().settings.instructions}
+                placeholder={"e.g. This is for my client Acme: use their colors (#0a5) and English."}
+                onInput={(instructions) => edit({ instructions })}
+                name="workspaceInstructions"
+              />
+            </Row>
+            <Row label="Instructions for customizing websites" wide>
+              <TextArea
+                value={current().settings.webInstructions}
+                placeholder={"e.g. Keep changes subtle."}
+                onInput={(webInstructions) => edit({ webInstructions })}
+                name="workspaceWebInstructions"
+              />
+            </Row>
+            <WorkspaceSecrets workspaceId={workspace.id} />
+            <Row label="Delete workspace" description="Deletes its tabs with their apps, data and chats, its secrets, and its web logins.">
+              <button
+                type="button"
+                disabled={workspaces.length < 2}
+                title={workspaces.length < 2 ? "The last workspace can't be deleted" : undefined}
+                onClick={async () => {
+                  const ok = await confirmDialog(`Delete the workspace “${current().name}” with all its tabs, apps and their data?`, {
+                    confirmLabel: "Delete workspace",
+                    danger: true,
+                  });
+                  if (ok) await deleteWorkspace(workspace.id);
+                }}
+                {...stylex.attrs(styles.linkButton, styles.dangerButton)}
+                data-delete-workspace
+              >
+                Delete…
+              </button>
+            </Row>
+          </Section>
+        );
+      }}
+    </Show>
+  );
+}
+
+/** Secrets every app in the workspace gets. */
+function WorkspaceSecrets(props: { workspaceId: string }) {
+  const scope = () => workspaceScope(props.workspaceId);
+  const [overview] = createResource(() => [scope(), securityVersion()] as const, ([s]) => api.secrets(s));
+  const [adding, setAdding] = createSignal(false);
+  return (
+    <>
+      <Row label="Secrets for its apps" description="Every app in this workspace gets these as environment variables. An app's own secret of the same name wins.">
+        <Show when={!adding()}>
+          <button type="button" onClick={() => setAdding(true)} {...stylex.attrs(styles.linkButton)} data-add-workspace-secret>
+            + Add
+          </button>
+        </Show>
+      </Row>
+      <For each={overview()?.secrets}>
+        {(secret) => (
+          <div {...stylex.attrs(styles.secretRow)}>
+            <SecretRow secret={secret} scopeLabel="workspace" />
+          </div>
+        )}
+      </For>
+      <Show when={adding()}>
+        <div {...stylex.attrs(styles.secretRow)}>
+          <SecretForm
+            saveLabel="Add"
+            onSave={async (name, value) => {
+              await api.saveSecret(scope(), name, value);
+              setAdding(false);
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </div>
+      </Show>
+    </>
+  );
+}
+
 /** Global secrets: available to every app the user allows, so adding one comes with a warning. */
 function GlobalSecrets() {
   const [overview] = createResource(securityVersion, () => api.secrets("global"));
@@ -412,9 +533,9 @@ function SiteRows() {
   );
 }
 
-function Section(props: { title: string; icon: string; children: JSX.Element }) {
+function Section(props: { title: string; icon: string; anchor?: string; children: JSX.Element }) {
   return (
-    <section {...stylex.attrs(styles.section)}>
+    <section {...stylex.attrs(styles.section)} data-section={props.anchor}>
       <h2 {...stylex.attrs(styles.sectionTitle)}>
         <Icon name={props.icon} size={18} {...stylex.attrs(styles.accent)} />
         {props.title}
@@ -742,8 +863,10 @@ const styles = stylex.create({
     backgroundColor: "transparent",
     color: colors.accent,
     fontSize: font.sm,
-    cursor: "pointer",
+    cursor: { default: "pointer", ":disabled": "default" },
+    opacity: { default: 1, ":disabled": 0.5 },
   },
+  dangerButton: { color: colors.danger },
   presets: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: space.sm, width: "100%" },
   preset: {
     display: "flex",

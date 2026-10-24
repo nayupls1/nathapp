@@ -21,7 +21,9 @@ import type {
   RuntimeStatus,
   SiteOverride,
   TabKind,
+  WorkspaceInfo,
 } from "../../shared/api";
+import type { WorkspaceSettings } from "../../shared/settings";
 
 const url = (path: string) => `${window.nathapp.serverUrl}${path}`;
 
@@ -55,7 +57,14 @@ export const api = {
   saveSettings: (settings: Settings) => request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
 
   listApps: () => request<AppSummary[]>("/api/apps"),
-  createApp: (body: { kind?: TabKind; url?: string } = {}) => post<AppSummary>("/api/apps", body),
+  createApp: (body: { kind?: TabKind; url?: string; workspaceId?: string } = {}) => post<AppSummary>("/api/apps", body),
+  moveApp: (id: string, workspaceId: string) => post<AppSummary>(`/api/apps/${id}/move`, { workspaceId }),
+
+  workspaces: () => request<WorkspaceInfo[]>("/api/workspaces"),
+  createWorkspace: (name: string) => post<WorkspaceInfo>("/api/workspaces", { name }),
+  updateWorkspace: (id: string, fields: { name?: string; icon?: string | null; settings?: WorkspaceSettings }) =>
+    request<WorkspaceInfo>(`/api/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(fields) }),
+  deleteWorkspace: (id: string) => request<void>(`/api/workspaces/${id}`, { method: "DELETE" }),
   getApp: (id: string) => request<AppDetail>(`/api/apps/${id}`),
   renameApp: (id: string, name: string) => request<AppSummary>(`/api/apps/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteApp: (id: string) => request<void>(`/api/apps/${id}`, { method: "DELETE" }),
@@ -84,10 +93,11 @@ export const api = {
     request<void>("/api/permissions", { method: "PUT", body: JSON.stringify({ subject, action, resource, decision }) }),
   revokePermission: (id: number) => request<void>(`/api/permissions/${id}`, { method: "DELETE" }),
   pendingPermissions: () => request<PermissionRequest[]>("/api/permissions/pending"),
-  answerPermission: (id: string, allow: boolean, remember: boolean) =>
+  /** remember: for this app (or agent), or for every app in its workspace. */
+  answerPermission: (id: string, allow: boolean, remember: boolean | "workspace") =>
     post<void>(`/api/permissions/pending/${id}`, { allow, remember }),
 
-  audit: (filter: { tab?: string; actor?: string; before?: number; limit?: number } = {}) => {
+  audit: (filter: { tab?: string; workspace?: string; actor?: string; before?: number; limit?: number } = {}) => {
     const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
     return request<AuditEntry[]>(`/api/audit${params.size ? `?${params}` : ""}`);
   },

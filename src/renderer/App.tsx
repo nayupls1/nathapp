@@ -9,7 +9,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
 import { loadSettings } from "./lib/settings";
-import { ACTIVITY_VIEW, apps, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW } from "./lib/store";
+import { ACTIVITY_VIEW, currentWorkspace, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -30,7 +30,7 @@ export default function App() {
         <Switch
           fallback={
             <div {...stylex.attrs(styles.empty)}>
-              <p>{apps.length ? "Select a tab" : "Nothing open yet"}</p>
+              <p>{workspaceTabs().length ? "Select a tab" : `Nothing in ${currentWorkspace()?.name ?? "this workspace"} yet`}</p>
               <div {...stylex.attrs(styles.emptyActions)}>
                 <Button variant="primary" onClick={() => newApp()}>
                   + New app

@@ -292,14 +292,15 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "list_secrets",
-      "Names of the secrets (API keys, passwords) the app gets as environment variables, and global secrets the user could allow it to use. Values are never shown.",
+      "Names of the secrets (API keys, passwords) the app gets as environment variables (its own, its workspace's, allowed global ones), and global secrets the user could allow it to use. Values are never shown.",
       NoArgs,
       () =>
         Effect.gen(function* () {
-          const { own, global, globalNotAllowed } = yield* secrets.available(appId);
+          const { own, workspace, global, globalNotAllowed } = yield* secrets.available(appId);
           const line = (label: string, names: string[]) => `${label}: ${names.length ? names.join(", ") : "none"}`;
           return [
             line("The app's secrets (process.env)", own),
+            line("Secrets shared by its workspace (process.env)", workspace),
             line("Global secrets it may use (process.env)", global),
             line("Global secrets it may not use yet (request_secret asks the user)", globalNotAllowed),
           ].join("\n");
@@ -318,8 +319,8 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           if (!SECRET_NAME_PATTERN.test(name) || isReservedSecretName(name)) {
             return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names NathApp sets itself.`, true);
           }
-          const { own, global } = yield* secrets.available(appId);
-          if (own.includes(name) || global.includes(name)) return `${name} is already available as process.env.${name}.`;
+          const { own, workspace, global } = yield* secrets.available(appId);
+          if ([...own, ...workspace, ...global].includes(name)) return `${name} is already available as process.env.${name}.`;
           yield* env.message("secret", JSON.stringify({ name, description: description.slice(0, 500) }));
           return `Asked the user for ${name}. Once they add it, the app restarts and gets it as process.env.${name}.`;
         }),

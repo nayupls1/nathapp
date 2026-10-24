@@ -7,6 +7,7 @@ import { now, orDieAll, type OrDie } from "./Db";
 
 interface AppRow {
   id: string;
+  workspace_id: string;
   kind: TabKind;
   name: string;
   name_locked: number;
@@ -33,6 +34,7 @@ export interface AppRecord extends AppSummary {
 
 const toSummary = (r: AppRow): AppSummary => ({
   id: r.id,
+  workspaceId: r.workspace_id,
   kind: r.kind,
   name: r.name,
   icon: r.icon,
@@ -71,11 +73,11 @@ export const make = Effect.gen(function* () {
 
     get: (id: string) => row(id).pipe(Effect.map((r) => (r ? toRecord(r) : null))),
 
-    create: (kind: TabKind, url: string | null) =>
+    create: (workspaceId: string, kind: TabKind, url: string | null) =>
       Effect.gen(function* () {
         const id = crypto.randomUUID();
         const name = kind === "web" ? hostOf(url) || "New tab" : "New app";
-        yield* sql`INSERT INTO apps (id, kind, name, url) VALUES (${id}, ${kind}, ${name}, ${url})`;
+        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, url) VALUES (${id}, ${workspaceId}, ${kind}, ${name}, ${url})`;
         return (yield* summary(id))!;
       }),
 
@@ -119,6 +121,10 @@ export const make = Effect.gen(function* () {
         Effect.asVoid,
       ),
 
+    /** Moves a tab to another workspace. */
+    move: (id: string, workspaceId: string) =>
+      sql`UPDATE apps SET workspace_id = ${workspaceId}, updated_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
+
     setMode: (id: string, mode: AppMode) => sql`UPDATE apps SET mode = ${mode} WHERE id = ${id}`.pipe(Effect.asVoid),
 
     touch: (id: string) => touch(id).pipe(Effect.asVoid),
@@ -129,8 +135,8 @@ export const make = Effect.gen(function* () {
         const r = yield* row(id);
         if (!r) return null;
         const copyId = crypto.randomUUID();
-        yield* sql`INSERT INTO apps (id, kind, name, icon, url, favicon, provider, model, effort, mode)
-          VALUES (${copyId}, ${r.kind}, ${`${r.name} copy`}, ${r.icon}, ${r.url}, ${r.favicon}, ${r.provider}, ${r.model}, ${r.effort}, ${r.mode})`;
+        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, icon, url, favicon, provider, model, effort, mode)
+          VALUES (${copyId}, ${r.workspace_id}, ${r.kind}, ${`${r.name} copy`}, ${r.icon}, ${r.url}, ${r.favicon}, ${r.provider}, ${r.model}, ${r.effort}, ${r.mode})`;
         return (yield* summary(copyId))!;
       }),
 

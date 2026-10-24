@@ -8,6 +8,7 @@ import { ServerConfig } from "../Config";
 import { Apps, type AppRecord } from "../db/Apps";
 import { Settings } from "../db/Settings";
 import { Sites } from "../db/Sites";
+import { Workspaces } from "../db/Workspaces";
 import { Audit } from "../security/Audit";
 import { Permissions } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
@@ -56,6 +57,7 @@ export const make = Effect.gen(function* () {
   const providers = yield* Providers;
   const mcp = yield* Mcp;
   const workspace = yield* Workspace;
+  const workspaces = yield* Workspaces;
   const runtime = yield* Runtime;
   const sandbox = yield* Sandbox;
   const audit = yield* Audit;
@@ -85,7 +87,7 @@ export const make = Effect.gen(function* () {
       ),
   });
 
-  /** The request's choice, else the tab's last one, else the defaults from Settings. */
+  /** The request's choice, else the tab's last one, else the defaults (the workspace's or Settings'). */
   const resolveChoice = (request: Partial<AgentChoice> | undefined, app: AppRecord, defaults: AgentChoice): AgentChoice => {
     const provider: ProviderId = request?.provider ?? app.agent?.provider ?? defaults.provider;
     const previous = app.agent?.provider === provider ? app.agent : provider === defaults.provider ? defaults : null;
@@ -100,6 +102,9 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const appId = app.id;
       const s = yield* settings.get();
+      const space = (yield* workspaces.ofApp(appId))?.settings;
+      // The workspace's instructions come after the global ones.
+      const combine = (global: string, local: string | undefined) => [global.trim(), local?.trim()].filter(Boolean).join("\n\n");
       yield* emit(appId, { type: "started" });
       if (request.page?.selection.length) yield* message(appId, "context", contextSummary(request.page));
       yield* message(appId, "user", request.prompt);
@@ -123,11 +128,11 @@ export const make = Effect.gen(function* () {
       let instructions: string;
       if (web) {
         cwd = config.agentDir;
-        instructions = buildWebPrompt(s.agent.webInstructions);
+        instructions = buildWebPrompt(combine(s.agent.webInstructions, space?.webInstructions));
       } else {
         cwd = yield* workspace.ensureDir(appId);
         const project = yield* workspace.info(appId);
-        instructions = buildAppPrompt({ instructions: s.agent.instructions, dir: cwd, hasProject: !!project });
+        instructions = buildAppPrompt({ instructions: combine(s.agent.instructions, space?.instructions), dir: cwd, hasProject: !!project });
         // The agent works against the dev server (live updates in the preview).
         if (project) yield* Effect.forkDetach(app.mode === "live" ? runtime.setMode(appId, "dev") : runtime.ensure(appId));
       }
@@ -194,7 +199,9 @@ export const make = Effect.gen(function* () {
           return yield* new AgentError({ status: 409, message: "The agent is already working on this tab" });
         }
         const s = yield* settings.get();
-        const choice = resolveChoice(request.agent, app, s.agent);
+        // New tabs start with the workspace's default agent, if it has one.
+        const defaults = (yield* workspaces.ofApp(appId))?.settings.agent ?? s.agent;
+        const choice = resolveChoice(request.agent, app, defaults);
         const status = (yield* providers.list).find((p) => p.id === choice.provider)!;
         if (status.state !== "ready" && status.state !== "checking") {
           return yield* new AgentError({
