@@ -6,6 +6,7 @@ import { settings } from "../lib/settings";
 import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
+import { SecretRequestCard } from "./Secrets";
 import { Icon } from "./Icon";
 
 export function Chat(props: {
@@ -48,7 +49,7 @@ export function Chat(props: {
           </p>
         </Show>
         <For each={state().messages.filter((m) => m.role !== "tool" || settings().agent.showToolMessages)}>
-          {(m) => <Message message={m} />}
+          {(m) => <Message appId={props.appId} message={m} />}
         </For>
         <Show when={state().running}>
           <Show when={state().draft} fallback={<p {...stylex.attrs(styles.working)}>Working…</p>}>
@@ -71,7 +72,7 @@ export function Chat(props: {
   );
 }
 
-function Message(props: { message: ChatMessage }) {
+function Message(props: { appId: string; message: ChatMessage }) {
   return (
     <Switch>
       <Match when={props.message.role === "user"}>
@@ -88,6 +89,9 @@ function Message(props: { message: ChatMessage }) {
       </Match>
       <Match when={props.message.role === "context"}>
         <PickedContext content={props.message.content} />
+      </Match>
+      <Match when={props.message.role === "secret"}>
+        <SecretRequestCard appId={props.appId} content={props.message.content} />
       </Match>
     </Switch>
   );

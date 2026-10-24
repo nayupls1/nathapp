@@ -11,9 +11,11 @@ import { isIcon, searchIcons } from "../icons";
 import { presets } from "../workspace/presets";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
+import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
+import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
 import { topics } from "../../shared/hub";
-import type { LogLine, RuntimeStatus } from "../../shared/api";
+import { isReservedSecretName, SECRET_NAME_PATTERN, type ChatMessage, type LogLine, type RuntimeStatus } from "../../shared/api";
 
 const transpiler = new Bun.Transpiler({ loader: "js" });
 
@@ -31,6 +33,8 @@ export interface ToolEnv {
   readonly tabId: string;
   /** Adds a line of activity to the chat ("Customized example.com"). */
   readonly log: (line: string) => Effect.Effect<void>;
+  /** Adds another kind of message to the chat (e.g. a request for a secret). */
+  readonly message: (role: ChatMessage["role"], content: string) => Effect.Effect<void>;
 }
 
 // --- Page tools ------------------------------------------------------------------------
@@ -130,6 +134,7 @@ ${code}
 export const siteTools = Effect.fn(function* (env: ToolEnv) {
   const hub = yield* Hub;
   const sites = yield* Sites;
+  const permissions = yield* Permissions;
   const currentHost = hub.rpc<{ url: string }>("page.info", { tabId: env.tabId }).pipe(
     Effect.flatMap(({ url }) => {
       const host = hostOf(url);
@@ -156,6 +161,16 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
         Effect.gen(function* () {
           const host = yield* currentHost;
           if (js) yield* Effect.try(() => checkSyntax(js));
+          // Changing what a site runs needs the user's OK (once per site, or remembered).
+          const allowed = yield* permissions.ask({
+            subject: WEBSITE_AGENT,
+            action: "agent.site",
+            resource: host,
+            title: `Let the website agent customize ${host}?`,
+            detail: `It wants to save ${js?.trim() ? "CSS and JavaScript" : "CSS"} that is applied whenever you open ${host} in gApp. You can turn it off or remove it later.`,
+            timeoutMs: 120_000,
+          });
+          if (!allowed) return text(`The user didn't allow customizing ${host}. Nothing was saved; tell them what you would have changed.`, true);
           const saved = yield* sites.save(host, { css, js, enabled: true });
           yield* hub.publish({ type: "site", topic: topics.sites, host });
           const result = yield* hub.rpc<{ applied: boolean; error?: string }>("page.applyOverride", { tabId: env.tabId }, 45_000);
@@ -186,6 +201,7 @@ const describeStatus = (status: RuntimeStatus, logs: LogLine[]) => {
 };
 
 export const appTools = Effect.fn(function* (env: ToolEnv) {
+  const secrets = yield* Secrets;
   const apps = yield* Apps;
   const workspace = yield* Workspace;
   const runtime = yield* Runtime;
@@ -271,6 +287,41 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           const summary = yield* apps.setInfo(appId, { name: name?.trim() || undefined, icon });
           if (summary) yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
           return summary ? `Saved: ${summary.name}${summary.icon ? ` (${summary.icon})` : ""}.` : "The app no longer exists.";
+        }),
+    ),
+
+    tool(
+      "list_secrets",
+      "Names of the secrets (API keys, passwords) the app gets as environment variables, and global secrets the user could allow it to use. Values are never shown.",
+      NoArgs,
+      () =>
+        Effect.gen(function* () {
+          const { own, global, globalNotAllowed } = yield* secrets.available(appId);
+          const line = (label: string, names: string[]) => `${label}: ${names.length ? names.join(", ") : "none"}`;
+          return [
+            line("The app's secrets (process.env)", own),
+            line("Global secrets it may use (process.env)", global),
+            line("Global secrets it may not use yet (request_secret asks the user)", globalNotAllowed),
+          ].join("\n");
+        }),
+    ),
+
+    tool(
+      "request_secret",
+      "Ask the user for a secret the app needs (e.g. an API key), which the app then gets as process.env.NAME. Never ask for secrets in chat, and never write secret values into files. The user enters it in a form; it can take a while, so don't wait: write the code to read process.env.NAME and handle it missing.",
+      Schema.Struct({
+        name: Schema.String,
+        description: Schema.String,
+      }),
+      ({ name, description }) =>
+        Effect.gen(function* () {
+          if (!SECRET_NAME_PATTERN.test(name) || isReservedSecretName(name)) {
+            return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names gApp sets itself.`, true);
+          }
+          const { own, global } = yield* secrets.available(appId);
+          if (own.includes(name) || global.includes(name)) return `${name} is already available as process.env.${name}.`;
+          yield* env.message("secret", JSON.stringify({ name, description: description.slice(0, 500) }));
+          return `Asked the user for ${name}. Once they add it, the app restarts and gets it as process.env.${name}.`;
         }),
     ),
 

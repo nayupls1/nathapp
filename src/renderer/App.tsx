@@ -1,13 +1,15 @@
 import * as stylex from "@stylexjs/stylex";
 import { For, Match, onMount, Show, Switch } from "solid-js";
+import { ActivityPage } from "./components/ActivityPage";
 import { AppTab } from "./components/AppTab";
 import { ConfirmHost } from "./components/ConfirmDialog";
+import { PermissionHost } from "./components/PermissionHost";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
 import { loadSettings } from "./lib/settings";
-import { apps, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW } from "./lib/store";
+import { ACTIVITY_VIEW, apps, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -23,6 +25,7 @@ export default function App() {
     <div {...stylex.attrs(styles.root)}>
       <Sidebar />
       <ConfirmHost />
+      <PermissionHost />
       <div {...stylex.attrs(styles.content)}>
         <Switch
           fallback={
@@ -39,6 +42,9 @@ export default function App() {
         >
           <Match when={selectedId() === SETTINGS_VIEW}>
             <SettingsPage />
+          </Match>
+          <Match when={selectedId() === ACTIVITY_VIEW}>
+            <ActivityPage />
           </Match>
           <Match when={openTabs().some((t) => t.id === selectedId())}>{null}</Match>
         </Switch>

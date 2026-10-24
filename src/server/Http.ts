@@ -1,7 +1,7 @@
 // The HTTP API (for the renderer), the hub WebSocket and the MCP endpoint.
 import { Data, Effect, Layer, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
-import { providerIds, type AppDetail, type AppSummary, type HealthResponse, type ProviderId } from "../shared/api";
+import { providerIds, type AppDetail, type AppSummary, type HealthResponse, type PermissionAction, type ProviderId, type SecretsOverview } from "../shared/api";
 import { topics } from "../shared/hub";
 import { Settings as SettingsSchema } from "../shared/settings";
 import { Agent } from "./agent/Agent";
@@ -9,6 +9,9 @@ import { Mcp } from "./agent/Mcp";
 import { PageContextInput } from "./agent/prompts";
 import { Ai, type AiEvent } from "./ai/Ai";
 import { AiTokens } from "./ai/AiTokens";
+import { Audit } from "./security/Audit";
+import { Permissions } from "./security/Permissions";
+import { Secrets } from "./security/Secrets";
 import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
 import { Settings } from "./db/Settings";
@@ -285,6 +288,10 @@ const appRoutes = HttpRouter.addAll([
       yield* runtime.forget(id);
       yield* apps.remove(id);
       yield* workspace.remove(id);
+      const secrets = yield* Secrets;
+      const permissions = yield* Permissions;
+      yield* secrets.removeScope(id);
+      yield* permissions.forget(id);
       yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
       return noContent;
     }),
@@ -411,6 +418,7 @@ const runtimeRoutes = HttpRouter.addAll([
         if (action === "stop") yield* runtime.stop(id);
         else if (action === "start") yield* runtime.ensure(id);
         else yield* runtime.restart(id);
+        yield* youDid(id, `runtime.${action}`, null);
         return json(yield* runtime.status(id));
       }),
     ),
@@ -427,6 +435,7 @@ const runtimeRoutes = HttpRouter.addAll([
         const id = yield* param("id");
         const { mode } = yield* decodeBody(Schema.Struct({ mode: Schema.Literals(["dev", "live"]) }));
         if (!(yield* apps.get(id))) return yield* fail(404, "Not found");
+        yield* youDid(id, "runtime.mode", mode);
         return json(yield* runtime.setMode(id, mode));
       }),
     ),
@@ -590,7 +599,160 @@ const aiRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, runtimeRoutes, siteRoutes, aiRoutes, guard);
+// --- Secrets, permissions and the audit log ----------------------------------------------
+
+/** An audit entry for something the user did in the UI. */
+const youDid = (tabId: string | null, action: string, target: string | null, detail: string | null = null) =>
+  Effect.gen(function* () {
+    const audit = yield* Audit;
+    yield* audit.record({ actor: "user", actorLabel: "You", tabId, action, target, detail });
+  });
+
+/** Running apps that use a secret get restarted, so their environment changes right away. */
+const restartUsers = (scope: string, name: string) =>
+  Effect.gen(function* () {
+    const runtime = yield* Runtime;
+    const permissions = yield* Permissions;
+    const appIds =
+      scope === "global"
+        ? (yield* permissions.list).filter((g) => g.action === "app.secret" && g.resource === name && g.decision === "allow").map((g) => g.subject)
+        : [scope];
+    for (const id of appIds) {
+      const status = yield* runtime.status(id);
+      if (status.state !== "stopped" && status.state !== "crashed") yield* Effect.forkDetach(runtime.restart(id));
+    }
+  });
+
+const secretRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/secrets",
+    Effect.gen(function* () {
+      const secrets = yield* Secrets;
+      const req = yield* HttpServerRequest.HttpServerRequest;
+      const scope = new URL(req.url, "http://localhost").searchParams.get("scope") ?? undefined;
+      return json({ protection: secrets.protection, secrets: yield* secrets.list(scope) } satisfies SecretsOverview);
+    }),
+  ),
+  HttpRouter.route(
+    "PUT",
+    "/api/secrets",
+    handle(
+      Effect.gen(function* () {
+        const secrets = yield* Secrets;
+        const apps = yield* Apps;
+        const input = yield* decodeBody(Schema.Struct({ scope: str(100), name: str(100), value: str(70_000) }));
+        if (input.scope !== "global") {
+          const app = yield* apps.get(input.scope);
+          if (!app || app.kind !== "app") return yield* fail(404, "No such app");
+        }
+        const existed = (yield* secrets.list(input.scope)).some((x) => x.name === input.name);
+        const saved = yield* secrets.set(input.scope, input.name, input.value).pipe(Effect.catchTag("SecretError", (e) => fail(400, e.message)));
+        yield* youDid(input.scope === "global" ? null : input.scope, existed ? "secret.replace" : "secret.create", `${input.scope === "global" ? "global" : "app"} ${input.name}`);
+        yield* restartUsers(input.scope, input.name);
+        return json(saved);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/secrets/:id",
+    handle(
+      Effect.gen(function* () {
+        const secrets = yield* Secrets;
+        const removed = yield* secrets.remove(yield* param("id"));
+        if (!removed) return yield* fail(404, "Not found");
+        yield* youDid(removed.scope === "global" ? null : removed.scope, "secret.delete", `${removed.scope === "global" ? "global" : "app"} ${removed.name}`);
+        yield* restartUsers(removed.scope, removed.name);
+        return noContent;
+      }),
+    ),
+  ),
+]);
+
+const permissionActions = ["app.ai", "app.secret", "agent.site"] as const satisfies readonly PermissionAction[];
+
+const permissionRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/permissions",
+    Effect.gen(function* () {
+      const permissions = yield* Permissions;
+      return json(yield* permissions.list);
+    }),
+  ),
+  // Granting from the UI (e.g. letting an app use a global secret).
+  HttpRouter.route(
+    "PUT",
+    "/api/permissions",
+    handle(
+      Effect.gen(function* () {
+        const permissions = yield* Permissions;
+        const input = yield* decodeBody(
+          Schema.Struct({ subject: str(100), action: Schema.Literals(permissionActions), resource: str(300), decision: Schema.Literals(["allow", "deny"]) }),
+        );
+        yield* permissions.set(input.subject, input.action, input.resource, input.decision);
+        yield* youDid(input.subject, `permission.${input.decision}`, `${input.action}${input.resource ? ` ${input.resource}` : ""}`);
+        if (input.action === "app.secret") yield* restartUsers(input.subject, input.resource);
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/permissions/:id",
+    handle(
+      Effect.gen(function* () {
+        const permissions = yield* Permissions;
+        const id = Number(yield* param("id"));
+        const revoked = yield* permissions.revoke(id);
+        if (!revoked) return yield* fail(404, "Not found");
+        yield* youDid(revoked.subject, "permission.revoke", `${revoked.action}${revoked.resource ? ` ${revoked.resource}` : ""}`, revoked.subjectName);
+        if (revoked.action === "app.secret") yield* restartUsers(revoked.subject, revoked.resource);
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/permissions/pending",
+    Effect.gen(function* () {
+      const permissions = yield* Permissions;
+      return json(yield* permissions.pending);
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/permissions/pending/:id",
+    handle(
+      Effect.gen(function* () {
+        const permissions = yield* Permissions;
+        const { allow, remember } = yield* decodeBody(Schema.Struct({ allow: Schema.Boolean, remember: Schema.Boolean }));
+        if (!(yield* permissions.answer(yield* param("id"), allow, remember))) return yield* fail(404, "The request is no longer waiting");
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/audit",
+    Effect.gen(function* () {
+      const audit = yield* Audit;
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+      const actor = params.get("actor");
+      return json(
+        yield* audit.list({
+          tabId: params.get("tab") ?? undefined,
+          actor: actor === "user" || actor === "agent" || actor === "app" || actor === "gapp" ? actor : undefined,
+          before: params.get("before") ? Number(params.get("before")) : undefined,
+          limit: params.get("limit") ? Number(params.get("limit")) : undefined,
+        }),
+      );
+    }),
+  ),
+]);
+
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

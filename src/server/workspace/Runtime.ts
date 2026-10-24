@@ -13,6 +13,8 @@ import { topics } from "../../shared/hub";
 import { AiTokens } from "../ai/AiTokens";
 import { ServerConfig } from "../Config";
 import { Apps } from "../db/Apps";
+import { Audit } from "../security/Audit";
+import { Secrets } from "../security/Secrets";
 import { Hub } from "../Hub";
 import { Sandbox } from "./Sandbox";
 import { Workspace } from "./Workspace";
@@ -90,6 +92,8 @@ async function killTree(child: ChildProcess) {
 interface State {
   status: RuntimeStatus;
   logs: LogLine[];
+  /** Secret values the app's processes got: masked in its logs and command output. */
+  redact: string[];
   port: number | null;
   lock: Semaphore.Semaphore;
 }
@@ -97,6 +101,8 @@ interface State {
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const aiTokens = yield* AiTokens;
+  const secrets = yield* Secrets;
+  const audit = yield* Audit;
   const apps = yield* Apps;
   const hub = yield* Hub;
   const sandbox = yield* Sandbox;
@@ -110,6 +116,7 @@ export const make = Effect.gen(function* () {
       state = {
         status: { mode: "dev", state: "stopped", url: null, port: null, exitCode: null, error: null, startedAt: null, sandbox: "none" },
         logs: [],
+        redact: [],
         port: null,
         lock: Semaphore.makeUnsafe(1),
       };
@@ -124,9 +131,16 @@ export const make = Effect.gen(function* () {
     hub.publishUnsafe({ type: "runtime", topic: topics.app(appId), appId, status: state.status });
   };
 
+  /** Masks the app's secret values (best effort: an app could still print them encoded). */
+  const redact = (appId: string, text: string) => {
+    let out = text;
+    for (const value of stateOf(appId).redact) out = out.replaceAll(value, "••••••");
+    return out;
+  };
+
   const log = (appId: string, stream: LogLine["stream"], text: string) => {
     const state = stateOf(appId);
-    const lines = text
+    const lines = redact(appId, text)
       .replace(/\r/g, "")
       // eslint-disable-next-line no-control-regex
       .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
@@ -227,6 +241,16 @@ export const make = Effect.gen(function* () {
         return;
       }
       const env = appEnv(appId, mode, null);
+      // The app's secrets: for build and serve, not for installing dependencies.
+      const secretEnv = yield* secrets.envFor(appId).pipe(
+        Effect.catchTag("VaultLocked", (e) => Effect.sync(() => (log(appId, "system", `${e.message}; starting without secrets`), {} as Record<string, string>))),
+      );
+      const names = Object.keys(secretEnv);
+      state.redact = Object.values(secretEnv).filter((v) => v.length >= 4).sort((a, b) => b.length - a.length);
+      if (names.length) {
+        log(appId, "system", `Secrets: ${names.join(", ")}`);
+        yield* audit.record({ actor: "gapp", actorLabel: "gApp", tabId: appId, action: "secret.inject", target: names.join(", "), detail: `Started in ${mode} mode` });
+      }
 
       if (needsInstall(appId, manifest)) {
         setStatus(appId, { state: "installing" });
@@ -237,7 +261,7 @@ export const make = Effect.gen(function* () {
 
       if (mode === "live" && manifest.build) {
         setStatus(appId, { state: "building" });
-        const code = yield* runToEnd(appId, manifest.build, env);
+        const code = yield* runToEnd(appId, manifest.build, { ...secretEnv, ...env });
         if (code !== 0) return fail(appId, code === "timeout" ? "The build timed out" : `The build failed (exit code ${code})`);
       }
 
@@ -249,7 +273,7 @@ export const make = Effect.gen(function* () {
 
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const { exited } = yield* spawnIn(appId, command, appEnv(appId, mode, port));
+          const { exited } = yield* spawnIn(appId, command, { ...secretEnv, ...appEnv(appId, mode, port) });
           const ready = yield* Effect.forkScoped(
             Effect.gen(function* () {
               while (!(yield* Effect.promise(() => listening(port)))) yield* Effect.sleep(250);
@@ -330,7 +354,7 @@ export const make = Effect.gen(function* () {
           return {
             code: code === "timeout" ? null : code,
             // eslint-disable-next-line no-control-regex
-            output: output.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim(),
+            output: redact(appId, output.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").trim()),
             timedOut: code === "timeout",
           };
         }),

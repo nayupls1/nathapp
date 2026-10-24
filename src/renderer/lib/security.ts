@@ -1,0 +1,33 @@
+// Secrets and permissions in the renderer: permission requests waiting for
+// the user (shown by PermissionHost), and a version counter that bumps when
+// secrets or remembered permissions change, so views refetch.
+import { createSignal } from "solid-js";
+import type { PermissionRequest } from "../../shared/api";
+import { topics } from "../../shared/hub";
+import { api } from "./api";
+import { onConnected, watchTopic } from "./realtime";
+
+const [requests, setRequests] = createSignal<PermissionRequest[]>([]);
+const [version, setVersion] = createSignal(0);
+
+/** Requests waiting for an answer, oldest first. */
+export { requests as permissionRequests };
+/** Bumps when secrets or remembered permissions change. */
+export { version as securityVersion };
+
+watchTopic(topics.permissions, (msg) => {
+  if (msg.type === "permission-request") setRequests((list) => (list.some((r) => r.id === msg.request.id) ? list : [...list, msg.request]));
+  else if (msg.type === "permission-resolved") setRequests((list) => list.filter((r) => r.id !== msg.id));
+});
+
+watchTopic(topics.activity, (msg) => {
+  if (msg.type === "secrets-changed" || msg.type === "permissions-changed") setVersion((v) => v + 1);
+});
+
+// What was asked while disconnected.
+onConnected(() => void api.pendingPermissions().then(setRequests, () => {}));
+
+export async function answerPermission(id: string, allow: boolean, remember: boolean) {
+  setRequests((list) => list.filter((r) => r.id !== id));
+  await api.answerPermission(id, allow, remember).catch(() => {});
+}

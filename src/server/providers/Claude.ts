@@ -9,7 +9,7 @@ import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
 import { describeTool, streamFrom, type Probe, type ProviderDriver } from "./Provider";
-import { runCommand } from "./process";
+import { agentEnv, runCommand } from "./process";
 
 /**
  * Environment for Claude Code. API keys are removed so it always uses the
@@ -17,7 +17,7 @@ import { runCommand } from "./process";
  * session (e.g. when gApp is started from one) are dropped.
  */
 export function claudeEnv(extra: Record<string, string> = {}) {
-  const env: Record<string, string | undefined> = { ...process.env, ...extra };
+  const env: Record<string, string | undefined> = agentEnv(extra);
   for (const key of Object.keys(env)) {
     if (key === "ANTHROPIC_API_KEY" || key === "ANTHROPIC_AUTH_TOKEN" || key === "CLAUDECODE") delete env[key];
     if (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") delete env[key];

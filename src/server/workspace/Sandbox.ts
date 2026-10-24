@@ -162,14 +162,14 @@ export const make = Effect.gen(function* () {
           dir,
           "--chdir",
           dir,
-          "--clearenv",
-          ...Object.entries(sandboxEnv).flatMap(([k, v]) => ["--setenv", k, v]),
           "--",
           "/bin/sh",
           "-c",
           command,
         ];
-        return { argv, env: {}, cwd: dir };
+        // The environment goes to bwrap as its own (exactly this, nothing inherited) and on to
+        // the app: never in the arguments, which every process on the machine can read.
+        return { argv, env: sandboxEnv, cwd: dir };
       }),
   } satisfies SandboxShape;
 });

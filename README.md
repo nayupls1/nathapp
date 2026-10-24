@@ -129,6 +129,41 @@ GET  $GAPP_AI_URL/models        → enabled, model, models, today's usage
 - **Limits and visibility:** a daily request limit per app, at most two requests per app at a time, and one line per request in the app's logs (sizes and timing, not content).
 - **Settings → AI in apps** turns the feature on or off and picks the model. The default is a fast model (Haiku on Claude).
 
+### Secrets
+
+Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.
+
+- **At rest:** values are encrypted with AES-256-GCM, bound to the secret's scope and name.
+  - Electron keeps the key in the OS keychain (`safeStorage`) and passes it to the server over stdin.
+  - Without a keychain, the key is a 0600 file, and Settings say so.
+- **Never shown again:** the API never returns a value after it's saved. You can replace or delete one, not view it.
+- **Only the app's own processes:** the dev, build and start commands get secrets; dependency installs and the agents' `run_command` don't.
+  - Secrets go in through the environment, never through process arguments. bwrap gets its environment directly instead of `--setenv`.
+  - Values are masked in the app's logs and in command output.
+- **Agents never see values:** `list_secrets` shows names; `request_secret` puts a form in the chat for you to fill in.
+- **Changes apply right away:** changing, deleting or revoking a secret restarts the apps using it.
+- **Limits:** this keeps secrets away from everything that shouldn't have them. An app that legitimately has a secret can still leak it, through its own code or its dependencies.
+
+### Permissions and activity
+
+Anything an app or agent does beyond its own sandbox needs your OK:
+- an app using AI;
+- an app using a global secret;
+- the website agent customizing a site (per host).
+
+gApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
+
+The **Activity** page (sidebar) is the audit log: who, what, which tab and when. It records:
+- every agent turn and tool call (arguments summarized, long text only as a size);
+- AI requests;
+- secret changes and injections;
+- permission decisions;
+- runtime actions.
+
+Values are never logged.
+
+Agents' processes don't get gApp's own environment variables (`GAPP_*`). In particular they don't get the API token, so they can't call gApp's API around these checks.
+
 ### Web tabs
 
 Web tabs are `<webview>`s in their own session. The website agent works on the

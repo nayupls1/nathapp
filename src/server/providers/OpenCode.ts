@@ -7,7 +7,7 @@ import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
 import { describeTool, streamFrom, type McpEndpoint, type Probe, type ProviderDriver } from "./Provider";
-import { findBinary, kill, readLines, runCommand, tailOf } from "./process";
+import { agentEnv, findBinary, kill, readLines, runCommand, tailOf } from "./process";
 
 type Json = Record<string, any>;
 
@@ -48,7 +48,7 @@ class OpenCodeServer {
     };
     const proc = Bun.spawn([binary, "serve", "--hostname=127.0.0.1", `--port=${port}`], {
       cwd,
-      env: { ...process.env, ...env, OPENCODE_CONFIG_CONTENT: JSON.stringify(config), OPENCODE_SERVER_PASSWORD: password },
+      env: { ...agentEnv(env), OPENCODE_CONFIG_CONTENT: JSON.stringify(config), OPENCODE_SERVER_PASSWORD: password },
       stdin: "ignore",
       stdout: "pipe",
       stderr: "pipe",

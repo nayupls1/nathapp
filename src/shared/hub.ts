@@ -2,7 +2,7 @@
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
-import type { AppSummary, ChatEvent, LogLine, ProviderStatus, RuntimeStatus } from "./api";
+import type { AppSummary, AuditEntry, ChatEvent, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus } from "./api";
 
 export const topics = {
   /** Chat events and runtime status of an app or web tab. */
@@ -15,12 +15,16 @@ export const topics = {
   providers: "providers",
   /** The list of tabs changed (created, renamed, deleted). */
   apps: "apps",
+  /** Permission requests waiting for the user, and answers. */
+  permissions: "permissions",
+  /** New audit log entries; secrets and permissions changed. */
+  activity: "activity",
 } as const;
 
 export const isValidTopic = (topic: unknown): topic is string =>
   typeof topic === "string" &&
   topic.length < 200 &&
-  (/^(app|logs):[\w-]+$/.test(topic) || topic === topics.sites || topic === topics.providers || topic === topics.apps);
+  (/^(app|logs):[\w-]+$/.test(topic) || (Object.values(topics) as unknown[]).includes(topic));
 
 export type ClientMessage =
   | { type: "subscribe"; topic: string }
@@ -35,6 +39,12 @@ export type ServerMessage =
   | { type: "providers"; topic: string; providers: ProviderStatus[] }
   | { type: "app"; topic: string; app: AppSummary }
   | { type: "app-deleted"; topic: string; appId: string }
+  | { type: "permission-request"; topic: string; request: PermissionRequest }
+  | { type: "permission-resolved"; topic: string; id: string }
+  | { type: "audit"; topic: string; entry: AuditEntry }
+  /** Secrets or remembered permissions changed (refetch). */
+  | { type: "secrets-changed"; topic: string; scope: string }
+  | { type: "permissions-changed"; topic: string }
   | { type: "rpc"; id: number; method: string; params: unknown };
 
 export type TopicMessage = Exclude<ServerMessage, { type: "rpc" }>;

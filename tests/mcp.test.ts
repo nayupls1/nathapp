@@ -4,29 +4,16 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Layer, ManagedRuntime, Schema, Scope } from "effect";
+import { Effect, Exit, ManagedRuntime, Schema, Scope } from "effect";
 import { make, tool, type Tool } from "../src/server/agent/Mcp";
 import { appTools, pageTools, siteTools } from "../src/server/agent/tools";
-import { tokensLayer } from "../src/server/ai/AiTokens";
-import { readConfig, ServerConfig } from "../src/server/Config";
-import * as Apps from "../src/server/db/Apps";
-import * as Db from "../src/server/db/Db";
-import * as Settings from "../src/server/db/Settings";
-import * as Sites from "../src/server/db/Sites";
-import * as Hub from "../src/server/Hub";
-import * as Runtime from "../src/server/workspace/Runtime";
-import * as Sandbox from "../src/server/workspace/Sandbox";
-import * as Workspace from "../src/server/workspace/Workspace";
+import { readConfig } from "../src/server/Config";
+import { core } from "../src/server/services";
 
 const dataDir = mkdtempSync(join(tmpdir(), "gapp-mcp-test-"));
 const config = readConfig({ GAPP_DATA_DIR: dataDir, PORT: "1" });
 const runtime = ManagedRuntime.make(
-  Runtime.layer.pipe(
-    Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
-    Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Sites.layer, Hub.layer, tokensLayer)),
-    Layer.provideMerge(Db.layer),
-    Layer.provideMerge(Layer.succeed(ServerConfig, config)),
-  ),
+  core(config),
 );
 
 afterAll(async () => {
@@ -34,7 +21,7 @@ afterAll(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const env = { tabId: "tab", log: () => Effect.void };
+const env = { tabId: "tab", log: () => Effect.void, message: () => Effect.void };
 
 async function session(tools: Tool[]) {
   const mcp = await Effect.runPromise(make("http://gapp"));

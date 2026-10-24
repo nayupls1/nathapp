@@ -214,8 +214,9 @@ export interface ChatMessage {
   /**
    * tool: one line of agent activity ("Edited src/App.tsx").
    * context: what the user pointed at (picked elements) with their message.
+   * secret: the agent asks the user for a secret (JSON: { name, description }).
    */
-  role: "user" | "assistant" | "tool" | "error" | "context";
+  role: "user" | "assistant" | "tool" | "error" | "context" | "secret";
   content: string;
   createdAt: string;
 }
@@ -236,4 +237,87 @@ export interface SiteOverride {
   js: string;
   enabled: boolean;
   updatedAt: string;
+}
+
+// --- Secrets ----------------------------------------------------------------------
+
+/** "global", or the id of the app tab the secret belongs to. */
+export type SecretScope = "global" | (string & {});
+
+/** A secret without its value: values never leave the server once saved. */
+export interface SecretInfo {
+  id: string;
+  scope: SecretScope;
+  /** Environment variable name, e.g. STRIPE_KEY. */
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  /** Last time an app was started with it. */
+  lastUsedAt: string | null;
+}
+
+export interface SecretsOverview {
+  /**
+   * keychain: the encryption key is protected by the OS keychain.
+   * file: by file permissions only (no keychain available).
+   * locked: the key can't be unlocked, secrets can't be used.
+   */
+  protection: "keychain" | "file" | "locked";
+  secrets: SecretInfo[];
+}
+
+export const SECRET_NAME_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/** Names gApp sets itself (or that would break app processes). */
+export const isReservedSecretName = (name: string) =>
+  /^(GAPP_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
+  ["PORT", "HOST", "APP_URL", "DATABASE_PATH", "DATABASE_URL", "PATH", "HOME", "TMPDIR", "LANG", "NO_COLOR", "SHELL", "USER"].includes(name);
+
+// --- Permissions and audit log ----------------------------------------------------
+
+/**
+ * app.ai: an app's server uses AI (resource: "").
+ * app.secret: an app uses a global secret (resource: its name).
+ * agent.site: the website agent customizes a site (subject "website-agent", resource: the host).
+ */
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site";
+
+export interface PermissionGrant {
+  id: number;
+  /** An app id, or "website-agent". */
+  subject: string;
+  subjectName: string;
+  action: PermissionAction;
+  resource: string;
+  decision: "allow" | "deny";
+  createdAt: string;
+}
+
+/** Something waiting for the user's answer. */
+export interface PermissionRequest {
+  id: string;
+  subject: string;
+  subjectName: string;
+  action: PermissionAction;
+  resource: string;
+  title: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  /** Who did it. */
+  actor: "user" | "agent" | "app" | "gapp";
+  /** e.g. "Claude Code (haiku)", the app's name, "You". */
+  actorLabel: string;
+  /** The tab it happened in, if any. */
+  tabId: string | null;
+  /** e.g. "tool.run_command", "secret.create", "ai.request", "permission.allow". */
+  action: string;
+  /** What was affected (file, secret name, host…). Never secret values. */
+  target: string | null;
+  detail: string | null;
+  outcome: "ok" | "denied" | "error";
 }

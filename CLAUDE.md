@@ -20,6 +20,8 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 
 - Auth is always the user's own logins (Claude subscription, Codex/ChatGPT, OpenCode). Never add an API-key path; `ANTHROPIC_API_KEY` is stripped from Claude's environment on purpose.
 - Don't show the user's account email anywhere in the UI. The plan type ("Claude Pro") is fine.
+- Secret values never reach agents, prompts, logs, process arguments or the API's responses (see README: Secrets). Agent processes get the environment via `agentEnv()` (no `GAPP_*`); app processes get exactly what the Runtime/Sandbox give them.
+- New capabilities that let an app or agent reach beyond its sandbox go through `Permissions.ask` and are recorded with `Audit.record`.
 - Untrusted input never reaches a provider that has tools of its own. This covers web pages (the website agent) and apps' AI requests: they run with `access: "none"`, where every provider has its file, shell, web and connector tools switched off.
 
 ## Development

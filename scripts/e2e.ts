@@ -44,6 +44,8 @@ const port = await new Promise<number>((resolve) => {
 const visible = args.includes("--visible");
 const electron = launchElectron({ GAPP_USER_DATA_DIR: profile, GAPP_OFFSCREEN: visible ? undefined : "1" }, [
   ...(visible ? [] : ["--ozone-platform=headless", "--ozone-override-screen-size=1920,1080"]),
+  // No OS keychain (it could ask to be unlocked): the secrets key falls back to a file.
+  "--password-store=basic",
   `--remote-debugging-port=${port}`,
   "--disable-backgrounding-occluded-windows",
   "--disable-renderer-backgrounding",
@@ -259,6 +261,73 @@ try {
     await click(`${appTab()} [data-mode="dev"]`);
   });
 
+  /** Sets an input's value the way typing does. */
+  const type = (selector: string, value: string) =>
+    page!.eval(`(() => {
+      const input = document.querySelector(${JSON.stringify(selector)});
+      input.value = ${JSON.stringify(value)};
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return true;
+    })()`);
+
+  await check("secrets: added in the app tab, never shown again", async () => {
+    const value = "e2e-secret-value-4711";
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app running" });
+    await click(`${appTab()} [data-secrets]`);
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-secrets-panel] [data-secret-form]')`, { label: "secrets panel" });
+    await type(`${appTab()} [data-secrets-panel] [data-secret-name]`, "e2e_key");
+    await type(`${appTab()} [data-secrets-panel] [data-secret-value]`, value);
+    await page!.eval(`document.querySelector('${appTab()} [data-secrets-panel] [data-secret-form]').requestSubmit(), true`);
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-secret="E2E_KEY"]')`, { label: "saved secret" });
+    const html = await page!.eval<string>(`document.documentElement.outerHTML + [...document.querySelectorAll("input")].map((i) => i.value).join(" ")`);
+    if (html.includes(value)) throw new Error("the secret value is still in the page");
+    await shot("secrets.png");
+    await click(`${appTab()} [data-secrets]`);
+  });
+
+  await check("permissions: an app asking for AI waits for the user", async () => {
+    const file = join(profile, "data", "apps", appId, "src", "server.ts");
+    const source = await Bun.file(file).text();
+    await Bun.write(
+      file,
+      source
+        .replace('import { realtime } from "./realtime";', 'import { realtime } from "./realtime";\nimport { ai } from "./ai";')
+        .replace(
+          "  routes: {",
+          `  routes: {
+    "/api/ask-ai": async () => {
+      try {
+        return Response.json(await ai.chat("Say hi"));
+      } catch (e) {
+        return Response.json({ error: (e as Error).message }, { status: 403 });
+      }
+    },`,
+        ),
+    );
+    await click(`${appTab()} [data-restart]`);
+    await page!.waitFor(`!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 10_000 }).catch(() => {});
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app restarted" });
+    const { status } = await apiCall<{ status: { url: string } }>(`/api/apps/${appId}/runtime`);
+    const answer = fetch(`${status.url}/api/ask-ai`).then(async (r) => ({ status: r.status, body: await r.text() }));
+    await page!.waitFor(`!!document.querySelector('[data-permission-request="app.ai"]')`, { timeoutMs: 20_000, label: "permission prompt" });
+    await shot("permission.png");
+    await click("[data-permission-request] [data-deny]");
+    const result = await answer;
+    if (result.status !== 403 || !result.body.includes("didn't allow")) throw new Error(`unexpected answer: ${result.status} ${result.body}`);
+    await page!.waitFor(`!document.querySelector("[data-permission-request]")`, { label: "prompt gone" });
+  });
+
+  await check("activity: the audit log shows what happened", async () => {
+    await click("nav button", "Activity");
+    await page!.waitFor(`!!document.querySelector('[data-activity] [data-audit-action="secret.create"]') && !!document.querySelector('[data-activity] [data-audit-action="permission.deny"]')`, {
+      label: "secret and permission entries",
+    });
+    const count = await page!.eval<number>(`document.querySelectorAll("[data-activity] [data-audit-action]").length`);
+    await shot("activity.png");
+    await click(`nav li[data-app-id="${appId}"]`);
+    return `${count} entries`;
+  });
+
   await check("agent panel collapses and comes back", async () => {
     await click(`${appTab()} [data-agent-hide]`);
     await page!.waitFor(`!document.querySelector('${appTab()} [data-agent-panel]') && !!document.querySelector('${appTab()} [data-agent-show]')`, {
@@ -467,6 +536,10 @@ try {
     await page!.waitFor(`!!document.querySelector("[data-app-ai-agent] [data-agent-picker]") && !!document.querySelector("[data-ai-limit]")`, { label: "AI in apps settings" });
     await page!.eval(`document.querySelector("[data-app-ai-agent]").scrollIntoView({ block: "center" }), true`);
     await shot("settings-ai.png");
+    await click("[data-add-global-secret]");
+    await page!.waitFor(`!!document.querySelector("[data-global-secret-warning]")`, { label: "global secret warning" });
+    await page!.eval(`document.querySelector("[data-global-secret-warning]").scrollIntoView({ block: "center" }), true`);
+    await shot("settings-secrets.png");
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
     return `${rows.join(", ")}; background ${await rootBg()} after reset`;

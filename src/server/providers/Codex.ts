@@ -8,7 +8,7 @@ import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
 import { commandTitle, displayPath, streamFrom, type Probe, type ProviderDriver } from "./Provider";
-import { findBinary, kill, readLines, runCommand, tailOf } from "./process";
+import { agentEnv, findBinary, kill, readLines, runCommand, tailOf } from "./process";
 
 type Json = Record<string, any>;
 
@@ -24,7 +24,7 @@ class AppServer {
   constructor(binary: string, cwd: string, env: Record<string, string>) {
     this.proc = Bun.spawn([binary, "app-server"], {
       cwd,
-      env: { ...process.env, ...env },
+      env: agentEnv(env),
       stdin: "pipe",
       stdout: "pipe",
       stderr: "pipe",

@@ -23,8 +23,9 @@ export interface TabState {
   runtime: RuntimeStatus | null;
 }
 
-/** Pseudo tab id for the Settings page at the bottom of the sidebar. */
+/** Pseudo tab ids for the pages at the bottom of the sidebar. */
 export const SETTINGS_VIEW = "settings";
+export const ACTIVITY_VIEW = "activity";
 
 const [apps, setApps] = createStore<AppSummary[]>([]);
 const [states, setStates] = createStore<Record<string, TabState>>({});
@@ -36,7 +37,7 @@ export { apps, providers, selectedId, states };
 export const appById = (id: string | null) => (id ? apps.find((a) => a.id === id) : undefined);
 export const isWebTab = (id: string | null) => appById(id)?.kind === "web";
 /** Tabs (app or web) as opposed to the Settings page. */
-export const isTab = (id: string | null): id is string => !!id && id !== SETTINGS_VIEW;
+export const isTab = (id: string | null): id is string => !!id && id !== SETTINGS_VIEW && id !== ACTIVITY_VIEW;
 
 // Tabs stay alive (pages, previews, scroll) once opened, until deleted.
 const [opened, setOpened] = createSignal<string[]>([]);

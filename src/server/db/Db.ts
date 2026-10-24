@@ -57,6 +57,44 @@ const migrate = Effect.gen(function* () {
       updated_at TEXT NOT NULL DEFAULT (${now})
     )`);
 
+  // Encrypted secrets (see security/Vault.ts): "global" or an app id as scope.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS secrets (
+      id           TEXT PRIMARY KEY,
+      scope        TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      value        TEXT NOT NULL,
+      created_at   TEXT NOT NULL DEFAULT (${now}),
+      updated_at   TEXT NOT NULL DEFAULT (${now}),
+      last_used_at TEXT,
+      UNIQUE (scope, name)
+    )`);
+  // Remembered permission decisions.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS permissions (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject    TEXT NOT NULL,
+      action     TEXT NOT NULL,
+      resource   TEXT NOT NULL DEFAULT '',
+      decision   TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (${now}),
+      UNIQUE (subject, action, resource)
+    )`);
+  // What agents, apps and the user did.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS audit (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      at          TEXT NOT NULL DEFAULT (${now}),
+      actor       TEXT NOT NULL,
+      actor_label TEXT NOT NULL,
+      tab_id      TEXT,
+      action      TEXT NOT NULL,
+      target      TEXT,
+      detail      TEXT,
+      outcome     TEXT NOT NULL DEFAULT 'ok'
+    )`);
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_tab ON audit (tab_id, id)");
+
   // Columns added over time; created on existing databases.
   const columns = new Set((yield* sql.unsafe<{ name: string }>("PRAGMA table_info(apps)")).map((c) => c.name));
   const added: [string, string][] = [

@@ -12,6 +12,7 @@ import {
   selectApp,
   selectedId,
   SETTINGS_VIEW,
+  ACTIVITY_VIEW,
   states,
 } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -51,6 +52,7 @@ export function Sidebar() {
         <For each={apps}>{(app) => <Item app={app} />}</For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
+        <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
     </nav>

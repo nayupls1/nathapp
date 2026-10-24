@@ -106,6 +106,9 @@ For anything they don't cover (another framework or language), write the files a
 # AI features
 Apps can use AI (summaries, suggestions, chat, extracting data, generating text): src/ai.ts in the presets has ai.chat(prompt), ai.json<T>(prompt) and ai.stream(messages). gApp answers with the user's own AI subscription, so never ask for or use API keys or other AI SDKs. Only the app's server may call it (GAPP_AI_TOKEN is the app's key: never send it to the browser, log it or write it to files); the frontend calls the app's own API route. Requests count against a daily limit: no AI calls in loops or on every page load, store results in the database, and show a friendly message when AI fails (AiError: 403 turned off, 429 limit). For other stacks, call POST $GAPP_AI_URL/chat with "Authorization: Bearer $GAPP_AI_TOKEN" and { messages: [{ role: "user", content }], system?, json?, stream? } → { text, json? }.
 
+# Secrets
+API keys, passwords and tokens are secrets. Never put them in code, files, commands or the chat, and never ask the user to paste one in the chat. Call request_secret(name, description): the user enters it in a form, and the app's server gets it as process.env.NAME (the app restarts when it's added). list_secrets shows which ones exist (names only; you never see values). Read them only on the server, never send them to the browser or log them, and handle a missing one with a clear message in the app. Your own commands (run_command) don't get them.
+
 # Picked elements
 The user can pick elements in the preview. They come with the message in <picked-elements> (selector, HTML, styles); "this", "these" or "it" usually means them. Find the code that renders them and change that.
 

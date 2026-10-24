@@ -54,3 +54,16 @@ export function tailOf(stream: ReadableStream<Uint8Array>, max = 4000) {
 export function kill(proc: Subprocess) {
   if (proc.exitCode === null && !proc.killed) proc.kill();
 }
+
+/**
+ * The environment for agent processes: the server's, without gApp's own
+ * variables (GAPP_TOKEN is the renderer's API key; an agent with a shell
+ * could otherwise use gApp's API, e.g. to grant itself permissions).
+ */
+export function agentEnv(extra: Record<string, string> = {}): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && !key.startsWith("GAPP_")) env[key] = value;
+  }
+  return { ...env, ...extra };
+}

@@ -2,9 +2,10 @@
 // additions, apps, web tabs.
 import * as stylex from "@stylexjs/stylex";
 import { createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
-import { defaultAppModel, providerIds, type ProviderId, type ProviderStatus } from "../../shared/api";
+import { defaultAppModel, providerIds, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
+import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
 import { providerById, refreshProviders } from "../lib/store";
@@ -14,6 +15,7 @@ import { AgentPicker } from "./AgentPicker";
 import { confirmDialog } from "./ConfirmDialog";
 import { Icon } from "./Icon";
 import { ProviderIcon } from "./ProviderIcon";
+import { SecretForm, SecretRow } from "./Secrets";
 import { Select } from "./ui";
 
 export function SettingsPage() {
@@ -221,6 +223,14 @@ export function SettingsPage() {
         </Row>
       </Section>
 
+      <Section title="Secrets" icon="key-round">
+        <GlobalSecrets />
+      </Section>
+
+      <Section title="Permissions" icon="shield-check">
+        <PermissionRows />
+      </Section>
+
       <Section title="About" icon="info">
         <dl {...stylex.attrs(styles.about)}>
           <dt>Data folder</dt>
@@ -297,6 +307,78 @@ function ProviderRow(props: { id: ProviderId }) {
         />
       </label>
     </div>
+  );
+}
+
+/** Global secrets: available to every app the user allows, so adding one comes with a warning. */
+function GlobalSecrets() {
+  const [overview] = createResource(securityVersion, () => api.secrets("global"));
+  const [adding, setAdding] = createSignal(false);
+  const protection = () =>
+    overview()?.protection === "keychain"
+      ? "Encrypted, with the key in your OS keychain."
+      : overview()?.protection === "file"
+        ? "Encrypted, with the key protected by file permissions only (no OS keychain found)."
+        : "Locked: gApp couldn't unlock its key from the OS keychain.";
+  return (
+    <>
+      <p {...stylex.attrs(styles.muted, styles.note)}>
+        Secrets are environment variables for apps (API keys, passwords). Add an app's own secrets with the key button in its tab;
+        global ones here can be shared with apps you allow. {protection()} Values can't be viewed after saving.
+      </p>
+      <For each={overview()?.secrets}>
+        {(secret) => (
+          <div {...stylex.attrs(styles.secretRow)}>
+            <SecretRow secret={secret} scopeLabel="global" />
+          </div>
+        )}
+      </For>
+      <div {...stylex.attrs(styles.secretRow)}>
+        <Show
+          when={adding()}
+          fallback={
+            <button type="button" onClick={() => setAdding(true)} {...stylex.attrs(styles.linkButton)} data-add-global-secret>
+              + Add a global secret
+            </button>
+          }
+        >
+          <div {...stylex.attrs(styles.warning)} role="alert" data-global-secret-warning>
+            <strong>Global secrets are riskier.</strong> Every app you allow to use one gets it, and so does any code those apps run:
+            their dependencies, or a bug the agent wrote. A leak from one app exposes it for all of them. Prefer a secret per app
+            (the key button in the app's tab) unless several apps really need the same one.
+          </div>
+          <SecretForm
+            saveLabel="Add global secret"
+            onSave={async (name, value) => {
+              await api.saveSecret("global", name, value);
+              setAdding(false);
+            }}
+            onCancel={() => setAdding(false)}
+          />
+        </Show>
+      </div>
+    </>
+  );
+}
+
+const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
+  g.action === "app.ai" ? "Use AI" : g.action === "app.secret" ? `Use the global secret ${g.resource}` : `Customize ${g.resource}`;
+
+/** Remembered decisions, each revocable. */
+function PermissionRows() {
+  const [grants] = createResource(securityVersion, () => api.permissions());
+  return (
+    <Show when={grants()?.length} fallback={<p {...stylex.attrs(styles.muted, styles.note)}>Nothing remembered yet. When an app or agent asks for something and you choose “Remember”, it shows up here.</p>}>
+      <For each={grants()}>
+        {(grant) => (
+          <Row label={`${grant.subjectName}: ${permissionLabel(grant)}`} description={`${grant.decision === "allow" ? "Allowed" : "Denied"} · ${new Date(grant.createdAt).toLocaleDateString()}`}>
+            <button type="button" onClick={() => void api.revokePermission(grant.id)} {...stylex.attrs(styles.linkButton)} data-revoke-permission>
+              Revoke
+            </button>
+          </Row>
+        )}
+      </For>
+    </Show>
   );
 }
 
@@ -449,6 +531,19 @@ const varOf = (ref: string) => /var\((--[^),\s]+)/.exec(ref)?.[1] ?? ref;
 
 const styles = stylex.create({
   numberInput: { width: 110 },
+  secretRow: { paddingBlock: space.xs, paddingInline: space.lg, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: colors.border },
+  warning: {
+    marginBlock: space.sm,
+    padding: space.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.warning,
+    backgroundColor: "color-mix(in oklab, transparent, #d97706 12%)",
+    color: colors.text,
+    fontSize: font.sm,
+    lineHeight: 1.5,
+  },
   note: { margin: 0, paddingBlock: space.md, paddingInline: space.lg, lineHeight: 1.5 },
   pickerBox: {
     display: "inline-flex",

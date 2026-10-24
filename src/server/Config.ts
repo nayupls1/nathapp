@@ -24,13 +24,28 @@ export interface ServerConfigShape {
   readonly bunCommand: { readonly path: string; readonly env: Record<string, string> };
   /** Claude Code binary for the Agent SDK (only needed in the compiled server). */
   readonly claudePath: string | undefined;
+  /**
+   * The key secrets are encrypted with, handed over by Electron (protected by
+   * the OS keychain there). "locked": Electron couldn't unlock it. null: no
+   * parent (standalone server, tests): a key file in the data dir is used.
+   */
+  readonly secretsKey: SecretsKey | "locked" | null;
+}
+
+export interface SecretsKey {
+  /** 32 bytes, hex. */
+  readonly key: string;
+  readonly protection: "keychain" | "file";
 }
 
 export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()("gapp/ServerConfig") {}
 
 const compiled = () => import.meta.path.includes("$bunfs") || import.meta.path.includes("~BUN");
 
-export function readConfig(env: Record<string, string | undefined> = process.env): ServerConfigShape {
+export function readConfig(
+  env: Record<string, string | undefined> = process.env,
+  secretsKey: SecretsKey | "locked" | null = null,
+): ServerConfigShape {
   const dataDir = resolve(env.GAPP_DATA_DIR ?? ".data");
   const appsDir = join(dataDir, "apps");
   const cacheDir = join(dataDir, "cache");
@@ -50,6 +65,7 @@ export function readConfig(env: Record<string, string | undefined> = process.env
     // The compiled server is a Bun executable itself; BUN_BE_BUN makes it act as the bun CLI.
     bunCommand: compiled() ? { path: process.execPath, env: { BUN_BE_BUN: "1" } } : { path: process.execPath, env: {} },
     claudePath: env.GAPP_CLAUDE_PATH || (compiled() ? join(dirname(process.execPath), `claude${exe}`) : undefined),
+    secretsKey,
   };
 }
 

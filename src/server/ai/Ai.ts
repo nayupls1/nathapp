@@ -7,11 +7,13 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Context, Data, Effect, Layer, Semaphore, Stream } from "effect";
 import { SqlClient } from "effect/sql";
-import { defaultAppModel, type ProviderId } from "../../shared/api";
+import { defaultAppModel, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { ServerConfig } from "../Config";
 import { Apps } from "../db/Apps";
 import { Settings } from "../db/Settings";
 import { Providers } from "../providers/Providers";
+import { Audit } from "../security/Audit";
+import { Permissions } from "../security/Permissions";
 import { Runtime } from "../workspace/Runtime";
 
 // --- Requests --------------------------------------------------------------------------
@@ -82,6 +84,8 @@ export const make = Effect.gen(function* () {
   const providers = yield* Providers;
   const runtime = yield* Runtime;
   const apps = yield* Apps;
+  const permissions = yield* Permissions;
+  const audit = yield* Audit;
   const sql = yield* SqlClient.SqlClient;
   const cwd = join(config.dataDir, "ai");
   mkdirSync(cwd, { recursive: true });
@@ -131,33 +135,59 @@ export const make = Effect.gen(function* () {
 
     chat: (appId, request) =>
       Effect.gen(function* () {
-        const { s, status } = yield* choice;
+        const s = (yield* settings.get()).apps.ai;
         if (!s.enabled) return yield* new AiError({ status: 403, message: "AI for apps is turned off in gApp's Settings." });
-        if (status.state !== "ready") {
-          return yield* new AiError({ status: 503, message: `${status.label} isn't available: ${status.message ?? status.state}` });
-        }
         if (!request.messages.length || request.messages.at(-1)!.role !== "user") {
           return yield* new AiError({ status: 400, message: "messages must end with a user message" });
         }
         const size = request.messages.reduce((n, m) => n + m.content.length, request.system?.length ?? 0);
         if (size > MAX_INPUT_CHARS) return yield* new AiError({ status: 400, message: `The request is too long (${size} > ${MAX_INPUT_CHARS} characters)` });
+
+        const app = yield* apps.get(appId);
+        const appName = app?.name ?? "An app";
+        const labelOf = (status: ProviderStatus) => {
+          const model = request.model ?? s.model ?? defaultAppModel(status);
+          return `${status.label}${model ? ` / ${model}` : ""}`;
+        };
+        const record = (label: string, outcome: "ok" | "denied" | "error", detail: string) =>
+          audit.record({ actor: "app", actorLabel: appName, tabId: appId, action: "ai.request", target: label, detail, outcome });
+
+        // The first time, the user decides whether this app may use AI at all.
+        const known = (yield* providers.list).find((p) => p.id === s.provider)!;
+        const allowed = yield* permissions.ask({
+          subject: appId,
+          action: "app.ai",
+          resource: "",
+          title: `Let "${appName}" use AI?`,
+          detail: `Its server wants to send requests to ${labelOf(known)} on your subscription (at most ${s.dailyLimit} a day). The model gets no tools: it can't see your files.`,
+          timeoutMs: 60_000,
+        });
+        if (!allowed) {
+          runtime.note(appId, "AI: not allowed by the user");
+          yield* record(labelOf(known), "denied", "Not allowed");
+          return yield* new AiError({ status: 403, message: "The user didn't allow this app to use AI. It can be allowed in gApp's Settings → Permissions." });
+        }
+
+        const { status } = yield* choice;
+        if (status.state !== "ready") {
+          return yield* new AiError({ status: 503, message: `${status.label} isn't available: ${status.message ?? status.state}` });
+        }
         if (request.model && !status.models.some((m) => m.id === request.model)) {
           return yield* new AiError({
             status: 400,
             message: `Unknown model "${request.model}". Models: ${status.models.map((m) => m.id).join(", ")}`,
           });
         }
+        const label = labelOf(status);
         if (!(yield* take(appId, s.dailyLimit))) {
           runtime.note(appId, `AI: daily limit of ${s.dailyLimit} requests reached`);
+          yield* record(label, "denied", `Daily limit of ${s.dailyLimit} reached`);
           return yield* new AiError({ status: 429, message: `This app reached its daily AI limit (${s.dailyLimit} requests). It can be changed in gApp's Settings.` });
         }
-
-        const app = yield* apps.get(appId);
         const model = request.model ?? s.model ?? defaultAppModel(status);
         const effort = request.effort ?? (request.model ? null : s.effort);
         const driver = providers.driver(s.provider);
         const started = Date.now();
-        const label = `${status.label}${model ? ` / ${model}` : ""}`;
         let answer = "";
 
         const run = driver
@@ -165,7 +195,7 @@ export const make = Effect.gen(function* () {
             {
               cwd,
               prompt: promptFor(request.messages),
-              instructions: instructionsFor(app?.name ?? "an app", request),
+              instructions: instructionsFor(appName, request),
               model,
               effort,
               resume: null,
@@ -197,14 +227,15 @@ export const make = Effect.gen(function* () {
             }),
             Stream.concat(Stream.suspend(() => Stream.make({ type: "done", text: answer.trim(), provider: s.provider, model } as AiEvent))),
             Stream.timeoutOrElse({ duration: TIMEOUT_MS, orElse: () => Stream.fail(new AiError({ status: 504, message: "The model took too long" })) }),
-            Stream.tap((event) =>
-              event.type === "done"
-                ? Effect.sync(() =>
-                    runtime.note(appId, `AI: ${label} · ${size.toLocaleString()} → ${event.text.length.toLocaleString()} chars · ${((Date.now() - started) / 1000).toFixed(1)}s`),
-                  )
-                : Effect.void,
+            Stream.tap((event) => {
+              if (event.type !== "done") return Effect.void;
+              const summary = `${size.toLocaleString()} → ${event.text.length.toLocaleString()} chars · ${((Date.now() - started) / 1000).toFixed(1)}s`;
+              runtime.note(appId, `AI: ${label} · ${summary}`);
+              return record(label, "ok", summary);
+            }),
+            Stream.tapError((err) =>
+              Effect.sync(() => runtime.note(appId, `AI: ${label} failed: ${err.message}`)).pipe(Effect.andThen(record(label, "error", err.message))),
             ),
-            Stream.tapError((err) => Effect.sync(() => runtime.note(appId, `AI: ${label} failed: ${err.message}`))),
           );
 
         // At most a few requests per app at a time; the permit is held while the response streams.

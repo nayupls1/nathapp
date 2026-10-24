@@ -5,13 +5,10 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer, ManagedRuntime } from "effect";
-import { tokensLayer } from "../src/server/ai/AiTokens";
-import { readConfig, ServerConfig } from "../src/server/Config";
+import { Effect, ManagedRuntime } from "effect";
+import { readConfig } from "../src/server/Config";
+import { core } from "../src/server/services";
 import * as Apps from "../src/server/db/Apps";
-import * as Db from "../src/server/db/Db";
-import * as Settings from "../src/server/db/Settings";
-import * as Hub from "../src/server/Hub";
 import * as Runtime from "../src/server/workspace/Runtime";
 import * as Sandbox from "../src/server/workspace/Sandbox";
 import * as Workspace from "../src/server/workspace/Workspace";
@@ -20,12 +17,7 @@ import { presets } from "../src/server/workspace/presets";
 const dataDir = mkdtempSync(join(tmpdir(), "gapp-workspace-test-"));
 const config = readConfig({ GAPP_DATA_DIR: dataDir, PORT: "1" });
 
-const layer = Runtime.layer.pipe(
-  Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
-  Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Hub.layer, tokensLayer)),
-  Layer.provideMerge(Db.layer),
-  Layer.provideMerge(Layer.succeed(ServerConfig, config)),
-);
+const layer = core(config);
 const runtime = ManagedRuntime.make(layer);
 const run = <A, E>(effect: Effect.Effect<A, E, Runtime.Runtime | Workspace.Workspace | Sandbox.Sandbox | Apps.Apps>) =>
   runtime.runPromise(effect);

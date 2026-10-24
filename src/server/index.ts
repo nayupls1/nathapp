@@ -4,11 +4,42 @@
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
 import { Effect, Fiber, Layer } from "effect";
 import { HttpRouter } from "effect/http";
-import { readConfig } from "./Config";
+import { readConfig, type SecretsKey } from "./Config";
 import { cors, routes } from "./Http";
 import { services } from "./services";
 
-const config = readConfig();
+/**
+ * Electron sends the secrets key as the first line on stdin (not in the
+ * environment or arguments, which other processes of the user can read).
+ */
+function keyFromParent(): Promise<SecretsKey | "locked"> {
+  // `bun run dev` only: the server restarts on changes and can't read stdin again.
+  if (process.env.GAPP_DEV_SECRETS_KEY) return Promise.resolve(JSON.parse(process.env.GAPP_DEV_SECRETS_KEY) as SecretsKey);
+  return new Promise((resolve) => {
+    let buffer = "";
+    const timer = setTimeout(() => done("locked"), 10_000);
+    const onData = (chunk: Buffer) => {
+      buffer += chunk.toString();
+      const end = buffer.indexOf("\n");
+      if (end === -1) return;
+      try {
+        const message = JSON.parse(buffer.slice(0, end)) as { secretsKey?: SecretsKey | null };
+        done(message.secretsKey?.key ? message.secretsKey : "locked");
+      } catch {
+        done("locked");
+      }
+    };
+    const done = (key: SecretsKey | "locked") => {
+      clearTimeout(timer);
+      process.stdin.off("data", onData);
+      resolve(key);
+    };
+    process.stdin.on("data", onData);
+  });
+}
+
+const fromElectron = process.env.GAPP_PARENT === "electron";
+const config = readConfig(process.env, fromElectron ? await keyFromParent() : null);
 
 const server = HttpRouter.serve(Layer.mergeAll(routes, cors(config.allowedOrigin)), { disableLogger: true, disableListenLog: true }).pipe(
   Layer.provide(services(config)),

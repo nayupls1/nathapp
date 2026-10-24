@@ -5,6 +5,12 @@ import type {
   AppDetail,
   AppMode,
   AppSummary,
+  AuditEntry,
+  PermissionAction,
+  PermissionGrant,
+  PermissionRequest,
+  SecretInfo,
+  SecretsOverview,
   ChatRequest,
   HealthResponse,
   LogLine,
@@ -66,6 +72,25 @@ export const api = {
   controlRuntime: (id: string, action: "start" | "stop" | "restart") => post<RuntimeStatus>(`/api/apps/${id}/runtime`, { action }),
   setMode: (id: string, mode: AppMode) => post<RuntimeStatus>(`/api/apps/${id}/mode`, { mode }),
   createProject: (id: string, preset: string, name?: string) => post<ProjectInfo>(`/api/apps/${id}/project`, { preset, name }),
+
+  secrets: (scope?: string) => request<SecretsOverview>(`/api/secrets${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),
+  /** Creates or replaces a secret. The value is never sent back. */
+  saveSecret: (scope: string, name: string, value: string) =>
+    request<SecretInfo>("/api/secrets", { method: "PUT", body: JSON.stringify({ scope, name, value }) }),
+  deleteSecret: (id: string) => request<void>(`/api/secrets/${id}`, { method: "DELETE" }),
+
+  permissions: () => request<PermissionGrant[]>("/api/permissions"),
+  setPermission: (subject: string, action: PermissionAction, resource: string, decision: "allow" | "deny") =>
+    request<void>("/api/permissions", { method: "PUT", body: JSON.stringify({ subject, action, resource, decision }) }),
+  revokePermission: (id: number) => request<void>(`/api/permissions/${id}`, { method: "DELETE" }),
+  pendingPermissions: () => request<PermissionRequest[]>("/api/permissions/pending"),
+  answerPermission: (id: string, allow: boolean, remember: boolean) =>
+    post<void>(`/api/permissions/pending/${id}`, { allow, remember }),
+
+  audit: (filter: { tab?: string; actor?: string; before?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    return request<AuditEntry[]>(`/api/audit${params.size ? `?${params}` : ""}`);
+  },
 
   listSites: () => request<SiteOverride[]>("/api/sites"),
   getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),

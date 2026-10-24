@@ -15,6 +15,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip, ShowAgentButton } from "./Chat";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
+import { SecretsPanel } from "./Secrets";
 
 const examples = [
   "A habit tracker with daily check-ins and a streak count",
@@ -122,6 +123,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   const isRunning = () => runtime()?.state === "running";
   const isCrashed = () => runtime()?.state === "crashed";
   const [logsOpen, setLogsOpen] = createSignal(false);
+  const [secretsOpen, setSecretsOpen] = createSignal(false);
   const [picking, setPicking] = createSignal(false);
   const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
@@ -311,6 +313,15 @@ function Workbench(props: { appId: string; active: boolean }) {
           </button>
           <button
             type="button"
+            title="Secrets (API keys, passwords) for this app"
+            onClick={() => setSecretsOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, secretsOpen() && styles.iconButtonOn)}
+            data-secrets
+          >
+            <Icon name="key-round" size={15} />
+          </button>
+          <button
+            type="button"
             title="Open in your browser"
             disabled={!running()}
             onClick={() => window.gapp.web.openExternal(runtime()!.url!)}
@@ -342,6 +353,9 @@ function Workbench(props: { appId: string; active: boolean }) {
         </div>
         <Show when={logsOpen()}>
           <Logs appId={props.appId} onClose={() => setLogsOpen(false)} />
+        </Show>
+        <Show when={secretsOpen()}>
+          <SecretsPanel appId={props.appId} onClose={() => setSecretsOpen(false)} />
         </Show>
       </div>
       <Show when={!collapsed()}>

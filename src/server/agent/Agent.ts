@@ -8,15 +8,28 @@ import { ServerConfig } from "../Config";
 import { Apps, type AppRecord } from "../db/Apps";
 import { Settings } from "../db/Settings";
 import { Sites } from "../db/Sites";
+import { Audit } from "../security/Audit";
+import { Permissions } from "../security/Permissions";
+import { Secrets } from "../security/Secrets";
 import { Hub } from "../Hub";
 import type { TurnInput } from "../providers/Provider";
 import { Providers } from "../providers/Providers";
 import { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
 import { Workspace } from "../workspace/Workspace";
-import { Mcp } from "./Mcp";
+import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { appTools, pageTools, siteTools, type ToolEnv } from "./tools";
+
+/** Tool arguments for the audit log: short values as they are, long ones by size. */
+export function summarizeArgs(args: unknown): string | null {
+  if (!args || typeof args !== "object") return null;
+  const parts = Object.entries(args as Record<string, unknown>).map(([key, value]) => {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return text.length > 120 ? `${key}: ${text.length} chars` : `${key}: ${text}`;
+  });
+  return parts.length ? parts.join(", ") : null;
+}
 
 export class AgentError extends Data.TaggedError("AgentError")<{ readonly status: 404 | 409 | 400; readonly message: string }> {}
 
@@ -45,13 +58,32 @@ export const make = Effect.gen(function* () {
   const workspace = yield* Workspace;
   const runtime = yield* Runtime;
   const sandbox = yield* Sandbox;
+  const audit = yield* Audit;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
     apps.addMessage(appId, role, content).pipe(Effect.tap((m) => emit(appId, { type: "message", message: m })));
+
+  /** A tool whose calls go to the audit log (arguments summarized; long text only as its length). */
+  const audited = (t: Tool, tabId: string, actorLabel: string): Tool => ({
+    ...t,
+    run: (args) =>
+      t.run(args).pipe(
+        Effect.tap((result) =>
+          audit.record({
+            actor: "agent",
+            actorLabel,
+            tabId,
+            action: `tool.${t.name}`,
+            target: summarizeArgs(args),
+            outcome: result.isError ? "error" : "ok",
+          }),
+        ),
+      ),
+  });
 
   /** The request's choice, else the tab's last one, else the defaults from Settings. */
   const resolveChoice = (request: Partial<AgentChoice> | undefined, app: AppRecord, defaults: AgentChoice): AgentChoice => {
@@ -73,12 +105,19 @@ export const make = Effect.gen(function* () {
       yield* message(appId, "user", request.prompt);
       yield* apps.touch(appId);
 
-      const env: ToolEnv = { tabId: appId, log: (line) => Effect.asVoid(message(appId, "tool", line)) };
+      const env: ToolEnv = {
+        tabId: appId,
+        log: (line) => Effect.asVoid(message(appId, "tool", line)),
+        message: (role, content) => Effect.asVoid(message(appId, role, content)),
+      };
       const web = app.kind === "web";
+      const status = (yield* providers.list).find((p) => p.id === choice.provider);
+      const actorLabel = `${web ? "Website agent" : "App builder"} · ${status?.label ?? choice.provider}${choice.model ? ` (${choice.model})` : ""}`;
       const tools = web
         ? [...(yield* Effect.provide(pageTools(env, { site: true }), context)), ...(yield* Effect.provide(siteTools(env), context))]
         : [...(yield* Effect.provide(appTools(env), context)), ...(yield* Effect.provide(pageTools(env, { site: false }), context))];
-      const mcpUrl = yield* mcp.register(tools);
+      const mcpUrl = yield* mcp.register(tools.map((t) => audited(t, appId, actorLabel)));
+      yield* audit.record({ actor: "agent", actorLabel, tabId: appId, action: "agent.turn", detail: `${request.prompt.length} characters` });
 
       let cwd: string;
       let instructions: string;
@@ -119,7 +158,9 @@ export const make = Effect.gen(function* () {
               case "text":
                 return Effect.asVoid(message(appId, "assistant", event.text));
               case "tool":
-                return Effect.asVoid(message(appId, "tool", event.title));
+                return Effect.asVoid(message(appId, "tool", event.title)).pipe(
+                  Effect.andThen(audit.record({ actor: "agent", actorLabel, tabId: appId, action: "agent.native", target: event.title })),
+                );
               case "error":
                 return Effect.asVoid(message(appId, "error", event.message));
             }
