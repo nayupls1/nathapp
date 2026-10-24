@@ -123,7 +123,13 @@ export const make = Effect.gen(function* () {
 
     /** Moves a tab to another workspace. */
     move: (id: string, workspaceId: string) =>
-      sql`UPDATE apps SET workspace_id = ${workspaceId}, updated_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
+      sql.withTransaction(
+        Effect.all([
+          sql`UPDATE apps SET workspace_id = ${workspaceId}, updated_at = ${sql.literal(now)} WHERE id = ${id}`,
+          // Its history goes along.
+          sql`UPDATE snapshots SET workspace_id = ${workspaceId} WHERE tab_id = ${id}`,
+        ]),
+      ).pipe(Effect.andThen(summary(id))),
 
     setMode: (id: string, mode: AppMode) => sql`UPDATE apps SET mode = ${mode} WHERE id = ${id}`.pipe(Effect.asVoid),
 

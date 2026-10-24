@@ -89,7 +89,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
 
   async function activeOverride() {
     const h = hostOf(webview?.getURL());
-    if (!h || !settings().web.overrides) return null;
+    if (!h || !settings().web.overrides || window.nathapp.safeMode) return null;
     const override = await siteOverride(h).catch(() => null);
     return override?.enabled ? override : null;
   }
@@ -242,7 +242,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
 
   const override = () => cachedOverride(host());
   const customized = () => !!override() && (override()!.css.trim() !== "" || override()!.js.trim() !== "");
-  const overrideActive = () => customized() && override()!.enabled && settings().web.overrides;
+  const overrideActive = () => customized() && override()!.enabled && settings().web.overrides && !window.nathapp.safeMode;
   const menuItems = (): (MenuItem | "separator")[] => {
     const o = override()!;
     return [

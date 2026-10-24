@@ -97,6 +97,23 @@ const migrate = Effect.gen(function* () {
       outcome     TEXT NOT NULL DEFAULT 'ok'
     )`);
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_tab ON audit (tab_id, id)");
+  // Snapshots (see history/History.ts): file trees pointing into the content store.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      target       TEXT NOT NULL,
+      tab_id       TEXT,
+      workspace_id TEXT,
+      at           TEXT NOT NULL DEFAULT (${now}),
+      actor        TEXT NOT NULL,
+      actor_label  TEXT NOT NULL,
+      summary      TEXT NOT NULL,
+      tree         TEXT NOT NULL,
+      data         TEXT NOT NULL DEFAULT '{}',
+      changes      TEXT NOT NULL
+    )`);
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS snapshots_target ON snapshots (target, id)");
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS snapshots_workspace ON snapshots (workspace_id, id)");
   // Groups of tabs. A database from before workspaces gets one for its tabs.
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS workspaces (

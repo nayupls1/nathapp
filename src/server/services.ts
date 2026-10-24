@@ -11,6 +11,7 @@ import * as Db from "./db/Db";
 import * as Settings from "./db/Settings";
 import * as Sites from "./db/Sites";
 import * as Workspaces from "./db/Workspaces";
+import * as History from "./history/History";
 import * as Hub from "./Hub";
 import * as Providers from "./providers/Providers";
 import * as Audit from "./security/Audit";
@@ -21,9 +22,10 @@ import * as Runtime from "./workspace/Runtime";
 import * as Sandbox from "./workspace/Sandbox";
 import * as Workspace from "./workspace/Workspace";
 
-/** Everything but the agents: storage, security, projects and the runtime (enough for most tests). */
+/** Everything but the agents: storage, security, projects, the runtime and history (enough for most tests). */
 export const core = (config: ServerConfigShape) =>
-  Runtime.layer.pipe(
+  History.layer.pipe(
+    Layer.provideMerge(Runtime.layer),
     Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
     Layer.provideMerge(Secrets.layer),
     Layer.provideMerge(Permissions.layer),

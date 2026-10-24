@@ -15,6 +15,7 @@ import {
   selectedId,
   SETTINGS_VIEW,
   ACTIVITY_VIEW,
+  HISTORY_VIEW,
   showWorkspace,
   states,
   updateWorkspace,
@@ -56,6 +57,7 @@ export function Sidebar() {
         <For each={workspaceTabs()}>{(app) => <Item app={app} />}</For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
+        <PageLink id={HISTORY_VIEW} icon="file-clock" label="History" />
         <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>

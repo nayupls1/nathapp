@@ -1,4 +1,5 @@
 // Types shared between the Bun server, the Electron main/preload and the renderer.
+import type { Hunk } from "./diff";
 import type { WorkspaceSettings } from "./settings";
 
 export interface HealthResponse {
@@ -13,6 +14,13 @@ export interface NathAppBridge {
   serverUrl: string;
   /** Sent with every request to the NathApp server (and the hub). */
   token: string;
+  /**
+   * Started with --safe-mode (or Ctrl+Alt+Shift+S): the theme and site
+   * customizations are off, so a change that broke the UI can be undone.
+   */
+  safeMode: boolean;
+  /** Restarts NathApp, in safe mode or normally. */
+  relaunch: (safeMode: boolean) => void;
   versions: {
     electron: string;
     chrome: string;
@@ -352,4 +360,58 @@ export interface AuditEntry {
   target: string | null;
   detail: string | null;
   outcome: "ok" | "denied" | "error";
+}
+
+// --- History (snapshots) ------------------------------------------------------------
+
+/**
+ * What a snapshot covers. app:<id>: the app's project files and its data
+ * (SQLite databases). sites: the website agent's site customizations.
+ * settings: NathApp's settings and the workspaces' settings.
+ */
+export type HistoryTarget = `app:${string}` | "sites" | "settings";
+
+export const appTarget = (appId: string) => `app:${appId}` as const;
+export const appOfTarget = (target: string) => (target.startsWith("app:") ? target.slice(4) : null);
+
+/** Row counts of a database's tables, before and after (null: the table didn't exist). */
+export type TableChanges = Record<string, [number | null, number | null]>;
+
+export interface HistoryEntry {
+  id: number;
+  target: HistoryTarget;
+  /** App targets: the tab and its workspace. */
+  tabId: string | null;
+  workspaceId: string | null;
+  at: string;
+  /** Who made the change. */
+  actor: AuditEntry["actor"];
+  actorLabel: string;
+  /** What happened, e.g. the prompt the agent worked on. */
+  summary: string;
+  /** Files compared with the previous snapshot of the same target (all "added" for the first). */
+  added: string[];
+  modified: string[];
+  removed: string[];
+  /** Databases whose tables changed: path → table → row counts. */
+  data: Record<string, TableChanges>;
+  /** The first snapshot of its target (nothing to undo). */
+  first: boolean;
+}
+
+export interface HistoryFile {
+  path: string;
+  status: "added" | "modified" | "removed";
+  /** text: hunks below. data: a database (tables). binary / large: no line diff. */
+  kind: "text" | "binary" | "data" | "large";
+  hunks?: Hunk[];
+  /** Lines added and removed (text). */
+  linesAdded?: number;
+  linesRemoved?: number;
+  tables?: TableChanges;
+}
+
+export interface HistoryDetail {
+  entry: HistoryEntry;
+  files: HistoryFile[];
 }

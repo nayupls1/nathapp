@@ -261,6 +261,35 @@ try {
     await click(`${appTab()} [data-mode="dev"]`);
   });
 
+  await check("history: a snapshot shows the change, and undoing it reverts the app", async () => {
+    await click(`${appTab()} [data-history-button]`);
+    const panel = `${appTab()} [data-history-panel]`;
+    await page!.waitFor(`!!document.querySelector('${panel} [data-snapshot]')`, { label: "template snapshot" });
+    await click(`${panel} [data-save-snapshot]`);
+    await page!.waitFor(`document.querySelectorAll('${panel} [data-snapshot]').length >= 2`, { label: "new snapshot" });
+    await click(`${panel} [data-snapshot] button`);
+    const line = `[...document.querySelectorAll('${panel} [data-history-file="src/main.ts"] div')].some((d) => d.textContent.includes("Edited live:"))`;
+    await page!.waitFor(line, { label: "diff of src/main.ts" });
+    await shot("history.png");
+    await click(`${panel} [data-undo]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    const file = join(profile, "data", "apps", appId, "src", "main.ts");
+    await waitForValue(async () => ((await Bun.file(file).text()).includes("A starting point:") ? true : undefined), 15_000);
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app running again" });
+    await waitForValue(async () => ((await inView<string>(appTab(), `document.body.innerText`)).includes("A starting point:") ? true : undefined), 30_000);
+    await page!.waitFor(`[...document.querySelectorAll('${panel} [data-snapshot]')].some((e) => e.innerText.includes("Undid:"))`, { label: "undo in the timeline" });
+    await click(`${appTab()} [data-history-button]`);
+
+    // The History page has everything in the workspace.
+    await click("nav button", "History");
+    await page!.waitFor(`document.querySelectorAll("[data-history-page] [data-snapshot]").length >= 3`, { label: "history page" });
+    await shot("history-page.png");
+    const entries = await page!.eval<number>(`document.querySelectorAll("[data-history-page] [data-snapshot]").length`);
+    await click(`nav li[data-app-id="${appId}"]`);
+    return `${entries} snapshots on the page`;
+  });
+
   /** Sets an input's value the way typing does. */
   const type = (selector: string, value: string) =>
     page!.eval(`(() => {

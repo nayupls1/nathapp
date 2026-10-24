@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, net, protocol } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
 import { existsSync, readdirSync, renameSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -45,6 +45,20 @@ protocol.registerSchemesAsPrivileged([
 let server: ServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
 
+// Safe mode: the renderer leaves out the theme and site customizations, so
+// whatever broke the UI can be undone in History.
+const safeMode = process.argv.includes("--safe-mode") || process.env.NATHAPP_SAFE_MODE === "1";
+
+function relaunch(safe: boolean) {
+  const args = process.argv.slice(1).filter((a) => a !== "--safe-mode");
+  app.relaunch({ args: safe ? [...args, "--safe-mode"] : args });
+  app.quit();
+}
+
+ipcMain.on("nathapp:relaunch", (event, safe: unknown) => {
+  if (event.sender === mainWindow?.webContents) relaunch(safe === true);
+});
+
 function registerAppProtocol() {
   const root = join(distDir, "renderer");
   protocol.handle(APP_SCHEME, (req) => {
@@ -64,7 +78,7 @@ function createWindow(server: ServerHandle) {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
-      additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`],
+      additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`, ...(safeMode ? ["--nathapp-safe-mode=1"] : [])],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -86,6 +100,13 @@ function createWindow(server: ServerHandle) {
     if (mainWindow === win) mainWindow = undefined;
   });
   guardWindow(win, rendererOrigin);
+  // Works even when the UI itself is unusable.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type === "keyDown" && input.control && input.alt && input.shift && input.key.toLowerCase() === "s") {
+      event.preventDefault();
+      relaunch(true);
+    }
+  });
 
   if (devServerUrl) {
     win.loadURL(devServerUrl);

@@ -2,13 +2,14 @@
 // persists the conversation and pushes everything to the renderer on the hub
 // (topic app:<id>). A turn runs in the background; stopping interrupts it.
 import { Context, Data, Effect, FiberMap, Layer, Stream } from "effect";
-import type { AgentChoice, ChatEvent, ChatMessage, PageContext, ProviderId } from "../../shared/api";
+import { appTarget, type AgentChoice, type ChatEvent, type ChatMessage, type PageContext, type ProviderId } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { ServerConfig } from "../Config";
 import { Apps, type AppRecord } from "../db/Apps";
 import { Settings } from "../db/Settings";
 import { Sites } from "../db/Sites";
 import { Workspaces } from "../db/Workspaces";
+import { History } from "../history/History";
 import { Audit } from "../security/Audit";
 import { Permissions } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
@@ -58,6 +59,7 @@ export const make = Effect.gen(function* () {
   const mcp = yield* Mcp;
   const workspace = yield* Workspace;
   const workspaces = yield* Workspaces;
+  const history = yield* History;
   const runtime = yield* Runtime;
   const sandbox = yield* Sandbox;
   const audit = yield* Audit;
@@ -122,6 +124,11 @@ export const make = Effect.gen(function* () {
         ? [...(yield* Effect.provide(pageTools(env, { site: true }), context)), ...(yield* Effect.provide(siteTools(env), context))]
         : [...(yield* Effect.provide(appTools(env), context)), ...(yield* Effect.provide(pageTools(env, { site: false }), context))];
       const mcpUrl = yield* mcp.register(tools.map((t) => audited(t, appId, actorLabel)));
+      // Snapshots around the turn: what changed before it (the user, the app's data), and what the agent changed.
+      const target = web ? "sites" : appTarget(appId);
+      const prompt = request.prompt.trim();
+      yield* history.record(target, { actor: "nathapp", actorLabel: "Automatic snapshot", summary: `Before “${prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt}”` });
+      const snapshotAfter = history.record(target, { actor: "agent", actorLabel, summary: prompt });
       yield* audit.record({ actor: "agent", actorLabel, tabId: appId, action: "agent.turn", detail: `${request.prompt.length} characters` });
 
       let cwd: string;
@@ -177,6 +184,8 @@ export const make = Effect.gen(function* () {
         // A session the provider no longer knows: start a fresh one.
         Effect.catch((err) => (resume && !heard ? run(null) : Effect.fail(err))),
         Effect.catch((err) => Effect.asVoid(message(appId, "error", `${driver.label} failed: ${err.message}`))),
+        // Also when stopped halfway.
+        Effect.ensuring(snapshotAfter),
       );
 
       if (!web && s.apps.autoPublish && (yield* workspace.info(appId))) yield* Effect.forkDetach(runtime.setMode(appId, "live"));

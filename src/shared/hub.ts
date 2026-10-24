@@ -2,7 +2,8 @@
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
-import type { AppSummary, AuditEntry, ChatEvent, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "./api";
+import type { AppSummary, AuditEntry, ChatEvent, HistoryEntry, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "./api";
+import type { Settings } from "./settings";
 
 export const topics = {
   /** Chat events and runtime status of an app or web tab. */
@@ -21,6 +22,10 @@ export const topics = {
   permissions: "permissions",
   /** New audit log entries; secrets and permissions changed. */
   activity: "activity",
+  /** New snapshots, restores. */
+  history: "history",
+  /** The settings were changed by the server (restored from history). */
+  settings: "settings",
 } as const;
 
 export const isValidTopic = (topic: unknown): topic is string =>
@@ -49,6 +54,10 @@ export type ServerMessage =
   /** Secrets or remembered permissions changed (refetch). */
   | { type: "secrets-changed"; topic: string; scope: string }
   | { type: "permissions-changed"; topic: string }
+  | { type: "snapshot"; topic: string; entry: HistoryEntry }
+  /** Snapshots were restored or removed (refetch). */
+  | { type: "history-changed"; topic: string; target: string }
+  | { type: "settings"; topic: string; settings: Settings }
   | { type: "rpc"; id: number; method: string; params: unknown };
 
 export type TopicMessage = Exclude<ServerMessage, { type: "rpc" }>;

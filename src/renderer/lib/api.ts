@@ -13,6 +13,8 @@ import type {
   SecretsOverview,
   ChatRequest,
   HealthResponse,
+  HistoryDetail,
+  HistoryEntry,
   LogLine,
   PresetInfo,
   ProjectInfo,
@@ -101,6 +103,17 @@ export const api = {
     const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
     return request<AuditEntry[]>(`/api/audit${params.size ? `?${params}` : ""}`);
   },
+
+  history: (filter: { target?: string; workspace?: string; before?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    return request<HistoryEntry[]>(`/api/history${params.size ? `?${params}` : ""}`);
+  },
+  historyDetail: (id: number) => request<HistoryDetail>(`/api/history/${id}`),
+  /** A snapshot right now; undefined if nothing changed since the last one. */
+  saveSnapshot: (target: string) => post<HistoryEntry | undefined>("/api/history", { target }),
+  /** data: also put the app's data back (else its current data is kept). */
+  restoreSnapshot: (id: number, data: boolean) => post<void>(`/api/history/${id}/restore`, { data }),
+  undoSnapshot: (id: number, data = false) => post<{ note: string | null }>(`/api/history/${id}/undo`, { data }),
 
   listSites: () => request<SiteOverride[]>("/api/sites"),
   getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),

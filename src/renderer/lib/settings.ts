@@ -1,19 +1,22 @@
 // The user's settings, loaded from the server and saved back (debounced) on change.
 import { createEffect, createRoot, createSignal } from "solid-js";
+import { topics } from "../../shared/hub";
 import { defaultSettings, type Settings } from "../../shared/settings";
 import { api } from "./api";
+import { watchTopic } from "./realtime";
 import { applyCachedTheme, applyGlobalTheme, systemDark } from "./theme";
 
 const [settings, setSettingsSignal] = createSignal<Settings>(defaultSettings());
 const [settingsLoaded, setSettingsLoaded] = createSignal(false);
 export { settings, settingsLoaded };
 
-applyCachedTheme();
+// Safe mode leaves the theme out (a broken one could make the UI unusable).
+if (!window.nathapp.safeMode) applyCachedTheme();
 
 createRoot(() => {
   createEffect(() => {
     systemDark(); // re-apply when the OS switches between light and dark
-    if (settingsLoaded()) applyGlobalTheme(settings().theme);
+    if (settingsLoaded()) applyGlobalTheme(window.nathapp.safeMode ? { mode: settings().theme.mode } : settings().theme);
   });
 });
 
@@ -27,12 +30,18 @@ export async function loadSettings() {
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
+// Settings restored from History.
+watchTopic(topics.settings, (msg) => {
+  if (msg.type === "settings" && saveTimer === undefined) setSettingsSignal(msg.settings);
+});
+
 /** Updates settings immediately in the UI and saves them shortly after. */
 export function updateSettings(update: (current: Settings) => Settings) {
   const next = update(structuredClone(settings()));
   setSettingsSignal(next);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
+    saveTimer = undefined;
     api.saveSettings(next).catch((err) => console.error("Saving settings failed:", err));
   }, 300);
 }

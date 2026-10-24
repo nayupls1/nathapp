@@ -15,6 +15,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip, ShowAgentButton } from "./Chat";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
+import { HistoryPanel } from "./History";
 import { SecretsPanel } from "./Secrets";
 
 const examples = [
@@ -124,6 +125,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   const isCrashed = () => runtime()?.state === "crashed";
   const [logsOpen, setLogsOpen] = createSignal(false);
   const [secretsOpen, setSecretsOpen] = createSignal(false);
+  const [historyOpen, setHistoryOpen] = createSignal(false);
   const [picking, setPicking] = createSignal(false);
   const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
@@ -322,6 +324,16 @@ function Workbench(props: { appId: string; active: boolean }) {
           </button>
           <button
             type="button"
+            title="History: undo changes, restore earlier versions"
+            disabled={!state().project}
+            onClick={() => setHistoryOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, historyOpen() && styles.iconButtonOn)}
+            data-history-button
+          >
+            <Icon name="file-clock" size={15} />
+          </button>
+          <button
+            type="button"
             title="Open in your browser"
             disabled={!running()}
             onClick={() => window.nathapp.web.openExternal(runtime()!.url!)}
@@ -331,7 +343,13 @@ function Workbench(props: { appId: string; active: boolean }) {
           </button>
         </div>
         <div {...stylex.attrs(styles.viewport)}>
-          <Show when={previewKey()} keyed fallback={<Placeholder appId={props.appId} onStart={() => void control("start")} onLogs={() => setLogsOpen(true)} />}>
+          <Show
+            when={previewKey()}
+            keyed
+            fallback={
+              <Placeholder appId={props.appId} onStart={() => void control("start")} onLogs={() => setLogsOpen(true)} onHistory={() => setHistoryOpen(true)} />
+            }
+          >
             {(_) => (
               <webview ref={attach} src={runtime()!.url!} partition={appPartition(props.appId)} {...stylex.attrs(styles.webview)} />
             )}
@@ -356,6 +374,9 @@ function Workbench(props: { appId: string; active: boolean }) {
         </Show>
         <Show when={secretsOpen()}>
           <SecretsPanel appId={props.appId} onClose={() => setSecretsOpen(false)} />
+        </Show>
+        <Show when={historyOpen()}>
+          <HistoryPanel appId={props.appId} onClose={() => setHistoryOpen(false)} />
         </Show>
       </div>
       <Show when={!collapsed()}>
@@ -387,9 +408,23 @@ function Workbench(props: { appId: string; active: boolean }) {
 }
 
 /** What the preview shows while there's nothing to show. */
-function Placeholder(props: { appId: string; onStart: () => void; onLogs: () => void }) {
+function Placeholder(props: { appId: string; onStart: () => void; onLogs: () => void; onHistory: () => void }) {
   const state = () => states[props.appId]!;
   const runtime = () => state().runtime;
+  // A crash right after the agent changed something: offer to take that change back.
+  const [undoError, setUndoError] = createSignal<string>();
+  const [lastChange] = createResource(
+    () => (runtime()?.state === "crashed" ? props.appId : undefined),
+    async (id) => (await api.history({ target: `app:${id}`, limit: 20 })).find((e) => e.actor === "agent" && !e.first) ?? null,
+  );
+  const undoLast = async () => {
+    setUndoError();
+    try {
+      await api.undoSnapshot(lastChange()!.id);
+    } catch (err) {
+      setUndoError(err instanceof Error ? err.message : String(err));
+    }
+  };
   return (
     <div {...stylex.attrs(styles.placeholder)}>
       <Switch>
@@ -407,7 +442,18 @@ function Placeholder(props: { appId: string; onStart: () => void; onLogs: () => 
             <button type="button" onClick={props.onLogs} {...stylex.attrs(styles.pillButton)}>
               Show logs
             </button>
+            <Show when={lastChange()}>
+              <button type="button" onClick={() => void undoLast()} title={lastChange()!.summary} {...stylex.attrs(styles.pillButton)} data-undo-last>
+                Undo the agent's last change
+              </button>
+            </Show>
+            <button type="button" onClick={props.onHistory} {...stylex.attrs(styles.pillButton)}>
+              History
+            </button>
           </div>
+          <Show when={undoError()}>
+            <p {...stylex.attrs(styles.placeholderErrorText)}>{undoError()}</p>
+          </Show>
         </Match>
         <Match when={!runtime() || runtime()!.state === "stopped"}>
           <Icon name="play" size={28} {...stylex.attrs(styles.placeholderIcon)} />
@@ -481,6 +527,7 @@ const spin = stylex.keyframes({
 });
 
 const styles = stylex.create({
+  placeholderErrorText: { margin: 0, maxWidth: 480, color: colors.danger, fontSize: font.sm, textAlign: "center" },
   split: { display: "flex", height: "100%", minHeight: 0 },
   main: { position: "relative", flex: 1, minWidth: 0, display: "flex", flexDirection: "column" },
   toolbar: {

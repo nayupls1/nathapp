@@ -2,6 +2,8 @@
 import { Data, Effect, Layer, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import {
+  appOfTarget,
+  appTarget,
   providerIds,
   workspaceOfScope,
   workspaceScope,
@@ -27,6 +29,7 @@ import { Apps } from "./db/Apps";
 import { Settings } from "./db/Settings";
 import { Sites } from "./db/Sites";
 import { Workspaces } from "./db/Workspaces";
+import { History, type By } from "./history/History";
 import { Hub } from "./Hub";
 import { Providers } from "./providers/Providers";
 import { presetInfo, presets } from "./workspace/presets";
@@ -182,6 +185,7 @@ const settingsRoutes = HttpRouter.addAll([
         const previous = yield* settings.get();
         const next = yield* decodeBody(SettingsSchema);
         yield* settings.save(next);
+        yield* snapshot("settings", "Changed settings", true);
         // Re-check providers that were turned on/off or moved.
         for (const id of providerIds) {
           if (JSON.stringify(previous.providers[id]) !== JSON.stringify(next.providers[id])) yield* Effect.forkDetach(providers.refresh(id));
@@ -221,7 +225,15 @@ const publishApp = (summary: AppSummary | null) =>
     if (summary) yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
   });
 
-/** Deletes a tab with everything that belongs to it: chat, project folder, secrets, permissions. */
+/** A snapshot of something the user changed in the UI (folded together while they keep changing it). */
+const snapshot = (target: "settings" | "sites" | `app:${string}`, summary: string, coalesce = false) =>
+  Effect.gen(function* () {
+    const history = yield* History;
+    const by: By = { actor: "user", actorLabel: "You", summary, coalesceMs: coalesce ? 10 * 60 * 1000 : undefined };
+    yield* history.record(target, by);
+  });
+
+/** Deletes a tab with everything that belongs to it: chat, project folder, secrets, permissions, history. */
 const removeApp = (id: string) =>
   Effect.gen(function* () {
     const apps = yield* Apps;
@@ -237,6 +249,7 @@ const removeApp = (id: string) =>
     yield* workspace.remove(id);
     yield* secrets.removeScope(id);
     yield* permissions.forget(id);
+    yield* (yield* History).forget(appTarget(id));
     yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
   });
 
@@ -504,6 +517,7 @@ const runtimeRoutes = HttpRouter.addAll([
         if (!app || app.kind !== "app") return yield* fail(404, "Not found");
         const project = yield* workspace.scaffold(id, preset, name ?? app.name).pipe(Effect.catchTag("WorkspaceError", (e) => fail(400, e.message)));
         if (name) yield* publishApp(yield* apps.setInfo(id, { name }));
+        yield* snapshot(appTarget(id), `Started from the ${preset} template`);
         yield* runtime.setMode(id, "dev");
         return json(project, 201);
       }),
@@ -544,6 +558,7 @@ const siteRoutes = HttpRouter.addAll([
         );
         const saved = yield* sites.save(yield* param("host"), fields);
         yield* hub.publish({ type: "site", topic: topics.sites, host: saved.host });
+        yield* snapshot("sites", `Changed the customizations of ${saved.host}`, true);
         return json(saved);
       }),
     ),
@@ -557,6 +572,7 @@ const siteRoutes = HttpRouter.addAll([
       const host = yield* param("host");
       yield* sites.remove(host);
       yield* hub.publish({ type: "site", topic: topics.sites, host });
+      yield* snapshot("sites", `Removed the customizations of ${host}`);
       return noContent;
     }),
   ),
@@ -647,6 +663,94 @@ const aiRoutes = HttpRouter.addAll([
   ),
 ]);
 
+// --- History -------------------------------------------------------------------------------
+
+const historyTarget = Schema.Union([
+  Schema.Literals(["sites", "settings"]),
+  str(200).check(Schema.isPattern(/^app:[\w-]+$/, { message: "target must be sites, settings or app:<id>" })),
+]);
+
+/** Restoring an app while its agent works on it would pull the files from under it. */
+const ensureAgentIdle = (target: string) =>
+  Effect.gen(function* () {
+    const appId = appOfTarget(target);
+    if (appId && (yield* (yield* Agent).isRunning(appId))) return yield* fail(409, "Stop the agent before restoring");
+  });
+
+const historyRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/history",
+    Effect.gen(function* () {
+      const history = yield* History;
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+      return json(
+        yield* history.list({
+          target: params.get("target") ?? undefined,
+          workspaceId: params.get("workspace") ?? undefined,
+          before: params.get("before") ? Number(params.get("before")) : undefined,
+          limit: params.get("limit") ? Number(params.get("limit")) : undefined,
+        }),
+      );
+    }),
+  ),
+  // A snapshot right now (e.g. before trying something by hand).
+  HttpRouter.route(
+    "POST",
+    "/api/history",
+    handle(
+      Effect.gen(function* () {
+        const history = yield* History;
+        const { target } = yield* decodeBody(Schema.Struct({ target: historyTarget }));
+        const entry = yield* history.record(target as `app:${string}`, { actor: "user", actorLabel: "You", summary: "Saved a snapshot" });
+        return entry ? json(entry, 201) : noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/history/:id",
+    handle(
+      Effect.gen(function* () {
+        const history = yield* History;
+        const detail = yield* history.detail(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        return json(detail);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/history/:id/restore",
+    handle(
+      Effect.gen(function* () {
+        const history = yield* History;
+        const { data } = yield* decodeBody(Schema.Struct({ data: Schema.optionalKey(Schema.Boolean) }));
+        const entry = yield* history.entry(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        yield* ensureAgentIdle(entry.target);
+        // The data goes back only when asked: what was added since would be lost.
+        yield* history.restore(entry.id, { data: data ?? false }).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        yield* youDid(entry.tabId, "history.restore", entry.summary, `${entry.target} · ${entry.at}${data ? " · with its data" : ""}`);
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/history/:id/undo",
+    handle(
+      Effect.gen(function* () {
+        const history = yield* History;
+        const { data } = yield* decodeBody(Schema.Struct({ data: Schema.optionalKey(Schema.Boolean) }));
+        const entry = yield* history.entry(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        yield* ensureAgentIdle(entry.target);
+        const result = yield* history.undo(entry.id, { data: data ?? false }).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        yield* youDid(entry.tabId, "history.undo", entry.summary, `${entry.target}${data ? " · with its data" : ""}`);
+        return json(result);
+      }),
+    ),
+  ),
+]);
+
 // --- Workspaces ----------------------------------------------------------------------------
 
 const publishWorkspace = (id: string) =>
@@ -678,6 +782,7 @@ const workspaceRoutes = HttpRouter.addAll([
         const input = yield* decodeBody(Schema.Struct({ name: workspaceName, icon: Schema.optionalKey(Schema.NullOr(str(80))) }));
         const created = yield* workspaces.create(input.name.trim(), input.icon ?? null);
         yield* publishWorkspace(created.id);
+        yield* snapshot("settings", `Created the workspace ${created.name}`);
         return json(created, 201);
       }),
     ),
@@ -696,7 +801,9 @@ const workspaceRoutes = HttpRouter.addAll([
           }),
         );
         const id = yield* param("id");
-        if (!(yield* workspaces.update(id, { ...input, name: input.name?.trim() }))) return yield* fail(404, "Not found");
+        const updated = yield* workspaces.update(id, { ...input, name: input.name?.trim() });
+        if (!updated) return yield* fail(404, "Not found");
+        yield* snapshot("settings", `Changed the workspace ${updated.name}`, true);
         return json(yield* publishWorkspace(id));
       }),
     ),
@@ -720,6 +827,7 @@ const workspaceRoutes = HttpRouter.addAll([
         yield* permissions.forget(workspaceScope(id));
         yield* workspaces.remove(id);
         yield* youDid(null, "workspace.delete", space.name);
+        yield* snapshot("settings", `Deleted the workspace ${space.name}`);
         yield* hub.publish({ type: "workspace-deleted", topic: topics.workspaces, workspaceId: id });
         return noContent;
       }),
@@ -907,7 +1015,7 @@ const permissionRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

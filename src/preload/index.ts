@@ -14,6 +14,8 @@ const listen =
 const bridge: NathAppBridge = {
   serverUrl: arg("nathapp-server-url"),
   token: arg("nathapp-token"),
+  safeMode: arg("nathapp-safe-mode") === "1",
+  relaunch: (safeMode) => ipcRenderer.send("nathapp:relaunch", safeMode),
   versions: {
     electron: process.versions.electron ?? "",
     chrome: process.versions.chrome ?? "",

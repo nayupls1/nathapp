@@ -32,6 +32,8 @@ const actions: Record<string, string> = {
   "runtime.restart": "Restarted the app",
   "runtime.mode": "Switched mode",
   "tab.move": "Moved the tab to",
+  "history.restore": "Restored an earlier version:",
+  "history.undo": "Undid a change:",
   "workspace.delete": "Deleted the workspace",
 };
 

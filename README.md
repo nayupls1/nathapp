@@ -57,6 +57,7 @@ src/
     db/              Host database (workspaces, tabs, chat, settings, site customizations)
     providers/       Claude, Codex, OpenCode drivers behind one event stream
     agent/           Agent turns, prompts, NathApp's MCP tools
+    history/         Snapshots: content store, diffs, undo and restore
     workspace/       Projects, presets (templates/), sandbox, runtime
   shared/            Types and helpers shared by server and renderer
 scripts/             Bun scripts for dev / build / start / e2e
@@ -140,6 +141,25 @@ GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
   - Each provider was tested by asking it to read a file. The website agent uses the same mode.
 - **Limits and visibility:** a daily request limit per app, at most two requests per app at a time, and one line per request in the app's logs (sizes and timing, not content).
 - **Settings → AI in apps** turns the feature on or off and picks the model. The default is a fast model (Haiku on Claude).
+
+### History
+
+Every change is saved as a snapshot you can look at and take back (History page in the sidebar; the clock button in an app tab). A snapshot covers one of:
+- an **app**: its project files (without `node_modules`, builds, `.git`) and its data. SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
+- the **site customizations** the website agent made;
+- NathApp's **settings**, including each workspace's.
+
+Snapshots are taken before and after every agent turn (so what you or the app changed in between is kept apart from what the agent did), when an app starts from a template, and when you change settings or site customizations (changes made in a row are folded together). "Save a snapshot" takes one by hand.
+
+Each entry shows who made the change (which agent, you, NathApp) and its files with line diffs. Two ways back:
+- **Undo this change** reverts only that step. It refuses if those files were changed again since.
+- **Restore this version** puts everything back the way it was then.
+
+Both keep the app's current data unless you tick "also its data". Restoring or undoing first saves the current state, so it can be undone too. When an app crashes, its tab offers to undo the agent's last change.
+
+If something breaks NathApp's own UI, **safe mode** starts it without the theme and site customizations. Start it with `--safe-mode` or press Ctrl+Alt+Shift+S, undo the change in History, then restart normally.
+
+Contents are stored once (content-addressed, gzipped) under `<data dir>/history/`. The last 200 snapshots are kept per app, for site customizations and for settings.
 
 ### Secrets
 
