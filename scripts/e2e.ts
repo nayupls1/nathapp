@@ -464,6 +464,9 @@ try {
     if (rows.length !== 3) throw new Error(`provider rows: ${rows.join(", ")}`);
     await page!.eval(`document.querySelector("[data-provider-row]").scrollIntoView({ block: "start" }), true`);
     await shot("settings-providers.png");
+    await page!.waitFor(`!!document.querySelector("[data-app-ai-agent] [data-agent-picker]") && !!document.querySelector("[data-ai-limit]")`, { label: "AI in apps settings" });
+    await page!.eval(`document.querySelector("[data-app-ai-agent]").scrollIntoView({ block: "center" }), true`);
+    await shot("settings-ai.png");
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
     return `${rows.join(", ")}; background ${await rootBg()} after reset`;

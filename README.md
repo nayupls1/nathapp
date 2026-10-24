@@ -105,6 +105,30 @@ that work on the preview or the web page. File editing is the provider's own.
 Auth is always the provider's own login: no API keys (gApp strips
 `ANTHROPIC_API_KEY` from Claude's environment on purpose).
 
+### AI in apps
+
+Apps can use AI through gApp, on the user's own subscription, so apps never
+hold API keys. The presets ship `src/ai.ts` (`ai.chat`, `ai.json`, `ai.stream`);
+other stacks call the HTTP API directly:
+
+```
+POST $GAPP_AI_URL/chat          Authorization: Bearer $GAPP_AI_TOKEN
+{ "messages": [{ "role": "user", "content": "…" }], "system"?: "…", "json"?: true, "stream"?: true }
+→ { "text": "…", "json"?: …, "provider": "claude", "model": "haiku" }
+GET  $GAPP_AI_URL/models        → enabled, model, models, today's usage
+```
+
+- **Per-app keys:** every app gets its own random token in its environment (new on each server start, revoked when the app is deleted).
+  - The token only works on `/ai/`, not on the rest of gApp's API.
+  - Requests carrying an `Origin` header are refused, so only the app's server can ask, never a page in a browser.
+- **No tools:** requests run with the provider's own tools switched off: no files, shell, web or connectors.
+  - Claude: `tools: []`, strict MCP config, no claude.ai connectors.
+  - Codex: shell, code mode, image viewing, apps and web search turned off, and the user's MCP servers disabled.
+  - OpenCode: every tool asks for permission, and gApp refuses (its free models need the tools to be defined).
+  - Each provider was tested by asking it to read a file. The website agent uses the same mode.
+- **Limits and visibility:** a daily request limit per app, at most two requests per app at a time, and one line per request in the app's logs (sizes and timing, not content).
+- **Settings → AI in apps** turns the feature on or off and picks the model. The default is a fast model (Haiku on Claude).
+
 ### Web tabs
 
 Web tabs are `<webview>`s in their own session. The website agent works on the

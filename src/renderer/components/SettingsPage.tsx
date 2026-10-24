@@ -2,7 +2,7 @@
 // additions, apps, web tabs.
 import * as stylex from "@stylexjs/stylex";
 import { createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
-import { providerIds, type ProviderId, type ProviderStatus } from "../../shared/api";
+import { defaultAppModel, providerIds, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
 import { watchTopic } from "../lib/realtime";
@@ -21,6 +21,12 @@ export function SettingsPage() {
   const set = <K extends keyof Settings>(key: K, value: Partial<Settings[K]>) =>
     updateSettings((s) => ({ ...s, [key]: typeof value === "object" ? { ...(s[key] as object), ...value } : value }));
   const setTheme = (value: Partial<GlobalTheme>) => set("theme", value);
+  const setAi = (value: Partial<Settings["apps"]["ai"]>) =>
+    updateSettings((s) => ({ ...s, apps: { ...s.apps, ai: { ...s.apps.ai, ...value } } }));
+  const aiDefaultModel = () => {
+    const status = providerById(settings().apps.ai.provider);
+    return status ? defaultAppModel(status) : null;
+  };
   const theme = () => settings().theme;
 
   return (
@@ -178,6 +184,40 @@ export function SettingsPage() {
         </Row>
         <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn.">
           <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
+        </Row>
+      </Section>
+
+      <Section title="AI in apps" icon="sparkles">
+        <p {...stylex.attrs(styles.muted, styles.note)}>
+          Apps can use AI (summaries, suggestions, chat) through gApp, on your own subscription: no API keys in your apps. Only an
+          app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
+          shows up in the app's logs.
+        </p>
+        <Row label="Let apps use AI">
+          <Toggle checked={settings().apps.ai.enabled} onChange={(enabled) => setAi({ enabled })} />
+        </Row>
+        <Row label="Model" description="Who answers apps' requests. By default a fast model, to spare your plan's limits.">
+          <div {...stylex.attrs(styles.pickerBox)} data-app-ai-agent>
+            <AgentPicker
+              choice={{ provider: settings().apps.ai.provider, model: settings().apps.ai.model ?? aiDefaultModel(), effort: settings().apps.ai.effort }}
+              onChange={(choice) => setAi({ provider: choice.provider, model: choice.model, effort: choice.effort })}
+            />
+          </div>
+        </Row>
+        <Row label="Daily limit" description="Requests per app and day.">
+          <input
+            type="number"
+            min="1"
+            max="100000"
+            value={settings().apps.ai.dailyLimit}
+            onChange={(e) => {
+              const n = Math.round(Number(e.currentTarget.value));
+              if (n >= 1 && n <= 100_000) setAi({ dailyLimit: n });
+              else e.currentTarget.value = String(settings().apps.ai.dailyLimit);
+            }}
+            {...stylex.attrs(styles.textInput, styles.numberInput)}
+            data-ai-limit
+          />
         </Row>
       </Section>
 
@@ -408,6 +448,7 @@ function PresetButton(props: { name: string; theme: GlobalTheme; onClick: () => 
 const varOf = (ref: string) => /var\((--[^),\s]+)/.exec(ref)?.[1] ?? ref;
 
 const styles = stylex.create({
+  numberInput: { width: 110 },
   note: { margin: 0, paddingBlock: space.md, paddingInline: space.lg, lineHeight: 1.5 },
   pickerBox: {
     display: "inline-flex",

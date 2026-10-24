@@ -6,6 +6,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, ManagedRuntime } from "effect";
+import { tokensLayer } from "../src/server/ai/AiTokens";
 import { readConfig, ServerConfig } from "../src/server/Config";
 import * as Apps from "../src/server/db/Apps";
 import * as Db from "../src/server/db/Db";
@@ -21,7 +22,7 @@ const config = readConfig({ GAPP_DATA_DIR: dataDir, PORT: "1" });
 
 const layer = Runtime.layer.pipe(
   Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
-  Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Hub.layer)),
+  Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Hub.layer, tokensLayer)),
   Layer.provideMerge(Db.layer),
   Layer.provideMerge(Layer.succeed(ServerConfig, config)),
 );

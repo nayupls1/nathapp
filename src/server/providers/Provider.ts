@@ -22,12 +22,17 @@ export interface TurnInput {
   readonly effort: string | null;
   /** Provider session to continue. */
   readonly resume: string | null;
-  readonly mcp: McpEndpoint;
+  /** gApp's tools for the turn; null for plain completions (AI for apps). */
+  readonly mcp: McpEndpoint | null;
   /**
    * workspace: the provider's own file and shell tools, confined to `cwd`.
-   * none: only gApp's MCP tools (the website agent).
+   * none: none of the provider's own tools (no files, shell, web, connectors),
+   * only gApp's MCP tools if there are any. Used for untrusted input: the
+   * website agent and apps' AI requests.
    */
   readonly access: "workspace" | "none";
+  /** A one-off request: don't keep the session around (AI for apps). */
+  readonly ephemeral?: boolean;
   /** Extra environment for the agent process (PATH with bun). */
   readonly env: Record<string, string>;
 }

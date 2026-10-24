@@ -1,5 +1,8 @@
 // Codex through `codex app-server` (JSON-RPC over stdio). A process per turn:
 // threads are stored by Codex itself, so a new process resumes them by id.
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Effect } from "effect";
 import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
@@ -86,6 +89,29 @@ class AppServer {
 }
 
 const binaryFor = (settings: ProviderSettings) => findBinary("codex", settings.binaryPath);
+
+/** MCP servers from the user's own Codex config (turned off when Codex must not have tools). */
+function userMcpServers(): string[] {
+  try {
+    const file = join(process.env.CODEX_HOME || join(homedir(), ".codex"), "config.toml");
+    const config = Bun.TOML.parse(readFileSync(file, "utf8")) as { mcp_servers?: Record<string, unknown> };
+    return Object.keys(config.mcp_servers ?? {});
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Codex without any tools of its own: no shell, code execution, file viewing,
+ * web search or connected apps, and none of the user's MCP servers. For
+ * untrusted input (web pages, apps' AI requests). Verified by asking it to
+ * read a file: it can't.
+ */
+const noTools = () => ({
+  features: { shell_tool: false, unified_exec: false, code_mode: false, js_repl: false, view_image: false, apps: false, goals: false },
+  web_search: "disabled",
+  mcp_servers: Object.fromEntries(userMcpServers().map((name) => [name, { enabled: false }])),
+});
 
 export const CodexDriver: ProviderDriver = {
   id: "codex",
@@ -200,10 +226,16 @@ export const CodexDriver: ProviderDriver = {
           approvalPolicy: "never",
           sandbox: input.access === "workspace" ? "workspace-write" : "read-only",
           developerInstructions: input.instructions,
-          config: {
-            mcp_servers: { [input.mcp.name]: { url: input.mcp.url, default_tools_approval_mode: "approve" } },
-            sandbox_workspace_write: { network_access: true },
-          },
+          ...(input.ephemeral ? { ephemeral: true } : {}),
+          config: (() => {
+            const locked = input.access === "none" ? noTools() : null;
+            const gapp = input.mcp ? { [input.mcp.name]: { url: input.mcp.url, default_tools_approval_mode: "approve" } } : {};
+            return {
+              ...locked,
+              mcp_servers: { ...locked?.mcp_servers, ...gapp },
+              sandbox_workspace_write: { network_access: true },
+            };
+          })(),
         };
         const thread = input.resume
           ? await server.request("thread/resume", { threadId: input.resume, ...common }).catch(() => server.request("thread/start", common))

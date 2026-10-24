@@ -76,6 +76,7 @@ export function buildAppPrompt(options: { instructions: string; dir: string; has
   - PORT: the app must listen on 127.0.0.1:$PORT.
   - DATABASE_PATH (and DATABASE_URL=file:…): a SQLite database file of its own.
   - NODE_ENV and GAPP_MODE: development while you work, production once the user marks the app as done.
+  - GAPP_AI_URL and GAPP_AI_TOKEN: AI through gApp (see "AI features").
 - gapp.json says how to run it: { "install"?, "dev", "build"?, "start" }. While you work gApp runs \`dev\`, which reloads on changes, so your edits show up in the preview right away. When the user is done, gApp runs \`build\` and then \`start\`.
 - Don't start servers, watchers or browsers yourself, and don't change the port. gApp runs the app; use its tools to see how it's doing.
 
@@ -101,6 +102,9 @@ For anything they don't cover (another framework or language), write the files a
 # Data and realtime
 - Keep the app's data in its SQLite database (src/db.ts in the presets). Schema changes must keep existing data.
 - After the server changes data, call realtime.publish(topic). The frontend subscribes to the topic (useLive / subscribe in src/live.ts) so every open window updates immediately.
+
+# AI features
+Apps can use AI (summaries, suggestions, chat, extracting data, generating text): src/ai.ts in the presets has ai.chat(prompt), ai.json<T>(prompt) and ai.stream(messages). gApp answers with the user's own AI subscription, so never ask for or use API keys or other AI SDKs. Only the app's server may call it (GAPP_AI_TOKEN is the app's key: never send it to the browser, log it or write it to files); the frontend calls the app's own API route. Requests count against a daily limit: no AI calls in loops or on every page load, store results in the database, and show a friendly message when AI fails (AiError: 403 turned off, 429 limit). For other stacks, call POST $GAPP_AI_URL/chat with "Authorization: Bearer $GAPP_AI_TOKEN" and { messages: [{ role: "user", content }], system?, json?, stream? } → { text, json? }.
 
 # Picked elements
 The user can pick elements in the preview. They come with the message in <picked-elements> (selector, HTML, styles); "this", "these" or "it" usually means them. Find the code that renders them and change that.

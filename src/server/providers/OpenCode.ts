@@ -21,8 +21,14 @@ const freePort = () =>
     });
   });
 
-/** Tools the website agent must not have (it only works through gApp's tools). */
-const builtinTools = ["bash", "edit", "write", "read", "glob", "grep", "list", "patch", "webfetch", "websearch", "todowrite", "todoread", "task"];
+/**
+ * Without tools of its own (untrusted input): every tool asks for permission
+ * and the driver rejects the request, except gApp's own MCP tools. Disabling
+ * the tools instead isn't possible: OpenCode's free models refuse requests
+ * without its usual tool set. Verified: reads, globs and shell commands are
+ * all rejected, inside and outside the working directory.
+ */
+const askEverything = (mcp: McpEndpoint | null) => ({ "*": "ask", ...(mcp ? { [`${mcp.name}_*`]: "allow" } : {}) });
 
 class OpenCodeServer {
   private constructor(
@@ -32,12 +38,12 @@ class OpenCodeServer {
     private directory: string,
   ) {}
 
-  static async start(binary: string, cwd: string, env: Record<string, string>, mcp: McpEndpoint | null) {
+  static async start(binary: string, cwd: string, env: Record<string, string>, mcp: McpEndpoint | null, access: "workspace" | "none") {
     const port = await freePort();
     const password = crypto.randomUUID();
     const config: Json = {
-      // Not interactive: everything inside the project is allowed, outside it isn't.
-      permission: { edit: "allow", bash: "allow", webfetch: "allow", external_directory: "deny" },
+      // Not interactive: in a project everything inside it is allowed, outside it isn't.
+      permission: access === "workspace" ? { edit: "allow", bash: "allow", webfetch: "allow", external_directory: "deny" } : askEverything(mcp),
       ...(mcp ? { mcp: { [mcp.name]: { type: "remote", url: mcp.url, headers: mcp.headers, enabled: true } } } : {}),
     };
     const proc = Bun.spawn([binary, "serve", "--hostname=127.0.0.1", `--port=${port}`], {
@@ -131,7 +137,7 @@ export const OpenCodeDriver: ProviderDriver = {
         };
       }
       const version = (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim() || null;
-      const server = await OpenCodeServer.start(binary, readConfig().agentDir, {}, null);
+      const server = await OpenCodeServer.start(binary, readConfig().agentDir, {}, null, "none");
       try {
         const { providers, default: defaults } = await server.request<{ providers: Json[]; default: Record<string, string> }>(
           "GET",
@@ -175,7 +181,7 @@ export const OpenCodeDriver: ProviderDriver = {
     streamFrom(async (emit, signal) => {
       const binary = binaryFor(settings);
       if (!binary) throw new Error("OpenCode isn't installed (https://opencode.ai).");
-      const server = await OpenCodeServer.start(binary, input.cwd, input.env, input.mcp);
+      const server = await OpenCodeServer.start(binary, input.cwd, input.env, input.mcp, input.access);
       const events = new AbortController();
       let sessionId: string | undefined;
       const onAbort = () => {
@@ -222,11 +228,18 @@ export const OpenCodeDriver: ProviderDriver = {
                   emit({ type: "text", text: part.text.trim() });
                 }
               } else if (part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")) {
-                if (reported.has(part.id) || String(part.tool).startsWith(`${input.mcp.name}_`)) break;
+                if (reported.has(part.id) || (input.mcp && String(part.tool).startsWith(`${input.mcp.name}_`))) break;
                 reported.add(part.id);
                 const title = describeTool(part.tool, part.state.input ?? {}, input.cwd) ?? part.state.title;
                 if (title) emit({ type: "tool", title });
               }
+              break;
+            }
+            case "permission.asked": {
+              // Nobody can answer: gApp's own tools are fine, everything else is refused.
+              const ours = !!input.mcp && String(p.permission ?? "").startsWith(`${input.mcp.name}_`);
+              void server.request("POST", `/permission/${p.id}/reply`, { reply: ours ? "once" : "reject", message: "Not allowed here." }).catch(() => {});
+              if (!ours && input.access === "workspace") emit({ type: "tool", title: `Refused: ${p.permission}` });
               break;
             }
             case "session.error":
@@ -247,7 +260,6 @@ export const OpenCodeDriver: ProviderDriver = {
             ...(model ? { model } : {}),
             system: input.instructions,
             parts: [{ type: "text", text: input.prompt }],
-            ...(input.access === "none" ? { tools: Object.fromEntries(builtinTools.map((t) => [t, false])) } : {}),
           },
           signal,
         );
@@ -256,6 +268,7 @@ export const OpenCodeDriver: ProviderDriver = {
       } finally {
         signal.removeEventListener("abort", onAbort);
         events.abort();
+        if (input.ephemeral && sessionId) await server.request("DELETE", `/session/${sessionId}`).catch(() => {});
         server.close();
       }
     }),

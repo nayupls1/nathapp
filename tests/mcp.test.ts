@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { Effect, Exit, Layer, ManagedRuntime, Schema, Scope } from "effect";
 import { make, tool, type Tool } from "../src/server/agent/Mcp";
 import { appTools, pageTools, siteTools } from "../src/server/agent/tools";
+import { tokensLayer } from "../src/server/ai/AiTokens";
 import { readConfig, ServerConfig } from "../src/server/Config";
 import * as Apps from "../src/server/db/Apps";
 import * as Db from "../src/server/db/Db";
@@ -22,7 +23,7 @@ const config = readConfig({ GAPP_DATA_DIR: dataDir, PORT: "1" });
 const runtime = ManagedRuntime.make(
   Runtime.layer.pipe(
     Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
-    Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Sites.layer, Hub.layer)),
+    Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Sites.layer, Hub.layer, tokensLayer)),
     Layer.provideMerge(Db.layer),
     Layer.provideMerge(Layer.succeed(ServerConfig, config)),
   ),

@@ -82,6 +82,16 @@ export const Settings = Schema.Struct({
     autoStart: Schema.Boolean.pipe(withDefault(true)),
     /** Build and switch to the finished app when the agent is done. */
     autoPublish: Schema.Boolean.pipe(withDefault(false)),
+    /** AI for apps: their servers can ask a model through gApp, on the user's own subscription. */
+    ai: Schema.Struct({
+      enabled: Schema.Boolean.pipe(withDefault(true)),
+      provider: Schema.Literals(providerIds).pipe(withDefault("claude")),
+      /** null = the provider's default. */
+      model: Schema.NullOr(Schema.String).pipe(withDefault(null)),
+      effort: Schema.NullOr(Schema.String).pipe(withDefault(null)),
+      /** Requests per app and day. */
+      dailyLimit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100_000 })).pipe(withDefault(200)),
+    }).pipe(withDefault({})),
   }).pipe(withDefault({})),
 });
 export type Settings = typeof Settings.Type;

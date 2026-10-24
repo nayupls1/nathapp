@@ -2,6 +2,8 @@
 // and the tests build on this.
 import { Layer } from "effect";
 import * as Agent from "./agent/Agent";
+import * as Ai from "./ai/Ai";
+import * as AiTokens from "./ai/AiTokens";
 import * as Mcp from "./agent/Mcp";
 import { ServerConfig, type ServerConfigShape } from "./Config";
 import * as Apps from "./db/Apps";
@@ -15,10 +17,10 @@ import * as Sandbox from "./workspace/Sandbox";
 import * as Workspace from "./workspace/Workspace";
 
 export const services = (config: ServerConfigShape) =>
-  Agent.layer.pipe(
+  Layer.mergeAll(Agent.layer, Ai.layer).pipe(
     Layer.provideMerge(Runtime.layer),
     Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer, Providers.layer, Mcp.layer(config.url))),
-    Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Sites.layer, Hub.layer)),
+    Layer.provideMerge(Layer.mergeAll(Apps.layer, Settings.layer, Sites.layer, Hub.layer, AiTokens.tokensLayer)),
     Layer.provideMerge(Db.layer),
     Layer.provideMerge(Layer.succeed(ServerConfig, config)),
   );

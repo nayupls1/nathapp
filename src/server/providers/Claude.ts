@@ -23,6 +23,8 @@ export function claudeEnv(extra: Record<string, string> = {}) {
     if (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") delete env[key];
   }
   env.CLAUDE_AGENT_SDK_CLIENT_APP = "gapp/0.1.0";
+  // Only gApp's own MCP server: no connectors from the user's claude.ai account.
+  env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
   return env;
 }
 
@@ -126,10 +128,12 @@ export const ClaudeDriver: ProviderDriver = {
           ? { type: "preset", preset: "claude_code", append: input.instructions }
           : { type: "custom", prompt: input.instructions, snapshot: false },
         resume: input.resume ?? undefined,
-        // The website agent only gets gApp's tools (pages, customizations).
+        // The website agent only gets gApp's tools (pages, customizations), AI requests none.
         ...(workspace ? {} : { tools: [] }),
-        mcpServers: { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } },
+        mcpServers: input.mcp ? { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } } : {},
+        strictMcpConfig: true, // no MCP servers from the user's own config
         settingSources: [], // ignore the user's CLAUDE.md, skills, settings
+        ...(input.ephemeral ? { persistSession: false, maxTurns: 1 } : {}),
         cwd: input.cwd,
         env: claudeEnv(input.env),
         includePartialMessages: true,

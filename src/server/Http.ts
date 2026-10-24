@@ -1,5 +1,5 @@
 // The HTTP API (for the renderer), the hub WebSocket and the MCP endpoint.
-import { Data, Effect, Layer, Schema } from "effect";
+import { Data, Effect, Layer, Schema, Stream } from "effect";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { providerIds, type AppDetail, type AppSummary, type HealthResponse, type ProviderId } from "../shared/api";
 import { topics } from "../shared/hub";
@@ -7,6 +7,8 @@ import { Settings as SettingsSchema } from "../shared/settings";
 import { Agent } from "./agent/Agent";
 import { Mcp } from "./agent/Mcp";
 import { PageContextInput } from "./agent/prompts";
+import { Ai, type AiEvent } from "./ai/Ai";
+import { AiTokens } from "./ai/AiTokens";
 import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
 import { Settings } from "./db/Settings";
@@ -66,7 +68,10 @@ const guard = HttpRouter.middleware(
       const config = yield* ServerConfig;
       const req = yield* HttpServerRequest.HttpServerRequest;
       const url = new URL(req.url, "http://localhost");
-      if (req.method === "OPTIONS" || url.pathname === "/api/health" || url.pathname.startsWith("/mcp/")) return yield* effect;
+      // MCP and AI have tokens of their own (per agent turn, per app).
+      if (req.method === "OPTIONS" || url.pathname === "/api/health" || url.pathname.startsWith("/mcp/") || url.pathname.startsWith("/ai/")) {
+        return yield* effect;
+      }
       const origin = req.headers.origin;
       if (origin !== undefined && origin !== config.allowedOrigin) return json({ error: "Forbidden" }, 403);
       if (config.token) {
@@ -500,7 +505,92 @@ const siteRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, runtimeRoutes, siteRoutes, guard);
+// --- AI for apps ------------------------------------------------------------------------
+
+/** The app making an AI request: from its token, and only from its server (never a browser). */
+const aiApp = Effect.gen(function* () {
+  const tokens = yield* AiTokens;
+  const req = yield* HttpServerRequest.HttpServerRequest;
+  if (req.headers.origin !== undefined) {
+    return yield* fail(403, "AI requests must come from the app's server, not from the browser. Call your server, and let it call gApp.");
+  }
+  const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
+  if (!appId) return yield* fail(401, "Missing or invalid GAPP_AI_TOKEN");
+  return appId;
+});
+
+const AiChatBody = Schema.Struct({
+  prompt: Schema.optionalKey(str(200_000)),
+  messages: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ role: Schema.Literals(["user", "assistant"]), content: str(200_000) })).check(Schema.isMaxLength(200)),
+  ),
+  system: Schema.optionalKey(str(50_000)),
+  model: Schema.optionalKey(str(300)),
+  effort: Schema.optionalKey(str(50)),
+  json: Schema.optionalKey(Schema.Boolean),
+  stream: Schema.optionalKey(Schema.Boolean),
+});
+
+/** The reply as JSON, if it is JSON (models like to wrap it in code fences). */
+function parseJson(text: string): unknown {
+  const unfenced = text.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/i, "$1").trim();
+  try {
+    return JSON.parse(unfenced);
+  } catch {
+    return undefined;
+  }
+}
+
+const aiRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/ai/v1/models",
+    handle(
+      Effect.gen(function* () {
+        const appId = yield* aiApp;
+        const ai = yield* Ai;
+        return json(yield* ai.info(appId));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/ai/v1/chat",
+    handle(
+      Effect.gen(function* () {
+        const appId = yield* aiApp;
+        const ai = yield* Ai;
+        const input = yield* decodeBody(AiChatBody);
+        const messages = input.messages ?? (input.prompt !== undefined ? [{ role: "user" as const, content: input.prompt }] : []);
+        const request = { messages, system: input.system, model: input.model, effort: input.effort, json: input.json };
+        const stream = yield* ai.chat(appId, request).pipe(Effect.catchTag("AiError", (e) => fail(e.status, e.message)));
+
+        if (input.stream) {
+          // Newline-delimited JSON: {"type":"delta","text"}…, then {"type":"done",…} or {"type":"error",…}.
+          const lines = stream.pipe(
+            Stream.map((event) => (event.type === "done" && input.json ? { ...event, json: parseJson(event.text) } : event)),
+            Stream.catchTag("AiError", (e) => Stream.make({ type: "error", status: e.status, message: e.message })),
+            Stream.map((event) => `${JSON.stringify(event)}\n`),
+            Stream.encodeText,
+          );
+          return HttpServerResponse.stream(lines, { contentType: "application/x-ndjson" });
+        }
+
+        const done = yield* stream.pipe(
+          Stream.runFold(
+            () => null as Extract<AiEvent, { type: "done" }> | null,
+            (last, event) => (event.type === "done" ? event : last),
+          ),
+          Effect.catchTag("AiError", (e) => fail(e.status, e.message)),
+        );
+        if (!done) return yield* fail(503, "No answer");
+        return json({ text: done.text, ...(input.json ? { json: parseJson(done.text) } : {}), provider: done.provider, model: done.model });
+      }),
+    ),
+  ),
+]);
+
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, runtimeRoutes, siteRoutes, aiRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

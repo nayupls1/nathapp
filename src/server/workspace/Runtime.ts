@@ -10,6 +10,8 @@ import { join } from "node:path";
 import { Context, Effect, Fiber, FiberMap, Layer, Semaphore } from "effect";
 import type { AppMode, LogLine, Manifest, RuntimeStatus } from "../../shared/api";
 import { topics } from "../../shared/hub";
+import { AiTokens } from "../ai/AiTokens";
+import { ServerConfig } from "../Config";
 import { Apps } from "../db/Apps";
 import { Hub } from "../Hub";
 import { Sandbox } from "./Sandbox";
@@ -20,6 +22,8 @@ const MAX_LOG_LINES = 2000;
 export interface RuntimeShape {
   readonly status: (appId: string) => Effect.Effect<RuntimeStatus>;
   readonly logs: (appId: string, limit?: number) => LogLine[];
+  /** Adds a line from gApp itself to the app's logs. */
+  readonly note: (appId: string, text: string) => void;
   /** Starts the app in its mode unless it's already running (or has no project). */
   readonly ensure: (appId: string) => Effect.Effect<RuntimeStatus>;
   /** (Re)starts the app: installs dependencies if they changed, builds in live mode. */
@@ -91,6 +95,8 @@ interface State {
 }
 
 export const make = Effect.gen(function* () {
+  const config = yield* ServerConfig;
+  const aiTokens = yield* AiTokens;
   const apps = yield* Apps;
   const hub = yield* Hub;
   const sandbox = yield* Sandbox;
@@ -142,6 +148,9 @@ export const make = Effect.gen(function* () {
       DATABASE_URL: `file:${db}`,
       GAPP_APP_ID: appId,
       GAPP_MODE: mode,
+      // AI through gApp (src/ai.ts in the presets). Server-side only: the token is the app's key.
+      GAPP_AI_URL: `${config.url}/ai/v1`,
+      GAPP_AI_TOKEN: aiTokens.tokenFor(appId),
       NODE_ENV: mode === "live" ? "production" : "development",
     };
   };
@@ -303,7 +312,8 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const mode = yield* modeOf(appId);
           let output = "";
-          const spec = yield* sandbox.spawnSpec({ dir: workspace.dir(appId), command, env: appEnv(appId, mode, null) });
+          // The app's port too, so commands can talk to the running app (curl $APP_URL/…).
+          const spec = yield* sandbox.spawnSpec({ dir: workspace.dir(appId), command, env: appEnv(appId, mode, stateOf(appId).port) });
           const [file, ...args] = spec.argv;
           const child = yield* Effect.acquireRelease(
             Effect.sync(() => spawnChild(file!, args, { cwd: spec.cwd, env: spec.env, stdio: ["ignore", "pipe", "pipe"], detached: true })),
@@ -326,8 +336,17 @@ export const make = Effect.gen(function* () {
         }),
       ),
 
+    note: (appId, text) => log(appId, "system", text),
+
     forget: (appId) =>
-      FiberMap.remove(sessions, appId).pipe(Effect.andThen(Effect.sync(() => states.delete(appId)))),
+      FiberMap.remove(sessions, appId).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            states.delete(appId);
+            aiTokens.revoke(appId);
+          }),
+        ),
+      ),
   } satisfies RuntimeShape;
 });
 

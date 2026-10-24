@@ -86,6 +86,14 @@ export interface ProviderStatus {
   defaultModel: string | null;
 }
 
+/**
+ * The model apps' AI requests use unless Settings pick one: a fast, cheap one
+ * where the provider has it (app requests are many and small), else the
+ * provider's default.
+ */
+export const defaultAppModel = (status: Pick<ProviderStatus, "models" | "defaultModel">): string | null =>
+  (status.models.find((m) => m.id === "haiku") ?? status.models.find((m) => /haiku/i.test(m.id)))?.id ?? status.defaultModel;
+
 export interface AgentChoice {
   provider: ProviderId;
   /** null: the provider's default model. */

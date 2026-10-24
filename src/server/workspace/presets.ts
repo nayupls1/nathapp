@@ -12,6 +12,7 @@ import reactPackage from "./templates/react/package.json.tpl" with { type: "text
 import reactServer from "./templates/react/server.ts.tpl" with { type: "text" };
 import reactUseLive from "./templates/react/useLive.ts.tpl" with { type: "text" };
 import agents from "./templates/shared/AGENTS.md.tpl" with { type: "text" };
+import aiClient from "./templates/shared/ai.ts.tpl" with { type: "text" };
 import db from "./templates/shared/db.ts.tpl" with { type: "text" };
 import gitignore from "./templates/shared/gitignore.tpl" with { type: "text" };
 import live from "./templates/shared/live.ts.tpl" with { type: "text" };
@@ -32,6 +33,7 @@ const scripts: Manifest = { dev: "bun run dev", build: "bun run build", start: "
 
 const backend = {
   "src/db.ts": db,
+  "src/ai.ts": aiClient,
   "src/realtime.ts": realtime,
   ".gitignore": gitignore,
   "AGENTS.md": agents,

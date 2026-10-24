@@ -40,6 +40,14 @@ const migrate = Effect.gen(function* () {
     )`);
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS messages_app ON messages (app_id, id)");
   yield* sql.unsafe("CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id = 1), value TEXT NOT NULL)");
+  // AI requests per app and day (AI for apps has a daily limit).
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS ai_usage (
+      app_id   TEXT NOT NULL,
+      day      TEXT NOT NULL,
+      requests INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (app_id, day)
+    )`);
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS site_overrides (
       host       TEXT PRIMARY KEY,
