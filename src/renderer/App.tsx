@@ -2,11 +2,13 @@ import * as stylex from "@stylexjs/stylex";
 import { For, Match, onMount, Show, Switch } from "solid-js";
 import { ActivityPage } from "./components/ActivityPage";
 import { AppTab } from "./components/AppTab";
+import { CommandBar } from "./components/CommandBar";
 import { ConfirmHost } from "./components/ConfirmDialog";
 import { HistoryPage } from "./components/History";
 import { PermissionHost } from "./components/PermissionHost";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
+import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
 import { loadSettings } from "./lib/settings";
@@ -28,6 +30,8 @@ export default function App() {
       <Sidebar />
       <ConfirmHost />
       <PermissionHost />
+      <CommandBar />
+      <ToastHost />
       <div {...stylex.attrs(styles.column)}>
         <Show when={window.nathapp.safeMode}>
           <div role="status" {...stylex.attrs(styles.safeMode)} data-safe-mode>

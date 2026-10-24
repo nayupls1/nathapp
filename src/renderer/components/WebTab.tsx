@@ -201,6 +201,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     overrideChanged: (changed) => {
       if (changed === host()) void applyOverride();
     },
+    send,
   });
   onCleanup(unregister);
 

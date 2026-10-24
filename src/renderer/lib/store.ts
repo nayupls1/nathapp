@@ -237,7 +237,9 @@ function showNewTab(app: AppSummary) {
 }
 
 export async function newApp() {
-  showNewTab(await api.createApp({ workspaceId: currentWorkspace()?.id }));
+  const app = await api.createApp({ workspaceId: currentWorkspace()?.id });
+  showNewTab(app);
+  return app;
 }
 
 /** Opens a web tab: the given URL, or the home page from Settings. */

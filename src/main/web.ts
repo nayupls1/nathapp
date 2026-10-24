@@ -32,6 +32,7 @@ function shortcutFor(input: Input): WebShortcut | undefined {
   const mod = input.control || input.meta;
   const key = input.key.toLowerCase();
   if (mod && !input.shift && !input.alt) {
+    if (key === "k") return "command-bar";
     if (key === "j") return "toggle-agent";
     if (key === "l") return "focus-address";
     if (key === "r") return "reload";

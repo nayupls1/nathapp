@@ -5,6 +5,7 @@ import type { SiteOverride, WebShortcut } from "../../shared/api";
 import { hostOf } from "../../shared/web";
 import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
+import { openCommandBar } from "./commands";
 import { isTab, newWebTab, selectedId, toggleAgent } from "./store";
 
 export interface PageInfo {
@@ -25,9 +26,14 @@ export interface PageHandle {
   applyOverride: () => Promise<{ applied: boolean; error?: string }>;
   /** Called when the customization of `host` changed somewhere. */
   overrideChanged: (host: string) => void;
+  /** Sends a prompt to the tab's agent, with the page and picked elements, like its chat does. */
+  send: (prompt: string) => void;
 }
 
 const pages = new Map<string, PageHandle>();
+
+/** The page open in a tab (web tab or app preview), if it's mounted. */
+export const pageOf = (tabId: string) => pages.get(tabId);
 
 export function registerPage(tabId: string, handle: PageHandle) {
   pages.set(tabId, handle);
@@ -99,6 +105,7 @@ onConnected(() => {
 
 function runShortcut(name: WebShortcut) {
   const id = selectedId();
+  if (name === "command-bar") return openCommandBar();
   if (name === "new-tab") return void newWebTab();
   if (!isTab(id)) return;
   if (name === "toggle-agent") return toggleAgent(id);
@@ -119,7 +126,15 @@ window.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
   const key = e.key.toLowerCase();
   const name: WebShortcut | undefined =
-    key === "j" ? "toggle-agent" : key === "t" ? "new-tab" : key === "l" && pages.has(selectedId() ?? "") ? "focus-address" : undefined;
+    key === "k"
+      ? "command-bar"
+      : key === "j"
+        ? "toggle-agent"
+        : key === "t"
+          ? "new-tab"
+          : key === "l" && pages.has(selectedId() ?? "")
+            ? "focus-address"
+            : undefined;
   if (!name) return;
   e.preventDefault();
   runShortcut(name);

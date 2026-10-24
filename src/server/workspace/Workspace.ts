@@ -5,7 +5,7 @@ import { existsSync, renameSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Context, Data, Effect, Layer, Schema } from "effect";
-import type { Manifest, ProjectInfo } from "../../shared/api";
+import type { AppAction, Manifest, ProjectInfo } from "../../shared/api";
 import { tokensCss } from "../../shared/theme";
 import { ServerConfig } from "../Config";
 import { Settings } from "../db/Settings";
@@ -43,6 +43,32 @@ export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("nat
 
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
 
+const ACTION_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const route = (value: unknown) => (typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && value.length <= 500 ? value : undefined);
+
+/** The command bar actions in nathapp.json. Invalid ones are left out rather than failing the whole manifest. */
+export function parseActions(value: unknown): AppAction[] {
+  if (!Array.isArray(value)) return [];
+  const actions = new Map<string, AppAction>();
+  for (const item of value.slice(0, 30)) {
+    if (!item || typeof item !== "object") continue;
+    const { id, title, description, path, endpoint, input } = item as Record<string, unknown>;
+    if (typeof id !== "string" || !ACTION_ID.test(id) || typeof title !== "string" || !title.trim() || actions.has(id)) continue;
+    const opens = route(path);
+    const calls = route(endpoint);
+    // Exactly one of the two.
+    if (!opens === !calls) continue;
+    actions.set(id, {
+      id,
+      title: title.trim().slice(0, 80),
+      ...(typeof description === "string" && description.trim() ? { description: description.trim().slice(0, 200) } : {}),
+      ...(opens ? { path: opens } : { endpoint: calls }),
+      ...(typeof input === "string" && input.trim() ? { input: input.trim().slice(0, 80) } : {}),
+    });
+  }
+  return [...actions.values()];
+}
+
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const settings = yield* Settings;
@@ -74,7 +100,8 @@ export const make = Effect.gen(function* () {
         return yield* new WorkspaceError({ message: `${MANIFEST} isn't valid JSON: ${(err as Error).message}` });
       }
       try {
-        return decodeManifest(json) as Manifest;
+        const actions = parseActions((json as { actions?: unknown } | null)?.actions);
+        return { ...(decodeManifest(json) as Manifest), ...(actions.length ? { actions } : {}) };
       } catch (err) {
         return yield* new WorkspaceError({ message: `${MANIFEST} is invalid: ${(err as Error).message}` });
       }

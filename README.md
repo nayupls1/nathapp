@@ -161,6 +161,23 @@ If something breaks NathApp's own UI, **safe mode** starts it without the theme 
 
 Contents are stored once (content-addressed, gzipped) under `<data dir>/history/`. The last 200 snapshots are kept per app, for site customizations and for settings.
 
+### Command bar
+
+Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, NathApp's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.
+
+Apps declare their actions in `nathapp.json`:
+
+```json
+"actions": [
+  { "id": "report", "title": "Monthly report", "path": "/report" },
+  { "id": "add-expense", "title": "Add expense", "endpoint": "/api/actions/add-expense", "input": "What and how much" }
+]
+```
+
+- `path` opens the app at that page.
+- `endpoint`: NathApp starts the app if needed and POSTs `{ "input": … }` to its own server. The JSON reply's `message` (or `error`) is shown as a notice, and the call is recorded in Activity.
+- Paths and endpoints are always on the app's own server. Invalid actions are left out rather than breaking the manifest.
+
 ### Secrets
 
 Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab), to a workspace (Settings → Workspace, for all its apps) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.

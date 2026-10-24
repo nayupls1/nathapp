@@ -48,7 +48,7 @@ export const WEB_PARTITION_PATTERN = /^persist:web(-[\w-]+)?$/;
 export const appPartition = (appId: string) => `persist:app-${appId}`;
 export const APP_PARTITION_PATTERN = /^persist:app-[\w-]+$/;
 
-export type WebShortcut = "toggle-agent" | "focus-address" | "reload" | "back" | "forward" | "new-tab";
+export type WebShortcut = "command-bar" | "toggle-agent" | "focus-address" | "reload" | "back" | "forward" | "new-tab";
 
 // --- Providers ------------------------------------------------------------------
 
@@ -178,6 +178,41 @@ export interface Manifest {
   build?: string;
   /** Serve the built app on $PORT. */
   start: string;
+  /** What the app offers in NathApp's command bar. */
+  actions?: AppAction[];
+}
+
+/**
+ * A command an app offers in the command bar (nathapp.json "actions"). Either
+ * opens the app at `path`, or has NathApp POST `{ input }` (JSON) to the
+ * app's `endpoint`, whose JSON `{ message }` is shown as the result.
+ */
+export interface AppAction {
+  /** Stable, e.g. "add-expense". */
+  id: string;
+  title: string;
+  description?: string;
+  path?: string;
+  endpoint?: string;
+  /** Asks for text first (this is the placeholder), sent as `input`. */
+  input?: string;
+}
+
+/** An app action with the app it belongs to (for the command bar). */
+export interface AppActionInfo {
+  appId: string;
+  workspaceId: string;
+  appName: string;
+  appIcon: string | null;
+  action: AppAction;
+}
+
+export interface AppActionResult {
+  ok: boolean;
+  /** The app's HTTP status. */
+  status: number;
+  /** The app's `message`, or the start of its response. */
+  message: string;
 }
 
 /** dev: the agent is working on it (dev server, live reload). live: done (built, start command). */

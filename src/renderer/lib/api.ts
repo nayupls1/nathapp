@@ -2,6 +2,8 @@
 // this window; agent output and app status arrive on the hub (realtime.ts).
 import type { Settings } from "../../shared/settings";
 import type {
+  AppActionInfo,
+  AppActionResult,
   AppDetail,
   AppMode,
   AppSummary,
@@ -114,6 +116,11 @@ export const api = {
   /** data: also put the app's data back (else its current data is kept). */
   restoreSnapshot: (id: number, data: boolean) => post<void>(`/api/history/${id}/restore`, { data }),
   undoSnapshot: (id: number, data = false) => post<{ note: string | null }>(`/api/history/${id}/undo`, { data }),
+
+  /** Every app's command bar actions. */
+  actions: () => request<AppActionInfo[]>("/api/actions"),
+  runAction: (id: string, actionId: string, input?: string) =>
+    post<AppActionResult>(`/api/apps/${id}/actions/${encodeURIComponent(actionId)}`, input === undefined ? {} : { input }),
 
   listSites: () => request<SiteOverride[]>("/api/sites"),
   getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),

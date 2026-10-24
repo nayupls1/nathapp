@@ -77,7 +77,7 @@ export function buildAppPrompt(options: { instructions: string; dir: string; has
   - DATABASE_PATH (and DATABASE_URL=file:…): a SQLite database file of its own.
   - NODE_ENV and NATHAPP_MODE: development while you work, production once the user marks the app as done.
   - NATHAPP_AI_URL and NATHAPP_AI_TOKEN: AI through NathApp (see "AI features").
-- nathapp.json says how to run it: { "install"?, "dev", "build"?, "start" }. While you work NathApp runs \`dev\`, which reloads on changes, so your edits show up in the preview right away. When the user is done, NathApp runs \`build\` and then \`start\`.
+- nathapp.json says how to run it: { "install"?, "dev", "build"?, "start", "actions"? }. While you work NathApp runs \`dev\`, which reloads on changes, so your edits show up in the preview right away. When the user is done, NathApp runs \`build\` and then \`start\`.
 - Don't start servers, watchers or browsers yourself, and don't change the port. NathApp runs the app; use its tools to see how it's doing.
 
 # Starting
@@ -102,6 +102,12 @@ For anything they don't cover (another framework or language), write the files a
 # Data and realtime
 - Keep the app's data in its SQLite database (src/db.ts in the presets). Schema changes must keep existing data.
 - After the server changes data, call realtime.publish(topic). The frontend subscribes to the topic (useLive / subscribe in src/live.ts) so every open window updates immediately.
+
+# Command bar actions
+NathApp has a command bar (Ctrl+K) where the user can run what apps offer without opening them. Declare the app's main tasks in nathapp.json "actions" (a few, named like the user would say them):
+- { "id": "add-expense", "title": "Add expense", "input": "Amount and what for", "endpoint": "/api/actions/add-expense" }: NathApp POSTs JSON { input } (the text the user typed, or null) to the app's server and shows the JSON { message } it answers ("Added 12 € for lunch"). Parse the input forgivingly, change the data (publish to realtime so open windows update), and answer with an error status and { message } if it can't be done.
+- { "id": "stats", "title": "Show statistics", "path": "/stats" }: opens the app at that page.
+Actions are read from nathapp.json whenever the command bar opens; no restart needed.
 
 # AI features
 Apps can use AI (summaries, suggestions, chat, extracting data, generating text): src/ai.ts in the presets has ai.chat(prompt), ai.json<T>(prompt) and ai.stream(messages). NathApp answers with the user's own AI subscription, so never ask for or use API keys or other AI SDKs. Only the app's server may call it (NATHAPP_AI_TOKEN is the app's key: never send it to the browser, log it or write it to files); the frontend calls the app's own API route. Requests count against a daily limit: no AI calls in loops or on every page load, store results in the database, and show a friendly message when AI fails (AiError: 403 turned off, 429 limit). For other stacks, call POST $NATHAPP_AI_URL/chat with "Authorization: Bearer $NATHAPP_AI_TOKEN" and { messages: [{ role: "user", content }], system?, json?, stream? } → { text, json? }.

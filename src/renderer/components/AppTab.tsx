@@ -196,6 +196,7 @@ function Workbench(props: { appId: string; active: boolean }) {
     focusAddress: () => {},
     applyOverride: async () => ({ applied: false }),
     overrideChanged: () => {},
+    send,
   });
   onCleanup(unregister);
 

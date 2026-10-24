@@ -7,6 +7,8 @@ import {
   providerIds,
   workspaceOfScope,
   workspaceScope,
+  type AppActionInfo,
+  type AppActionResult,
   type AppDetail,
   type AppSummary,
   type HealthResponse,
@@ -663,6 +665,85 @@ const aiRoutes = HttpRouter.addAll([
   ),
 ]);
 
+// --- App actions (command bar) ----------------------------------------------------------------
+
+const actionRoutes = HttpRouter.addAll([
+  // Every app's actions, from their nathapp.json.
+  HttpRouter.route(
+    "GET",
+    "/api/actions",
+    Effect.gen(function* () {
+      const apps = yield* Apps;
+      const workspace = yield* Workspace;
+      const list: AppActionInfo[] = [];
+      for (const app of yield* apps.list()) {
+        if (app.kind !== "app") continue;
+        const manifest = yield* workspace.manifest(app.id).pipe(Effect.orElseSucceed(() => null));
+        for (const action of manifest?.actions ?? []) {
+          list.push({ appId: app.id, workspaceId: app.workspaceId, appName: app.name, appIcon: app.icon, action });
+        }
+      }
+      return json(list);
+    }),
+  ),
+  // Runs an endpoint action: POSTs { input } to the app's own server (started if needed).
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/actions/:action",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const workspace = yield* Workspace;
+        const runtime = yield* Runtime;
+        const audit = yield* Audit;
+        const id = yield* param("id");
+        const actionId = yield* param("action");
+        const { input } = yield* decodeBody(Schema.Struct({ input: Schema.optionalKey(Schema.NullOr(str(4000))) }));
+        const app = yield* apps.get(id);
+        if (!app || app.kind !== "app") return yield* fail(404, "Not found");
+        const manifest = yield* workspace.manifest(id).pipe(Effect.orElseSucceed(() => null));
+        const action = manifest?.actions?.find((a) => a.id === actionId);
+        if (!action) return yield* fail(404, "The app doesn't offer this action (anymore)");
+        if (!action.endpoint) return yield* fail(400, "This action opens the app; it isn't run");
+        yield* runtime.ensure(id);
+        const status = yield* runtime.settled(id, 90_000);
+        if (status.state !== "running" || !status.url) return yield* fail(409, `${app.name} isn't running${status.error ? `: ${status.error}` : ""}`);
+        const response = yield* Effect.tryPromise({
+          try: async () => {
+            const res = await fetch(`${status.url}${action.endpoint}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ input: input ?? null }),
+              signal: AbortSignal.timeout(30_000),
+            });
+            const text = (await res.text()).slice(0, 8000);
+            let message = text.trim();
+            try {
+              const body = JSON.parse(text) as { message?: unknown; error?: unknown };
+              if (typeof body.message === "string") message = body.message;
+              else if (typeof body.error === "string") message = body.error;
+            } catch {
+              // plain text
+            }
+            return { ok: res.ok, status: res.status, message: message.slice(0, 500) } satisfies AppActionResult;
+          },
+          catch: (err) => new HttpFail({ status: 502, message: `${app.name} didn't answer: ${err instanceof Error ? err.message : String(err)}` }),
+        });
+        yield* audit.record({
+          actor: "user",
+          actorLabel: "You",
+          tabId: id,
+          action: "app.action",
+          target: action.title,
+          outcome: response.ok ? "ok" : "error",
+          detail: response.ok ? null : `HTTP ${response.status}`,
+        });
+        return json(response);
+      }),
+    ),
+  ),
+]);
+
 // --- History -------------------------------------------------------------------------------
 
 const historyTarget = Schema.Union([
@@ -1015,7 +1096,7 @@ const permissionRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

@@ -595,6 +595,71 @@ try {
     return `separate cookies; ${await switcherText()} and its selected tab restored`;
   });
 
+  await check("command bar: finds tabs and commands, runs app actions, routes free text", async () => {
+    const bar = "[data-command-bar]";
+    const openBar = async () => {
+      await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })), true`);
+      await page!.waitFor(`!!document.querySelector("${bar} input")`, { label: "command bar" });
+    };
+    const key = (k: string) => page!.eval(`document.querySelector("${bar} input").dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(k)}, bubbles: true })), true`);
+    /** Types into the bar; resolves with the first result's id. */
+    const search = async (text: string, expected: string) => {
+      await type(`${bar} input`, text);
+      await page!.waitFor(`document.querySelector("${bar} [data-index='0']")?.dataset.command === ${JSON.stringify(expected)}`, {
+        label: `"${text}" → ${expected}`,
+        timeoutMs: 5_000,
+      });
+    };
+    const selected = () => page!.eval<string | undefined>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
+
+    // An app declares an action that opens one of its pages.
+    const manifestFile = join(profile, "data", "apps", appId, "nathapp.json");
+    const manifest = JSON.parse(await Bun.file(manifestFile).text());
+    await Bun.write(manifestFile, JSON.stringify({ ...manifest, actions: [{ id: "second", title: "Open the second page", path: "/?from=command-bar" }] }));
+
+    await openBar();
+    await search("settings", "open.settings");
+    await key("Enter");
+    await page!.waitFor(`!!document.querySelector("[data-settings]")`, { label: "settings page" });
+
+    const name = (await apiCall<{ id: string; name: string }[]>("/api/apps")).find((a) => a.id === appId)!.name;
+    await openBar();
+    await search(name, `tab:${appId}`);
+    await key("Enter");
+    await page!.waitFor(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId === "${appId}"`, { label: "the app selected" });
+
+    await openBar();
+    await search("open the second", `action:${appId}:second`);
+    await key("Enter");
+    await waitForValue(async () => ((await inView<string>(appTab(), "location.search")) === "?from=command-bar" ? true : undefined), 30_000);
+
+    await openBar();
+    await search("save a snap", "app.snapshot");
+    await key("Enter");
+    await page!.waitFor(`!!document.querySelector("[data-toast]")?.innerText.match(/snapshot/i)`, { label: "toast" });
+
+    // Commands that ask for text first.
+    await openBar();
+    await search("rename tab", "tab.rename");
+    await key("Enter");
+    await page!.waitFor(`!!document.querySelector("${bar} [data-command-asking]")`, { label: "asks for the name" });
+    await type(`${bar} input`, "Renamed from the bar");
+    await key("Enter");
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${appId}"]')?.innerText.includes("Renamed from the bar")`, { label: "renamed" });
+    await apiCall(`/api/apps/${appId}`, { method: "PATCH", body: { name } });
+
+    // Free text: a URL opens, a sentence goes to the agent.
+    await openBar();
+    await search("example.com/docs", "route.open");
+    await search("add a dark mode toggle to the header", "route.ask");
+    await Bun.sleep(200); // the fade-in
+    await shot("command-bar.png");
+    await key("Escape");
+    await page!.waitFor(`!document.querySelector("${bar}")`, { label: "closed" });
+    if ((await selected()) !== appId) throw new Error("the selected tab changed");
+    return `opened ${name} and its page, saved a snapshot, renamed it`;
+  });
+
   await check("settings: theme presets apply and prompt additions are saved", async () => {
     await click("nav button", "Settings");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
