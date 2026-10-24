@@ -1,4 +1,4 @@
-// Runs agent turns: picks the provider, gives it gApp's instructions and tools,
+// Runs agent turns: picks the provider, gives it NathApp's instructions and tools,
 // persists the conversation and pushes everything to the renderer on the hub
 // (topic app:<id>). A turn runs in the background; stopping interrupts it.
 import { Context, Data, Effect, FiberMap, Layer, Stream } from "effect";
@@ -46,7 +46,7 @@ export interface AgentShape {
   readonly isRunning: (appId: string) => Effect.Effect<boolean>;
 }
 
-export class Agent extends Context.Service<Agent, AgentShape>()("gapp/Agent") {}
+export class Agent extends Context.Service<Agent, AgentShape>()("nathapp/Agent") {}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -140,7 +140,7 @@ export const make = Effect.gen(function* () {
         model: choice.model,
         effort: choice.effort,
         resume,
-        mcp: { name: "gapp", url: mcpUrl, headers: {} },
+        mcp: { name: "nathapp", url: mcpUrl, headers: {} },
         access: web ? "none" : "workspace",
         env: { PATH: `${process.env.PATH ?? ""}:${sandbox.binDir}` },
       });

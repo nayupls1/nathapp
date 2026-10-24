@@ -1,6 +1,6 @@
-// Runs apps. While an app is being edited (dev mode) gApp runs its dev server,
-// which reloads on every change; when it's done (live mode) gApp builds it and
-// runs its start command. Either way the app listens on a port gApp assigns
+// Runs apps. While an app is being edited (dev mode) NathApp runs its dev server,
+// which reloads on every change; when it's done (live mode) NathApp builds it and
+// runs its start command. Either way the app listens on a port NathApp assigns
 // and the renderer shows it in a preview tab. Processes run in the app's
 // sandbox and stop with the server.
 import { spawn as spawnChild, type ChildProcess } from "node:child_process";
@@ -24,7 +24,7 @@ const MAX_LOG_LINES = 2000;
 export interface RuntimeShape {
   readonly status: (appId: string) => Effect.Effect<RuntimeStatus>;
   readonly logs: (appId: string, limit?: number) => LogLine[];
-  /** Adds a line from gApp itself to the app's logs. */
+  /** Adds a line from NathApp itself to the app's logs. */
   readonly note: (appId: string, text: string) => void;
   /** Starts the app in its mode unless it's already running (or has no project). */
   readonly ensure: (appId: string) => Effect.Effect<RuntimeStatus>;
@@ -41,7 +41,7 @@ export interface RuntimeShape {
   readonly forget: (appId: string) => Effect.Effect<void>;
 }
 
-export class Runtime extends Context.Service<Runtime, RuntimeShape>()("gapp/Runtime") {}
+export class Runtime extends Context.Service<Runtime, RuntimeShape>()("nathapp/Runtime") {}
 
 const freePort = (preferred?: number | null) =>
   new Promise<number>((resolve, reject) => {
@@ -153,16 +153,19 @@ export const make = Effect.gen(function* () {
     hub.publishUnsafe({ type: "log", topic: topics.logs(appId), appId, lines });
   };
 
-  /** Environment gApp provides to the app's processes. */
+  /** Environment NathApp provides to the app's processes. */
   const appEnv = (appId: string, mode: AppMode, port: number | null): Record<string, string> => {
     const db = join(workspace.stateDir(appId), "data.sqlite");
     return {
       ...(port ? { PORT: String(port), HOST: "127.0.0.1", APP_URL: `http://127.0.0.1:${port}` } : {}),
       DATABASE_PATH: db,
       DATABASE_URL: `file:${db}`,
-      GAPP_APP_ID: appId,
-      GAPP_MODE: mode,
-      // AI through gApp (src/ai.ts in the presets). Server-side only: the token is the app's key.
+      NATHAPP_APP_ID: appId,
+      NATHAPP_MODE: mode,
+      // AI through NathApp (src/ai.ts in the presets). Server-side only: the token is the app's key.
+      NATHAPP_AI_URL: `${config.url}/ai/v1`,
+      NATHAPP_AI_TOKEN: aiTokens.tokenFor(appId),
+      // Apps built before the rename (gApp) read these names.
       GAPP_AI_URL: `${config.url}/ai/v1`,
       GAPP_AI_TOKEN: aiTokens.tokenFor(appId),
       NODE_ENV: mode === "live" ? "production" : "development",
@@ -249,7 +252,7 @@ export const make = Effect.gen(function* () {
       state.redact = Object.values(secretEnv).filter((v) => v.length >= 4).sort((a, b) => b.length - a.length);
       if (names.length) {
         log(appId, "system", `Secrets: ${names.join(", ")}`);
-        yield* audit.record({ actor: "gapp", actorLabel: "gApp", tabId: appId, action: "secret.inject", target: names.join(", "), detail: `Started in ${mode} mode` });
+        yield* audit.record({ actor: "nathapp", actorLabel: "NathApp", tabId: appId, action: "secret.inject", target: names.join(", "), detail: `Started in ${mode} mode` });
       }
 
       if (needsInstall(appId, manifest)) {

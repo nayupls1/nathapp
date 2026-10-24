@@ -173,7 +173,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   const unregister = registerPage(props.appId, {
     info,
     eval: (code) => requireReady().executeJavaScript(code),
-    capture: () => window.gapp.web.capture(requireReady().getWebContentsId()),
+    capture: () => window.nathapp.web.capture(requireReady().getWebContentsId()),
     navigate: async (url) => {
       const view = requireReady();
       const target = new URL(url, runtime()!.url!).toString();
@@ -324,7 +324,7 @@ function Workbench(props: { appId: string; active: boolean }) {
             type="button"
             title="Open in your browser"
             disabled={!running()}
-            onClick={() => window.gapp.web.openExternal(runtime()!.url!)}
+            onClick={() => window.nathapp.web.openExternal(runtime()!.url!)}
             {...stylex.attrs(styles.iconButton)}
           >
             <Icon name="external-link" size={15} />

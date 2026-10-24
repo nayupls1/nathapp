@@ -1,6 +1,6 @@
 {
-  "name": "gapp",
-  "productName": "gApp",
+  "name": "nathapp",
+  "productName": "NathApp",
   "version": "0.1.0",
   "description": "Electron + SolidJS desktop app with a Bun backend server",
   "private": true,

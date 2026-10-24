@@ -1,4 +1,4 @@
-// gApp's tools for agents, served as an MCP server over streamable HTTP so
+// NathApp's tools for agents, served as an MCP server over streamable HTTP so
 // every provider can use them. Each agent turn registers its tools under a
 // random token (/mcp/<token>); the token is the only way in, and it's gone
 // when the turn ends.
@@ -56,7 +56,7 @@ export class McpUnknownToken {
   readonly _tag = "McpUnknownToken";
 }
 
-export class Mcp extends Context.Service<Mcp, McpShape>()("gapp/Mcp") {}
+export class Mcp extends Context.Service<Mcp, McpShape>()("nathapp/Mcp") {}
 
 type Rpc = { jsonrpc?: string; id?: string | number | null; method?: string; params?: any };
 
@@ -87,7 +87,7 @@ export const make = (baseUrl: string) =>
             respond(msg.id, {
               protocolVersion: msg.params?.protocolVersion ?? "2025-06-18",
               capabilities: { tools: { listChanged: false } },
-              serverInfo: { name: "gapp", title: "gApp", version: "0.1.0" },
+              serverInfo: { name: "nathapp", title: "NathApp", version: "0.1.0" },
             }),
           );
         case "ping":

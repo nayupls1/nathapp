@@ -1,5 +1,5 @@
 // Secret per-app tokens for AI requests. An app gets its token in its
-// environment (GAPP_AI_TOKEN); the token is how gApp knows which app asks.
+// environment (NATHAPP_AI_TOKEN); the token is how NathApp knows which app asks.
 import { Context, Layer } from "effect";
 
 export interface AiTokensShape {
@@ -9,7 +9,7 @@ export interface AiTokensShape {
   readonly revoke: (appId: string) => void;
 }
 
-export class AiTokens extends Context.Service<AiTokens, AiTokensShape>()("gapp/AiTokens") {}
+export class AiTokens extends Context.Service<AiTokens, AiTokensShape>()("nathapp/AiTokens") {}
 
 export const tokensLayer = Layer.sync(AiTokens, (): AiTokensShape => {
   const byApp = new Map<string, string>();
@@ -18,7 +18,7 @@ export const tokensLayer = Layer.sync(AiTokens, (): AiTokensShape => {
     tokenFor: (appId) => {
       let token = byApp.get(appId);
       if (!token) {
-        token = `gai_${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
+        token = `nai_${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`;
         byApp.set(appId, token);
         byToken.set(token, appId);
       }

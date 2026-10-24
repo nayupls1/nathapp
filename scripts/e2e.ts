@@ -28,7 +28,7 @@ if (!existsSync("dist/electron/main.cjs")) {
 
 const outDir = "test-results";
 mkdirSync(outDir, { recursive: true });
-const profile = mkdtempSync(join(tmpdir(), "gapp-e2e-"));
+const profile = mkdtempSync(join(tmpdir(), "nathapp-e2e-"));
 
 const port = await new Promise<number>((resolve) => {
   const srv = createServer().listen(0, "127.0.0.1", () => {
@@ -42,7 +42,7 @@ const port = await new Promise<number>((resolve) => {
 // window can show up on the user's screen (Wayland compositors ignore window
 // positions and would open it wherever the user is). --visible shows it.
 const visible = args.includes("--visible");
-const electron = launchElectron({ GAPP_USER_DATA_DIR: profile, GAPP_OFFSCREEN: visible ? undefined : "1" }, [
+const electron = launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCREEN: visible ? undefined : "1" }, [
   ...(visible ? [] : ["--ozone-platform=headless", "--ozone-override-screen-size=1920,1080"]),
   // No OS keychain (it could ask to be unlocked): the secrets key falls back to a file.
   "--password-store=basic",
@@ -117,11 +117,11 @@ async function newTab(label: "New app" | "New web tab") {
   await click("[data-context-menu] button", label);
 }
 
-/** Authenticated request to the gApp server, made from the renderer. */
+/** Authenticated request to the NathApp server, made from the renderer. */
 const apiCall = <T>(path: string, init: { method?: string; body?: unknown } = {}) =>
-  page!.eval<T>(`fetch(window.gapp.serverUrl + ${JSON.stringify(path)}, {
+  page!.eval<T>(`fetch(window.nathapp.serverUrl + ${JSON.stringify(path)}, {
     method: ${JSON.stringify(init.method ?? "GET")},
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + window.gapp.token },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + window.nathapp.token },
     ${init.body !== undefined ? `body: ${JSON.stringify(JSON.stringify(init.body))},` : ""}
   }).then(async (r) => { if (!r.ok) throw new Error(r.status + " " + (await r.text())); return r.status === 204 ? null : r.json(); })`);
 
@@ -175,7 +175,7 @@ const click = (selector: string, text?: string) =>
   })()`);
 
 try {
-  console.log("Launching gApp…");
+  console.log("Launching NathApp…");
   page = await Page.connect(port);
   await page.send("Runtime.enable");
   await page.send("Page.enable");
@@ -242,7 +242,7 @@ try {
 
   await check("element picker in the preview", async () => {
     await click(`${appTab()} [data-pick-element]`);
-    await waitForValue(async () => ((await inView<boolean>(appTab(), `!!window.__gappPicker`)) ? true : undefined));
+    await waitForValue(async () => ((await inView<boolean>(appTab(), `!!window.__nathappPicker`)) ? true : undefined));
     await inView(appTab(), `document.querySelector("h1").click(), true`);
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-picked-chip]')`, { label: "picked chip" });
   });
@@ -441,12 +441,12 @@ try {
 
     // Pick the button: the picker resolves on a click inside the page.
     await click(`${tab} [data-pick-element]`);
-    await waitForValue(async () => ((await inPage<boolean>(`!!window.__gappPicker`)) ? true : undefined));
+    await waitForValue(async () => ((await inPage<boolean>(`!!window.__nathappPicker`)) ? true : undefined));
     await inPage(`document.querySelector(".cta").click(), true`);
     await page!.waitFor(`document.querySelector('${tab} [data-picked-chip]')?.innerText.includes("Buy now")`, {
       label: "picked element chip",
     });
-    const outlined = await inPage<boolean>(`document.querySelector(".cta").hasAttribute("data-gapp-picked")`);
+    const outlined = await inPage<boolean>(`document.querySelector(".cta").hasAttribute("data-nathapp-picked")`);
     if (!outlined) throw new Error("picked element isn't marked");
 
     // A customization (as the agent would save it) applies live: CSS now, JS after a reload.
@@ -490,7 +490,7 @@ try {
         page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
       await click(`nav li[data-app-id="${webTabId}"]`);
       await click(`${tab} [data-pick-element]`);
-      await waitForValue(async () => ((await inPage<boolean>(`!!window.__gappPicker`)) ? true : undefined));
+      await waitForValue(async () => ((await inPage<boolean>(`!!window.__nathappPicker`)) ? true : undefined));
       await inPage(`document.querySelector("#headline").click(), true`);
       await page!.waitFor(`!!document.querySelector('${tab} [data-picked-chip]')`, { label: "picked heading" });
       await chooseAgent(`${tab} [data-agent-panel]`, "claude", "haiku", "Low");
@@ -504,7 +504,7 @@ try {
       if (!color) throw new Error(`heading isn't green:\n${chat.slice(-800)}`);
       const saved = await apiCall<{ css: string; js: string } | null>("/api/sites/127.0.0.1");
       if (!saved?.css.includes("16a34a")) throw new Error("customization wasn't saved");
-      const reply = await page!.eval<string>(`[...document.querySelectorAll('${tab} [data-agent-panel] .gapp-markdown')].at(-1)?.innerText ?? ""`);
+      const reply = await page!.eval<string>(`[...document.querySelectorAll('${tab} [data-agent-panel] .nathapp-markdown')].at(-1)?.innerText ?? ""`);
       return reply.slice(0, 140);
     });
   }

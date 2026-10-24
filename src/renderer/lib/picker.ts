@@ -10,7 +10,7 @@ const ACCENT = "#6d4aff";
  * ElementInfo, or null when cancelled (Escape or `cancelPickScript`).
  */
 export const pickScript = `(() => new Promise((resolve) => {
-  window.__gappPicker?.cancel();
+  window.__nathappPicker?.cancel();
   const KEYS = ${JSON.stringify(inspectedStyles)};
   const root = document.documentElement;
   const box = document.createElement("div");
@@ -101,27 +101,27 @@ export const pickScript = `(() => new Promise((resolve) => {
     box.remove();
     label.remove();
     root.style.cursor = cursor;
-    window.__gappPicker = null;
+    window.__nathappPicker = null;
     if (!el) return resolve(null);
-    if (!document.getElementById("gapp-picked-style")) {
+    if (!document.getElementById("nathapp-picked-style")) {
       const style = document.createElement("style");
-      style.id = "gapp-picked-style";
-      style.textContent = "[data-gapp-picked]{outline:2px solid ${ACCENT} !important;outline-offset:2px !important}";
+      style.id = "nathapp-picked-style";
+      style.textContent = "[data-nathapp-picked]{outline:2px solid ${ACCENT} !important;outline-offset:2px !important}";
       root.append(style);
     }
-    el.setAttribute("data-gapp-picked", "");
+    el.setAttribute("data-nathapp-picked", "");
     resolve(info(el));
   }
-  window.__gappPicker = { cancel: () => finish(null) };
+  window.__nathappPicker = { cancel: () => finish(null) };
 }))()`;
 
-export const cancelPickScript = `(() => { window.__gappPicker?.cancel(); return true; })()`;
+export const cancelPickScript = `(() => { window.__nathappPicker?.cancel(); return true; })()`;
 
 /** Removes the outline from picked elements (all, or the ones matching `selector`). */
 export const unmarkScript = (selector?: string) => `(() => {
   const sel = ${JSON.stringify(selector ?? null)};
-  for (const el of document.querySelectorAll("[data-gapp-picked]")) {
-    try { if (!sel || el.matches(sel)) el.removeAttribute("data-gapp-picked"); } catch {}
+  for (const el of document.querySelectorAll("[data-nathapp-picked]")) {
+    try { if (!sel || el.matches(sel)) el.removeAttribute("data-nathapp-picked"); } catch {}
   }
   return true;
 })()`;

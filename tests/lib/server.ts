@@ -15,11 +15,11 @@ export async function freePort() {
 
 export async function startServer() {
   const port = await freePort();
-  const dataDir = mkdtempSync(join(tmpdir(), "gapp-server-test-"));
+  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-server-test-"));
   const url = `http://127.0.0.1:${port}`;
   const token = crypto.randomUUID();
   const proc = Bun.spawn([process.execPath, "src/server/index.ts"], {
-    env: { ...process.env, PORT: String(port), GAPP_DATA_DIR: dataDir, GAPP_ALLOWED_ORIGIN: "app://gapp", GAPP_TOKEN: token },
+    env: { ...process.env, PORT: String(port), NATHAPP_DATA_DIR: dataDir, NATHAPP_ALLOWED_ORIGIN: "app://nathapp", NATHAPP_TOKEN: token },
     stdout: "ignore",
     stderr: "inherit",
   });

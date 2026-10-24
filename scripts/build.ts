@@ -9,7 +9,7 @@ import { build as viteBuild } from "vite";
 import { buildElectron } from "./electron";
 
 const exe = process.platform === "win32" ? ".exe" : "";
-const serverBinary = `gapp-server${exe}`;
+const serverBinary = `nathapp-server${exe}`;
 
 await rm("dist", { recursive: true, force: true });
 

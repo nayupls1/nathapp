@@ -47,7 +47,7 @@ const markOpened = (id: string) => {
 };
 
 // Whether the agent panel is hidden, per tab. Remembered across restarts.
-const COLLAPSED_KEY = "gapp.agentCollapsed";
+const COLLAPSED_KEY = "nathapp.agentCollapsed";
 const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>(
   (() => {
     try {

@@ -1,5 +1,6 @@
-// The host database (gapp.sqlite): tabs, chat history, settings and site
+// The host database (nathapp.sqlite): tabs, chat history, settings and site
 // customizations. Apps keep their own data inside their project folders.
+import { existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteClient } from "@effect/sql-sqlite-bun";
 import { Effect, Layer } from "effect";
@@ -120,7 +121,13 @@ const migrate = Effect.gen(function* () {
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    const client = SqliteClient.layer({ filename: join(config.dataDir, "gapp.sqlite") });
+    const filename = join(config.dataDir, "nathapp.sqlite");
+    // The database of NathApp's earlier name (gApp) carries over.
+    const legacy = join(config.dataDir, "gapp.sqlite");
+    if (!existsSync(filename) && existsSync(legacy)) {
+      for (const suffix of ["", "-wal", "-shm"]) if (existsSync(legacy + suffix)) renameSync(legacy + suffix, filename + suffix);
+    }
+    const client = SqliteClient.layer({ filename });
     return Layer.effectDiscard(migrate).pipe(Layer.provideMerge(client));
   }),
 ).pipe(Layer.orDie);

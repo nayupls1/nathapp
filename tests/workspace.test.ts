@@ -14,8 +14,8 @@ import * as Sandbox from "../src/server/workspace/Sandbox";
 import * as Workspace from "../src/server/workspace/Workspace";
 import { presets } from "../src/server/workspace/presets";
 
-const dataDir = mkdtempSync(join(tmpdir(), "gapp-workspace-test-"));
-const config = readConfig({ GAPP_DATA_DIR: dataDir, PORT: "1" });
+const dataDir = mkdtempSync(join(tmpdir(), "nathapp-workspace-test-"));
+const config = readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" });
 
 const layer = core(config);
 const runtime = ManagedRuntime.make(layer);
@@ -38,11 +38,11 @@ describe("presets", () => {
     }
   });
 
-  test("scaffolding writes the files, gapp.json and the design tokens", async () => {
+  test("scaffolding writes the files, nathapp.json and the design tokens", async () => {
     const app = await createApp();
     const project = await run(Effect.flatMap(Workspace.Workspace, (w) => w.scaffold(app.id, "react", "Plant <Diary>")));
     expect(existsSync(join(project.dir, "src/App.tsx"))).toBe(true);
-    expect(JSON.parse(readFileSync(join(project.dir, "gapp.json"), "utf8")).dev).toBe("bun run dev");
+    expect(JSON.parse(readFileSync(join(project.dir, "nathapp.json"), "utf8")).dev).toBe("bun run dev");
     expect(readFileSync(join(project.dir, "src/tokens.css"), "utf8")).toContain("--color-accent");
     expect(readFileSync(join(project.dir, "src/index.html"), "utf8")).toContain("Plant &lt;Diary&gt;");
     expect(JSON.parse(readFileSync(join(project.dir, "package.json"), "utf8")).name).toBe("plant-diary");
@@ -59,7 +59,7 @@ describe.if(hasBwrap)("sandbox", () => {
   test("app processes only see their own project", async () => {
     const app = await createApp();
     const dir = await run(Effect.flatMap(Workspace.Workspace, (w) => w.ensureDir(app.id)));
-    process.env.GAPP_TEST_SECRET = "hunter2";
+    process.env.NATHAPP_TEST_SECRET = "hunter2";
     const exec = (command: string) => run(Effect.flatMap(Runtime.Runtime, (r) => r.exec(app.id, command, 20_000)));
 
     expect((await exec("echo hi > note.txt && cat note.txt")).output.trim()).toBe("hi");
@@ -68,11 +68,11 @@ describe.if(hasBwrap)("sandbox", () => {
     // Only the bun binary is bound from outside; the user's files aren't there.
     const outside = await exec(`cat ${JSON.stringify(join(process.cwd(), "package.json"))} 2>&1; ls -A ${JSON.stringify(homedir())}`);
     expect(outside.output).toContain("No such file");
-    expect(outside.output).not.toContain("gapp");
+    expect(outside.output).not.toContain("nathapp");
     const otherApp = await exec(`ls ${JSON.stringify(config.appsDir)} 2>&1`);
     expect(otherApp.output.trim().split("\n")).toEqual([app.id]);
     expect((await exec("touch /usr/x 2>&1; echo code=$?")).output).toContain("code=1");
-    expect((await exec("echo ${GAPP_TEST_SECRET:-unset}")).output.trim()).toBe("unset");
+    expect((await exec("echo ${NATHAPP_TEST_SECRET:-unset}")).output.trim()).toBe("unset");
     expect((await exec("cat /proc/1/cmdline | tr '\\0' ' '")).output).toContain("bwrap");
     expect((await exec("bun -e 'console.log(6 * 7)'")).output.trim()).toBe("42");
   });

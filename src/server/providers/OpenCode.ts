@@ -1,5 +1,5 @@
 // OpenCode through `opencode serve` (HTTP + server-sent events). A server per
-// turn, started in the project folder with gApp's MCP server in its config;
+// turn, started in the project folder with NathApp's MCP server in its config;
 // sessions are stored by OpenCode, so a new server resumes them by id.
 import { createServer } from "node:net";
 import { Effect } from "effect";
@@ -23,7 +23,7 @@ const freePort = () =>
 
 /**
  * Without tools of its own (untrusted input): every tool asks for permission
- * and the driver rejects the request, except gApp's own MCP tools. Disabling
+ * and the driver rejects the request, except NathApp's own MCP tools. Disabling
  * the tools instead isn't possible: OpenCode's free models refuse requests
  * without its usual tool set. Verified: reads, globs and shell commands are
  * all rejected, inside and outside the working directory.
@@ -192,7 +192,7 @@ export const OpenCodeDriver: ProviderDriver = {
 
       try {
         const existing = input.resume ? await server.request("GET", `/session/${input.resume}`).catch(() => null) : null;
-        const session: Json = existing ?? (await server.request("POST", "/session", { title: "gApp" }));
+        const session: Json = existing ?? (await server.request("POST", "/session", { title: "NathApp" }));
         sessionId = session.id as string;
         emit({ type: "session", id: sessionId });
 
@@ -236,7 +236,7 @@ export const OpenCodeDriver: ProviderDriver = {
               break;
             }
             case "permission.asked": {
-              // Nobody can answer: gApp's own tools are fine, everything else is refused.
+              // Nobody can answer: NathApp's own tools are fine, everything else is refused.
               const ours = !!input.mcp && String(p.permission ?? "").startsWith(`${input.mcp.name}_`);
               void server.request("POST", `/permission/${p.id}/reply`, { reply: ours ? "once" : "reject", message: "Not allowed here." }).catch(() => {});
               if (!ours && input.access === "workspace") emit({ type: "tool", title: `Refused: ${p.permission}` });

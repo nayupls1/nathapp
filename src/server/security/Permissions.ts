@@ -47,7 +47,7 @@ export interface PermissionsShape {
   readonly forget: (subject: string) => Effect.Effect<void>;
 }
 
-export class Permissions extends Context.Service<Permissions, PermissionsShape>()("gapp/Permissions") {}
+export class Permissions extends Context.Service<Permissions, PermissionsShape>()("nathapp/Permissions") {}
 
 export const subjectName = (subject: string, appName: string | null) => (subject === WEBSITE_AGENT ? "Website agent" : (appName ?? "A deleted app"));
 
@@ -131,8 +131,8 @@ export const make = Effect.gen(function* () {
               resolve(request.id, false).pipe(
                 Effect.andThen(
                   audit.record({
-                    actor: "gapp",
-                    actorLabel: "gApp",
+                    actor: "nathapp",
+                    actorLabel: "NathApp",
                     tabId: input.subject === WEBSITE_AGENT ? null : input.subject,
                     action: "permission.timeout",
                     target: `${input.action}${input.resource ? ` ${input.resource}` : ""}`,

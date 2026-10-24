@@ -173,7 +173,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const unregister = registerPage(props.appId, {
     info,
     eval: (code) => requireReady().executeJavaScript(code),
-    capture: () => window.gapp.web.capture(requireReady().getWebContentsId()),
+    capture: () => window.nathapp.web.capture(requireReady().getWebContentsId()),
     navigate: async (url) => {
       const done = waitForLoad();
       if (!go(url)) throw new Error(`Invalid URL: ${url}`);
@@ -368,7 +368,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
             <webview
               ref={attach}
               src={src()}
-              partition={window.gapp.web.partition}
+              partition={window.nathapp.web.partition}
               {...{ allowpopups: "" }}
               {...stylex.attrs(styles.webview)}
             />

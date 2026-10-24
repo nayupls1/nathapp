@@ -1,4 +1,4 @@
-// The key gApp encrypts secrets with. It's stored encrypted by the OS
+// The key NathApp encrypts secrets with. It's stored encrypted by the OS
 // keychain (Electron's safeStorage: Keychain, DPAPI, libsecret/kwallet) and
 // handed to the server over its stdin. Where no keychain is available the key
 // is stored in a file only the user can read, and Settings say so.

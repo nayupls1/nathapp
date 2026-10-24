@@ -1,4 +1,4 @@
-// The gApp server: an Effect program. Services are layers; the HTTP router
+// The NathApp server: an Effect program. Services are layers; the HTTP router
 // serves the API, the hub WebSocket and the MCP endpoint for agents. Closing
 // the program (signal, Electron going away) stops agent turns and app processes.
 import { BunHttpServer, BunRuntime } from "@effect/platform-bun";
@@ -14,7 +14,7 @@ import { services } from "./services";
  */
 function keyFromParent(): Promise<SecretsKey | "locked"> {
   // `bun run dev` only: the server restarts on changes and can't read stdin again.
-  if (process.env.GAPP_DEV_SECRETS_KEY) return Promise.resolve(JSON.parse(process.env.GAPP_DEV_SECRETS_KEY) as SecretsKey);
+  if (process.env.NATHAPP_DEV_SECRETS_KEY) return Promise.resolve(JSON.parse(process.env.NATHAPP_DEV_SECRETS_KEY) as SecretsKey);
   return new Promise((resolve) => {
     let buffer = "";
     const timer = setTimeout(() => done("locked"), 10_000);
@@ -38,7 +38,7 @@ function keyFromParent(): Promise<SecretsKey | "locked"> {
   });
 }
 
-const fromElectron = process.env.GAPP_PARENT === "electron";
+const fromElectron = process.env.NATHAPP_PARENT === "electron";
 const config = readConfig(process.env, fromElectron ? await keyFromParent() : null);
 
 const server = HttpRouter.serve(Layer.mergeAll(routes, cors(config.allowedOrigin)), { disableLogger: true, disableListenLog: true }).pipe(
@@ -63,7 +63,7 @@ const main = Layer.launch(server).pipe(
 
 // When spawned by Electron, stdin is a pipe owned by the main process. If the
 // app dies without shutting us down cleanly, the pipe closes and we exit too.
-if (process.env.GAPP_PARENT === "electron") {
+if (process.env.NATHAPP_PARENT === "electron") {
   process.stdin.on("close", () => process.kill(process.pid, "SIGTERM"));
   process.stdin.resume();
 }

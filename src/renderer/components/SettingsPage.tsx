@@ -107,7 +107,7 @@ export function SettingsPage() {
 
       <Section title="Providers" icon="plug">
         <p {...stylex.attrs(styles.muted, styles.note)}>
-          The coding agents gApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
+          The coding agents NathApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
         </p>
         <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
       </Section>
@@ -191,7 +191,7 @@ export function SettingsPage() {
 
       <Section title="AI in apps" icon="sparkles">
         <p {...stylex.attrs(styles.muted, styles.note)}>
-          Apps can use AI (summaries, suggestions, chat) through gApp, on your own subscription: no API keys in your apps. Only an
+          Apps can use AI (summaries, suggestions, chat) through NathApp, on your own subscription: no API keys in your apps. Only an
           app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
           shows up in the app's logs.
         </p>
@@ -237,7 +237,7 @@ export function SettingsPage() {
           <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
           <dt>Versions</dt>
           <dd {...stylex.attrs(styles.dd, styles.mono)}>
-            Electron {window.gapp.versions.electron} · Chrome {window.gapp.versions.chrome} · Bun {health()?.bun ?? "…"}
+            Electron {window.nathapp.versions.electron} · Chrome {window.nathapp.versions.chrome} · Bun {health()?.bun ?? "…"}
           </dd>
         </dl>
       </Section>
@@ -301,7 +301,7 @@ function ProviderRow(props: { id: ProviderId }) {
         <span {...stylex.attrs(styles.muted)}>Binary</span>
         <input
           value={config().binaryPath}
-          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with gApp" : `${props.id} on your PATH`)}
+          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with NathApp" : `${props.id} on your PATH`)}
           onChange={(e) => setConfig({ binaryPath: e.currentTarget.value.trim() })}
           {...stylex.attrs(styles.textInput, styles.mono)}
         />
@@ -319,7 +319,7 @@ function GlobalSecrets() {
       ? "Encrypted, with the key in your OS keychain."
       : overview()?.protection === "file"
         ? "Encrypted, with the key protected by file permissions only (no OS keychain found)."
-        : "Locked: gApp couldn't unlock its key from the OS keychain.";
+        : "Locked: NathApp couldn't unlock its key from the OS keychain.";
   return (
     <>
       <p {...stylex.attrs(styles.muted, styles.note)}>

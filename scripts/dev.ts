@@ -20,7 +20,7 @@ async function startElectron() {
   electron = launchElectron(
     {
       VITE_DEV_SERVER_URL: devServerUrl,
-      GAPP_BUN_PATH: process.execPath,
+      NATHAPP_BUN_PATH: process.execPath,
     },
     process.argv.slice(2),
   );

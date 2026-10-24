@@ -30,18 +30,18 @@
 
 /* Markdown in agent replies (generated HTML, so it can't
    carry StyleX classes). */
-.gapp-markdown > :first-child { margin-top: 0; }
-.gapp-markdown > :last-child { margin-bottom: 0; }
-.gapp-markdown p, .gapp-markdown ul, .gapp-markdown ol, .gapp-markdown blockquote, .gapp-markdown pre { margin: 0 0 0.75em; }
-.gapp-markdown h1, .gapp-markdown h2, .gapp-markdown h3, .gapp-markdown h4 { margin: 1em 0 0.4em; line-height: 1.25; letter-spacing: -0.01em; }
-.gapp-markdown h1 { font-size: 1.6em; }
-.gapp-markdown h2 { font-size: 1.3em; }
-.gapp-markdown h3 { font-size: 1.1em; }
-.gapp-markdown ul, .gapp-markdown ol { padding-left: 1.4em; }
-.gapp-markdown li.task { list-style: none; margin-left: -1.4em; }
-.gapp-markdown a { color: inherit; text-decoration-color: currentColor; text-underline-offset: 2px; }
-.gapp-markdown code { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.9em; padding: 0.1em 0.35em; border-radius: 4px; background: rgb(127 127 127 / 0.14); }
-.gapp-markdown pre { padding: 0.8em 1em; border-radius: 8px; background: rgb(127 127 127 / 0.1); overflow-x: auto; }
-.gapp-markdown pre code { padding: 0; background: none; }
-.gapp-markdown blockquote { padding-left: 1em; border-left: 3px solid rgb(127 127 127 / 0.35); opacity: 0.85; }
-.gapp-markdown hr { border: none; border-top: 1px solid rgb(127 127 127 / 0.25); margin: 1em 0; }
+.nathapp-markdown > :first-child { margin-top: 0; }
+.nathapp-markdown > :last-child { margin-bottom: 0; }
+.nathapp-markdown p, .nathapp-markdown ul, .nathapp-markdown ol, .nathapp-markdown blockquote, .nathapp-markdown pre { margin: 0 0 0.75em; }
+.nathapp-markdown h1, .nathapp-markdown h2, .nathapp-markdown h3, .nathapp-markdown h4 { margin: 1em 0 0.4em; line-height: 1.25; letter-spacing: -0.01em; }
+.nathapp-markdown h1 { font-size: 1.6em; }
+.nathapp-markdown h2 { font-size: 1.3em; }
+.nathapp-markdown h3 { font-size: 1.1em; }
+.nathapp-markdown ul, .nathapp-markdown ol { padding-left: 1.4em; }
+.nathapp-markdown li.task { list-style: none; margin-left: -1.4em; }
+.nathapp-markdown a { color: inherit; text-decoration-color: currentColor; text-underline-offset: 2px; }
+.nathapp-markdown code { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.9em; padding: 0.1em 0.35em; border-radius: 4px; background: rgb(127 127 127 / 0.14); }
+.nathapp-markdown pre { padding: 0.8em 1em; border-radius: 8px; background: rgb(127 127 127 / 0.1); overflow-x: auto; }
+.nathapp-markdown pre code { padding: 0; background: none; }
+.nathapp-markdown blockquote { padding-left: 1em; border-left: 3px solid rgb(127 127 127 / 0.35); opacity: 0.85; }
+.nathapp-markdown hr { border: none; border-top: 1px solid rgb(127 127 127 / 0.25); margin: 1em 0; }

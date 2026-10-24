@@ -41,7 +41,7 @@ const context = (scope: string, name: string) => `secret:${scope}:${name}`;
 
 export function validateSecret(name: string, value: string): string | null {
   if (!SECRET_NAME_PATTERN.test(name)) return "Names are environment variable names: capital letters, digits and _ (e.g. STRIPE_KEY)";
-  if (isReservedSecretName(name)) return `${name} is set by gApp itself; pick another name`;
+  if (isReservedSecretName(name)) return `${name} is set by NathApp itself; pick another name`;
   if (!value) return "The value is empty";
   if (new TextEncoder().encode(value).length > MAX_VALUE_BYTES) return "The value is too long (64 KB at most)";
   if (value.includes("\0")) return "The value can't contain NUL characters";
@@ -63,7 +63,7 @@ export interface SecretsShape {
   readonly envFor: (appId: string) => Effect.Effect<Record<string, string>, VaultLocked>;
 }
 
-export class Secrets extends Context.Service<Secrets, SecretsShape>()("gapp/Secrets") {}
+export class Secrets extends Context.Service<Secrets, SecretsShape>()("nathapp/Secrets") {}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

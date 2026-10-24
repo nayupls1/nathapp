@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, net, protocol } from "electron";
+import { existsSync, readdirSync, renameSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { startServer, type ServerHandle } from "./server";
@@ -7,7 +8,25 @@ import { guardWindow, setupWebTabs } from "./web";
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
 // Lets tests run against a throwaway profile instead of the real data.
-if (process.env.GAPP_USER_DATA_DIR) app.setPath("userData", process.env.GAPP_USER_DATA_DIR);
+if (process.env.NATHAPP_USER_DATA_DIR) app.setPath("userData", process.env.NATHAPP_USER_DATA_DIR);
+else moveLegacyUserData();
+
+/**
+ * NathApp used to be called gApp: its data (tabs, apps, sessions, the
+ * secrets key) moves over from the old folder on the first start.
+ */
+function moveLegacyUserData() {
+  const legacy = join(app.getPath("appData"), "gApp");
+  const current = app.getPath("userData");
+  if (legacy === current || !existsSync(legacy) || existsSync(join(current, "data"))) return;
+  try {
+    for (const entry of readdirSync(legacy)) {
+      if (!existsSync(join(current, entry))) renameSync(join(legacy, entry), join(current, entry));
+    }
+  } catch (err) {
+    console.error("Couldn't move the data from the gApp folder:", err);
+  }
+}
 
 // Bun inlines `__dirname` at bundle time, so resolve build output from the app
 // root instead (works both unpackaged and inside the packaged asar).
@@ -16,7 +35,7 @@ const distDir = join(app.getAppPath(), "dist");
 // In production the renderer is served from a custom privileged scheme instead
 // of file:// so it gets a real origin (needed for CORS against the Bun server).
 const APP_SCHEME = "app";
-const APP_HOST = "gapp";
+const APP_HOST = "nathapp";
 const rendererOrigin = devServerUrl ? new URL(devServerUrl).origin : `${APP_SCHEME}://${APP_HOST}`;
 
 protocol.registerSchemesAsPrivileged([
@@ -45,7 +64,7 @@ function createWindow(server: ServerHandle) {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
-      additionalArguments: [`--gapp-server-url=${server.url}`, `--gapp-token=${server.token}`],
+      additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -54,12 +73,12 @@ function createWindow(server: ServerHandle) {
       // Agent runs stream into the window while it's in the background.
       backgroundThrottling: false,
       // Tests render without a visible window (always painted, nothing pops up).
-      offscreen: process.env.GAPP_OFFSCREEN === "1",
+      offscreen: process.env.NATHAPP_OFFSCREEN === "1",
     },
   });
 
   win.once("ready-to-show", () => {
-    if (process.env.GAPP_OFFSCREEN !== "1") win.show();
+    if (process.env.NATHAPP_OFFSCREEN !== "1") win.show();
   });
 
   mainWindow = win;
@@ -83,7 +102,7 @@ app.whenReady().then(async () => {
   try {
     server = await startServer(rendererOrigin);
   } catch (err) {
-    dialog.showErrorBox("gApp", `Failed to start the backend server:\n\n${err}`);
+    dialog.showErrorBox("NathApp", `Failed to start the backend server:\n\n${err}`);
     app.exit(1);
     return;
   }

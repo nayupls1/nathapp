@@ -25,10 +25,10 @@ export interface SandboxShape {
   readonly binDir: string;
 }
 
-export class Sandbox extends Context.Service<Sandbox, SandboxShape>()("gapp/Sandbox") {}
+export class Sandbox extends Context.Service<Sandbox, SandboxShape>()("nathapp/Sandbox") {}
 
 /**
- * `bun`, `bunx` and `node` that always work: the Bun gApp runs on (from
+ * `bun`, `bunx` and `node` that always work: the Bun NathApp runs on (from
  * source), or the compiled server acting as Bun (BUN_BE_BUN).
  */
 function writeShims(config: ServerConfigShape) {
@@ -107,7 +107,7 @@ export const make = Effect.gen(function* () {
     kind,
     spawnSpec: ({ dir, command, env }) =>
       Effect.gen(function* () {
-        const home = join(dir, ".gapp", "home");
+        const home = join(dir, ".nathapp", "home");
         mkdirSync(home, { recursive: true });
         const base: Record<string, string> = {
           HOME: home,
@@ -134,7 +134,7 @@ export const make = Effect.gen(function* () {
           "--unshare-uts",
           "--unshare-cgroup-try",
           "--hostname",
-          "gapp",
+          "nathapp",
           ...systemPath("/usr"),
           ...["/bin", "/sbin", "/lib", "/lib64", "/lib32"].flatMap(systemPath),
           ...etcFiles.flatMap((p) => ["--ro-bind-try", p, p]),

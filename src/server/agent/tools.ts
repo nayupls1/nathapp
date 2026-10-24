@@ -1,5 +1,5 @@
-// The tools agents get from gApp (over MCP). Page tools reach the page open in
-// a tab — a website, or an app's preview — through the gApp window (RPC over
+// The tools agents get from NathApp (over MCP). Page tools reach the page open in
+// a tab — a website, or an app's preview — through the NathApp window (RPC over
 // the hub). App tools run and inspect the app's project; site tools save
 // customizations for websites.
 import { Effect, Schema } from "effect";
@@ -143,7 +143,7 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
   );
 
   return [
-    tool("get_site_override", "The current site's customization (CSS and JavaScript applied whenever it loads in gApp).", NoArgs, () =>
+    tool("get_site_override", "The current site's customization (CSS and JavaScript applied whenever it loads in NathApp).", NoArgs, () =>
       Effect.gen(function* () {
         const host = yield* currentHost;
         const override = yield* sites.get(host);
@@ -167,7 +167,7 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
             action: "agent.site",
             resource: host,
             title: `Let the website agent customize ${host}?`,
-            detail: `It wants to save ${js?.trim() ? "CSS and JavaScript" : "CSS"} that is applied whenever you open ${host} in gApp. You can turn it off or remove it later.`,
+            detail: `It wants to save ${js?.trim() ? "CSS and JavaScript" : "CSS"} that is applied whenever you open ${host} in NathApp. You can turn it off or remove it later.`,
             timeoutMs: 120_000,
           });
           if (!allowed) return text(`The user didn't allow customizing ${host}. Nothing was saved; tell them what you would have changed.`, true);
@@ -234,7 +234,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           yield* env.log(`Created the project (${preset})`);
           yield* runtime.setMode(appId, "dev");
           const files = Object.keys(presets.find((p) => p.id === preset)!.files).sort();
-          return `Created in ${project.dir}:\n${files.join("\n")}\ngapp.json, src/tokens.css\n\n${yield* statusText(20)}`;
+          return `Created in ${project.dir}:\n${files.join("\n")}\nnathapp.json, src/tokens.css\n\n${yield* statusText(20)}`;
         }),
     ),
 
@@ -242,7 +242,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "restart_app",
-      "Restart the app: installs dependencies if package.json changed, then starts the dev server again. Use it after changing dependencies or gapp.json, or when the app crashed. Returns its status and output.",
+      "Restart the app: installs dependencies if package.json changed, then starts the dev server again. Use it after changing dependencies or nathapp.json, or when the app crashed. Returns its status and output.",
       NoArgs,
       () =>
         Effect.gen(function* () {
@@ -279,7 +279,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "set_app_info",
-      "Set the app's name (short, shown in gApp's sidebar) and icon (a Lucide icon name; find one with search_icons).",
+      "Set the app's name (short, shown in NathApp's sidebar) and icon (a Lucide icon name; find one with search_icons).",
       Schema.Struct({ name: Schema.optionalKey(Schema.String), icon: Schema.optionalKey(Schema.String) }),
       ({ name, icon }) =>
         Effect.gen(function* () {
@@ -316,7 +316,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
       ({ name, description }) =>
         Effect.gen(function* () {
           if (!SECRET_NAME_PATTERN.test(name) || isReservedSecretName(name)) {
-            return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names gApp sets itself.`, true);
+            return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names NathApp sets itself.`, true);
           }
           const { own, global } = yield* secrets.available(appId);
           if (own.includes(name) || global.includes(name)) return `${name} is already available as process.env.${name}.`;

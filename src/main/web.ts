@@ -1,7 +1,7 @@
 // Web tabs and app previews: pages shown in <webview> guests. They get no
 // preload and no Node. Websites share one session; every app preview gets a
 // session of its own (apps all run on 127.0.0.1, and cookies don't separate
-// ports). Popups become new tabs, browser shortcuts are forwarded to the gApp
+// ports). Popups become new tabs, browser shortcuts are forwarded to the NathApp
 // window, and the renderer can screenshot them for the agents.
 import {
   app,
@@ -20,7 +20,7 @@ import {
 import { APP_PARTITION_PATTERN, WEB_PARTITION, type WebShortcut } from "../shared/api";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
-/** Where gApp serves apps (see the server's runtime). */
+/** Where NathApp serves apps (see the server's runtime). */
 const isAppUrl = (url: string) => /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/i.test(url);
 
 // Websites get the harmless permissions only (no camera, location, notifications…).
@@ -43,7 +43,7 @@ function shortcutFor(input: Input): WebShortcut | undefined {
 
 export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   const send = (channel: string, ...args: unknown[]) => getWindow()?.webContents.send(channel, ...args);
-  const openTab = (url: string) => isWebUrl(url) && send("gapp:open-tab", url);
+  const openTab = (url: string) => isWebUrl(url) && send("nathapp:open-tab", url);
 
   app.on("web-contents-created", (_event, contents) => {
     contents.on("will-attach-webview", (event, prefs, params) => {
@@ -80,7 +80,7 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       const name = shortcutFor(input);
       if (!name) return;
       event.preventDefault();
-      send("gapp:shortcut", name);
+      send("nathapp:shortcut", name);
     });
     contents.on("context-menu", (_event, params) => {
       Menu.buildFromTemplate(contextMenu(contents, params)).popup({ window: getWindow() });
@@ -138,14 +138,14 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   const web = session.fromPartition(WEB_PARTITION);
   lockDown(web);
   // A plain Chrome user agent: some sites turn away unknown browsers.
-  web.setUserAgent(app.userAgentFallback.replace(/ (gapp|Electron)\/\S+/gi, ""));
+  web.setUserAgent(app.userAgentFallback.replace(/ (nathapp|Electron)\/\S+/gi, ""));
 
-  ipcMain.on("gapp:open-external", (event, url: unknown) => {
+  ipcMain.on("nathapp:open-external", (event, url: unknown) => {
     if (event.sender !== getWindow()?.webContents) return;
     if (typeof url === "string" && isWebUrl(url)) void shell.openExternal(url);
   });
 
-  ipcMain.handle("gapp:capture", async (event, id: unknown) => {
+  ipcMain.handle("nathapp:capture", async (event, id: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;
     if (!target || target.getType() !== "webview" || target.hostWebContents !== event.sender) {
       throw new Error("Unknown page");
@@ -156,22 +156,22 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   });
 }
 
-/** Keeps the gApp window on gApp: links open as web tabs instead. */
+/** Keeps the NathApp window on NathApp: links open as web tabs instead. */
 export function guardWindow(win: BrowserWindow, rendererOrigin: string) {
   const send = (channel: string, ...args: unknown[]) => win.webContents.send(channel, ...args);
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isWebUrl(url)) send("gapp:open-tab", url);
+    if (isWebUrl(url)) send("nathapp:open-tab", url);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
     if (new URL(url).origin === rendererOrigin) return;
     event.preventDefault();
-    if (isWebUrl(url)) send("gapp:open-tab", url);
+    if (isWebUrl(url)) send("nathapp:open-tab", url);
   });
-  // Ctrl+R / F5 reload the current web tab rather than gApp itself.
+  // Ctrl+R / F5 reload the current web tab rather than NathApp itself.
   win.webContents.on("before-input-event", (event, input) => {
     if (shortcutFor(input) !== "reload") return;
     event.preventDefault();
-    send("gapp:shortcut", "reload");
+    send("nathapp:shortcut", "reload");
   });
 }

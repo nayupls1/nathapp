@@ -4,7 +4,7 @@ import { createSignal } from "solid-js";
 import { Socket, type TopicMessage } from "../../shared/hub";
 
 const socket = new Socket(
-  `${window.gapp.serverUrl.replace(/^http/, "ws")}/api/ws?role=renderer&token=${encodeURIComponent(window.gapp.token)}`,
+  `${window.nathapp.serverUrl.replace(/^http/, "ws")}/api/ws?role=renderer&token=${encodeURIComponent(window.nathapp.token)}`,
 );
 
 const [connected, setConnected] = createSignal(false);

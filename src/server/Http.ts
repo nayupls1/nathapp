@@ -61,7 +61,7 @@ const str = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 // --- Auth ----------------------------------------------------------------------------
 
 /**
- * Only gApp's renderer may use the API. Requests need the token Electron gave
+ * Only NathApp's renderer may use the API. Requests need the token Electron gave
  * the renderer, and browsers must come from the renderer's origin: websites in
  * web tabs and apps in previews can reach 127.0.0.1 too.
  */
@@ -521,10 +521,10 @@ const aiApp = Effect.gen(function* () {
   const tokens = yield* AiTokens;
   const req = yield* HttpServerRequest.HttpServerRequest;
   if (req.headers.origin !== undefined) {
-    return yield* fail(403, "AI requests must come from the app's server, not from the browser. Call your server, and let it call gApp.");
+    return yield* fail(403, "AI requests must come from the app's server, not from the browser. Call your server, and let it call NathApp.");
   }
   const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
-  if (!appId) return yield* fail(401, "Missing or invalid GAPP_AI_TOKEN");
+  if (!appId) return yield* fail(401, "Missing or invalid NATHAPP_AI_TOKEN");
   return appId;
 });
 
@@ -743,7 +743,7 @@ const permissionRoutes = HttpRouter.addAll([
       return json(
         yield* audit.list({
           tabId: params.get("tab") ?? undefined,
-          actor: actor === "user" || actor === "agent" || actor === "app" || actor === "gapp" ? actor : undefined,
+          actor: actor === "user" || actor === "agent" || actor === "app" || actor === "nathapp" ? actor : undefined,
           before: params.get("before") ? Number(params.get("before")) : undefined,
           limit: params.get("limit") ? Number(params.get("limit")) : undefined,
         }),

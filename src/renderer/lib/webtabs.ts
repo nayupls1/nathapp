@@ -110,10 +110,10 @@ function runShortcut(name: WebShortcut) {
   else if (name === "forward") handle.forward();
 }
 
-// From web pages (keys pressed while a page has focus) and Ctrl+R in gApp itself.
-window.gapp.web.onShortcut(runShortcut);
+// From web pages (keys pressed while a page has focus) and Ctrl+R in NathApp itself.
+window.nathapp.web.onShortcut(runShortcut);
 // Links that want a new window (web pages, app previews, chat links).
-window.gapp.web.onOpenTab((url) => void newWebTab(url));
+window.nathapp.web.onOpenTab((url) => void newWebTab(url));
 
 window.addEventListener("keydown", (e) => {
   if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;

@@ -17,7 +17,7 @@ export interface VaultShape {
   readonly decrypt: (blob: string, context: string) => Effect.Effect<string, VaultLocked>;
 }
 
-export class Vault extends Context.Service<Vault, VaultShape>()("gapp/Vault") {}
+export class Vault extends Context.Service<Vault, VaultShape>()("nathapp/Vault") {}
 
 const VERSION = "v1";
 
@@ -36,7 +36,7 @@ function fileKey(dataDir: string): Buffer {
 }
 
 export const makeVault = (key: Buffer | null, protection: VaultShape["protection"]): VaultShape => {
-  const locked = () => new VaultLocked({ message: "Secrets are locked: gApp couldn't unlock its key (is the OS keychain available?)" });
+  const locked = () => new VaultLocked({ message: "Secrets are locked: NathApp couldn't unlock its key (is the OS keychain available?)" });
   return {
     protection,
     encrypt: (plain, context) =>

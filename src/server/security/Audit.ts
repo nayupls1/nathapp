@@ -43,7 +43,7 @@ export interface AuditShape {
   readonly list: (filter: { tabId?: string; actor?: AuditEntry["actor"]; before?: number; limit?: number }) => Effect.Effect<AuditEntry[]>;
 }
 
-export class Audit extends Context.Service<Audit, AuditShape>()("gapp/Audit") {}
+export class Audit extends Context.Service<Audit, AuditShape>()("nathapp/Audit") {}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

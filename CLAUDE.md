@@ -1,4 +1,4 @@
-# gApp
+# NathApp
 
 Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLite; Claude Code, Codex, OpenCode as agents). See README.md for architecture.
 
@@ -10,7 +10,7 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 - Several Claude threads may work in this repo at the same time:
   - Commit only the files you changed (`git add <paths>`, not `git add -A`). Leave other threads' uncommitted work alone.
   - Never use broad `pkill -f` patterns. They can kill other threads' servers and e2e runs, or your own shell when the pattern matches the command itself. Stop only the processes you started (by PID, or `pkill -x <name>`).
-  - Use throwaway data dirs (`GAPP_DATA_DIR=$(mktemp -d)`) and free ports for manual server runs, never `.data/` or a fixed port another thread might use.
+  - Use throwaway data dirs (`NATHAPP_DATA_DIR=$(mktemp -d)`) and free ports for manual server runs, never `.data/` or a fixed port another thread might use.
 - Never open windows on the user's screen. They use Hyprland/Wayland, where windows pop up on the focused workspace, right where they're working.
   - e2e runs Electron with `--ozone-platform=headless` and offscreen rendering, so nothing appears.
   - Don't use `bun run start`, `bun run dev`, `e2e --visible`, or `xdg-open`/`shell.openExternal` for checks.
@@ -20,7 +20,7 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 
 - Auth is always the user's own logins (Claude subscription, Codex/ChatGPT, OpenCode). Never add an API-key path; `ANTHROPIC_API_KEY` is stripped from Claude's environment on purpose.
 - Don't show the user's account email anywhere in the UI. The plan type ("Claude Pro") is fine.
-- Secret values never reach agents, prompts, logs, process arguments or the API's responses (see README: Secrets). Agent processes get the environment via `agentEnv()` (no `GAPP_*`); app processes get exactly what the Runtime/Sandbox give them.
+- Secret values never reach agents, prompts, logs, process arguments or the API's responses (see README: Secrets). Agent processes get the environment via `agentEnv()` (no `NATHAPP_*`); app processes get exactly what the Runtime/Sandbox give them.
 - New capabilities that let an app or agent reach beyond its sandbox go through `Permissions.ask` and are recorded with `Audit.record`.
 - Untrusted input never reaches a provider that has tools of its own. This covers web pages (the website agent) and apps' AI requests: they run with `access: "none"`, where every provider has its file, shell, web and connector tools switched off.
 
@@ -40,4 +40,4 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
   - Services are `Context.Service` + `Layer`, wired in `src/server/services.ts`.
   - v4 names differ from v3 (e.g. `Effect.catch`, `Effect.forkDetach`, `Schema.optionalKey`); check `node_modules/effect` when unsure.
 - Presets live in `src/server/workspace/presets.ts`, with their files in `templates/` (`*.tpl`, imported as text so they're bundled into the compiled server).
-- gApp's agent tools are in `src/server/agent/tools.ts`. They're served over MCP, and their input schemas must be object schemas: one bad schema makes clients drop every tool.
+- NathApp's agent tools are in `src/server/agent/tools.ts`. They're served over MCP, and their input schemas must be object schemas: one bad schema makes clients drop every tool.

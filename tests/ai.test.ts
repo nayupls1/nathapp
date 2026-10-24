@@ -36,9 +36,9 @@ describe("gateway", () => {
     server = await startServer();
     const app = await server.api<AppSummary>("/api/apps", { method: "POST" });
     await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
-    // A dev command that hands us the environment gApp gives the app.
+    // A dev command that hands us the environment NathApp gives the app.
     const dir = join(server.dataDir, "apps", app.id);
-    writeFileSync(join(dir, "gapp.json"), JSON.stringify({ install: "true", dev: 'printf %s "$GAPP_AI_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
+    writeFileSync(join(dir, "nathapp.json"), JSON.stringify({ install: "true", dev: 'printf %s "$NATHAPP_AI_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
     const file = join(dir, "token.txt");
     for (let i = 0; i < 100 && !(existsSync(file) && readFileSync(file, "utf8")); i++) await Bun.sleep(100);
@@ -58,7 +58,7 @@ describe("gateway", () => {
     });
 
   test("apps get a token in their environment", () => {
-    expect(token).toMatch(/^gai_[0-9a-f]{64}$/);
+    expect(token).toMatch(/^nai_[0-9a-f]{64}$/);
   });
 
   test("the app's token works; others don't", async () => {
@@ -66,7 +66,7 @@ describe("gateway", () => {
     expect(info.status).toBe(200);
     expect(await info.json()).toMatchObject({ usage: { today: 0, limit: 200 } });
     expect((await ai("/models")).status).toBe(401);
-    expect((await ai("/models", { token: "gai_nope" })).status).toBe(401);
+    expect((await ai("/models", { token: "nai_nope" })).status).toBe(401);
     // The renderer's API token isn't an app token.
     expect((await ai("/models", { token: server.token })).status).toBe(401);
   });

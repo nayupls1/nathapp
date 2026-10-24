@@ -7,7 +7,7 @@ import { loadSecretsKey } from "./secretsKey";
 
 export interface ServerHandle {
   url: string;
-  /** Required on every API request; only gApp's own window gets it. */
+  /** Required on every API request; only NathApp's own window gets it. */
   token: string;
   stop: () => void;
 }
@@ -31,11 +31,11 @@ function getFreePort(): Promise<number> {
  */
 function serverCommand(): { command: string; args: string[] } {
   if (process.env.VITE_DEV_SERVER_URL) {
-    const bun = process.env.GAPP_BUN_PATH || "bun";
+    const bun = process.env.NATHAPP_BUN_PATH || "bun";
     return { command: bun, args: ["--watch", join(app.getAppPath(), "src/server/index.ts")] };
   }
 
-  const binary = process.platform === "win32" ? "gapp-server.exe" : "gapp-server";
+  const binary = process.platform === "win32" ? "nathapp-server.exe" : "nathapp-server";
   const dir = app.isPackaged
     ? join(process.resourcesPath, "server")
     : join(app.getAppPath(), "dist/server");
@@ -73,12 +73,12 @@ export async function startServer(allowedOrigin: string): Promise<ServerHandle> 
     env: {
       ...process.env,
       PORT: String(port),
-      GAPP_ALLOWED_ORIGIN: allowedOrigin,
-      GAPP_TOKEN: token,
-      GAPP_PARENT: "electron",
-      GAPP_DATA_DIR: join(app.getPath("userData"), "data"),
+      NATHAPP_ALLOWED_ORIGIN: allowedOrigin,
+      NATHAPP_TOKEN: token,
+      NATHAPP_PARENT: "electron",
+      NATHAPP_DATA_DIR: join(app.getPath("userData"), "data"),
       // Dev only: `bun --watch` restarts the server, which then can't read stdin again.
-      ...(process.env.VITE_DEV_SERVER_URL && secretsKey ? { GAPP_DEV_SECRETS_KEY: JSON.stringify(secretsKey) } : {}),
+      ...(process.env.VITE_DEV_SERVER_URL && secretsKey ? { NATHAPP_DEV_SECRETS_KEY: JSON.stringify(secretsKey) } : {}),
     },
     // stdin stays piped so the server can detect when the app goes away.
     stdio: ["pipe", "inherit", "inherit"],

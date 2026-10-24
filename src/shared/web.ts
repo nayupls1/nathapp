@@ -63,7 +63,7 @@ export function overrideScript(js: string) {
       for (const el of document.querySelectorAll(selector)) {
         if (seen.has(el)) continue;
         seen.add(el);
-        try { fn(el); } catch (e) { console.error("[gApp override]", e); }
+        try { fn(el); } catch (e) { console.error("[NathApp override]", e); }
       }
     };
     run();
@@ -74,7 +74,7 @@ export function overrideScript(js: string) {
   try {
 ${js}
   } catch (e) {
-    console.error("[gApp override]", e);
+    console.error("[NathApp override]", e);
     return String((e && e.stack) || e);
   }
   return null;

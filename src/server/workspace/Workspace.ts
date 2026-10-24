@@ -1,6 +1,7 @@
-// App projects: one folder per app (the app's disk), with gapp.json saying how
-// to install, develop, build and start it. gApp keeps its runtime state in
-// .gapp/ inside the folder (the app's SQLite database, a home directory).
+// App projects: one folder per app (the app's disk), with nathapp.json saying how
+// to install, develop, build and start it. NathApp keeps its runtime state in
+// .nathapp/ inside the folder (the app's SQLite database, a home directory).
+import { existsSync, renameSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -20,25 +21,25 @@ const ManifestSchema = Schema.Struct({
   start: Schema.String,
 });
 
-export const MANIFEST = "gapp.json";
+export const MANIFEST = "nathapp.json";
 
 export interface WorkspaceShape {
   readonly dir: (appId: string) => string;
-  /** gApp's runtime folder inside the project (database, home). */
+  /** NathApp's runtime folder inside the project (database, home). */
   readonly stateDir: (appId: string) => string;
   /** Creates the project folder if needed and returns it. */
   readonly ensureDir: (appId: string) => Effect.Effect<string>;
-  /** The project's gapp.json; null when there is none yet, an error when it's invalid. */
+  /** The project's nathapp.json; null when there is none yet, an error when it's invalid. */
   readonly manifest: (appId: string) => Effect.Effect<Manifest | null, WorkspaceError>;
   readonly info: (appId: string) => Effect.Effect<ProjectInfo | null>;
   /** Sets up a new project from a preset. */
   readonly scaffold: (appId: string, presetId: string, name: string) => Effect.Effect<ProjectInfo, WorkspaceError>;
-  /** Copies a project (without dependencies, builds and gApp's runtime state). */
+  /** Copies a project (without dependencies, builds and NathApp's runtime state). */
   readonly duplicate: (fromId: string, toId: string) => Effect.Effect<void>;
   readonly remove: (appId: string) => Effect.Effect<void>;
 }
 
-export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("gapp/Workspace") {}
+export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("nathapp/Workspace") {}
 
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
 
@@ -46,10 +47,24 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const settings = yield* Settings;
   const dir = (appId: string) => join(config.appsDir, appId);
-  const stateDir = (appId: string) => join(dir(appId), ".gapp");
+  const stateDir = (appId: string) => join(dir(appId), ".nathapp");
+
+  /** Projects from NathApp's earlier name (gApp): gapp.json and .gapp/ get the new names. */
+  const migrate = (appId: string) =>
+    Effect.sync(() => {
+      const renames: [string, string][] = [
+        ["gapp.json", MANIFEST],
+        [".gapp", ".nathapp"],
+      ];
+      for (const [from, to] of renames) {
+        const legacy = join(dir(appId), from);
+        if (existsSync(legacy) && !existsSync(join(dir(appId), to))) renameSync(legacy, join(dir(appId), to));
+      }
+    });
 
   const manifest = (appId: string) =>
     Effect.gen(function* () {
+      yield* migrate(appId);
       const text = yield* Effect.promise(() => readFile(join(dir(appId), MANIFEST), "utf8").catch(() => null));
       if (text === null) return null;
       let json: unknown;
@@ -105,7 +120,7 @@ export const make = Effect.gen(function* () {
 
     duplicate: (fromId, toId) =>
       Effect.promise(async () => {
-        const skip = new Set(["node_modules", "dist", ".gapp"].map((name) => join(dir(fromId), name)));
+        const skip = new Set(["node_modules", "dist", ".nathapp"].map((name) => join(dir(fromId), name)));
         await cp(dir(fromId), dir(toId), { recursive: true, filter: (src) => !skip.has(src) }).catch(() => {});
       }),
 

@@ -47,9 +47,9 @@ class AppServer {
       return;
     }
     if (msg.id !== undefined && msg.method) {
-      // A request from the server (approvals, user input). gApp runs Codex
+      // A request from the server (approvals, user input). NathApp runs Codex
       // without approvals, so anything that still asks is declined.
-      this.write({ id: msg.id, error: { code: -32601, message: "gApp doesn't handle this request" } });
+      this.write({ id: msg.id, error: { code: -32601, message: "NathApp doesn't handle this request" } });
     } else if (msg.id !== undefined) {
       const call = this.pending.get(msg.id);
       if (!call) return;
@@ -79,7 +79,7 @@ class AppServer {
   }
 
   async initialize() {
-    await this.request("initialize", { clientInfo: { name: "gapp", title: "gApp", version: "0.1.0" }, capabilities: null });
+    await this.request("initialize", { clientInfo: { name: "nathapp", title: "NathApp", version: "0.1.0" }, capabilities: null });
     this.notify("initialized");
   }
 
@@ -229,10 +229,10 @@ export const CodexDriver: ProviderDriver = {
           ...(input.ephemeral ? { ephemeral: true } : {}),
           config: (() => {
             const locked = input.access === "none" ? noTools() : null;
-            const gapp = input.mcp ? { [input.mcp.name]: { url: input.mcp.url, default_tools_approval_mode: "approve" } } : {};
+            const nathapp = input.mcp ? { [input.mcp.name]: { url: input.mcp.url, default_tools_approval_mode: "approve" } } : {};
             return {
               ...locked,
-              mcp_servers: { ...locked?.mcp_servers, ...gapp },
+              mcp_servers: { ...locked?.mcp_servers, ...nathapp },
               sandbox_workspace_write: { network_access: true },
             };
           })(),

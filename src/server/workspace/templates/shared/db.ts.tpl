@@ -1,4 +1,4 @@
-// The app's database: SQLite, in the file gApp provides (DATABASE_PATH).
+// The app's database: SQLite, in the file NathApp provides (DATABASE_PATH).
 import { Database } from "bun:sqlite";
 
 export const db = new Database(process.env.DATABASE_PATH ?? "data.sqlite", { create: true, strict: true });

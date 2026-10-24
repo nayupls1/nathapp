@@ -17,14 +17,14 @@ export interface HubShape {
   readonly publish: (msg: TopicMessage) => Effect.Effect<void>;
   /** Fire-and-forget publish for non-Effect callers (process output handlers). */
   readonly publishUnsafe: (msg: TopicMessage) => void;
-  /** Asks the gApp window to do something (e.g. run JS in a page) and waits for the answer. */
+  /** Asks the NathApp window to do something (e.g. run JS in a page) and waits for the answer. */
   readonly rpc: <T>(method: string, params: unknown, timeoutMs?: number) => Effect.Effect<T, RpcError>;
   /** Serves one WebSocket connection until it closes. */
   readonly serve: (socket: Socket.Socket, options: { renderer: boolean }) => Effect.Effect<void>;
   readonly rendererConnected: Effect.Effect<boolean>;
 }
 
-export class Hub extends Context.Service<Hub, HubShape>()("gapp/Hub") {}
+export class Hub extends Context.Service<Hub, HubShape>()("nathapp/Hub") {}
 
 export const make = Effect.sync((): HubShape => {
   const clients = new Set<Client>();
@@ -74,7 +74,7 @@ export const make = Effect.sync((): HubShape => {
     rpc: <T>(method: string, params: unknown, timeoutMs = 30_000) =>
       Effect.callback<T, RpcError>((resume) => {
         const target = renderer();
-        if (!target) return resume(Effect.fail(new RpcError({ message: "The gApp window is not connected" })));
+        if (!target) return resume(Effect.fail(new RpcError({ message: "The NathApp window is not connected" })));
         const id = ++nextRpcId;
         const timer = setTimeout(() => {
           pending.delete(id);

@@ -156,6 +156,6 @@ export const make = Effect.gen(function* () {
   return repo;
 });
 
-export class Apps extends Context.Service<Apps, OrDie<Effect.Success<typeof make>>>()("gapp/Apps") {}
+export class Apps extends Context.Service<Apps, OrDie<Effect.Success<typeof make>>>()("nathapp/Apps") {}
 
 export const layer = Layer.effect(Apps, Effect.map(make, orDieAll));

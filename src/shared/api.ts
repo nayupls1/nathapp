@@ -7,10 +7,10 @@ export interface HealthResponse {
   dataDir: string;
 }
 
-/** API exposed on `window.gapp` by the preload script. */
-export interface GappBridge {
+/** API exposed on `window.nathapp` by the preload script. */
+export interface NathAppBridge {
   serverUrl: string;
-  /** Sent with every request to the gApp server (and the hub). */
+  /** Sent with every request to the NathApp server (and the hub). */
   token: string;
   versions: {
     electron: string;
@@ -18,7 +18,7 @@ export interface GappBridge {
     node: string;
   };
   web: {
-    /** Session partition of web tabs (separate cookies/storage from gApp itself). */
+    /** Session partition of web tabs (separate cookies/storage from NathApp itself). */
     partition: string;
     /** A page asked to open a link in a new window: open it in a new web tab. */
     onOpenTab: (fn: (url: string) => void) => () => void;
@@ -129,13 +129,13 @@ export interface AppDetail extends AppSummary {
   runtime: RuntimeStatus | null;
 }
 
-/** An app's project: its folder and gapp.json. Null until the agent set one up. */
+/** An app's project: its folder and nathapp.json. Null until the agent set one up. */
 export interface ProjectInfo {
   dir: string;
   manifest: Manifest;
 }
 
-/** gapp.json at the root of an app's project. */
+/** nathapp.json at the root of an app's project. */
 export interface Manifest {
   /** The preset the project started from. */
   preset?: string;
@@ -268,9 +268,9 @@ export interface SecretsOverview {
 
 export const SECRET_NAME_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
-/** Names gApp sets itself (or that would break app processes). */
+/** Names NathApp sets itself (or that would break app processes). */
 export const isReservedSecretName = (name: string) =>
-  /^(GAPP_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
+  /^(NATHAPP_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
   ["PORT", "HOST", "APP_URL", "DATABASE_PATH", "DATABASE_URL", "PATH", "HOME", "TMPDIR", "LANG", "NO_COLOR", "SHELL", "USER"].includes(name);
 
 // --- Permissions and audit log ----------------------------------------------------
@@ -309,7 +309,7 @@ export interface AuditEntry {
   id: number;
   at: string;
   /** Who did it. */
-  actor: "user" | "agent" | "app" | "gapp";
+  actor: "user" | "agent" | "app" | "nathapp";
   /** e.g. "Claude Code (haiku)", the app's name, "You". */
   actorLabel: string;
   /** The tab it happened in, if any. */

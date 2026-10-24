@@ -14,7 +14,7 @@ import { agentEnv, runCommand } from "./process";
 /**
  * Environment for Claude Code. API keys are removed so it always uses the
  * logged-in Claude account, and variables leaked from a parent Claude Code
- * session (e.g. when gApp is started from one) are dropped.
+ * session (e.g. when NathApp is started from one) are dropped.
  */
 export function claudeEnv(extra: Record<string, string> = {}) {
   const env: Record<string, string | undefined> = agentEnv(extra);
@@ -22,8 +22,8 @@ export function claudeEnv(extra: Record<string, string> = {}) {
     if (key === "ANTHROPIC_API_KEY" || key === "ANTHROPIC_AUTH_TOKEN" || key === "CLAUDECODE") delete env[key];
     if (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") delete env[key];
   }
-  env.CLAUDE_AGENT_SDK_CLIENT_APP = "gapp/0.1.0";
-  // Only gApp's own MCP server: no connectors from the user's claude.ai account.
+  env.CLAUDE_AGENT_SDK_CLIENT_APP = "nathapp/0.1.0";
+  // Only NathApp's own MCP server: no connectors from the user's claude.ai account.
   env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
   return env;
 }
@@ -128,7 +128,7 @@ export const ClaudeDriver: ProviderDriver = {
           ? { type: "preset", preset: "claude_code", append: input.instructions }
           : { type: "custom", prompt: input.instructions, snapshot: false },
         resume: input.resume ?? undefined,
-        // The website agent only gets gApp's tools (pages, customizations), AI requests none.
+        // The website agent only gets NathApp's tools (pages, customizations), AI requests none.
         ...(workspace ? {} : { tools: [] }),
         mcpServers: input.mcp ? { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } } : {},
         strictMcpConfig: true, // no MCP servers from the user's own config

@@ -3,4 +3,4 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-process.env.GAPP_DATA_DIR = mkdtempSync(join(tmpdir(), "gapp-test-"));
+process.env.NATHAPP_DATA_DIR = mkdtempSync(join(tmpdir(), "nathapp-test-"));

@@ -1,5 +1,5 @@
-appId: dev.gapp.app
-productName: gApp
+appId: dev.nathapp.app
+productName: NathApp
 directories:
   output: release
 files:
@@ -12,7 +12,7 @@ extraResources:
   - from: dist/server
     to: server
     filter:
-      - gapp-server*
+      - nathapp-server*
       - claude*
       - "!*.map"
 linux:

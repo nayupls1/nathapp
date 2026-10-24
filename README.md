@@ -1,4 +1,4 @@
-# gApp
+# NathApp
 
 Desktop app for building small personal apps by talking to a coding agent, and
 for browsing the web with an agent that can customize sites. Each sidebar tab
@@ -46,7 +46,7 @@ bun run dev
 ```
 src/
   main/              Electron main process: server, window, webview sessions
-  preload/           Exposes `window.gapp` (server URL, API token, web helpers)
+  preload/           Exposes `window.nathapp` (server URL, API token, web helpers)
   renderer/          SolidJS UI (Vite + StyleX)
     components/      Sidebar, app tabs (preview + agent), web tabs, settings, agent picker
     lib/             Store, API client, hub connection, picker scripts
@@ -56,7 +56,7 @@ src/
     Hub.ts           WebSocket hub: pushes agent output, app status, logs; RPC to the renderer
     db/              Host database (tabs, chat, settings, site customizations)
     providers/       Claude, Codex, OpenCode drivers behind one event stream
-    agent/           Agent turns, prompts, gApp's MCP tools
+    agent/           Agent turns, prompts, NathApp's MCP tools
     workspace/       Projects, presets (templates/), sandbox, runtime
   shared/            Types and helpers shared by server and renderer
 scripts/             Bun scripts for dev / build / start / e2e
@@ -65,7 +65,7 @@ tests/               bun:test tests
 
 ### Apps
 
-Every app is a project folder (`<data>/apps/<id>`) with a `gapp.json` that says
+Every app is a project folder (`<data>/apps/<id>`) with a `nathapp.json` that says
 how to run it:
 
 ```json
@@ -75,12 +75,12 @@ how to run it:
 The agent starts from a **preset** (React, vanilla TypeScript, API only; see
 `src/server/workspace/presets.ts`): a Bun fullstack server with a SQLite
 database, a small realtime library (server `publish`, client `subscribe` /
-`useLive`) and `src/tokens.css`, the design tokens generated from your gApp
-theme. It can also write any other stack itself. gApp gives every app:
+`useLive`) and `src/tokens.css`, the design tokens generated from your NathApp
+theme. It can also write any other stack itself. NathApp gives every app:
 
 - `PORT` (a stable port per app on 127.0.0.1), `APP_URL`
-- `DATABASE_PATH` / `DATABASE_URL=file:…` (SQLite inside the project's `.gapp/`)
-- `NODE_ENV` / `GAPP_MODE`: development while editing, production when done
+- `DATABASE_PATH` / `DATABASE_URL=file:…` (SQLite inside the project's `.nathapp/`)
+- `NODE_ENV` / `NATHAPP_MODE`: development while editing, production when done
 
 **Editing** runs the `dev` command (Bun `--hot` with HMR), so the agent's changes
 show up in the preview right away. **Done** runs `build` and then `start` and
@@ -96,35 +96,35 @@ invisible, and the environment is cleared. Settings → Apps can turn it off.
 
 Providers are detected at startup (Settings → Providers shows their status,
 version and models). The picker in the composer chooses provider, model and
-effort per tab. Every provider gets the same instructions and gApp's tools,
+effort per tab. Every provider gets the same instructions and NathApp's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
 `restart_app`, `app_logs`, `run_command`, `set_app_info`, `search_icons`, and the
 page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
 that work on the preview or the web page. File editing is the provider's own.
 
-Auth is always the provider's own login: no API keys (gApp strips
+Auth is always the provider's own login: no API keys (NathApp strips
 `ANTHROPIC_API_KEY` from Claude's environment on purpose).
 
 ### AI in apps
 
-Apps can use AI through gApp, on the user's own subscription, so apps never
+Apps can use AI through NathApp, on the user's own subscription, so apps never
 hold API keys. The presets ship `src/ai.ts` (`ai.chat`, `ai.json`, `ai.stream`);
 other stacks call the HTTP API directly:
 
 ```
-POST $GAPP_AI_URL/chat          Authorization: Bearer $GAPP_AI_TOKEN
+POST $NATHAPP_AI_URL/chat          Authorization: Bearer $NATHAPP_AI_TOKEN
 { "messages": [{ "role": "user", "content": "…" }], "system"?: "…", "json"?: true, "stream"?: true }
 → { "text": "…", "json"?: …, "provider": "claude", "model": "haiku" }
-GET  $GAPP_AI_URL/models        → enabled, model, models, today's usage
+GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
 ```
 
 - **Per-app keys:** every app gets its own random token in its environment (new on each server start, revoked when the app is deleted).
-  - The token only works on `/ai/`, not on the rest of gApp's API.
+  - The token only works on `/ai/`, not on the rest of NathApp's API.
   - Requests carrying an `Origin` header are refused, so only the app's server can ask, never a page in a browser.
 - **No tools:** requests run with the provider's own tools switched off: no files, shell, web or connectors.
   - Claude: `tools: []`, strict MCP config, no claude.ai connectors.
   - Codex: shell, code mode, image viewing, apps and web search turned off, and the user's MCP servers disabled.
-  - OpenCode: every tool asks for permission, and gApp refuses (its free models need the tools to be defined).
+  - OpenCode: every tool asks for permission, and NathApp refuses (its free models need the tools to be defined).
   - Each provider was tested by asking it to read a file. The website agent uses the same mode.
 - **Limits and visibility:** a daily request limit per app, at most two requests per app at a time, and one line per request in the app's logs (sizes and timing, not content).
 - **Settings → AI in apps** turns the feature on or off and picks the model. The default is a fast model (Haiku on Claude).
@@ -151,7 +151,7 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 - an app using a global secret;
 - the website agent customizing a site (per host).
 
-gApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
+NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
 
 The **Activity** page (sidebar) is the audit log: who, what, which tab and when. It records:
 - every agent turn and tool call (arguments summarized, long text only as a size);
@@ -162,7 +162,7 @@ The **Activity** page (sidebar) is the audit log: who, what, which tab and when.
 
 Values are never logged.
 
-Agents' processes don't get gApp's own environment variables (`GAPP_*`). In particular they don't get the API token, so they can't call gApp's API around these checks.
+Agents' processes don't get NathApp's own environment variables (`NATHAPP_*`). In particular they don't get the API token, so they can't call NathApp's API around these checks.
 
 ### Web tabs
 
@@ -184,5 +184,5 @@ separate ports).
   standalone executable (next to the Claude Code binary the SDK drives). It
   doubles as the `bun` apps run on (`BUN_BE_BUN=1`), so users don't need Bun.
 
-Data lives in Electron's userData dir (`~/.config/gApp/data` on Linux), or
+Data lives in Electron's userData dir (`~/.config/NathApp/data` on Linux), or
 `.data/` when running the server standalone.

@@ -1,6 +1,6 @@
 // Presets: starting points for an app's project, picked by the agent. Each is
 // a Bun server (API routes, SQLite, realtime) with or without a frontend; the
-// agent can change anything afterwards, or write its own gapp.json for a
+// agent can change anything afterwards, or write its own nathapp.json for a
 // different stack. Templates are bundled as text (`{{…}}` placeholders).
 import type { Manifest, PresetInfo } from "../../shared/api";
 import apiPackage from "./templates/api/package.json.tpl" with { type: "text" };

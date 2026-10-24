@@ -82,7 +82,7 @@ export const Settings = Schema.Struct({
     autoStart: Schema.Boolean.pipe(withDefault(true)),
     /** Build and switch to the finished app when the agent is done. */
     autoPublish: Schema.Boolean.pipe(withDefault(false)),
-    /** AI for apps: their servers can ask a model through gApp, on the user's own subscription. */
+    /** AI for apps: their servers can ask a model through NathApp, on the user's own subscription. */
     ai: Schema.Struct({
       enabled: Schema.Boolean.pipe(withDefault(true)),
       provider: Schema.Literals(providerIds).pipe(withDefault("claude")),

@@ -101,7 +101,7 @@ function Message(props: { appId: string; message: ChatMessage }) {
 function Markdown(props: { text: string }) {
   return (
     <div {...stylex.attrs(styles.assistant, styles.markdown)}>
-      <div class="gapp-markdown" innerHTML={markdownToHtml(props.text)} />
+      <div class="nathapp-markdown" innerHTML={markdownToHtml(props.text)} />
     </div>
   );
 }

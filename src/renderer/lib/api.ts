@@ -1,4 +1,4 @@
-// The gApp server's HTTP API. Every request carries the token Electron gave
+// The NathApp server's HTTP API. Every request carries the token Electron gave
 // this window; agent output and app status arrive on the hub (realtime.ts).
 import type { Settings } from "../../shared/settings";
 import type {
@@ -23,13 +23,13 @@ import type {
   TabKind,
 } from "../../shared/api";
 
-const url = (path: string) => `${window.gapp.serverUrl}${path}`;
+const url = (path: string) => `${window.nathapp.serverUrl}${path}`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url(path), {
     ...init,
     headers: {
-      Authorization: `Bearer ${window.gapp.token}`,
+      Authorization: `Bearer ${window.nathapp.token}`,
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },

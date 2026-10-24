@@ -30,7 +30,7 @@ export function Sidebar() {
   return (
     <nav {...stylex.attrs(styles.root)}>
       <div {...stylex.attrs(styles.header)}>
-        <span {...stylex.attrs(styles.brand)}>gApp</span>
+        <span {...stylex.attrs(styles.brand)}>NathApp</span>
       </div>
       <Button
         onClick={(e) => {
