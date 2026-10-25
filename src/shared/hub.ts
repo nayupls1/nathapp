@@ -2,7 +2,7 @@
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
-import type { AppSummary, AuditEntry, ChatEvent, HistoryEntry, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "./api";
+import type { AppSummary, AuditEntry, ChatEvent, HistoryEntry, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, ScheduleRun, WorkspaceInfo } from "./api";
 import type { Settings } from "./settings";
 
 export const topics = {
@@ -28,6 +28,8 @@ export const topics = {
   settings: "settings",
   /** Network rules or saved requests changed (refetch). */
   network: "network",
+  /** Schedules changed, runs started and finished. */
+  schedules: "schedules",
 } as const;
 
 export const isValidTopic = (topic: unknown): topic is string =>
@@ -47,6 +49,10 @@ export type ServerMessage =
   | { type: "site"; topic: string; host: string }
   /** Page changes were added, changed or removed (refetch). */
   | { type: "page-changes"; topic: string }
+  /** Schedules were added, changed or removed (refetch). */
+  | { type: "schedules-changed"; topic: string }
+  /** A run started or finished; notify: tell the user (it finished, and the schedule wants that). */
+  | { type: "schedule-run"; topic: string; run: ScheduleRun; notify: boolean }
   | { type: "providers"; topic: string; providers: ProviderStatus[] }
   | { type: "app"; topic: string; app: AppSummary }
   | { type: "app-deleted"; topic: string; appId: string }

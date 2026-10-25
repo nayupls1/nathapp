@@ -71,6 +71,32 @@ const migrate = Effect.gen(function* () {
       updated_at TEXT NOT NULL DEFAULT (${now})
     )`);
 
+  // Schedules and their runs (scheduler/Scheduler.ts).
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS schedules (
+      id          TEXT PRIMARY KEY,
+      spec        TEXT NOT NULL,
+      paused      INTEGER NOT NULL DEFAULT 0,
+      created_by  TEXT NOT NULL,
+      creator_tab TEXT,
+      next_run_at TEXT,
+      created_at  TEXT NOT NULL DEFAULT (${now}),
+      updated_at  TEXT NOT NULL DEFAULT (${now})
+    )`);
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS schedule_runs (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      schedule_id   TEXT NOT NULL,
+      schedule_name TEXT NOT NULL,
+      trigger       TEXT NOT NULL,
+      status        TEXT NOT NULL,
+      started_at    TEXT NOT NULL,
+      finished_at   TEXT,
+      message       TEXT NOT NULL DEFAULT '',
+      output        TEXT
+    )`);
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS schedule_runs_schedule ON schedule_runs (schedule_id, id)");
+
   // Encrypted secrets (see security/Vault.ts): "global" or an app id as scope.
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS secrets (

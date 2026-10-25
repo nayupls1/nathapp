@@ -35,6 +35,13 @@ const actions: Record<string, string> = {
   "history.restore": "Restored an earlier version:",
   "history.undo": "Undid a change:",
   "workspace.delete": "Deleted the workspace",
+  "app.action": "Used",
+  "data.export": "Exported the data of",
+  "data.delete": "Deleted the data of",
+  "data.read": "Read the data of",
+  "schedule.run": "Ran the schedule",
+  "schedule.create": "Created the schedule",
+  "schedule.delete": "Deleted the schedule",
 };
 
 const describe = (action: string) => actions[action] ?? (action.startsWith("tool.") ? `Used ${action.slice(5).replaceAll("_", " ")}` : action);

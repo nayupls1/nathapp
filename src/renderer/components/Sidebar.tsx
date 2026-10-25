@@ -15,6 +15,7 @@ import {
   selectedId,
   SETTINGS_VIEW,
   ACTIVITY_VIEW,
+  SCHEDULES_VIEW,
   HISTORY_VIEW,
   showWorkspace,
   states,
@@ -58,6 +59,7 @@ export function Sidebar() {
       </ul>
       <div {...stylex.attrs(styles.footer)}>
         <PageLink id={HISTORY_VIEW} icon="file-clock" label="History" />
+        <PageLink id={SCHEDULES_VIEW} icon="calendar-clock" label="Schedules" />
         <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>

@@ -34,6 +34,7 @@ import { Apps } from "./db/Apps";
 import { Network } from "./db/Network";
 import { Settings } from "./db/Settings";
 import { PageChanges, pageChangeError } from "./db/PageChanges";
+import { ScheduleError, Scheduler } from "./scheduler/Scheduler";
 import { Sites } from "./db/Sites";
 import { Workspaces } from "./db/Workspaces";
 import { History, type By } from "./history/History";
@@ -266,6 +267,7 @@ const removeApp = (id: string) =>
     yield* secrets.removeScope(id);
     yield* permissions.forget(id);
     yield* (yield* History).forget(appTarget(id));
+    yield* (yield* Scheduler).forgetApp(id);
     yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
   });
 
@@ -667,6 +669,110 @@ const pageChangeRoutes = HttpRouter.addAll([
   ),
 ]);
 
+// --- Schedules -----------------------------------------------------------------------------
+
+export const ScheduleBody = Schema.Struct({
+  name: str(100),
+  trigger: Schema.Union([
+    Schema.Struct({ type: Schema.Literal("once"), at: str(40) }),
+    Schema.Struct({ type: Schema.Literal("cron"), cron: str(100) }),
+    Schema.Struct({ type: Schema.Literal("event"), event: str(200) }),
+  ]),
+  task: Schema.Union([
+    Schema.Struct({
+      type: Schema.Literal("tool"),
+      appId: str(64),
+      tool: str(80),
+      params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+      input: Schema.optionalKey(str(4000)),
+    }),
+    Schema.Struct({ type: Schema.Literal("command"), appId: str(64), command: str(2000) }),
+  ]),
+  notify: Schema.Literals(["always", "failure", "never"]),
+  timeoutSec: Schema.Finite,
+});
+
+const scheduleFail = <A, R>(effect: Effect.Effect<A, ScheduleError, R>) => effect.pipe(Effect.catchTag("ScheduleError", (e) => fail(e.status, e.message)));
+
+const scheduleRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/schedules",
+    Effect.gen(function* () {
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+      return json(yield* (yield* Scheduler).list({ workspaceId: params.get("workspace") ?? undefined, appId: params.get("app") ?? undefined }));
+    }),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/schedules/runs",
+    Effect.gen(function* () {
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+      return json(
+        yield* (yield* Scheduler).runs({
+          scheduleId: params.get("schedule") ?? undefined,
+          workspaceId: params.get("workspace") ?? undefined,
+          before: Number(params.get("before")) || undefined,
+          limit: Number(params.get("limit")) || undefined,
+        }),
+      );
+    }),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/schedules/upcoming",
+    Effect.gen(function* () {
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+      return json(yield* (yield* Scheduler).upcoming({ workspaceId: params.get("workspace") ?? undefined, limit: Number(params.get("limit")) || undefined }));
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/schedules",
+    handle(
+      Effect.gen(function* () {
+        const spec = yield* decodeBody(ScheduleBody);
+        const schedule = yield* scheduleFail((yield* Scheduler).create(spec, { by: "user" }));
+        yield* youDid(spec.task.appId, "schedule.create", schedule.name);
+        return json(schedule);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "PATCH",
+    "/api/schedules/:id",
+    handle(
+      Effect.gen(function* () {
+        const { spec, paused } = yield* decodeBody(Schema.Struct({ spec: Schema.optionalKey(ScheduleBody), paused: Schema.optionalKey(Schema.Boolean) }));
+        return json(yield* scheduleFail((yield* Scheduler).update(yield* param("id"), { spec, paused })));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/schedules/:id",
+    handle(
+      Effect.gen(function* () {
+        const scheduler = yield* Scheduler;
+        const schedule = yield* scheduler.get(yield* param("id"));
+        if (!schedule) return yield* fail(404, "Not found");
+        yield* scheduler.remove(schedule.id);
+        yield* youDid(schedule.task.appId, "schedule.delete", schedule.name);
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/schedules/:id/run",
+    handle(
+      Effect.gen(function* () {
+        return json(yield* scheduleFail((yield* Scheduler).runNow(yield* param("id"))));
+      }),
+    ),
+  ),
+]);
+
 // --- AI for apps ------------------------------------------------------------------------
 
 /** The app making an AI request: from its token, and only from its server (never a browser). */
@@ -888,6 +994,20 @@ const mayRead = (app: { id: string; name: string; workspaceId: string }, targetI
   });
 
 const appApiRoutes = HttpRouter.addAll([
+  // An app tells NathApp something happened ("app:<id>:<name>"); schedules waiting for it run.
+  HttpRouter.route(
+    "POST",
+    "/app-api/v1/events",
+    handle(
+      Effect.gen(function* () {
+        const app = yield* apiApp;
+        const { name } = yield* decodeBody(Schema.Struct({ name: str(64) }));
+        if (!/^[\w.-]+$/.test(name)) return yield* fail(400, "Event names are letters, digits, _ . and -");
+        yield* (yield* Scheduler).emit(`app:${app.id}:${name}`);
+        return json({ event: `app:${app.id}:${name}` });
+      }),
+    ),
+  ),
   // Every tool of the apps in this app's workspace (calls to other apps' need the user's OK).
   HttpRouter.route(
     "GET",
@@ -1281,7 +1401,7 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool"] as const satisfies readonly PermissionAction[];
+const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool", "agent.schedule"] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(
@@ -1553,7 +1673,7 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

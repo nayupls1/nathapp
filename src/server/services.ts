@@ -16,6 +16,7 @@ import * as Workspaces from "./db/Workspaces";
 import * as History from "./history/History";
 import * as Hub from "./Hub";
 import * as Providers from "./providers/Providers";
+import * as Scheduler from "./scheduler/Scheduler";
 import * as Audit from "./security/Audit";
 import * as Permissions from "./security/Permissions";
 import * as Secrets from "./security/Secrets";
@@ -28,7 +29,8 @@ import * as Workspace from "./workspace/Workspace";
 
 /** Everything but the agents: storage, security, projects, the runtime and history (enough for most tests). */
 export const core = (config: ServerConfigShape) =>
-  Layer.mergeAll(History.layer, AppTools.layer).pipe(
+  Scheduler.layer.pipe(
+    Layer.provideMerge(Layer.mergeAll(History.layer, AppTools.layer)),
     Layer.provideMerge(Runtime.layer),
     Layer.provideMerge(AppData.layer),
     Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),

@@ -7,14 +7,16 @@ import { ConfirmHost } from "./components/ConfirmDialog";
 import { ExtensionImportHost } from "./components/ExtensionImport";
 import { HistoryPage } from "./components/History";
 import { PermissionHost } from "./components/PermissionHost";
+import { SchedulesPage } from "./components/SchedulesPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
+import "./lib/schedules";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
-import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, selectApp, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
+import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, SCHEDULES_VIEW, selectApp, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -71,6 +73,9 @@ export default function App() {
             </Match>
             <Match when={selectedId() === HISTORY_VIEW}>
               <HistoryPage />
+            </Match>
+            <Match when={selectedId() === SCHEDULES_VIEW}>
+              <SchedulesPage />
             </Match>
             <Match when={openTabs().some((t) => t.id === selectedId())}>{null}</Match>
           </Switch>

@@ -87,7 +87,7 @@ function createWindow(server: ServerHandle) {
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
-      additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`, ...(safeMode ? ["--nathapp-safe-mode=1"] : [])],
+      additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`, ...(safeMode ? ["--nathapp-safe-mode=1"] : []), ...(process.env.NATHAPP_OFFSCREEN === "1" ? ["--nathapp-offscreen=1"] : [])],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,

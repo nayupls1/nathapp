@@ -12,13 +12,15 @@ import { isIcon, searchIcons } from "../icons";
 import { presets } from "../workspace/presets";
 import { AppData } from "../workspace/AppData";
 import { AppTools } from "../workspace/AppTools";
+import { Scheduler } from "../scheduler/Scheduler";
+import { DEFAULT_TIMEOUT_SEC, describeTrigger, scheduleProblem } from "../../shared/schedule";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
 import { topics } from "../../shared/hub";
-import { isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type LogLine, type RuntimeStatus } from "../../shared/api";
+import { isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type Schedule, type ScheduleSpec, type ScheduleTask, type ScheduleTrigger, type LogLine, type RuntimeStatus } from "../../shared/api";
 
 const transpiler = new Bun.Transpiler({ loader: "js" });
 
@@ -368,6 +370,134 @@ export const registryTools = Effect.fn(function* (env: ToolEnv) {
           const body = `${result.ok ? "" : `Failed (${result.status}): `}${result.message}${data ? `\n${data.length > 20_000 ? `${data.slice(0, 20_000)}…` : data}` : ""}`;
           return result.ok ? body : text(body, true);
         }).pipe(Effect.catchTag("AppToolError", (e) => Effect.succeed(text(e.message, true)))),
+    ),
+  ];
+});
+
+// --- Schedules -------------------------------------------------------------------------
+
+const TriggerArgs = {
+  at: Schema.optionalKey(Schema.String.annotate({ description: "Run once at this time (ISO 8601, e.g. 2026-11-02T08:00:00+01:00)" })),
+  cron: Schema.optionalKey(Schema.String.annotate({ description: 'Or repeat: a cron expression in local time, e.g. "0 8 * * 1-5" (at most every 5 minutes)' })),
+  event: Schema.optionalKey(
+    Schema.String.annotate({ description: 'Or on an event: "nathapp.started", "app.started", "app.crashed" (this app), or a name the app sends to $NATHAPP_API_URL/events' }),
+  ),
+};
+
+/** The app agent's schedules: background runs of this app's tools or commands. */
+export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
+  const scheduler = yield* Scheduler;
+  const permissions = yield* Permissions;
+  const apps = yield* Apps;
+  const appId = env.tabId;
+
+  const triggerOf = (args: { at?: string; cron?: string; event?: string }): ScheduleTrigger | string => {
+    const given = [args.at, args.cron, args.event].filter((v) => v !== undefined);
+    if (given.length !== 1) return "Give exactly one of at, cron or event.";
+    if (args.at) return { type: "once", at: new Date(args.at).toISOString() };
+    if (args.cron) return { type: "cron", cron: args.cron };
+    const e = args.event!;
+    return { type: "event", event: e === "nathapp.started" ? e : e === "app.started" || e === "app.crashed" ? `${e}:${appId}` : `app:${appId}:${e}` };
+  };
+  const allowed = Effect.gen(function* () {
+    const app = yield* apps.get(appId);
+    return yield* permissions.ask({
+      subject: appId,
+      action: "agent.schedule",
+      resource: appId,
+      title: `Let the agent in "${app?.name ?? "this app"}" run things on a schedule?`,
+      detail: "It wants to run the app's tools or commands in the background, also when no tab is open. You see every schedule and run in Schedules, and can pause or delete them.",
+      timeoutMs: 120_000,
+    });
+  });
+  const describe = (s: Schedule) =>
+    `- ${s.id}: ${s.name}${s.paused ? " [paused]" : ""} — ${describeTrigger(s.trigger)} — ${s.task.type === "tool" ? `tool ${s.task.tool}` : `command: ${s.task.command}`}${
+      s.nextRunAt ? `; next ${s.nextRunAt}` : ""
+    }${s.lastRun ? `; last run ${s.lastRun.status}: ${s.lastRun.message}` : ""}`;
+
+  return [
+    tool("list_schedules", "This app's schedules (background runs), with their next and last runs.", NoArgs, () =>
+      scheduler.list({ appId }).pipe(Effect.map((list) => (list.length ? list.map(describe).join("\n") : "No schedules yet."))),
+    ),
+
+    tool(
+      "create_schedule",
+      "Run one of this app's tools (see list_app_tools; params as for use_app_tool) or a command in its sandbox in the background: once, repeating, or on an event. It runs without a tab open; the user sees it in Schedules and can pause or delete it. Commands don't get the app's secrets; use a tool (an action in nathapp.json) for work that needs them.",
+      Schema.Struct({
+        name: Schema.String.annotate({ description: "Short, for the user, e.g. 'Fetch new articles'" }),
+        ...TriggerArgs,
+        tool: Schema.optionalKey(Schema.String),
+        params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+        command: Schema.optionalKey(Schema.String),
+        notify: Schema.optionalKey(Schema.Literals(["always", "failure", "never"])),
+        timeoutSec: Schema.optionalKey(Schema.Finite),
+      }),
+      ({ name, at, cron, event, tool: toolId, params, command, notify, timeoutSec }) =>
+        Effect.gen(function* () {
+          const trigger = triggerOf({ at, cron, event });
+          if (typeof trigger === "string") return text(trigger, true);
+          if (!toolId === !command) return text("Give either tool or command.", true);
+          const task: ScheduleTask = toolId ? { type: "tool", appId, tool: toolId, ...(params ? { params } : {}) } : { type: "command", appId, command: command! };
+          const spec: ScheduleSpec = { name, trigger, task, notify: notify ?? "failure", timeoutSec: Math.round(timeoutSec ?? DEFAULT_TIMEOUT_SEC) };
+          const problem = scheduleProblem(spec);
+          if (problem) return text(problem, true);
+          if (!(yield* allowed)) return text("The user didn't allow schedules for this app. Tell them what you would have scheduled.", true);
+          const schedule = yield* scheduler.create(spec, { by: "agent", tabId: appId });
+          yield* env.log(`Scheduled “${schedule.name}” (${describeTrigger(schedule.trigger)})`);
+          return `Created:\n${describe(schedule)}`;
+        }).pipe(Effect.catchTag("ScheduleError", (e) => Effect.succeed(text(e.message, true)))),
+    ),
+
+    tool(
+      "update_schedule",
+      "Change one of this app's schedules: pause or resume it, rename it, or give it a new time (at, cron or event).",
+      Schema.Struct({ id: Schema.String, paused: Schema.optionalKey(Schema.Boolean), name: Schema.optionalKey(Schema.String), ...TriggerArgs }),
+      ({ id, paused, name, at, cron, event }) =>
+        Effect.gen(function* () {
+          const current = yield* scheduler.get(id);
+          if (!current || current.task.appId !== appId) return text(`No schedule ${id} for this app.`, true);
+          const timing = at !== undefined || cron !== undefined || event !== undefined;
+          const trigger = timing ? triggerOf({ at, cron, event }) : current.trigger;
+          if (typeof trigger === "string") return text(trigger, true);
+          const spec: ScheduleSpec | undefined =
+            timing || name ? { name: name ?? current.name, trigger, task: current.task, notify: current.notify, timeoutSec: current.timeoutSec } : undefined;
+          if (spec && !(yield* allowed)) return text("The user didn't allow schedules for this app.", true);
+          const saved = yield* scheduler.update(id, { spec, paused });
+          return `Updated:\n${describe(saved)}`;
+        }).pipe(Effect.catchTag("ScheduleError", (e) => Effect.succeed(text(e.message, true)))),
+    ),
+
+    tool("delete_schedule", "Delete one of this app's schedules.", Schema.Struct({ id: Schema.String }), ({ id }) =>
+      Effect.gen(function* () {
+        const current = yield* scheduler.get(id);
+        if (!current || current.task.appId !== appId) return text(`No schedule ${id} for this app.`, true);
+        yield* scheduler.remove(id);
+        yield* env.log(`Deleted the schedule “${current.name}”`);
+        return `Deleted ${id}.`;
+      }),
+    ),
+
+    tool(
+      "run_schedule",
+      "Run one of this app's schedules now and wait for the result (to test it).",
+      Schema.Struct({ id: Schema.String }),
+      ({ id }) =>
+        Effect.gen(function* () {
+          const current = yield* scheduler.get(id);
+          if (!current || current.task.appId !== appId) return text(`No schedule ${id} for this app.`, true);
+          const run = yield* scheduler.runNow(id);
+          if (run.status !== "running") return text(`${run.status}: ${run.message}`, true);
+          // Waits for it (within the schedule's timeout).
+          for (let i = 0; i < current.timeoutSec * 2 + 10; i++) {
+            yield* Effect.sleep("500 millis");
+            const done = (yield* scheduler.runs({ scheduleId: id, limit: 5 })).find((r) => r.id === run.id);
+            if (done && done.status !== "running") {
+              const body = `${done.status}: ${done.message}${done.output ? `\n${done.output.slice(-8000)}` : ""}`;
+              return done.status === "ok" ? body : text(body, true);
+            }
+          }
+          return text("Still running; check list_schedules later.", true);
+        }).pipe(Effect.catchTag("ScheduleError", (e) => Effect.succeed(text(e.message, true)))),
     ),
   ];
 });

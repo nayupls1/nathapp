@@ -357,6 +357,40 @@ try {
     return `${tools.length} tools`;
   });
 
+  await check("schedules: created on the page, run now, paused, deleted", async () => {
+    const choose = (selector: string, value: string) =>
+      page!.eval(`(() => {
+        const select = document.querySelector(${JSON.stringify(selector)});
+        select.value = ${JSON.stringify(value)};
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        return true;
+      })()`);
+    await click("nav button", "Schedules");
+    await page!.waitFor(`!!document.querySelector("[data-schedules]")`, { label: "schedules page" });
+    await click("[data-new-schedule]");
+    await page!.waitFor(`!!document.querySelector("[data-schedule-editor]")`, { label: "editor" });
+    await type("[data-schedule-name]", "Say hello");
+    await choose("[data-schedule-app]", appId);
+    await choose("[data-schedule-task]", "command");
+    await page!.waitFor(`!!document.querySelector("[data-schedule-command]")`, { label: "command field" });
+    await type("[data-schedule-command]", "echo scheduled in $NATHAPP_MODE");
+    await click("[data-save-schedule]");
+    const row = "[data-schedules] [data-schedule]";
+    await page!.waitFor(`!!document.querySelector('${row}') && !document.querySelector("[data-schedule-editor]")`, { label: "schedule listed" });
+    await click(`${row} [data-run-schedule]`);
+    await page!.waitFor(`!!document.querySelector('[data-past-runs] [data-run-status="ok"]')`, { label: "run finished", timeoutMs: 20_000 });
+    await click(`[data-past-runs] [data-run-status="ok"] button`);
+    await page!.waitFor(`document.querySelector("[data-past-runs]").innerText.includes("scheduled in")`, { label: "output" });
+    await click(`${row} [data-pause-schedule]`);
+    await page!.waitFor(`document.querySelector('${row}')?.dataset.paused === "yes"`, { label: "paused" });
+    await shot("schedules.png");
+    await click(`${row} [data-delete-schedule]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    await page!.waitFor(`!document.querySelector('${row}')`, { label: "deleted" });
+    await click(`nav li[data-app-id="${appId}"]`);
+  });
+
   await check("secrets: added in the app tab, never shown again", async () => {
     const value = "e2e-secret-value-4711";
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app running" });

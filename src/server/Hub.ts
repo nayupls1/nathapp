@@ -22,6 +22,8 @@ export interface HubShape {
   /** Serves one WebSocket connection until it closes. */
   readonly serve: (socket: Socket.Socket, options: { renderer: boolean }) => Effect.Effect<void>;
   readonly rendererConnected: Effect.Effect<boolean>;
+  /** Server-side listeners get every published message (the scheduler reacts to apps starting). Returns a remover. */
+  readonly listen: (fn: (msg: TopicMessage) => void) => () => void;
 }
 
 export class Hub extends Context.Service<Hub, HubShape>()("nathapp/Hub") {}
@@ -31,9 +33,17 @@ export const make = Effect.sync((): HubShape => {
   const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   let nextRpcId = 0;
 
+  const listeners = new Set<(msg: TopicMessage) => void>();
   const publishUnsafe = (msg: TopicMessage) => {
     const text = JSON.stringify(msg);
     for (const client of clients) if (client.topics.has(msg.topic)) client.send(text);
+    for (const fn of listeners) {
+      try {
+        fn(msg);
+      } catch (err) {
+        console.error("hub listener failed:", err);
+      }
+    }
   };
 
   const renderer = () => [...clients].reverse().find((c) => c.renderer);
@@ -70,6 +80,10 @@ export const make = Effect.sync((): HubShape => {
     publish: (msg) => Effect.sync(() => publishUnsafe(msg)),
     publishUnsafe,
     rendererConnected: Effect.sync(() => !!renderer()),
+    listen: (fn) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
 
     rpc: <T>(method: string, params: unknown, timeoutMs = 30_000) =>
       Effect.callback<T, RpcError>((resume) => {

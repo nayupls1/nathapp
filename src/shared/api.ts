@@ -30,6 +30,8 @@ export interface NathAppBridge {
    * customizations are off, so a change that broke the UI can be undone.
    */
   safeMode: boolean;
+  /** Rendered offscreen (e2e): nothing may show up on the user's screen, notifications included. */
+  offscreen: boolean;
   /** Restarts NathApp, in safe mode or normally. */
   relaunch: (safeMode: boolean) => void;
   versions: {
@@ -496,6 +498,59 @@ export interface PageChange extends PageChangeSpec {
   updatedAt: string;
 }
 
+// --- Schedules --------------------------------------------------------------------
+
+/**
+ * When a schedule runs: once at a time, on a cron expression (local time),
+ * or on an event: "nathapp.started", "app.started:<appId>",
+ * "app.crashed:<appId>", or one an app sends ("app:<appId>:<name>").
+ */
+export type ScheduleTrigger = { type: "once"; at: string } | { type: "cron"; cron: string } | { type: "event"; event: string };
+
+/** What a schedule does: use one of an app's tools, or run a command in its sandbox. */
+export type ScheduleTask =
+  | { type: "tool"; appId: string; tool: string; params?: Record<string, unknown>; input?: string }
+  | { type: "command"; appId: string; command: string };
+
+export interface ScheduleSpec {
+  name: string;
+  trigger: ScheduleTrigger;
+  task: ScheduleTask;
+  /** When to tell the user about a finished run. */
+  notify: "always" | "failure" | "never";
+  /** A run is stopped after this long. */
+  timeoutSec: number;
+}
+
+export interface Schedule extends ScheduleSpec {
+  id: string;
+  /** The task's app's workspace. */
+  workspaceId: string;
+  paused: boolean;
+  createdBy: "user" | "agent";
+  /** The next time it runs (null: paused, an event, or a one-off that ran). */
+  nextRunAt: string | null;
+  running: boolean;
+  lastRun: ScheduleRun | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduleRun {
+  id: number;
+  scheduleId: string;
+  scheduleName: string;
+  /** What started it. */
+  trigger: "time" | "event" | "manual";
+  status: "running" | "ok" | "error" | "timeout" | "skipped";
+  startedAt: string;
+  finishedAt: string | null;
+  /** What happened, short. */
+  message: string;
+  /** The tool's result or the command's output (the end of it). */
+  output: string | null;
+}
+
 // --- Secrets ----------------------------------------------------------------------
 
 /** "global", "workspace:<id>" (shared by the workspace's apps), or the id of the app tab the secret belongs to. */
@@ -649,7 +704,7 @@ export interface NetworkRule {
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule";
 
 export interface PermissionGrant {
   id: number;

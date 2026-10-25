@@ -514,7 +514,9 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
           ? `Read the data of ${appById(g.resource)?.name ?? "a deleted app"}`
           : g.action === "app.tool"
             ? toolLabel(g.resource)
-            : `Customize ${g.resource}`;
+            : g.action === "agent.schedule"
+              ? "Run things on a schedule"
+              : `Customize ${g.resource}`;
 
 /** "<app id>/<tool id>" as "Use add-expense in Budget". */
 const toolLabel = (resource: string) => {

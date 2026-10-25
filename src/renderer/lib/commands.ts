@@ -10,6 +10,7 @@ import { api } from "./api";
 import { settings, updateSettings } from "./settings";
 import {
   ACTIVITY_VIEW,
+  SCHEDULES_VIEW,
   apps,
   clearChat,
   createWorkspace,
@@ -310,6 +311,7 @@ function nathappCommands(): Command[] {
     { id: "new.web", title: "New web tab", subtitle: "Ctrl+T", icon: "globe", group: "NathApp", keywords: "browser", run: () => newWebTab() },
     { id: "new.workspace", title: "New workspace", icon: "layers", group: "NathApp", input: "Name", run: (name) => name?.trim() && createWorkspace(name.trim()) },
     { id: "open.history", title: "Open History", icon: "history", group: "NathApp", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
+    { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "NathApp", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
     { id: "open.activity", title: "Open Activity", icon: "activity", group: "NathApp", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },
     { id: "open.settings", title: "Open Settings", icon: "settings", group: "NathApp", keywords: "preferences", run: () => selectApp(SETTINGS_VIEW) },
     {

@@ -20,13 +20,14 @@ import { Providers } from "../providers/Providers";
 import { AppData } from "../workspace/AppData";
 import { AppTools } from "../workspace/AppTools";
 import { PageChanges } from "../db/PageChanges";
+import { Scheduler } from "../scheduler/Scheduler";
 import { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
 import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { networkTools } from "./networkTools";
-import { appTools, pageTools, registryTools, siteTools, type ToolEnv } from "./tools";
+import { appTools, pageTools, registryTools, scheduleTools, siteTools, type ToolEnv } from "./tools";
 
 /** Tool arguments for the audit log: short values as they are, long ones by size. */
 export function summarizeArgs(args: unknown): string | null {
@@ -70,7 +71,7 @@ export const make = Effect.gen(function* () {
   const audit = yield* Audit;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
@@ -137,6 +138,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(appTools(env), context)),
             ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
+            ...(yield* Effect.provide(scheduleTools(env), context)),
           ];
       const mcpUrl = yield* mcp.register(tools.map((t) => audited(t, appId, actorLabel)));
       // Snapshots around the turn: what changed before it (the user, the app's data), and what the agent changed.

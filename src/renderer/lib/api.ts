@@ -33,6 +33,9 @@ import type {
   RuntimeStatus,
   SavedRequest,
   SiteOverride,
+  Schedule,
+  ScheduleRun,
+  ScheduleSpec,
   PageChange,
   PageChangeSpec,
   TabKind,
@@ -167,6 +170,18 @@ export const api = {
   saveSite: (host: string, fields: Partial<Pick<SiteOverride, "css" | "js" | "enabled">>) =>
     request<SiteOverride>(`/api/sites/${encodeURIComponent(host)}`, { method: "PUT", body: JSON.stringify(fields) }),
   deleteSite: (host: string) => request<void>(`/api/sites/${encodeURIComponent(host)}`, { method: "DELETE" }),
+  schedules: (workspace?: string) => request<Schedule[]>(`/api/schedules${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
+  scheduleRuns: (filter: { schedule?: string; workspace?: string; before?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    return request<ScheduleRun[]>(`/api/schedules/runs${params.size ? `?${params}` : ""}`);
+  },
+  upcomingRuns: (workspace?: string) =>
+    request<{ scheduleId: string; name: string; at: string }[]>(`/api/schedules/upcoming${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
+  createSchedule: (spec: ScheduleSpec) => post<Schedule>("/api/schedules", spec),
+  updateSchedule: (id: string, fields: { spec?: ScheduleSpec; paused?: boolean }) =>
+    request<Schedule>(`/api/schedules/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(fields) }),
+  deleteSchedule: (id: string) => request<void>(`/api/schedules/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  runSchedule: (id: string) => post<ScheduleRun>(`/api/schedules/${encodeURIComponent(id)}/run`, {}),
   pageChanges: () => request<PageChange[]>("/api/page-changes"),
   addPageChange: (spec: PageChangeSpec) => post<PageChange>("/api/page-changes", spec),
   updatePageChange: (id: string, fields: { enabled?: boolean; change?: PageChangeSpec }) =>

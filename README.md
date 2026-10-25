@@ -134,7 +134,7 @@ Providers are detected at startup (Settings → Providers shows their status,
 version and models). The picker in the composer chooses provider, model and
 effort per tab. Every provider gets the same instructions and NathApp's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
-`restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, `set_app_info`, `search_icons`, and the
+`restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, the schedule tools, `set_app_info`, `search_icons`, and the
 page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
 that work on the preview or the web page. File editing is the provider's own.
 
@@ -215,6 +215,23 @@ Every call goes through NathApp, the hub between apps:
 
 Data tools write the app's database directly: the app sees the change on its next read, but open windows aren't told (no realtime publish), and the app's own rules are skipped. Apps with rules worth keeping should replace those tools with actions or set `"dataTools": "read"`.
 
+### Schedules
+
+Schedules run apps' tools and commands in the background, without a tab open (`scheduler/Scheduler.ts`). The Schedules page (sidebar) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
+- **What:** one of an app's tools from the registry, with params; the call goes through the registry's permissions and audit log, as the user (or as the agent that made it). Or a command in the app's sandbox, without its secrets, like `run_command`.
+- **When:**
+  - once at a time;
+  - a cron expression in local time (`0 8 * * 1-5`);
+  - an event: NathApp started, an app started or crashed, or one an app sends itself with `POST $NATHAPP_API_URL/events {"name": "new-order"}`.
+- **Who:** you on the page, or an app's agent (`create_schedule`, `update_schedule`, `delete_schedule`, `run_schedule`, `list_schedules`) for its own app, after you allow it once per app (`agent.schedule`).
+- **Limits:**
+  - recurring schedules run at most every 5 minutes, and at most two runs happen at once (the rest wait);
+  - a schedule never overlaps itself (the extra run is recorded as skipped), and every run has a time limit (5 s to 30 min, 5 min by default);
+  - event runs happen at most every 30 s per schedule;
+  - output is capped at 20 kB, and the last 50 runs per schedule are kept.
+- **Missed runs:** a run missed while NathApp wasn't running happens once when it starts. Runs that were going when it stopped are marked as failed.
+- **Notifications:** a notice when a run fails (or after every run, per schedule), and a system notification when NathApp isn't focused. Every run is in Activity.
+
 ### Secrets
 
 Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab), to a workspace (Settings → Workspace, for all its apps) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.
@@ -238,6 +255,7 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 - an app using a global secret;
 - an app reading another app's data;
 - an app (or its agent) using another app's tools;
+- an app's agent creating schedules (once per app);
 - the website agent customizing a site or changing pages (per host or pattern).
 
 NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
