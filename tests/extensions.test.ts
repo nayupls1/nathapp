@@ -224,8 +224,8 @@ describe("network rules as DNR rules", () => {
     ];
     const dnr = networkRulesToDnr(rules, "ws");
     expect(dnr.map((r) => [r.id, r.priority, r.action.type, r.condition.urlFilter])).toEqual([
-      [1, 2, "block", "ads.example"],
-      [2, 1, "modifyHeaders", "api.example"],
+      [1, 3, "block", "ads.example"],
+      [2, 2, "modifyHeaders", "api.example"],
     ]);
     expect(dnr[1]!.action).toEqual({
       type: "modifyHeaders",
@@ -235,6 +235,19 @@ describe("network rules as DNR rules", () => {
       ],
     });
     expect(dnr[0]!.condition.resourceTypes).toContain("main_frame");
+  });
+
+  test("Google's sign-in gets the user agent that names Electron, below the rules", () => {
+    const ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Electron/44.0.0 Safari/537.36";
+    const dnr = networkRulesToDnr([rule({ pattern: "ads.example" })], "ws", ua);
+    expect(dnr).toHaveLength(2);
+    const signIn = dnr[1]!;
+    expect(signIn.id).toBe(2);
+    expect(signIn.condition.requestDomains).toEqual(["accounts.google.com"]);
+    expect(signIn.condition.resourceTypes).toContain("main_frame");
+    expect(signIn.condition.resourceTypes).toContain("xmlhttprequest");
+    expect(signIn.action).toEqual({ type: "modifyHeaders", requestHeaders: [{ header: "User-Agent", operation: "set", value: ua }] });
+    expect(signIn.priority).toBeLessThan(dnr[0]!.priority);
   });
 });
 

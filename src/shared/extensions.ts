@@ -424,7 +424,7 @@ export interface DnrRule {
         requestHeaders?: { header: string; operation: "set" | "remove"; value?: string }[];
         responseHeaders?: { header: string; operation: "set" | "remove"; value?: string }[];
       };
-  condition: { urlFilter?: string; regexFilter?: string; resourceTypes: string[]; isUrlFilterCaseSensitive: false };
+  condition: { urlFilter?: string; regexFilter?: string; requestDomains?: string[]; resourceTypes: string[]; isUrlFilterCaseSensitive: false };
 }
 
 const headerOps = (headers: Record<string, string | null>) =>
@@ -445,8 +445,12 @@ export function patternCondition(pattern: string): { urlFilter: string } | { reg
   return { regexFilter: whole ? `^${body}$` : body };
 }
 
-/** The workspace's enabled rules as DNR session rules (block wins over header changes). */
-export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: string): DnrRule[] {
+/**
+ * The workspace's enabled rules as DNR session rules (block wins over header
+ * changes), and Google's sign-in user agent (see `signInRule`), which the
+ * rules can override.
+ */
+export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: string, signInUserAgent?: string): DnrRule[] {
   const out: DnrRule[] = [];
   for (const rule of rules) {
     if (!rule.enabled || (rule.workspaceId !== null && rule.workspaceId !== workspaceId)) continue;
@@ -454,7 +458,7 @@ export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: st
     if (!condition) continue;
     const base = { id: out.length + 1, condition: { ...condition, resourceTypes: [...ALL_RESOURCE_TYPES], isUrlFilterCaseSensitive: false as const } };
     if (rule.action === "block") {
-      out.push({ ...base, priority: 2, action: { type: "block" } });
+      out.push({ ...base, priority: 3, action: { type: "block" } });
       continue;
     }
     const requestHeaders = headerOps(rule.requestHeaders);
@@ -462,7 +466,7 @@ export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: st
     if (!requestHeaders.length && !responseHeaders.length) continue;
     out.push({
       ...base,
-      priority: 1,
+      priority: 2,
       action: {
         type: "modifyHeaders",
         ...(requestHeaders.length ? { requestHeaders } : {}),
@@ -470,7 +474,23 @@ export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: st
       },
     });
   }
+  if (signInUserAgent) out.push(signInRule(out.length + 1, signInUserAgent));
   return out;
+}
+
+/**
+ * Web tabs say they're plain Chrome (some sites turn away other browsers), but
+ * Google's sign-in tells that it's not Chrome and refuses it as "This browser
+ * or app may not be secure". It accepts Electron when it's named, so its
+ * pages and requests get the user agent with Electron in it.
+ */
+export function signInRule(id: number, userAgent: string): DnrRule {
+  return {
+    id,
+    priority: 1,
+    action: { type: "modifyHeaders", requestHeaders: [{ header: "User-Agent", operation: "set", value: userAgent }] },
+    condition: { requestDomains: ["accounts.google.com"], resourceTypes: [...ALL_RESOURCE_TYPES], isUrlFilterCaseSensitive: false },
+  };
 }
 
 // --- Chrome's profile data ----------------------------------------------------------------------

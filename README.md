@@ -219,6 +219,8 @@ Web tabs are `<webview>`s in their workspace's session, separate from NathApp's 
 open page and saves site customizations (CSS/JS per hostname) that apply on
 every visit. It gets only the page tools, no files or shell.
 
+Web tabs say they're plain Chrome, because some sites turn away other browsers. Google's sign-in can tell that NathApp isn't Chrome, though, and refuses a browser that claims to be ("This browser or app may not be secure"). It accepts Electron when the user agent names it. So requests to `accounts.google.com` get Electron's own user agent, through the built-in extension that applies the network rules (`signInRule` in `src/shared/extensions.ts`).
+
 ### Network
 
 Every web tab's traffic is recorded in Electron's main process over the DevTools protocol (`src/main/network.ts`). The network button in the toolbar opens the Network panel: requests with their headers and the data they returned, filterable, data (fetch/XHR, JSON, XML, forms) by default.

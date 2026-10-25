@@ -155,7 +155,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     openPopup: (s, id) => openPopup(s, id),
     actionsChanged,
     commandsOf,
-    rules: (s) => networkRulesToDnr(networkRules, options.workspaceOf(s) ?? ""),
+    // Electron's own user agent, without NathApp's name.
+    rules: (s) => networkRulesToDnr(networkRules, options.workspaceOf(s) ?? "", app.userAgentFallback.replace(/ nathapp\/\S+/gi, "")),
     whenLoaded: (s, id) => loading.get(stateKey(s, id)) ?? Promise.resolve(),
     reload: (s, id) => {
       const entry = registry.get(id);

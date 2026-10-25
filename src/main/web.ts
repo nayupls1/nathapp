@@ -177,7 +177,8 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     webSessions.set(s, partition === WEB_PARTITION ? DEFAULT_WORKSPACE : partition.slice(WEB_PARTITION.length + 1));
     lockDown(s);
     void extensions.attach(s);
-    // A plain Chrome user agent: some sites turn away unknown browsers.
+    // A plain Chrome user agent: some sites turn away unknown browsers. Google's
+    // sign-in gets Electron's instead (see signInRule).
     s.setUserAgent(app.userAgentFallback.replace(/ (nathapp|Electron)\/\S+/gi, ""));
     return s;
   }
