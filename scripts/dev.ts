@@ -17,7 +17,7 @@ let restarting = false;
 
 async function startElectron() {
   await buildElectron({ dev: true });
-  electron = launchElectron(
+  electron = await launchElectron(
     {
       VITE_DEV_SERVER_URL: devServerUrl,
       NATHAPP_BUN_PATH: process.execPath,

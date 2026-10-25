@@ -7,6 +7,14 @@ import { guardWindow, setupWebTabs } from "./web";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
+// Chromium finds the keyring only on desktops it knows (GNOME, KDE…). Elsewhere
+// (Hyprland, Sway…) it would keep the keys of cookies and safeStorage under a
+// hardcoded password. Without a Secret Service, encryption is reported as
+// unavailable (see secretsKey.ts). KDE's KWallet is found on its own.
+if (process.platform === "linux" && !app.commandLine.hasSwitch("password-store") && !/kde/i.test(process.env.XDG_CURRENT_DESKTOP ?? "")) {
+  app.commandLine.appendSwitch("password-store", "gnome-libsecret");
+}
+
 // Lets tests run against a throwaway profile instead of the real data.
 if (process.env.NATHAPP_USER_DATA_DIR) app.setPath("userData", process.env.NATHAPP_USER_DATA_DIR);
 else moveLegacyUserData();

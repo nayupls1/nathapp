@@ -49,7 +49,7 @@ const port = await new Promise<number>((resolve) => {
 // window can show up on the user's screen (Wayland compositors ignore window
 // positions and would open it wherever the user is). --visible shows it.
 const visible = args.includes("--visible");
-const electron = launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCREEN: visible ? undefined : "1", NATHAPP_BROWSER_DIRS: fixture.dirs, NATHAPP_EXTENSION_UPDATES: "0" }, [
+const electron = await launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCREEN: visible ? undefined : "1", NATHAPP_BROWSER_DIRS: fixture.dirs, NATHAPP_EXTENSION_UPDATES: "0" }, [
   ...(visible ? [] : ["--ozone-platform=headless", "--ozone-override-screen-size=1920,1080"]),
   // No OS keychain (it could ask to be unlocked): the secrets key falls back to a file.
   "--password-store=basic",

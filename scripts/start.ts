@@ -8,7 +8,7 @@ if (!existsSync("dist/electron/main.cjs")) {
 }
 
 // Extra CLI args are forwarded to Electron, e.g. `bun run start --inspect`.
-const electron = launchElectron({}, process.argv.slice(2));
+const electron = await launchElectron({}, process.argv.slice(2));
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => electron.kill(signal));
 }

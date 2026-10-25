@@ -185,6 +185,7 @@ Apps get secrets (API keys, passwords) as environment variables. A secret belong
 - **At rest:** values are encrypted with AES-256-GCM, bound to the secret's scope and name.
   - Electron keeps the key in the OS keychain (`safeStorage`) and passes it to the server over stdin.
   - Without a keychain, the key is a 0600 file, and Settings say so.
+  - On Linux desktops Chromium doesn't recognize (Hyprland, Sway…), NathApp asks for the Secret Service (gnome-keyring, KeePassXC…) itself (`--password-store=gnome-libsecret`). KDE's KWallet is found on its own.
 - **Never shown again:** the API never returns a value after it's saved. You can replace or delete one, not view it.
 - **Only the app's own processes:** the dev, build and start commands get secrets; dependency installs and the agents' `run_command` don't.
   - Secrets go in through the environment, never through process arguments. bwrap gets its environment directly instead of `--setenv`.
@@ -218,6 +219,8 @@ Agents' processes don't get NathApp's own environment variables (`NATHAPP_*`). I
 Web tabs are `<webview>`s in their workspace's session, separate from NathApp's own. The website agent works on the
 open page and saves site customizations (CSS/JS per hostname) that apply on
 every visit. It gets only the page tools, no files or shell.
+
+Web tab logins are cookies, which are encrypted with a key from the same keychain, like Chrome's. The `EnableCookieEncryption` fuse is set in `electron-builder.yml` for the packaged app, and by `scripts/electron.ts` in `node_modules` for runs from source. As in Chrome, a site's local storage, IndexedDB and cache aren't encrypted. They sit in the 0700 profile folder.
 
 Web tabs say they're plain Chrome, because some sites turn away other browsers. Google's sign-in can tell that NathApp isn't Chrome, though, and refuses a browser that claims to be ("This browser or app may not be secure"). It accepts Electron when the user agent names it. So requests to `accounts.google.com` get Electron's own user agent, through the built-in extension that applies the network rules (`signInRule` in `src/shared/extensions.ts`).
 

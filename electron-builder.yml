@@ -15,6 +15,9 @@ extraResources:
       - nathapp-server*
       - claude*
       - "!*.map"
+# Cookies (web tab logins) encrypted with the key in the OS keychain.
+electronFuses:
+  enableCookieEncryption: true
 linux:
   target: AppImage
   category: Utility
