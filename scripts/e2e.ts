@@ -559,15 +559,73 @@ try {
       label: "popup opened as a new tab",
     });
 
-    // Turning customizations off in the tab's menu removes them.
+    // Turning the customization off in the tab's list of changes removes it.
+    await click(`nav li[data-app-id="${webTabId}"]`);
     await click(`${tab} [data-customized]`);
-    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`);
-    await click("[data-context-menu] button", "Turn off");
+    await page!.waitFor(`!!document.querySelector("[data-page-changes] [data-site-override]")`, { label: "changes popover" });
+    await click(`[data-page-changes] [data-site-override] [role="switch"]`);
     await waitForValue(
       async () => ((await inPage<string>(`getComputedStyle(document.querySelector("h1")).color`)) !== "rgb(220, 20, 60)" ? true : undefined),
       15_000,
     );
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     return "picked, customized, popup";
+  });
+
+  await check("page changes: hide, rewrite, insert, buttons; dynamic content, toggles, removal, reloads", async () => {
+    if (!webTabId) throw new Error("needs the web tab");
+    const tab = `[data-web-tab="${webTabId}"]`;
+    const inPage = <T>(code: string) => page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+    const until = (code: string, label: string) =>
+      waitForValue(async () => ((await inPage<boolean>(code).catch(() => false)) ? true : undefined), 15_000).catch(() => {
+        throw new Error(`timed out: ${label}`);
+      });
+    await click(`nav li[data-app-id="${webTabId}"]`);
+    const site = { type: "site", value: "127.0.0.1" };
+    const add = (change: Record<string, unknown>) => apiCall<{ id: string }>("/api/page-changes", { method: "POST", body: change });
+    const hide = await add({ title: "Hide the buy button", scope: site, action: "hide", selector: ".cta" });
+    const text = await add({ title: "New headline", scope: { type: "page", value: "127.0.0.1/" }, action: "text", selector: "#headline", value: "Changed headline" });
+    const insert = await add({ title: "Add a note", scope: { type: "pattern", value: "127.0.0.1/*" }, action: "insert", selector: "#headline", value: '<p class="added">Inserted note</p>' });
+    await add({ title: "Count button", scope: site, action: "button", selector: "main", position: "append", value: "Count", onClick: 'button.textContent = "Clicked";' });
+    await add({ title: "Tooltip", scope: site, action: "attribute", selector: ".lead", name: "title", value: "tip" });
+    await add({ title: "Elsewhere", scope: { type: "site", value: "example.com" }, action: "hide", selector: "h1" });
+
+    await until(`getComputedStyle(document.querySelector(".cta")).display === "none"`, "hidden");
+    await until(`document.querySelector("#headline").textContent === "Changed headline"`, "text");
+    await until(`document.querySelector("#headline + .added")?.textContent === "Inserted note"`, "inserted");
+    await until(`document.querySelector(".lead").title === "tip"`, "attribute");
+    // Content the page adds later gets the changes too.
+    await inPage(`document.querySelector("main").insertAdjacentHTML("beforeend", '<p class="lead">Later</p>'), true`);
+    await until(`[...document.querySelectorAll(".lead")].every((el) => el.title === "tip")`, "dynamic content");
+    await until(`!!document.querySelector("button.nathapp-button")`, "button");
+    await inPage(`document.querySelector("button.nathapp-button").click(), true`);
+    await until(`document.querySelector("button.nathapp-button").textContent === "Clicked"`, "button behavior");
+
+    // Every change on the page, each with its switch; the other site's isn't listed.
+    await click(`${tab} [data-customized]`);
+    await page!.waitFor(`document.querySelectorAll("[data-page-changes] [data-page-change]").length === 5`, { label: "five changes listed" });
+    await shot("page-changes.png");
+    await click(`[data-page-changes] [data-page-change="${text.id}"] [role="switch"]`);
+    await until(`document.querySelector("#headline").textContent === "Hello from the test site"`, "turned off");
+    await click(`[data-page-changes] [data-page-change="${insert.id}"] [data-remove-page-change]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    await until(`!document.querySelector(".added")`, "removed");
+    await page!.waitFor(`document.querySelectorAll("[data-page-changes] [data-page-change]").length === 4`, { label: "removed from the list" });
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+
+    // After a reload: still hidden, still off, still gone.
+    await inPage(`location.reload(), true`);
+    await until(`document.readyState === "complete" && !!document.querySelector("button.nathapp-button")`, "reloaded with the button");
+    await until(`getComputedStyle(document.querySelector(".cta")).display === "none"`, "hidden after reload");
+    const after = await inPage<string>(`document.querySelector("#headline").textContent + "|" + !!document.querySelector(".added")`);
+    if (after !== "Hello from the test site|false") throw new Error(`after reload: ${after}`);
+    await apiCall(`/api/page-changes/${hide.id}`, { method: "DELETE" });
+    await until(`getComputedStyle(document.querySelector(".cta")).display !== "none"`, "removed through the API");
+    // The checks after this one get the page as it is.
+    for (const change of await apiCall<{ id: string }[]>("/api/page-changes")) await apiCall(`/api/page-changes/${change.id}`, { method: "DELETE" });
+    await until(`!document.querySelector("button.nathapp-button")`, "all removed");
+    return "5 changes applied, one turned off, one removed";
   });
 
   await check("network: requests with their data, credentials hidden, sent again, saved, blocked", async () => {

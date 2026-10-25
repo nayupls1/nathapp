@@ -33,6 +33,8 @@ import type {
   RuntimeStatus,
   SavedRequest,
   SiteOverride,
+  PageChange,
+  PageChangeSpec,
   TabKind,
   WorkspaceInfo,
 } from "../../shared/api";
@@ -165,4 +167,9 @@ export const api = {
   saveSite: (host: string, fields: Partial<Pick<SiteOverride, "css" | "js" | "enabled">>) =>
     request<SiteOverride>(`/api/sites/${encodeURIComponent(host)}`, { method: "PUT", body: JSON.stringify(fields) }),
   deleteSite: (host: string) => request<void>(`/api/sites/${encodeURIComponent(host)}`, { method: "DELETE" }),
+  pageChanges: () => request<PageChange[]>("/api/page-changes"),
+  addPageChange: (spec: PageChangeSpec) => post<PageChange>("/api/page-changes", spec),
+  updatePageChange: (id: string, fields: { enabled?: boolean; change?: PageChangeSpec }) =>
+    request<PageChange>(`/api/page-changes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(fields) }),
+  deletePageChange: (id: string) => request<void>(`/api/page-changes/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };

@@ -8,21 +8,20 @@ import type { DidFailLoadEvent, PageFaviconUpdatedEvent, PageTitleUpdatedEvent, 
 import { createEffect, createSignal, For, on, onCleanup, Show, untrack } from "solid-js";
 import { DEFAULT_WORKSPACE, webPartition, type ElementInfo, type PageContext } from "../../shared/api";
 import { isExtensionUrl } from "../../shared/extensions";
-import { hostOf, normalizeUrl, overrideScript } from "../../shared/web";
-import { api } from "../lib/api";
+import { hostOf, normalizeUrl, overrideScript, pageChangeHandlerScript, pageChangesCss, pageChangesScript, scopeMatches } from "../../shared/web";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { settings } from "../lib/settings";
 import { appById, isAgentCollapsed, sendPrompt, setAgentCollapsed, states, updatePage } from "../lib/store";
 import { showExtensionSettings } from "../lib/extensions";
-import { cachedOverride, pagesChanged, registerPage, siteOverride, type PageInfo } from "../lib/webtabs";
+import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip } from "./Chat";
-import { confirmDialog } from "./ConfirmDialog";
-import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
+import type { MenuPosition } from "./ContextMenu";
 import { openExtensionImport } from "./ExtensionImport";
 import { ExtensionsBar } from "./ExtensionsBar";
 import { Icon } from "./Icon";
 import { NetworkPanel } from "./NetworkPanel";
+import { changesFor, PageChangesPopover } from "./PageChanges";
 
 export function WebTab(props: { appId: string; active: boolean }) {
   const initialUrl = untrack(() => appById(props.appId)?.url ?? "");
@@ -95,6 +94,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
     updatePage(props.appId, { url });
     updateHistory();
     if (!inPage) setPicked([]); // the picked elements are gone with the old page
+    // Single-page apps: another page, maybe other page changes.
+    else void applyChanges();
   }
 
   // --- Site customizations -----------------------------------------------------------
@@ -105,10 +106,12 @@ export function WebTab(props: { appId: string; active: boolean }) {
   let lastError: string | undefined;
   let loadApplied: Promise<void> = Promise.resolve();
 
+  const customizing = () => settings().web.overrides && !window.nathapp.safeMode;
+
   async function activeOverride() {
     const url = webview?.getURL() ?? "";
     const h = /^https?:/i.test(url) ? hostOf(url) : "";
-    if (!h || !settings().web.overrides || window.nathapp.safeMode) return null;
+    if (!h || !customizing()) return null;
     const override = await siteOverride(h).catch(() => null);
     return override?.enabled ? override : null;
   }
@@ -117,20 +120,89 @@ export function WebTab(props: { appId: string; active: boolean }) {
     cssKey = null;
     ranJs = "";
     lastError = undefined;
+    resetChanges();
     const override = await activeOverride();
-    if (!override || !webview) return;
-    if (override.css.trim()) cssKey = await webview.insertCSS(override.css).catch(() => null);
-    if (override.js.trim()) {
-      ranJs = override.js;
-      const result = await webview.executeJavaScript(overrideScript(override.js)).catch((e: unknown) => String(e));
-      lastError = typeof result === "string" ? result : undefined;
+    if (override && webview) {
+      if (override.css.trim()) cssKey = await webview.insertCSS(override.css).catch(() => null);
+      if (override.js.trim()) {
+        ranJs = override.js;
+        const result = await webview.executeJavaScript(overrideScript(override.js)).catch((e: unknown) => String(e));
+        lastError = typeof result === "string" ? result : undefined;
+      }
     }
+    await syncChanges(true);
+  }
+
+  // Page changes applied to the current document: their CSS, the scripts that
+  // ran (they can't be taken back), the button handlers, and what failed.
+  let changesCss = "";
+  let changesCssKey: string | null = null;
+  let ranScripts = new Map<string, string>();
+  let handlers = new Map<string, string>();
+  const [changeErrors, setChangeErrors] = createSignal<Record<string, string>>({});
+  const resetChanges = () => {
+    changesCss = "";
+    changesCssKey = null;
+    ranScripts = new Map();
+    handlers = new Map();
+    setChangeErrors({});
+  };
+  const activeChanges = () => {
+    const url = webview?.getURL() ?? "";
+    return customizing() ? pageChanges().filter((c) => c.enabled && scopeMatches(c.scope, url)) : [];
+  };
+
+  /** Brings the document in line with the active page changes; false if it had to reload instead. */
+  async function syncChanges(fresh: boolean): Promise<boolean> {
+    if (!webview) return true;
+    const view = webview;
+    const list = activeChanges();
+    const scripts = list.filter((c) => c.action === "script");
+    const stale = [...ranScripts].some(([id, code]) => scripts.find((c) => c.id === id)?.value !== code);
+    if (stale && !fresh) {
+      view.reload();
+      await waitForLoad();
+      await loadApplied;
+      return false;
+    }
+    const errors: Record<string, string> = {};
+    const run = (code: string) => view.executeJavaScript(code).catch((e: unknown) => ({ __error: String(e) }));
+    const css = pageChangesCss(list);
+    if (css !== changesCss) {
+      if (changesCssKey) await view.removeInsertedCSS(changesCssKey).catch(() => {});
+      changesCssKey = css ? await view.insertCSS(css).catch(() => null) : null;
+      changesCss = css;
+    }
+    for (const c of list) {
+      if (c.action !== "button" || handlers.get(c.id) === c.onClick) continue;
+      const result = await run(pageChangeHandlerScript(c));
+      if (result && typeof result === "object" && "__error" in result) errors[c.id] = String(result.__error);
+      else handlers.set(c.id, c.onClick ?? "");
+    }
+    const result = (await run(pageChangesScript(list))) as Record<string, string> | { __error: string } | null;
+    if (result && "__error" in result) for (const c of list) errors[c.id] ??= String(result.__error);
+    else Object.assign(errors, result ?? {});
+    for (const c of scripts) {
+      if (ranScripts.has(c.id)) continue;
+      ranScripts.set(c.id, c.value ?? "");
+      const out = await run(overrideScript(c.value ?? ""));
+      if (typeof out === "string") errors[c.id] = out;
+      else if (out && typeof out === "object" && "__error" in out) errors[c.id] = String(out.__error);
+    }
+    setChangeErrors(errors);
+    return true;
   }
 
   // Serialized so concurrent updates (agent + realtime message) don't race.
   let chain: Promise<unknown> = Promise.resolve();
-  function applyOverride(): Promise<{ applied: boolean; error?: string }> {
-    const run = async () => {
+  const serialized = <T,>(run: () => Promise<T>): Promise<T> => {
+    const next = chain.then(run, run);
+    chain = next.catch(() => {});
+    return next;
+  };
+
+  function applyOverride(): Promise<ApplyResult> {
+    return serialized(async () => {
       if (!webview || !ready) return { applied: false };
       await loadApplied;
       const override = await activeOverride();
@@ -143,15 +215,23 @@ export function WebTab(props: { appId: string; active: boolean }) {
       } else {
         if (cssKey) await webview.removeInsertedCSS(cssKey).catch(() => {});
         cssKey = override?.css.trim() ? await webview.insertCSS(override.css).catch(() => null) : null;
+        await syncChanges(false);
       }
-      return { applied: !!override, error: lastError };
-    };
-    const next = chain.then(run, run);
-    chain = next.catch(() => {});
-    return next;
+      return { applied: !!override, error: lastError, changesEnabled: customizing(), changeErrors: changeErrors() };
+    });
+  }
+
+  /** Applies the page changes as they are now (they changed, or the page did). */
+  function applyChanges() {
+    return serialized(async () => {
+      if (!webview || !ready) return;
+      await loadApplied;
+      await syncChanges(false);
+    });
   }
 
   createEffect(on(() => settings().web.overrides, () => void applyOverride(), { defer: true }));
+  createEffect(on(pageChanges, () => void applyChanges(), { defer: true }));
 
   // --- Element picker ----------------------------------------------------------------
 
@@ -266,29 +346,12 @@ export function WebTab(props: { appId: string; active: boolean }) {
 
   // --- Customization menu --------------------------------------------------------------
 
+  // The address bar's paintbrush: the site's customization and the page changes for this page.
   const override = () => cachedOverride(host());
   const customized = () => !!override() && (override()!.css.trim() !== "" || override()!.js.trim() !== "");
-  const overrideActive = () => customized() && override()!.enabled && settings().web.overrides && !window.nathapp.safeMode;
-  const menuItems = (): (MenuItem | "separator")[] => {
-    const o = override()!;
-    return [
-      {
-        label: o.enabled ? "Turn off customizations" : "Turn on customizations",
-        icon: o.enabled ? "eye-off" : "eye",
-        onSelect: () => void api.saveSite(o.host, { enabled: !o.enabled }),
-      },
-      "separator",
-      {
-        label: "Remove customizations",
-        icon: "trash",
-        danger: true,
-        onSelect: async () => {
-          const ok = await confirmDialog(`Remove all customizations of ${o.host}?`, { confirmLabel: "Remove", danger: true });
-          if (ok) await api.deleteSite(o.host);
-        },
-      },
-    ];
-  };
+  const changesHere = () => changesFor(currentUrl());
+  const changed = () => customized() || changesHere().length > 0;
+  const overrideActive = () => customizing() && ((customized() && override()!.enabled) || changesHere().some((c) => c.enabled));
 
   const pickButton = (size: number) => (
     <button
@@ -356,13 +419,13 @@ export function WebTab(props: { appId: string; active: boolean }) {
               {...stylex.attrs(styles.addressInput)}
               data-address
             />
-            <Show when={customized()}>
+            <Show when={changed()}>
               <button
                 type="button"
-                title={overrideActive() ? `${host()} is customized` : `Customizations of ${host()} are off`}
+                title={overrideActive() ? "This page is changed: see and turn off the changes" : "The changes to this page are off"}
                 onClick={(e) => {
                   const r = e.currentTarget.getBoundingClientRect();
-                  setMenu({ x: r.right - 200, y: r.bottom + 6 });
+                  setMenu(menu() ? undefined : { x: r.right - 360, y: r.bottom + 6 });
                 }}
                 {...stylex.attrs(styles.customized, overrideActive() && styles.customizedOn)}
                 data-customized={overrideActive() ? "on" : "off"}
@@ -462,7 +525,9 @@ export function WebTab(props: { appId: string; active: boolean }) {
           }}
         />
       </Show>
-      <Show when={menu()}>{(position) => <ContextMenu items={menuItems()} position={position()} onClose={() => setMenu()} />}</Show>
+      <Show when={menu()}>
+        {(position) => <PageChangesPopover url={currentUrl()} errors={changeErrors()} position={position()} onClose={() => setMenu()} />}
+      </Show>
     </div>
   );
 }

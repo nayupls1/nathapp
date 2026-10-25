@@ -455,6 +455,47 @@ export interface SiteOverride {
   updatedAt: string;
 }
 
+/** Where a page change applies: one page (host + path), a site (host) or a pattern ("*.example.com/*"). */
+export interface PageScope {
+  type: "page" | "site" | "pattern";
+  value: string;
+}
+
+export type PageChangeAction = "hide" | "style" | "text" | "attribute" | "insert" | "button" | "css" | "script";
+
+/**
+ * One change to web pages (made by the website agent, or the user): hide,
+ * restyle or rewrite elements, add elements or buttons, or a stylesheet or
+ * script. Each can be turned off or removed on its own.
+ */
+export interface PageChangeSpec {
+  /** What it does, for people ("Hide the cookie banner"). */
+  title: string;
+  scope: PageScope;
+  action: PageChangeAction;
+  /** The elements it applies to (all actions but css and script). */
+  selector?: string;
+  /**
+   * style: CSS declarations; text: the new text; attribute: its value;
+   * insert: HTML; button: its label; css: a stylesheet; script: JavaScript.
+   */
+  value?: string;
+  /** attribute: its name. */
+  name?: string;
+  /** insert and button: where, relative to each matched element (default "after"). */
+  position?: "before" | "after" | "prepend" | "append";
+  /** button: JavaScript run on click, with `event` and `button`. */
+  onClick?: string;
+}
+
+export interface PageChange extends PageChangeSpec {
+  id: string;
+  enabled: boolean;
+  createdBy: "agent" | "user";
+  createdAt: string;
+  updatedAt: string;
+}
+
 // --- Secrets ----------------------------------------------------------------------
 
 /** "global", "workspace:<id>" (shared by the workspace's apps), or the id of the app tab the secret belongs to. */

@@ -9,6 +9,7 @@ import { ServerConfig, type ServerConfigShape } from "./Config";
 import * as Apps from "./db/Apps";
 import * as Db from "./db/Db";
 import * as Network from "./db/Network";
+import * as PageChanges from "./db/PageChanges";
 import * as Settings from "./db/Settings";
 import * as Sites from "./db/Sites";
 import * as Workspaces from "./db/Workspaces";
@@ -34,7 +35,7 @@ export const core = (config: ServerConfigShape) =>
     Layer.provideMerge(Secrets.layer),
     Layer.provideMerge(Permissions.layer),
     Layer.provideMerge(Layer.mergeAll(Vault.layer, Audit.layer)),
-    Layer.provideMerge(Layer.mergeAll(Apps.layer, Workspaces.layer, Settings.layer, Sites.layer, Network.layer, Hub.layer, AiTokens.tokensLayer)),
+    Layer.provideMerge(Layer.mergeAll(Apps.layer, Workspaces.layer, Settings.layer, Sites.layer, PageChanges.layer, Network.layer, Hub.layer, AiTokens.tokensLayer)),
     Layer.provideMerge(Db.layer),
     Layer.provideMerge(Layer.succeed(ServerConfig, config)),
   );

@@ -33,6 +33,7 @@ import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
 import { Network } from "./db/Network";
 import { Settings } from "./db/Settings";
+import { PageChanges, pageChangeError } from "./db/PageChanges";
 import { Sites } from "./db/Sites";
 import { Workspaces } from "./db/Workspaces";
 import { History, type By } from "./history/History";
@@ -591,6 +592,78 @@ const siteRoutes = HttpRouter.addAll([
       yield* snapshot("sites", `Removed the customizations of ${host}`);
       return noContent;
     }),
+  ),
+]);
+
+// --- Page changes (web tabs) -------------------------------------------------------------
+
+export const PageChangeBody = Schema.Struct({
+  title: str(120),
+  scope: Schema.Struct({ type: Schema.Literals(["page", "site", "pattern"]), value: str(500) }),
+  action: Schema.Literals(["hide", "style", "text", "attribute", "insert", "button", "css", "script"]),
+  selector: Schema.optionalKey(str(2000)),
+  value: Schema.optionalKey(str(100_000)),
+  name: Schema.optionalKey(str(200)),
+  position: Schema.optionalKey(Schema.Literals(["before", "after", "prepend", "append"])),
+  onClick: Schema.optionalKey(str(50_000)),
+});
+
+const pageChangeRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/page-changes",
+    Effect.gen(function* () {
+      return json(yield* (yield* PageChanges).list());
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/page-changes",
+    handle(
+      Effect.gen(function* () {
+        const spec = yield* decodeBody(PageChangeBody);
+        const problem = pageChangeError(spec);
+        if (problem) return yield* fail(400, problem);
+        const change = yield* (yield* PageChanges).create(spec, "user");
+        yield* (yield* Hub).publish({ type: "page-changes", topic: topics.sites });
+        yield* snapshot("sites", `Added the page change “${change.title}”`);
+        return json(change);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "PATCH",
+    "/api/page-changes/:id",
+    handle(
+      Effect.gen(function* () {
+        const { enabled, change: spec } = yield* decodeBody(Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean), change: Schema.optionalKey(PageChangeBody) }));
+        if (spec) {
+          const problem = pageChangeError(spec);
+          if (problem) return yield* fail(400, problem);
+        }
+        const saved = yield* (yield* PageChanges).update(yield* param("id"), { spec, enabled });
+        if (!saved) return yield* fail(404, "Not found");
+        yield* (yield* Hub).publish({ type: "page-changes", topic: topics.sites });
+        const summary = spec ? `Changed the page change “${saved.title}”` : `Turned ${saved.enabled ? "on" : "off"} “${saved.title}”`;
+        yield* snapshot("sites", summary, true);
+        return json(saved);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/page-changes/:id",
+    handle(
+      Effect.gen(function* () {
+        const changes = yield* PageChanges;
+        const change = yield* changes.get(yield* param("id"));
+        if (!change) return yield* fail(404, "Not found");
+        yield* changes.remove(change.id);
+        yield* (yield* Hub).publish({ type: "page-changes", topic: topics.sites });
+        yield* snapshot("sites", `Removed the page change “${change.title}”`);
+        return noContent;
+      }),
+    ),
   ),
 ]);
 
@@ -1480,7 +1553,7 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

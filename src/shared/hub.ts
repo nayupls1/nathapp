@@ -45,6 +45,8 @@ export type ServerMessage =
   | { type: "runtime"; topic: string; appId: string; status: RuntimeStatus }
   | { type: "log"; topic: string; appId: string; lines: LogLine[] }
   | { type: "site"; topic: string; host: string }
+  /** Page changes were added, changed or removed (refetch). */
+  | { type: "page-changes"; topic: string }
   | { type: "providers"; topic: string; providers: ProviderStatus[] }
   | { type: "app"; topic: string; app: AppSummary }
   | { type: "app-deleted"; topic: string; appId: string }

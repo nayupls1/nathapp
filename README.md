@@ -169,7 +169,7 @@ GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
 
 Every change is saved as a snapshot you can look at and take back (History page in the sidebar; the clock button in an app tab). A snapshot covers one of:
 - an **app**: its project files (without `node_modules`, builds, `.git`) and its data (see App data). SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
-- the **site customizations** the website agent made;
+- the **site customizations** and **page changes** the website agent (or you) made;
 - NathApp's **settings**, including each workspace's.
 
 Snapshots are taken before and after every agent turn (so what you or the app changed in between is kept apart from what the agent did), when an app starts from a template, and when you change settings or site customizations (changes made in a row are folded together). "Save a snapshot" takes one by hand.
@@ -238,7 +238,7 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 - an app using a global secret;
 - an app reading another app's data;
 - an app (or its agent) using another app's tools;
-- the website agent customizing a site (per host).
+- the website agent customizing a site or changing pages (per host or pattern).
 
 NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
 
@@ -256,8 +256,17 @@ Agents' processes don't get NathApp's own environment variables (`NATHAPP_*`). I
 ### Web tabs
 
 Web tabs are `<webview>`s in their workspace's session, separate from NathApp's own. The website agent works on the
-open page and saves site customizations (CSS/JS per hostname) that apply on
-every visit. It gets only the page tools, no files or shell.
+open page and saves changes that apply on every visit. It gets only the page tools, no files or shell.
+
+**Page changes** (`db/PageChanges.ts`, applied by `shared/web.ts`) are single changes, each with a title:
+- **What:** hide elements, restyle them (CSS declarations), replace their text, set an attribute, insert HTML next to or inside them, add a button with a click handler, or a stylesheet or script.
+- **Where:** one page (host and path, ignoring query and hash), a site (host), or a pattern (`*.example.com/*`, `example.com/docs/*`; `*.` also covers the bare domain).
+- **Lasting:** they're applied on every load and in single-page apps on in-page navigation. A MutationObserver applies them to content the page adds later. CSS goes in through `insertCSS`, so pages' content security policies don't block it, and button handlers are compiled with the injected script rather than `eval`ed.
+- **Visible:** the paintbrush in the address bar lists every change on the page (and the site's CSS/JS override) with a switch and a remove button, and Settings → Web tabs lists all of them. Turning one off undoes it in place; only scripts need a reload, since what they did can't be taken back.
+- **Tools:** the website agent uses `add_page_change`, `update_page_change`, `remove_page_change` and `list_page_changes`, and asks per site or pattern first (`agent.site`). The API is `/api/page-changes`.
+- **History:** changes are part of the site customizations' snapshots (`@changes/<id>.json`).
+
+The older **site override** (one stylesheet and script per hostname, `set_site_override`) still exists for larger reworks.
 
 Web tab logins are cookies, which are encrypted with a key from the same keychain, like Chrome's. The `EnableCookieEncryption` fuse is set in `electron-builder.yml` for the packaged app, and by `scripts/electron.ts` in `node_modules` for runs from source. As in Chrome, a site's local storage, IndexedDB and cache aren't encrypted. They sit in the 0700 profile folder.
 

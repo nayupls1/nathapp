@@ -8,7 +8,8 @@
 //   data (workspace/AppData.ts), under "@data/". SQLite databases are copied
 //   consistently (sqlite3_serialize), even while the app runs, with their
 //   tables' row counts for the timeline.
-// - sites: the site customizations (<host>/style.css, script.js, site.json).
+// - sites: the site customizations (<host>/style.css, script.js, site.json) and
+//   page changes (@changes/<id>.json).
 // - settings: NathApp's settings and each workspace's (settings.json,
 //   workspaces/<id>.json).
 //
@@ -27,6 +28,7 @@ import {
   type HistoryEntry,
   type HistoryFile,
   type HistoryTarget,
+  type PageChange,
   type TableChanges,
 } from "../../shared/api";
 import { diffLines, toHunks } from "../../shared/diff";
@@ -34,6 +36,7 @@ import { topics } from "../../shared/hub";
 import { decodeSettings, decodeWorkspaceSettings } from "../../shared/settings";
 import { ServerConfig } from "../Config";
 import { Settings } from "../db/Settings";
+import { PageChanges } from "../db/PageChanges";
 import { Sites } from "../db/Sites";
 import { Workspaces } from "../db/Workspaces";
 import { Hub } from "../Hub";
@@ -106,6 +109,8 @@ const sameTree = (a: Tree, b: Tree) => {
 
 /** Snapshots from before managed app data have the database in the project's .nathapp/. */
 const LEGACY_DATABASE = ".nathapp/data.sqlite";
+/** Where page changes are in the sites target (not a host name). */
+const CHANGES_PREFIX = "@changes/";
 const renamePath = (path: string) => (path === LEGACY_DATABASE ? `${DATA_PREFIX}${DATABASE_FILE}` : path);
 function legacyPaths<T>(record: Record<string, T>): Record<string, T> {
   return LEGACY_DATABASE in record ? Object.fromEntries(Object.entries(record).map(([k, v]) => [renamePath(k), v])) : record;
@@ -187,6 +192,7 @@ export const make = Effect.gen(function* () {
   const appData = yield* AppData;
   const settings = yield* Settings;
   const sites = yield* Sites;
+  const pageChanges = yield* PageChanges;
   const workspaces = yield* Workspaces;
 
   // --- Content store ------------------------------------------------------------------
@@ -299,6 +305,7 @@ export const make = Effect.gen(function* () {
       if (site.css) files[`${site.host}/style.css`] = encoder.encode(site.css);
       if (site.js) files[`${site.host}/script.js`] = encoder.encode(site.js);
     }
+    for (const change of yield* pageChanges.list()) files[`${CHANGES_PREFIX}${change.id}.json`] = json(change);
     return yield* captureFiles(files);
   });
 
@@ -351,7 +358,12 @@ export const make = Effect.gen(function* () {
 
   const applySites = (desired: Tree) =>
     Effect.gen(function* () {
-      const hosts = new Set(Object.keys(desired).map((p) => p.split("/")[0]!));
+      yield* applyPageChanges(desired);
+      const hosts = new Set(
+        Object.keys(desired)
+          .filter((p) => !p.startsWith(CHANGES_PREFIX))
+          .map((p) => p.split("/")[0]!),
+      );
       const changed = new Set<string>();
       for (const site of yield* sites.list()) {
         if (!hosts.has(site.host)) {
@@ -369,6 +381,27 @@ export const make = Effect.gen(function* () {
         changed.add(host);
       }
       for (const host of changed) yield* hub.publish({ type: "site", topic: topics.sites, host });
+    });
+
+  const applyPageChanges = (desired: Tree) =>
+    Effect.gen(function* () {
+      let changed = false;
+      const wanted = new Set<string>();
+      for (const path of Object.keys(desired)) {
+        if (!path.startsWith(CHANGES_PREFIX)) continue;
+        const change = JSON.parse((yield* read(desired, path))!) as PageChange;
+        wanted.add(change.id);
+        const current = yield* pageChanges.get(change.id);
+        if (current && JSON.stringify(current) === JSON.stringify(change)) continue;
+        yield* pageChanges.put(change);
+        changed = true;
+      }
+      for (const change of yield* pageChanges.list()) {
+        if (wanted.has(change.id)) continue;
+        yield* pageChanges.remove(change.id);
+        changed = true;
+      }
+      if (changed) yield* hub.publish({ type: "page-changes", topic: topics.sites });
     });
 
   const applySettings = (desired: Tree) =>

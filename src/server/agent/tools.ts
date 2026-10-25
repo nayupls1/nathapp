@@ -3,8 +3,9 @@
 // the hub). App tools run and inspect the app's project; site tools save
 // customizations for websites.
 import { Effect, Schema } from "effect";
-import { hostOf, inspectedStyles } from "../../shared/web";
+import { hostOf, inspectedStyles, pageKey, scopeMatches } from "../../shared/web";
 import { Apps } from "../db/Apps";
+import { PageChanges, pageChangeError } from "../db/PageChanges";
 import { Sites } from "../db/Sites";
 import { Hub } from "../Hub";
 import { isIcon, searchIcons } from "../icons";
@@ -17,7 +18,7 @@ import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
 import { topics } from "../../shared/hub";
-import { isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type LogLine, type RuntimeStatus } from "../../shared/api";
+import { isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type LogLine, type RuntimeStatus } from "../../shared/api";
 
 const transpiler = new Bun.Transpiler({ loader: "js" });
 
@@ -138,13 +139,46 @@ ${code}
 export const siteTools = Effect.fn(function* (env: ToolEnv) {
   const hub = yield* Hub;
   const sites = yield* Sites;
+  const pageChanges = yield* PageChanges;
   const permissions = yield* Permissions;
+  const currentUrl = hub.rpc<{ url: string }>("page.info", { tabId: env.tabId }).pipe(
+    Effect.flatMap(({ url }) => (/^https?:/i.test(url) ? Effect.succeed(url) : Effect.fail(new Error("No website is open in this tab")))),
+  );
   const currentHost = hub.rpc<{ url: string }>("page.info", { tabId: env.tabId }).pipe(
     Effect.flatMap(({ url }) => {
       const host = hostOf(url);
       return host ? Effect.succeed(host) : Effect.fail(new Error("No website is open in this tab"));
     }),
   );
+
+  /** Changing what pages show needs the user's OK (per site or pattern, or remembered). */
+  const allowChange = (spec: PageChangeSpec) => {
+    const resource = spec.scope.type === "page" ? spec.scope.value.split("/")[0]! : spec.scope.value;
+    const where = spec.scope.type === "pattern" ? `pages matching ${resource}` : resource;
+    return permissions.ask({
+      subject: WEBSITE_AGENT,
+      action: "agent.site",
+      resource,
+      title: `Let the website agent change ${where}?`,
+      detail: `It wants to add or change “${spec.title}” (${spec.action}${spec.action === "script" || spec.action === "button" ? ", with JavaScript" : ""}), applied whenever you open ${where} in NathApp. You can turn it off or remove it later.`,
+      timeoutMs: 120_000,
+    });
+  };
+
+  /** Publishes the change, applies it to the page and reports how it went. */
+  const applied = (change: PageChange, done: string) =>
+    Effect.gen(function* () {
+      yield* hub.publish({ type: "page-changes", topic: topics.sites });
+      const result = yield* hub
+        .rpc<{ changesEnabled?: boolean; changeErrors?: Record<string, string> }>("page.applyOverride", { tabId: env.tabId }, 45_000)
+        .pipe(Effect.orElseSucceed(() => ({}) as { changesEnabled?: boolean; changeErrors?: Record<string, string> }));
+      yield* env.log(`${done.split(" (")[0]}: ${change.title}`);
+      const error = result.changeErrors?.[change.id];
+      if (error) return text(`${done}, but it failed on the page: ${error}`, true);
+      const url = yield* currentUrl.pipe(Effect.orElseSucceed(() => ""));
+      if (!scopeMatches(change.scope, url)) return `${done}. It doesn't apply to the current page (scope ${change.scope.type}: ${change.scope.value}).`;
+      return result.changesEnabled ? `${done}; applied to the page.` : `${done}, but customizations are turned off in Settings (or NathApp is in safe mode), so it isn't applied.`;
+    });
 
   return [
     tool("get_site_override", "The current site's customization (CSS and JavaScript applied whenever it loads in NathApp).", NoArgs, () =>
@@ -185,6 +219,99 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
             ? `Saved and applied to ${host} (${sizes}).`
             : `Saved for ${host} (${sizes}), but customizations are turned off in Settings, so it isn't applied.`;
         }),
+    ),
+
+    tool(
+      "list_page_changes",
+      "The page changes that apply to the current page (and the rest of this site's): id, title, scope, action, whether it's on.",
+      NoArgs,
+      () =>
+        Effect.gen(function* () {
+          const url = yield* currentUrl;
+          const host = hostOf(url);
+          const all = yield* pageChanges.list();
+          const here = all.filter((c) => scopeMatches(c.scope, url));
+          const site = all.filter((c) => !here.includes(c) && (c.scope.value === host || c.scope.value.startsWith(`${host}/`)));
+          const line = (c: PageChange) =>
+            `- ${c.id} ${c.enabled ? "[on]" : "[off]"} ${c.title} — ${c.action}${c.selector ? ` ${c.selector}` : ""} (${c.scope.type}: ${c.scope.value})`;
+          return [
+            here.length ? `On this page:\n${here.map(line).join("\n")}` : "No page changes apply to this page.",
+            site.length ? `Elsewhere on ${host}:\n${site.map(line).join("\n")}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+        }),
+    ),
+
+    tool(
+      "add_page_change",
+      [
+        "Add one change to web pages; it's applied right away and on every load, also to content the page adds later. Prefer one change per thing the user asked for, with a short title they'll recognize. Returns its id and any error.",
+        "Actions: hide (selector); style (selector, value: CSS declarations); text (selector, value: the new text); attribute (selector, name, value); insert (selector, value: HTML, position); button (selector, value: label, onClick: JavaScript run with `event` and `button`, position); css (value: a stylesheet); script (value: JavaScript run once per load; onElement(selector, fn) helps with dynamic pages).",
+        "Scope: page (this page), site (this host) or pattern (e.g. *.example.com/* or example.com/docs/*).",
+      ].join(" "),
+      Schema.Struct({
+        title: Schema.String,
+        scope: Schema.Literals(["page", "site", "pattern"]),
+        pattern: Schema.optionalKey(Schema.String.annotate({ description: "For scope pattern" })),
+        action: Schema.Literals(["hide", "style", "text", "attribute", "insert", "button", "css", "script"]),
+        selector: Schema.optionalKey(Schema.String),
+        value: Schema.optionalKey(Schema.String),
+        name: Schema.optionalKey(Schema.String),
+        position: Schema.optionalKey(Schema.Literals(["before", "after", "prepend", "append"])),
+        onClick: Schema.optionalKey(Schema.String),
+      }),
+      ({ scope, pattern, ...fields }) =>
+        Effect.gen(function* () {
+          const url = yield* currentUrl;
+          const spec: PageChangeSpec = {
+            ...fields,
+            scope: { type: scope, value: scope === "page" ? pageKey(url) : scope === "site" ? hostOf(url) : (pattern ?? "") },
+          };
+          const problem = pageChangeError(spec);
+          if (problem) return text(problem, true);
+          if (!(yield* allowChange(spec))) return text(`The user didn't allow changing ${spec.scope.value}. Nothing was saved; tell them what you would have changed.`, true);
+          const change = yield* pageChanges.create(spec, "agent");
+          return yield* applied(change, `Added ${change.id} (“${change.title}”)`);
+        }),
+    ),
+
+    tool(
+      "update_page_change",
+      "Change a page change (see list_page_changes): give its id and only the fields to change, or enabled to turn it on or off.",
+      Schema.Struct({
+        id: Schema.String,
+        enabled: Schema.optionalKey(Schema.Boolean),
+        title: Schema.optionalKey(Schema.String),
+        selector: Schema.optionalKey(Schema.String),
+        value: Schema.optionalKey(Schema.String),
+        name: Schema.optionalKey(Schema.String),
+        position: Schema.optionalKey(Schema.Literals(["before", "after", "prepend", "append"])),
+        onClick: Schema.optionalKey(Schema.String),
+      }),
+      ({ id, enabled, ...fields }) =>
+        Effect.gen(function* () {
+          const current = yield* pageChanges.get(id);
+          if (!current) return text(`No page change ${id}.`, true);
+          const spec: PageChangeSpec = { ...current, ...fields };
+          const problem = pageChangeError(spec);
+          if (problem) return text(problem, true);
+          if (!(yield* allowChange(spec))) return text(`The user didn't allow changing ${spec.scope.value}.`, true);
+          const saved = (yield* pageChanges.update(id, { spec, enabled }))!;
+          return yield* applied(saved, `Updated ${saved.id} (“${saved.title}”, ${saved.enabled ? "on" : "off"})`);
+        }),
+    ),
+
+    tool("remove_page_change", "Remove a page change (see list_page_changes).", Schema.Struct({ id: Schema.String }), ({ id }) =>
+      Effect.gen(function* () {
+        const current = yield* pageChanges.get(id);
+        if (!current) return text(`No page change ${id}.`, true);
+        yield* pageChanges.remove(id);
+        yield* hub.publish({ type: "page-changes", topic: topics.sites });
+        yield* hub.rpc("page.applyOverride", { tabId: env.tabId }, 45_000).pipe(Effect.ignore);
+        yield* env.log(`Removed the page change “${current.title}”`);
+        return `Removed ${id}.`;
+      }),
     ),
   ];
 });

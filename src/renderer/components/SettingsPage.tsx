@@ -17,6 +17,7 @@ import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AgentPicker } from "./AgentPicker";
 import { confirmDialog } from "./ConfirmDialog";
+import { PageChangeRows } from "./PageChanges";
 import { openExtensionImport } from "./ExtensionImport";
 import { Icon } from "./Icon";
 import { ProviderIcon } from "./ProviderIcon";
@@ -170,10 +171,13 @@ export function SettingsPage() {
             <For each={Object.entries(searchEngines)}>{([key, engine]) => <option value={key}>{engine.label}</option>}</For>
           </Select>
         </Row>
-        <Row label="Site customizations" description="Apply the CSS/JS changes the agent made to websites.">
+        <Row label="Site customizations and page changes" description="Apply the changes the agent made to websites (hidden, restyled or added elements, CSS and JavaScript).">
           <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
         </Row>
         <SiteRows />
+        <Row label="Page changes" description="Each change to pages, sites or patterns of sites, with its own switch." wide>
+          <PageChangeRows />
+        </Row>
       </Section>
 
       <Section title="Network" icon="network" anchor="network">

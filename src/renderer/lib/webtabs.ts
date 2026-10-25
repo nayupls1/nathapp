@@ -2,7 +2,7 @@
 // server), browser shortcuts and site customization updates can reach them.
 import { createStore } from "solid-js/store";
 import { createEffect, createRoot, createSignal } from "solid-js";
-import type { NetworkFilter, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
+import type { NetworkFilter, PageChange, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { hostOf } from "../../shared/web";
 import { api } from "./api";
@@ -16,6 +16,17 @@ export interface PageInfo {
   title: string;
 }
 
+export interface ApplyResult {
+  /** The site's customization is on and applied. */
+  applied: boolean;
+  /** Its JavaScript threw. */
+  error?: string;
+  /** Customizations and page changes are on (Settings, not safe mode). */
+  changesEnabled?: boolean;
+  /** Page changes that failed on this page, by id. */
+  changeErrors?: Record<string, string>;
+}
+
 export interface PageHandle {
   info: () => PageInfo;
   eval: (code: string) => Promise<unknown>;
@@ -25,8 +36,8 @@ export interface PageHandle {
   back: () => void;
   forward: () => void;
   focusAddress: () => void;
-  /** Re-reads the site's customization and applies it; returns JS errors. */
-  applyOverride: () => Promise<{ applied: boolean; error?: string }>;
+  /** Re-reads the site's customization and applies it and the page changes; returns JS errors. */
+  applyOverride: () => Promise<ApplyResult>;
   /** Called when the customization of `host` changed somewhere. */
   overrideChanged: (host: string) => void;
   /** Sends a prompt to the tab's agent, with the page and picked elements, like its chat does. */
@@ -82,6 +93,7 @@ handleRpc("page.applyOverride", async ({ tabId }) => {
   const handle = page(tabId);
   const host = hostOf(handle.info().url);
   if (host) setOverrides(host, await api.getSite(host));
+  await loadPageChanges();
   return handle.applyOverride();
 });
 
@@ -151,6 +163,22 @@ watchTopic("sites", (msg) => {
 onConnected(() => {
   for (const host of Object.keys(overrides)) void refetch(host);
 });
+
+// --- Page changes ----------------------------------------------------------------------
+
+const [pageChanges, setPageChanges] = createSignal<PageChange[]>([]);
+/** Every page change (web tabs apply the ones whose scope matches their page). */
+export { pageChanges };
+
+async function loadPageChanges() {
+  const list = await api.pageChanges().catch(() => null);
+  if (list) setPageChanges(list);
+}
+
+watchTopic(topics.sites, (msg) => {
+  if (msg.type === "page-changes") void loadPageChanges();
+});
+onConnected(() => void loadPageChanges());
 
 // --- Shortcuts ---------------------------------------------------------------------
 

@@ -60,6 +60,17 @@ const migrate = Effect.gen(function* () {
       updated_at TEXT NOT NULL DEFAULT (${now})
     )`);
 
+  // Page changes for web tabs (db/PageChanges.ts): the change itself as JSON.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS page_changes (
+      id         TEXT PRIMARY KEY,
+      spec       TEXT NOT NULL,
+      enabled    INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (${now}),
+      updated_at TEXT NOT NULL DEFAULT (${now})
+    )`);
+
   // Encrypted secrets (see security/Vault.ts): "global" or an app id as scope.
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS secrets (
