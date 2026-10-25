@@ -1,7 +1,7 @@
 // Open web tabs register a handle here so the website agent (RPC from the
 // server), browser shortcuts and site customization updates can reach them.
 import { createStore } from "solid-js/store";
-import { createEffect, createRoot } from "solid-js";
+import { createEffect, createRoot, createSignal } from "solid-js";
 import type { NetworkFilter, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { hostOf } from "../../shared/web";
@@ -36,14 +36,32 @@ export interface PageHandle {
 }
 
 const pages = new Map<string, PageHandle>();
+// Bumped when pages come and go or get their webContents (extensions follow the tabs).
+const [pagesVersion, setPagesVersion] = createSignal(0);
+export { pagesVersion };
+export const pagesChanged = () => setPagesVersion((v) => v + 1);
 
 /** The page open in a tab (web tab or app preview), if it's mounted. */
 export const pageOf = (tabId: string) => pages.get(tabId);
 
+/** The tab showing a webContents. */
+export function tabOfContents(webContentsId: number) {
+  for (const [tabId, handle] of pages) {
+    try {
+      if (handle.webContentsId() === webContentsId) return tabId;
+    } catch {
+      // not loaded yet
+    }
+  }
+  return undefined;
+}
+
 export function registerPage(tabId: string, handle: PageHandle) {
   pages.set(tabId, handle);
+  pagesChanged();
   return () => {
     if (pages.get(tabId) === handle) pages.delete(tabId);
+    pagesChanged();
   };
 }
 

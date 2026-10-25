@@ -5,6 +5,7 @@
 //   bun run e2e --agent         also has the agents build an app and customize a site (uses your Claude plan)
 //   bun run e2e --agent "..."   ...with a custom prompt
 //   bun run e2e --visible       show the window while testing (default: offscreen)
+//   bun run e2e --only <text>   only the checks whose name contains it (and the boot check)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
@@ -13,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { launchElectron } from "./electron";
 import { Page } from "./lib/cdp";
+import { writeFixtureBrowser } from "./lib/fixture-browser";
 
 const args = process.argv.slice(2);
 const agentIndex = args.indexOf("--agent");
@@ -29,6 +31,11 @@ if (!existsSync("dist/electron/main.cjs")) {
 const outDir = "test-results";
 mkdirSync(outDir, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), "nathapp-e2e-"));
+// A browser to import extensions from (instead of the real ones on this computer).
+const browserDir = mkdtempSync(join(tmpdir(), "nathapp-e2e-browser-"));
+const fixture = writeFixtureBrowser(browserDir);
+const onlyIndex = args.indexOf("--only");
+const only = onlyIndex === -1 ? undefined : args[onlyIndex + 1];
 
 const port = await new Promise<number>((resolve) => {
   const srv = createServer().listen(0, "127.0.0.1", () => {
@@ -42,7 +49,7 @@ const port = await new Promise<number>((resolve) => {
 // window can show up on the user's screen (Wayland compositors ignore window
 // positions and would open it wherever the user is). --visible shows it.
 const visible = args.includes("--visible");
-const electron = launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCREEN: visible ? undefined : "1" }, [
+const electron = launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCREEN: visible ? undefined : "1", NATHAPP_BROWSER_DIRS: fixture.dirs, NATHAPP_EXTENSION_UPDATES: "0" }, [
   ...(visible ? [] : ["--ozone-platform=headless", "--ozone-override-screen-size=1920,1080"]),
   // No OS keychain (it could ask to be unlocked): the secrets key falls back to a file.
   "--password-store=basic",
@@ -76,6 +83,8 @@ const site = Bun.serve({
         ? feedPage
         : path === "/second"
         ? `<title>Second page</title><h1>Second</h1>`
+        : path === "/blocked-by-extension"
+        ? `<title>Should be blocked</title>`
         : `<title>Test site</title><main><h1 id="headline">Hello from the test site</h1><p class="lead">Plain text</p>
            <button class="cta">Buy now</button> <a id="popup" href="/second" target="_blank">open popup</a></main>`;
     return new Response(`<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,">${body}`, {
@@ -102,6 +111,7 @@ async function shot(name: string) {
 }
 
 async function check(name: string, fn: () => Promise<string | void>) {
+  if (only && !name.includes(only) && !name.startsWith("app boots")) return;
   const started = Date.now();
   try {
     const detail = await fn();
@@ -647,6 +657,98 @@ try {
     });
   }
 
+  await check("extensions: imported from Chrome with their settings, toolbar, popup, shortcut, blocking", async () => {
+    const id = fixture.extensionId;
+    // Import from the (fake) browser profile, settings included.
+    await click("nav button", "Settings");
+    await page!.waitFor(`!!document.querySelector('[data-section="extensions"] [data-extensions-import]')`, { label: "extensions settings" });
+    await click('[data-section="extensions"] [data-extensions-import]');
+    await page!.waitFor(`!!document.querySelector('[data-extension-import] [data-import-candidate="${id}"]')`, { label: "the extension offered", timeoutMs: 15_000 });
+    const offered = await page!.eval<number>(`document.querySelectorAll("[data-extension-import] [data-import-candidate]").length`);
+    if (offered !== 1) throw new Error(`expected only the fixture to be offered (no browser components), got ${offered}`);
+    const checked = await page!.eval<boolean>(`document.querySelector('[data-import-candidate="${id}"] input').checked && document.querySelector("[data-import-settings]").checked`);
+    if (!checked) throw new Error("the extension (with its settings) should be picked by default");
+    await shot("extensions-import.png");
+    await click("[data-import-run]");
+    await page!.waitFor(`document.querySelector("[data-import-result]")?.innerText.includes("Imported")`, { label: "import result", timeoutMs: 20_000 });
+    await click("[data-extension-import] button", "Done");
+    await page!.waitFor(`!!document.querySelector('[data-extension="${id}"]')`, { label: "extension listed" });
+    const row = await page!.eval<string>(`document.querySelector('[data-extension="${id}"]').innerText`);
+    if (!row.includes(fixture.name) || !row.includes("Chromium (Work)")) throw new Error(`settings row: ${row}`);
+    await page!.eval(`document.querySelector('[data-section="extensions"]').scrollIntoView({ block: "start" }), true`);
+    await shot("extensions-settings.png");
+
+    // A web tab: the content script ran with the data from Chrome, and the pinned button shows its badge.
+    const tabsBefore = await page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.dataset.appId)`);
+    await newTab("New web tab");
+    const tabId = await page!.waitFor<string>(
+      `(() => { const id = document.querySelector('nav li[aria-current="page"]')?.dataset.appId; return id && !${JSON.stringify(tabsBefore)}.includes(id) ? id : null; })()`,
+      { label: "new web tab" },
+    );
+    const tab = `[data-web-tab="${tabId}"]`;
+    await page!.waitFor(`!!document.querySelector('${tab} [data-address]')`, { label: "address bar" });
+    await page!.eval(`(() => {
+      const input = document.querySelector('${tab} [data-address]');
+      input.value = "${site.url.origin}/";
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      input.form.requestSubmit();
+      return true;
+    })()`);
+    const inPage = <T>(code: string) => inView<T>(tab, code);
+    const marks = await waitForValue(async () => {
+      const m = await inPage<string>(`document.documentElement.dataset.crx + "|" + document.documentElement.dataset.greeting`);
+      return m?.startsWith("ok|") && !m.endsWith("undefined") ? m : undefined;
+    }, 20_000);
+    if (marks !== "ok|hello from chrome") throw new Error(`content script: ${marks}`);
+    const badge = await page!.waitFor<string>(`document.querySelector('${tab} [data-extension-action="${id}"] [data-extension-badge]')?.textContent`, { label: "badge", timeoutMs: 15_000 });
+    if (badge !== "7") throw new Error(`badge: ${badge}`);
+
+    // Its declarativeNetRequest rules block (and NathApp's own rules, checked above, still work alongside).
+    const before = siteSeen.length;
+    const blocked = await inPage<string>(`fetch("/blocked-by-extension").then(() => "loaded", () => "blocked")`);
+    if (blocked !== "blocked") throw new Error("the extension's rule didn't block the request");
+
+    // The popup sees the tab it was opened on.
+    await click(`${tab} [data-extension-action="${id}"]`);
+    await page!.waitFor(`!!document.querySelector('[data-extension-popup="${id}"] webview')`, { label: "popup" });
+    const popupUrl = await waitForValue(async () => {
+      const text = await page!.eval<string>(`document.querySelector('[data-extension-popup="${id}"] webview').executeJavaScript('document.getElementById("url")?.textContent')`);
+      return text && text !== "…" ? text : undefined;
+    }, 15_000);
+    if (popupUrl !== `${site.url.origin}/`) throw new Error(`popup's active tab: ${popupUrl}`);
+    await Bun.sleep(300);
+    await shot("extensions-popup.png");
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    await page!.waitFor(`!document.querySelector("[data-extension-popup]")`, { label: "popup closed" });
+
+    // The shortcut changed in Chrome (Alt+Shift+U) reaches the extension, with the tab.
+    for (const type of ["rawKeyDown", "keyUp"]) {
+      await page!.send("Input.dispatchKeyEvent", { type, modifiers: 1 | 8, key: "U", code: "KeyU", windowsVirtualKeyCode: 85, nativeVirtualKeyCode: 85 });
+    }
+
+    // Its options page opens as a web tab; there, its storage tells what it got.
+    await click("nav button", "Settings");
+    await page!.waitFor(`!!document.querySelector('[data-extension="${id}"] [data-extension-options]')`, { label: "options button" });
+    await click(`[data-extension="${id}"] [data-extension-options]`);
+    const optionsTab = await page!.waitFor<string>(
+      `[...document.querySelectorAll("nav li")].find((li) => li.innerText.includes("Fixture options") && li.getAttribute("aria-current") === "page")?.dataset.appId`,
+      { label: "options tab", timeoutMs: 15_000 },
+    );
+    const stored = await waitForValue(async () => {
+      const value = await inView<{ installed?: { reason: string }; command?: string; tabUrl?: string; fromWorker?: number }>(
+        `[data-web-tab="${optionsTab}"]`,
+        `Promise.all([chrome.storage.local.get(null), chrome.storage.sync.get(null)]).then(([l, s]) => ({ ...l, ...s }))`,
+      );
+      return value?.command ? value : undefined;
+    }, 15_000);
+    // Imported with its data, it was updated rather than installed (no first-run pages).
+    if (stored.installed?.reason !== "update") throw new Error(`runtime.onInstalled: ${JSON.stringify(stored.installed)}`);
+    if (stored.command !== "bump" || stored.tabUrl !== `${site.url.origin}/`) throw new Error(`command: ${JSON.stringify(stored)}`);
+    if (stored.fromWorker !== 1) throw new Error("storage.sync didn't keep the value");
+    if (siteSeen.length !== before) throw new Error("a blocked request reached the site");
+    return `content script with Chrome's data, badge ${badge}, popup on ${popupUrl}, shortcut → ${stored.command}, onInstalled: ${stored.installed.reason}`;
+  });
+
   await check("workspaces: own tabs and web logins, switching keeps state", async () => {
     const tabIds = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.dataset.appId)`);
     const selected = () => page!.eval<string | undefined>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
@@ -816,6 +918,7 @@ try {
   electron.kill();
   await electron.exited;
   rmSync(profile, { recursive: true, force: true });
+  rmSync(browserDir, { recursive: true, force: true });
 }
 
 const failed = results.filter((r) => !r.ok);

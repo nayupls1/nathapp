@@ -1,27 +1,34 @@
 // A web tab: a browser page (<webview>) with an address bar, an element
 // picker and the website agent next to it. Web tabs stay mounted while you
-// switch tabs so pages keep their state.
+// switch tabs so pages keep their state. Pages load once the workspace's
+// extensions run (content scripts at document start), and extension pages
+// (options, ones an extension opened) are web tabs too.
 import * as stylex from "@stylexjs/stylex";
 import type { DidFailLoadEvent, PageFaviconUpdatedEvent, PageTitleUpdatedEvent, WebviewTag } from "electron";
 import { createEffect, createSignal, For, on, onCleanup, Show, untrack } from "solid-js";
 import { DEFAULT_WORKSPACE, webPartition, type ElementInfo, type PageContext } from "../../shared/api";
+import { isExtensionUrl } from "../../shared/extensions";
 import { hostOf, normalizeUrl, overrideScript } from "../../shared/web";
 import { api } from "../lib/api";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { settings } from "../lib/settings";
 import { appById, isAgentCollapsed, sendPrompt, setAgentCollapsed, states, updatePage } from "../lib/store";
-import { cachedOverride, registerPage, siteOverride, type PageInfo } from "../lib/webtabs";
+import { showExtensionSettings } from "../lib/extensions";
+import { cachedOverride, pagesChanged, registerPage, siteOverride, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip } from "./Chat";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
+import { openExtensionImport } from "./ExtensionImport";
+import { ExtensionsBar } from "./ExtensionsBar";
 import { Icon } from "./Icon";
 import { NetworkPanel } from "./NetworkPanel";
 
 export function WebTab(props: { appId: string; active: boolean }) {
   const initialUrl = untrack(() => appById(props.appId)?.url ?? "");
   // The workspace's session (cookies, logins). A tab moved to another workspace is closed and reopened with the new one.
-  const partition = untrack(() => webPartition(appById(props.appId)?.workspaceId ?? DEFAULT_WORKSPACE));
+  const workspaceId = untrack(() => appById(props.appId)?.workspaceId ?? DEFAULT_WORKSPACE);
+  const partition = webPartition(workspaceId);
   const [src, setSrc] = createSignal(initialUrl);
   const [address, setAddress] = createSignal(initialUrl);
   const [currentUrl, setCurrentUrl] = createSignal(initialUrl);
@@ -32,6 +39,10 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
   const [menu, setMenu] = createSignal<MenuPosition>();
+  const [contentsId, setContentsId] = createSignal<number | null>(null);
+  // The webview waits for the workspace's extensions (never long).
+  const [prepared, setPrepared] = createSignal(false);
+  void window.nathapp.extensions.prepare(workspaceId).finally(() => setPrepared(true));
   const host = () => hostOf(currentUrl());
   const collapsed = () => isAgentCollapsed(props.appId);
   const state = () => states[props.appId];
@@ -61,7 +72,12 @@ export function WebTab(props: { appId: string; active: boolean }) {
     webview && ready ? { url: webview.getURL(), title: webview.getTitle() } : { url: currentUrl(), title: "" };
 
   function go(input: string) {
-    const target = normalizeUrl(input, settings().web.searchEngine);
+    // Chrome's extensions page is NathApp's.
+    if (/^chrome:\/\/extensions\/?$/i.test(input.trim())) {
+      showExtensionSettings();
+      return false;
+    }
+    const target = isExtensionUrl(input.trim()) ? input.trim() : normalizeUrl(input, settings().web.searchEngine);
     if (!target) return false;
     setAddress(target);
     if (!src()) setSrc(target); // creates the webview
@@ -90,7 +106,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
   let loadApplied: Promise<void> = Promise.resolve();
 
   async function activeOverride() {
-    const h = hostOf(webview?.getURL());
+    const url = webview?.getURL() ?? "";
+    const h = /^https?:/i.test(url) ? hostOf(url) : "";
     if (!h || !settings().web.overrides || window.nathapp.safeMode) return null;
     const override = await siteOverride(h).catch(() => null);
     return override?.enabled ? override : null;
@@ -236,7 +253,12 @@ export function WebTab(props: { appId: string; active: boolean }) {
       updatePage(props.appId, { favicon: e.favicons.find((f) => /^https?:/.test(f)) ?? null }),
     );
     view.addEventListener("dom-ready", () => {
+      const first = !ready;
       ready = true;
+      if (first) {
+        setContentsId(view.getWebContentsId());
+        pagesChanged();
+      }
       loadApplied = applyOnLoad();
       updateHistory();
     });
@@ -310,7 +332,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
               if (go(address())) addressInput.blur();
             }}
           >
-            <Icon name={currentUrl().startsWith("https:") ? "lock" : "globe"} size={13} {...stylex.attrs(styles.addressIcon)} />
+            <Icon name={isExtensionUrl(currentUrl()) ? "puzzle" : currentUrl().startsWith("https:") ? "lock" : "globe"} size={13} {...stylex.attrs(styles.addressIcon)} />
             <input
               ref={addressInput}
               value={address()}
@@ -359,6 +381,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
           >
             <Icon name="network" size={16} />
           </button>
+          <ExtensionsBar workspaceId={workspaceId} tabId={contentsId} active={props.active} onImport={openExtensionImport} />
           <Show when={collapsed()}>
             <button
               type="button"
@@ -379,7 +402,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
           <div {...stylex.attrs(styles.progress)} />
         </Show>
         <div {...stylex.attrs(styles.viewport)}>
-          <Show when={src()} fallback={<StartPage onGo={go} />}>
+          <Show when={src() && prepared()} fallback={<Show when={!src()}><StartPage onGo={go} /></Show>}>
             <webview
               ref={attach}
               src={src()}

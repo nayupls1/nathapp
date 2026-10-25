@@ -44,6 +44,7 @@ protocol.registerSchemesAsPrivileged([
 
 let server: ServerHandle | undefined;
 let mainWindow: BrowserWindow | undefined;
+let web: ReturnType<typeof setupWebTabs> | undefined;
 
 // Safe mode: the renderer leaves out the theme and site customizations, so
 // whatever broke the UI can be undone in History.
@@ -99,7 +100,7 @@ function createWindow(server: ServerHandle) {
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = undefined;
   });
-  guardWindow(win, rendererOrigin);
+  guardWindow(win, rendererOrigin, (input) => web?.windowInput(input) ?? false);
   // Works even when the UI itself is unusable.
   win.webContents.on("before-input-event", (event, input) => {
     if (input.type === "keyDown" && input.control && input.alt && input.shift && input.key.toLowerCase() === "s") {
@@ -118,7 +119,7 @@ function createWindow(server: ServerHandle) {
 
 app.whenReady().then(async () => {
   if (!devServerUrl) registerAppProtocol();
-  setupWebTabs(() => mainWindow);
+  web = setupWebTabs(() => mainWindow);
 
   try {
     server = await startServer(rendererOrigin);

@@ -1,23 +1,27 @@
 // The Settings tab: the current workspace, appearance, providers, agent
-// defaults and prompt additions, apps, web tabs, secrets and permissions.
+// defaults and prompt additions, apps, web tabs and their extensions, secrets
+// and permissions.
 import * as stylex from "@stylexjs/stylex";
 import { createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
 import { defaultAppModel, providerIds, workspaceScope, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
 import { topics } from "../../shared/hub";
+import type { ExtensionInfo, InstallResult } from "../../shared/extensions";
+import { autoUpdate, extensionList } from "../lib/extensions";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
-import { currentWorkspace, deleteWorkspace, editWorkspaceSettings, providerById, refreshProviders, updateWorkspace, workspaces } from "../lib/store";
+import { currentWorkspace, deleteWorkspace, editWorkspaceSettings, newWebTab, providerById, refreshProviders, updateWorkspace, workspaces } from "../lib/store";
 import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AgentPicker } from "./AgentPicker";
 import { confirmDialog } from "./ConfirmDialog";
+import { openExtensionImport } from "./ExtensionImport";
 import { Icon } from "./Icon";
 import { ProviderIcon } from "./ProviderIcon";
 import { SecretForm, SecretRow } from "./Secrets";
-import { Select } from "./ui";
+import { Button, Select } from "./ui";
 
 export function SettingsPage() {
   const [health] = createResource(() => api.health());
@@ -181,6 +185,8 @@ export function SettingsPage() {
         </Row>
         <NetworkRules />
       </Section>
+
+      <ExtensionsSection />
 
       <Section title="Apps" icon="box">
         <Row label="Sandbox" description="How app processes are isolated. Bubblewrap gives every app its own view of the system: only its project folder is writable, your files are invisible.">
@@ -649,6 +655,142 @@ function NetworkRules() {
   );
 }
 
+/** Chrome extensions: importing them from a browser, the store or a folder, and each one's switches. */
+function ExtensionsSection() {
+  const ext = window.nathapp.extensions;
+  const [input, setInput] = createSignal("");
+  const [busy, setBusy] = createSignal(false);
+  const [message, setMessage] = createSignal<string>();
+  const report = (r: InstallResult | null) => {
+    if (r) setMessage([...r.installed.map((i) => `Added ${i.name}.`), ...r.failed.map((f) => `${f.name}: ${f.error}`)].join(" "));
+  };
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    setMessage();
+    try {
+      await fn();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const add = (e: SubmitEvent) => {
+    e.preventDefault();
+    void run(async () => {
+      report(await ext.install(input().trim()));
+      setInput("");
+    });
+  };
+  const checkNow = () =>
+    void run(async () => {
+      const n = await ext.update();
+      setMessage(n ? `Updated ${n === 1 ? "one extension" : `${n} extensions`}.` : "Everything is up to date.");
+    });
+
+  return (
+    <Section title="Extensions" icon="puzzle" anchor="extensions">
+      <Row label="Import from your browser" description="Bring over the extensions of Chrome, Chromium, Brave, Edge or Vivaldi, with their settings, pinned buttons and keyboard shortcuts.">
+        <Button onClick={openExtensionImport} data-extensions-import>
+          <Icon name="download" size={14} />
+          Import…
+        </Button>
+      </Row>
+      <For each={extensionList()}>{(info) => <ExtensionRow info={info} />}</For>
+      <form onSubmit={add} {...stylex.attrs(styles.ruleForm)} data-extension-add>
+        <div {...stylex.attrs(styles.ruleLine)}>
+          <input
+            value={input()}
+            onInput={(e) => setInput(e.currentTarget.value)}
+            placeholder="Chrome Web Store link or extension ID"
+            spellcheck={false}
+            {...stylex.attrs(styles.textInput, styles.ruleInput)}
+          />
+          <button type="submit" disabled={busy() || !input().trim()} {...stylex.attrs(styles.linkButton)}>
+            Add from the store
+          </button>
+          <button type="button" disabled={busy()} onClick={() => void run(async () => report(await ext.loadUnpacked()))} {...stylex.attrs(styles.linkButton)}>
+            Load unpacked…
+          </button>
+        </div>
+        <p {...stylex.attrs(styles.muted)} data-extension-message>
+          {busy() ? "Working…" : (message() ?? "Extensions run in the web tabs of every workspace; each workspace keeps its own extension data, like a browser profile.")}
+        </p>
+      </form>
+      <Row label="Update automatically" description="Check for new versions of store extensions every few hours.">
+        <button type="button" disabled={busy()} onClick={checkNow} {...stylex.attrs(styles.linkButton)}>
+          Check now
+        </button>
+        <Toggle checked={autoUpdate()} onChange={(on) => void ext.setAutoUpdate(on)} />
+      </Row>
+    </Section>
+  );
+}
+
+function ExtensionRow(props: { info: ExtensionInfo }) {
+  const ext = window.nathapp.extensions;
+  const info = () => props.info;
+  const source = () => {
+    const s = info().source;
+    if (s.kind === "browser") return `from ${s.browser} (${s.profile})`;
+    if (s.kind === "webstore") return "Chrome Web Store";
+    return `unpacked: ${info().path}`;
+  };
+  const isPinned = () => info().pinned;
+  return (
+    <div {...stylex.attrs(styles.row)} data-extension={info().id}>
+      <div {...stylex.attrs(styles.extHead)}>
+        <Show when={info().icon} fallback={<Icon name="puzzle" size={24} {...stylex.attrs(styles.accent)} />}>
+          <img src={info().icon!} alt="" width={24} height={24} {...stylex.attrs(styles.extIcon)} />
+        </Show>
+        <div {...stylex.attrs(styles.rowText)}>
+          <span {...stylex.attrs(styles.rowLabel)}>{info().name}</span>
+          <span {...stylex.attrs(styles.muted)}>{[info().version, source()].filter(Boolean).join(" · ")}</span>
+          <Show when={info().error}>
+            <span {...stylex.attrs(styles.extBad)}>{info().error}</span>
+          </Show>
+          <Show when={info().unsupported.length}>
+            <span {...stylex.attrs(styles.extWarn)}>Not available in NathApp, so parts may not work: {info().unsupported.join(", ")}</span>
+          </Show>
+          <Show when={info().nativeMessaging}>
+            <span {...stylex.attrs(styles.muted)}>Talks to programs installed on this computer for it (native messaging).</span>
+          </Show>
+        </div>
+      </div>
+      <div {...stylex.attrs(styles.siteControls)}>
+        <Show when={info().optionsUrl && info().enabled}>
+          <button type="button" title="Options" onClick={() => void newWebTab(info().optionsUrl!)} {...stylex.attrs(styles.iconButton, styles.plainButton)} data-extension-options>
+            <Icon name="sliders-horizontal" size={15} />
+          </button>
+        </Show>
+        <Show when={info().hasAction}>
+          <button
+            type="button"
+            title={isPinned() ? "Unpin from the toolbar" : "Pin to the toolbar"}
+            aria-pressed={isPinned()}
+            onClick={() => void ext.setPinned(info().id, !isPinned())}
+            {...stylex.attrs(styles.iconButton, styles.plainButton, isPinned() && styles.pinnedButton)}
+          >
+            <Icon name="pin" size={15} />
+          </button>
+        </Show>
+        <Toggle checked={info().enabled} onChange={(on) => void ext.setEnabled(info().id, on)} />
+        <button
+          type="button"
+          title="Remove"
+          onClick={async () => {
+            if (await confirmDialog(`Remove ${info().name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await ext.remove(info().id);
+          }}
+          {...stylex.attrs(styles.iconButton)}
+          data-extension-remove
+        >
+          <Icon name="trash" size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Sites the website agent customized, each with its own on/off switch. */
 function SiteRows() {
   const [sites, { refetch }] = createResource(() => api.listSites());
@@ -902,6 +1044,12 @@ const styles = stylex.create({
   controlWide: { width: "100%" },
   select: { width: 220 },
   siteControls: { display: "flex", alignItems: "center", gap: space.sm },
+  extHead: { display: "flex", alignItems: "flex-start", gap: space.md, minWidth: 200, flex: "1 1 240px" },
+  extIcon: { flexShrink: 0, marginTop: 2, objectFit: "contain" },
+  extWarn: { color: colors.warning, fontSize: font.xs },
+  extBad: { color: colors.danger, fontSize: font.xs, overflowWrap: "anywhere" },
+  plainButton: { color: { default: colors.muted, ":hover": colors.text } },
+  pinnedButton: { color: { default: colors.accent, ":hover": colors.accent } },
   iconButton: {
     display: "grid",
     placeItems: "center",

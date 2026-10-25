@@ -1,0 +1,573 @@
+// Chrome extensions in web tabs: what the main process and the NathApp window
+// exchange, and the pure helpers both sides (and the tests) use: match
+// patterns, keyboard shortcuts, manifest strings, what NathApp supports, and
+// network rules as declarativeNetRequest rules.
+import type { NetworkRule } from "./api";
+
+/** Where an installed extension came from. */
+export type ExtensionSource =
+  | { kind: "browser"; browser: string; profile: string }
+  | { kind: "webstore" }
+  | { kind: "unpacked" };
+
+export interface ExtensionInfo {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  /** data: URL of its icon. */
+  icon: string | null;
+  enabled: boolean;
+  /** Shown in the toolbar of web tabs (otherwise in the extensions menu). */
+  pinned: boolean;
+  source: ExtensionSource;
+  /** Unpacked extensions are used where they are; the others are copied into NathApp's data. */
+  path: string;
+  /** Has a toolbar button. */
+  hasAction: boolean;
+  /** Its options page, opened in a web tab. */
+  optionsUrl: string | null;
+  /** Permissions it asks for that NathApp doesn't implement: those features may not work. */
+  unsupported: string[];
+  /** Can start programs on this computer (native messaging hosts installed for it). */
+  nativeMessaging: boolean;
+  /** Updates come from the Chrome Web Store (or its own update URL). */
+  updates: boolean;
+  /** Didn't load, and why. */
+  error: string | null;
+}
+
+/** The toolbar button of an extension, for one tab. */
+export interface ExtensionAction {
+  extensionId: string;
+  title: string;
+  /** data: URL. */
+  icon: string | null;
+  badge: string;
+  badgeColor: string;
+  badgeTextColor: string | null;
+  /** chrome-extension:// URL of its popup, or null when a click goes to the extension. */
+  popup: string | null;
+  enabled: boolean;
+}
+
+/** An extension found in another browser's profile. */
+export interface ImportCandidate {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  icon: string | null;
+  /** On in that browser. */
+  enabledThere: boolean;
+  /** Came with the browser (Google Docs Offline…): not picked by default. */
+  byDefault: boolean;
+  /** Loaded from a folder (developer mode or --load-extension): used where it is. */
+  unpacked: boolean;
+  /** Already in NathApp. */
+  installed: boolean;
+  /** Has saved settings (chrome.storage.local) that can come along. */
+  hasSettings: boolean;
+  unsupported: string[];
+}
+
+export interface BrowserProfile {
+  /** Stable key for this browser + profile. */
+  key: string;
+  browser: string;
+  /** The profile's name in that browser ("Work"), or its folder. */
+  profile: string;
+  extensions: ImportCandidate[];
+}
+
+export interface ImportRequest {
+  profileKey: string;
+  ids: string[];
+  /** Bring their chrome.storage.local data too. */
+  settings: boolean;
+}
+
+export interface InstallResult {
+  installed: { id: string; name: string }[];
+  failed: { id: string; name: string; error: string }[];
+}
+
+/** The web tabs of each workspace (by webContents id, in sidebar order) and which is selected. */
+export interface ExtensionTabs {
+  workspaces: Record<string, { tabs: number[]; active: number | null }>;
+  /** The workspace on screen, and whether a web tab is what's shown. */
+  current: string | null;
+  showing: number | null;
+}
+
+/** An extension wants a tab opened (chrome.tabs.create, its options page…), selected or closed. */
+export type ExtensionTabRequest =
+  | { requestId: string; action: "open"; workspaceId: string; url: string; active: boolean }
+  | { requestId: string; action: "select" | "close"; workspaceId: string; tabId: number };
+
+/** An extension asks for optional permissions (chrome.permissions.request). */
+export interface ExtensionPermissionRequest {
+  requestId: string;
+  extensionId: string;
+  name: string;
+  permissions: string[];
+  origins: string[];
+}
+
+/** Open an extension's popup (its keyboard shortcut, or chrome.action.openPopup). */
+export interface ExtensionPopupRequest {
+  workspaceId: string;
+  extensionId: string;
+  url: string;
+}
+
+/** NathApp's own extension in every web tab session: it applies the network rules (Settings → Network). */
+export const BUILTIN_EXTENSION_ID = "ikphnmngfgaajbhljcknjgjlhpdmmjpg";
+
+export const EXTENSION_URL_PATTERN = /^chrome-extension:\/\/([a-p]{32})(\/|$)/;
+export const extensionIdOf = (url: string | null | undefined) => (url ? (EXTENSION_URL_PATTERN.exec(url)?.[1] ?? null) : null);
+export const isExtensionUrl = (url: string | null | undefined) => extensionIdOf(url) !== null;
+export const isExtensionId = (id: unknown): id is string => typeof id === "string" && /^[a-p]{32}$/.test(id);
+
+// --- Manifests ---------------------------------------------------------------------
+
+export interface Manifest {
+  manifest_version?: number;
+  name?: string;
+  short_name?: string;
+  version?: string;
+  description?: string;
+  default_locale?: string;
+  icons?: Record<string, string>;
+  action?: { default_icon?: string | Record<string, string>; default_popup?: string; default_title?: string };
+  browser_action?: Manifest["action"];
+  page_action?: Manifest["action"];
+  options_page?: string;
+  options_ui?: { page?: string };
+  permissions?: unknown[];
+  optional_permissions?: unknown[];
+  host_permissions?: unknown[];
+  optional_host_permissions?: unknown[];
+  commands?: Record<string, { description?: string; suggested_key?: string | Record<string, string>; global?: boolean }>;
+  background?: { service_worker?: string; scripts?: string[]; page?: string };
+  update_url?: string;
+  key?: string;
+  theme?: unknown;
+  app?: unknown;
+  [key: string]: unknown;
+}
+
+type Messages = Record<string, { message?: string }>;
+
+/** Replaces `__MSG_name__` placeholders with the extension's messages (keys are case-insensitive). */
+export function localize(text: string | undefined, messages: Messages | null): string {
+  if (!text) return "";
+  if (!messages) return text;
+  const lower: Record<string, string> = {};
+  for (const [key, value] of Object.entries(messages)) if (typeof value?.message === "string") lower[key.toLowerCase()] = value.message;
+  return text.replace(/__MSG_([\w@]+)__/g, (all, name: string) => lower[name.toLowerCase()] ?? all);
+}
+
+/** Locale folders to look in for messages, best first (en_US → en_US, en, then the default). */
+export function localeCandidates(appLocale: string, defaultLocale: string | undefined) {
+  const tag = appLocale.replace("-", "_");
+  const list = [tag, tag.split("_")[0]!, defaultLocale ?? "", "en"].filter(Boolean);
+  return [...new Set(list)];
+}
+
+/** The icon file closest to `size` (bigger first). */
+export function iconPath(icons: string | Record<string, string> | undefined, size = 32): string | null {
+  if (!icons) return null;
+  if (typeof icons === "string") return icons;
+  const sizes = Object.keys(icons)
+    .map(Number)
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  if (!sizes.length) return null;
+  const best = sizes.find((n) => n >= size) ?? sizes[sizes.length - 1]!;
+  return icons[String(best)] ?? null;
+}
+
+export const actionOf = (m: Manifest) => m.action ?? m.browser_action ?? m.page_action;
+export const optionsPageOf = (m: Manifest) => m.options_ui?.page ?? m.options_page ?? null;
+
+/** Permissions NathApp provides, natively in Electron or through its own shims. */
+const SUPPORTED_PERMISSIONS = new Set([
+  "activeTab",
+  "alarms",
+  "background",
+  "clipboardRead",
+  "clipboardWrite",
+  "contextMenus",
+  "cookies",
+  "declarativeNetRequest",
+  "declarativeNetRequestFeedback",
+  "declarativeNetRequestWithHostAccess",
+  "i18n",
+  "idle",
+  "management",
+  "menus",
+  "nativeMessaging",
+  "notifications",
+  "offscreen",
+  "scripting",
+  "storage",
+  "tabs",
+  "unlimitedStorage",
+  "webNavigation",
+  "webRequest",
+  "webRequestBlocking",
+]);
+
+const isHostPattern = (p: string) => p === "<all_urls>" || p.includes("://");
+
+/** Permissions (required ones) that NathApp doesn't implement. */
+export function unsupportedPermissions(m: Manifest) {
+  const asked = (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
+  return asked.filter((p) => !SUPPORTED_PERMISSIONS.has(p)).sort();
+}
+
+export const permissionsOf = (m: Manifest) => (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
+
+/** Host permissions: MV3's host_permissions, or MV2's permissions that are patterns. */
+export const hostPermissionsOf = (m: Manifest) =>
+  [...(m.host_permissions ?? []), ...(m.manifest_version === 2 ? (m.permissions ?? []) : [])].filter((p): p is string => typeof p === "string" && isHostPattern(p));
+
+// --- Match patterns ----------------------------------------------------------------
+
+/**
+ * Chrome's match patterns (`<all_urls>`, `*://*.example.com/*`, `https://a.b/path*`).
+ * Returns null for an invalid pattern.
+ */
+export function matchPattern(pattern: string): ((url: string) => boolean) | null {
+  if (pattern === "<all_urls>") return (url) => /^(https?|wss?|ftp|file|data|chrome-extension):/i.test(url);
+  const m = /^(\*|https?|wss?|ftp|file|urn|chrome-extension):\/\/([^/]*)(\/.*)?$/i.exec(pattern);
+  if (!m) return null;
+  const [, scheme, host, path = "/*"] = m as unknown as [string, string, string, string?];
+  if (host !== "*" && host.includes("*") && !(host.startsWith("*.") && !host.slice(2).includes("*"))) return null;
+  const hostLower = host.toLowerCase();
+  const pathRe = new RegExp(`^${path.split("*").map(escapeRegExp).join(".*")}$`);
+  return (url) => {
+    let u: URL;
+    try {
+      u = new URL(url);
+    } catch {
+      return false;
+    }
+    const s = u.protocol.slice(0, -1).toLowerCase();
+    if (scheme === "*" ? !["http", "https", "ws", "wss"].includes(s) : s !== scheme.toLowerCase()) return false;
+    const h = u.hostname.toLowerCase();
+    if (hostLower !== "*" && s !== "file") {
+      if (hostLower.startsWith("*.")) {
+        const base = hostLower.slice(2);
+        if (h !== base && !h.endsWith(`.${base}`)) return false;
+      } else if (h !== hostLower.replace(/:\d+$/, "")) return false;
+    }
+    return pathRe.test(u.pathname + u.search);
+  };
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+
+/** Whether any of the patterns matches the URL. */
+export function matchesAny(patterns: readonly string[], url: string) {
+  return patterns.some((p) => matchPattern(p)?.(url) ?? false);
+}
+
+// --- Keyboard shortcuts ------------------------------------------------------------------
+
+export type ShortcutPlatform = "linux" | "mac" | "windows" | "chromeos";
+
+export interface Shortcut {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+  /** KeyboardEvent.code it matches (KeyX, Digit1, ArrowUp, F5…). */
+  code: string;
+}
+
+const NAMED_KEYS: Record<string, string> = {
+  comma: "Comma",
+  period: "Period",
+  home: "Home",
+  end: "End",
+  pageup: "PageUp",
+  pagedown: "PageDown",
+  space: "Space",
+  insert: "Insert",
+  delete: "Delete",
+  up: "ArrowUp",
+  down: "ArrowDown",
+  left: "ArrowLeft",
+  right: "ArrowRight",
+  medianexttrack: "MediaTrackNext",
+  mediaprevtrack: "MediaTrackPrevious",
+  mediaplaypause: "MediaPlayPause",
+  mediastop: "MediaStop",
+};
+
+/** Parses a command's key ("Ctrl+Shift+X", "Alt+Shift+L", "Command+Comma"). Null if it isn't one. */
+export function parseShortcut(text: string, platform: ShortcutPlatform): Shortcut | null {
+  const parts = text.split("+").map((p) => p.trim());
+  if (parts.length < 1 || parts.some((p) => !p)) return null;
+  const s: Shortcut = { ctrl: false, alt: false, shift: false, meta: false, code: "" };
+  for (const part of parts.slice(0, -1)) {
+    const p = part.toLowerCase();
+    if (p === "ctrl") s[platform === "mac" ? "meta" : "ctrl"] = true;
+    else if (p === "command") s.meta = true;
+    else if (p === "macctrl") s.ctrl = true;
+    else if (p === "alt" || p === "option") s.alt = true;
+    else if (p === "shift") s.shift = true;
+    else if (p === "search") s.meta = true;
+    else return null;
+  }
+  const key = parts[parts.length - 1]!;
+  if (/^[a-z]$/i.test(key)) s.code = `Key${key.toUpperCase()}`;
+  else if (/^\d$/.test(key)) s.code = `Digit${key}`;
+  else if (/^f([1-9]|1[0-2])$/i.test(key)) s.code = key.toUpperCase();
+  else if (NAMED_KEYS[key.toLowerCase()]) s.code = NAMED_KEYS[key.toLowerCase()]!;
+  else return null;
+  // Media keys work alone; everything else needs Ctrl, Alt or Command.
+  if (!s.code.startsWith("Media") && !s.ctrl && !s.alt && !s.meta) return null;
+  return s;
+}
+
+/** A command's key on this platform (suggested_key is a string or per platform, with a default). */
+export function suggestedKey(suggested: string | Record<string, string> | undefined, platform: ShortcutPlatform): string | null {
+  if (!suggested) return null;
+  if (typeof suggested === "string") return suggested;
+  return suggested[platform] ?? suggested.default ?? null;
+}
+
+export function shortcutMatches(s: Shortcut, input: { control: boolean; alt: boolean; shift: boolean; meta: boolean; code: string }) {
+  return s.code === input.code && s.ctrl === input.control && s.alt === input.alt && s.shift === input.shift && s.meta === input.meta;
+}
+
+/** "Ctrl+Shift+X" as shown to people. */
+export function shortcutLabel(text: string) {
+  return text
+    .split("+")
+    .map((p) => p.trim())
+    .join("+");
+}
+
+const colorNames: Record<string, [number, number, number]> = {
+  red: [255, 0, 0],
+  green: [0, 128, 0],
+  blue: [0, 0, 255],
+  black: [0, 0, 0],
+  white: [255, 255, 255],
+  gray: [128, 128, 128],
+  grey: [128, 128, 128],
+  orange: [255, 165, 0],
+  yellow: [255, 255, 0],
+  purple: [128, 0, 128],
+};
+
+/** A badge color as Chrome returns it: [r, g, b, a]. */
+export function parseColor(value: unknown): [number, number, number, number] | null {
+  if (Array.isArray(value) && value.length >= 3) {
+    const [r, g, b, a = 255] = value.map((n) => Math.max(0, Math.min(255, Math.round(Number(n) || 0))));
+    return [r!, g!, b!, a!];
+  }
+  if (typeof value !== "string") return null;
+  const v = value.trim().toLowerCase();
+  if (colorNames[v]) return [...colorNames[v], 255];
+  let m = /^#([0-9a-f]{3,4})$/.exec(v);
+  if (m) {
+    const [r, g, b, a = "f"] = [...m[1]!];
+    return [parseInt(r! + r, 16), parseInt(g! + g, 16), parseInt(b! + b, 16), parseInt(a + a, 16)];
+  }
+  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/.exec(v);
+  if (m) return [parseInt(m[1]!.slice(0, 2), 16), parseInt(m[1]!.slice(2, 4), 16), parseInt(m[1]!.slice(4, 6), 16), m[2] ? parseInt(m[2], 16) : 255];
+  m = /^rgba?\(([^)]+)\)$/.exec(v);
+  if (m) {
+    const parts = m[1]!.split(/[,\s/]+/).filter(Boolean).map(Number);
+    if (parts.length >= 3) return [parts[0]!, parts[1]!, parts[2]!, parts[3] === undefined ? 255 : Math.round(parts[3] <= 1 ? parts[3] * 255 : parts[3])];
+  }
+  return null;
+}
+
+// --- Network rules as declarativeNetRequest rules -------------------------------------------
+//
+// NathApp's own rules (Settings → Network) are applied with declarativeNetRequest
+// by a small built-in extension. Session webRequest hooks would switch off every
+// installed extension's blocking (Electron gives the hooks precedence), so the
+// rules and extensions like uBlock Origin Lite can work together.
+
+const ALL_RESOURCE_TYPES = [
+  "main_frame",
+  "sub_frame",
+  "stylesheet",
+  "script",
+  "image",
+  "font",
+  "object",
+  "xmlhttprequest",
+  "ping",
+  "csp_report",
+  "media",
+  "websocket",
+  "webtransport",
+  "webbundle",
+  "other",
+] as const;
+
+export interface DnrRule {
+  id: number;
+  priority: number;
+  action:
+    | { type: "block" }
+    | {
+        type: "modifyHeaders";
+        requestHeaders?: { header: string; operation: "set" | "remove"; value?: string }[];
+        responseHeaders?: { header: string; operation: "set" | "remove"; value?: string }[];
+      };
+  condition: { urlFilter?: string; regexFilter?: string; resourceTypes: string[]; isUrlFilterCaseSensitive: false };
+}
+
+const headerOps = (headers: Record<string, string | null>) =>
+  Object.entries(headers).map(([header, value]) => (value === null ? { header, operation: "remove" as const } : { header, operation: "set" as const, value }));
+
+/**
+ * A rule's pattern as a DNR condition. With `*` it matches the whole URL
+ * (anchored at both ends), otherwise any URL containing it, case-insensitively
+ * like `urlMatcher`. Characters DNR filters treat specially (`|`, `^`) need a
+ * regular expression instead.
+ */
+export function patternCondition(pattern: string): { urlFilter: string } | { regexFilter: string } | null {
+  const p = pattern.trim();
+  if (!p || /[^\x20-\x7e]/.test(p)) return null;
+  const whole = p.includes("*");
+  if (!/[|^]/.test(p)) return { urlFilter: whole ? `|${p}|` : p };
+  const body = p.split("*").map(escapeRegExp).join(".*");
+  return { regexFilter: whole ? `^${body}$` : body };
+}
+
+/** The workspace's enabled rules as DNR session rules (block wins over header changes). */
+export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: string): DnrRule[] {
+  const out: DnrRule[] = [];
+  for (const rule of rules) {
+    if (!rule.enabled || (rule.workspaceId !== null && rule.workspaceId !== workspaceId)) continue;
+    const condition = patternCondition(rule.pattern);
+    if (!condition) continue;
+    const base = { id: out.length + 1, condition: { ...condition, resourceTypes: [...ALL_RESOURCE_TYPES], isUrlFilterCaseSensitive: false as const } };
+    if (rule.action === "block") {
+      out.push({ ...base, priority: 2, action: { type: "block" } });
+      continue;
+    }
+    const requestHeaders = headerOps(rule.requestHeaders);
+    const responseHeaders = headerOps(rule.responseHeaders);
+    if (!requestHeaders.length && !responseHeaders.length) continue;
+    out.push({
+      ...base,
+      priority: 1,
+      action: {
+        type: "modifyHeaders",
+        ...(requestHeaders.length ? { requestHeaders } : {}),
+        ...(responseHeaders.length ? { responseHeaders } : {}),
+      },
+    });
+  }
+  return out;
+}
+
+// --- Chrome's profile data ----------------------------------------------------------------------
+
+/** Extension locations in Chrome's preferences that are part of the browser itself. */
+const BUILT_IN_LOCATIONS = new Set([5, 10]);
+/** Loaded from a folder: developer mode (4) or --load-extension (8). */
+const UNPACKED_LOCATIONS = new Set([4, 8]);
+
+export interface ProfileExtensionEntry {
+  id: string;
+  /** As stored: relative to the profile's Extensions folder, or absolute. */
+  path: string;
+  unpacked: boolean;
+  enabled: boolean;
+  byDefault: boolean;
+  fromWebStore: boolean;
+}
+
+/**
+ * The extensions a Chrome profile lists in Preferences / Secure Preferences
+ * (`extensions.settings`), without the browser's own components, themes and
+ * hosted apps.
+ */
+export function profileExtensions(...prefs: unknown[]): ProfileExtensionEntry[] {
+  const found = new Map<string, ProfileExtensionEntry>();
+  for (const p of prefs) {
+    const settings = (p as { extensions?: { settings?: Record<string, unknown> } } | null)?.extensions?.settings;
+    if (!settings || typeof settings !== "object") continue;
+    for (const [id, raw] of Object.entries(settings)) {
+      const e = raw as {
+        location?: number;
+        path?: string;
+        state?: number;
+        disable_reasons?: number | number[];
+        was_installed_by_default?: boolean;
+        from_webstore?: boolean;
+        manifest?: Manifest;
+      };
+      if (!isExtensionId(id) || typeof e?.path !== "string" || !e.path) continue;
+      if (e.location !== undefined && BUILT_IN_LOCATIONS.has(e.location)) continue;
+      if (e.manifest && (e.manifest.theme || e.manifest.app)) continue;
+      const reasons = e.disable_reasons;
+      const disabled = Array.isArray(reasons) ? reasons.length > 0 : typeof reasons === "number" ? reasons !== 0 : e.state === 0;
+      const previous = found.get(id);
+      found.set(id, {
+        id,
+        path: e.path,
+        unpacked: e.location !== undefined && UNPACKED_LOCATIONS.has(e.location),
+        enabled: previous ? previous.enabled && !disabled : !disabled,
+        byDefault: e.was_installed_by_default === true,
+        fromWebStore: e.from_webstore === true,
+      });
+    }
+  }
+  return [...found.values()];
+}
+
+/** Chrome's own keyboard shortcuts for extension commands (`extensions.commands`), by extension and command. */
+export function profileCommands(prefs: unknown, platform: ShortcutPlatform): Record<string, Record<string, string>> {
+  const commands = (prefs as { extensions?: { commands?: Record<string, { command_name?: string; extension?: string }> } } | null)?.extensions?.commands;
+  const out: Record<string, Record<string, string>> = {};
+  if (!commands || typeof commands !== "object") return out;
+  for (const [binding, value] of Object.entries(commands)) {
+    const [plat, key] = binding.includes(":") ? [binding.slice(0, binding.indexOf(":")), binding.slice(binding.indexOf(":") + 1)] : [platform, binding];
+    if (plat !== platform || !value?.extension || !value.command_name || !key) continue;
+    (out[value.extension] ??= {})[value.command_name] = key;
+  }
+  return out;
+}
+
+/** Pinned extensions in a Chrome profile. */
+export function profilePinned(prefs: unknown): string[] {
+  const pinned = (prefs as { extensions?: { pinned_extensions?: unknown } } | null)?.extensions?.pinned_extensions;
+  return Array.isArray(pinned) ? pinned.filter(isExtensionId) : [];
+}
+
+/** Newer version first ("1.10.0" > "1.9.2"). */
+export function compareVersions(a: string, b: string) {
+  const pa = a.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d) return d > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+/** The extension ID belonging to a public key (what Chrome derives from the manifest's `key`). */
+export function extensionIdFromHash(sha256Hex: string) {
+  return [...sha256Hex.slice(0, 32)].map((c) => String.fromCharCode(97 + Number.parseInt(c, 16))).join("");
+}
+
+/** A Chrome Web Store link or a bare ID → the ID. */
+export function webStoreId(input: string): string | null {
+  const text = input.trim();
+  if (isExtensionId(text)) return text;
+  const m = /(?:chromewebstore\.google\.com|chrome\.google\.com\/webstore)\/detail\/(?:[^/]+\/)?([a-p]{32})/.exec(text);
+  return m?.[1] ?? null;
+}

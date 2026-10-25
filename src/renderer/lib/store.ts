@@ -242,11 +242,32 @@ export async function newApp() {
   return app;
 }
 
-/** Opens a web tab: the given URL, or the home page from Settings. */
-export async function newWebTab(url?: string) {
-  const target = url ?? normalizeUrl(settings().web.homePage, settings().web.searchEngine);
-  showNewTab(await api.createApp({ kind: "web", url: /^https?:\/\//i.test(target) ? target : undefined, workspaceId: currentWorkspace()?.id }));
+/**
+ * Opens a web tab: the given URL (a website or an extension's page), or the
+ * home page from Settings. In the current workspace unless another is given;
+ * a background tab opens without being shown.
+ */
+export async function newWebTab(url?: string, options: { workspaceId?: string; background?: boolean } = {}) {
+  const target = url || normalizeUrl(settings().web.homePage, settings().web.searchEngine);
+  const app = await api.createApp({
+    kind: "web",
+    url: /^(https?:\/\/|chrome-extension:\/\/)/i.test(target) ? target : undefined,
+    workspaceId: options.workspaceId ?? currentWorkspace()?.id,
+  });
+  if (!options.background) showNewTab(app);
+  else {
+    upsertApp(app);
+    watch(app.id);
+    setStates(app.id, { ...emptyState(), loaded: true });
+    markOpened(app.id);
+  }
+  return app;
 }
+
+/** The tab last shown in a workspace. */
+export const lastTabOf = (workspaceId: string) => lastTabs()[workspaceId];
+/** Which tabs are mounted (their pages exist). */
+export const openedIds = () => opened();
 
 // Web tab navigation is saved (debounced) so tabs reopen where they were.
 const pageTimers = new Map<string, ReturnType<typeof setTimeout>>();

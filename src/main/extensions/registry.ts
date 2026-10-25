@@ -1,0 +1,232 @@
+// The installed extensions: a small JSON file in NathApp's user data, next to
+// the extensions that were copied in (`<userData>/extensions/<id>/<version>/`).
+// Unpacked ones stay where they are. What a manifest says (localized name,
+// icons, options page…) is read from disk and cached.
+import { app } from "electron";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { extname, join, normalize, sep } from "node:path";
+import {
+  actionOf,
+  iconPath,
+  isExtensionId,
+  localeCandidates,
+  localize,
+  optionsPageOf,
+  permissionsOf,
+  unsupportedPermissions,
+  type ExtensionInfo,
+  type ExtensionSource,
+  type Manifest,
+} from "../../shared/extensions";
+
+export interface InstalledExtension {
+  id: string;
+  /** The folder Electron loads. */
+  path: string;
+  /** Copied into NathApp's data (deleted with it); otherwise used where it is. */
+  managed: boolean;
+  enabled: boolean;
+  pinned: boolean;
+  source: ExtensionSource;
+  installedAt: number;
+  /** Keyboard shortcuts changed from the manifest's (command → "Ctrl+Shift+Y"). */
+  commands?: Record<string, string>;
+  /** Optional permissions and origins the user granted (chrome.permissions.request). */
+  granted?: { permissions: string[]; origins: string[] };
+  /** chrome.storage.local data imported from another browser, copied into each workspace before its first start. */
+  seed?: string;
+}
+
+interface RegistryFile {
+  version: 1;
+  autoUpdate: boolean;
+  extensions: InstalledExtension[];
+}
+
+export const extensionsDir = () => join(app.getPath("userData"), "extensions");
+
+export function readJson<T>(file: string): T | null {
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Writes through a temp file so a crash never leaves half a file. */
+export function writeJson(file: string, value: unknown) {
+  mkdirSync(join(file, ".."), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(value, null, 1));
+  renameSync(tmp, file);
+}
+
+/** A manifest with the strings localized, plus what's derived from it. */
+export interface ManifestInfo {
+  manifest: Manifest;
+  name: string;
+  description: string;
+  version: string;
+  messages: Record<string, { message?: string }> | null;
+}
+
+const manifestCache = new Map<string, { mtime: number; info: ManifestInfo }>();
+
+/** Reads an extension's manifest (cached until the file changes). Throws if there's none. */
+export function readManifest(dir: string): ManifestInfo {
+  const file = join(dir, "manifest.json");
+  const mtime = statSync(file).mtimeMs;
+  const cached = manifestCache.get(dir);
+  if (cached?.mtime === mtime) return cached.info;
+  // Chrome tolerates a BOM and comments in manifests; JSON.parse doesn't.
+  const text = readFileSync(file, "utf8").replace(/^﻿/, "");
+  let manifest: Manifest;
+  try {
+    manifest = JSON.parse(text);
+  } catch {
+    manifest = JSON.parse(text.replace(/^\s*\/\/.*$/gm, ""));
+  }
+  const messages = readMessages(dir, manifest.default_locale);
+  const info: ManifestInfo = {
+    manifest,
+    name: localize(manifest.name, messages) || localize(manifest.short_name, messages) || "Extension",
+    description: localize(manifest.description, messages),
+    version: String(manifest.version ?? "0"),
+    messages,
+  };
+  manifestCache.set(dir, { mtime, info });
+  return info;
+}
+
+function readMessages(dir: string, defaultLocale: string | undefined) {
+  for (const locale of localeCandidates(app.getLocale() || "en", defaultLocale)) {
+    const messages = readJson<Record<string, { message?: string }>>(join(dir, "_locales", locale, "messages.json"));
+    if (messages) return messages;
+  }
+  return null;
+}
+
+/** A file inside an extension (paths in manifests may start with "/"), or null if it escapes it. */
+export function extensionFile(dir: string, path: string) {
+  const file = normalize(join(dir, path.replace(/^\/+/, "")));
+  return file.startsWith(normalize(dir) + sep) ? file : null;
+}
+
+const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp", ".ico": "image/x-icon", ".bmp": "image/bmp" };
+const iconCache = new Map<string, string | null>();
+
+/** An image file of the extension as a data: URL (cached). */
+export function imageDataUrl(dir: string, path: string | null | undefined): string | null {
+  if (!path) return null;
+  const file = extensionFile(dir, path);
+  if (!file) return null;
+  if (iconCache.has(file)) return iconCache.get(file)!;
+  let url: string | null = null;
+  try {
+    const type = MIME[extname(file).toLowerCase()];
+    if (type) url = `data:${type};base64,${readFileSync(file).toString("base64")}`;
+  } catch {
+    url = null;
+  }
+  iconCache.set(file, url);
+  return url;
+}
+
+export function forgetIcons(dir: string) {
+  for (const key of iconCache.keys()) if (key.startsWith(dir)) iconCache.delete(key);
+  manifestCache.delete(dir);
+}
+
+export class Registry {
+  private file = join(extensionsDir(), "registry.json");
+  private data: RegistryFile;
+
+  constructor() {
+    const stored = readJson<RegistryFile>(this.file);
+    this.data = {
+      version: 1,
+      autoUpdate: stored?.autoUpdate ?? true,
+      extensions: (stored?.extensions ?? []).filter((e) => isExtensionId(e?.id) && typeof e.path === "string"),
+    };
+  }
+
+  private save() {
+    writeJson(this.file, this.data);
+  }
+
+  list() {
+    return this.data.extensions;
+  }
+
+  get(id: string) {
+    return this.data.extensions.find((e) => e.id === id);
+  }
+
+  get autoUpdate() {
+    return this.data.autoUpdate;
+  }
+
+  set autoUpdate(value: boolean) {
+    this.data.autoUpdate = value;
+    this.save();
+  }
+
+  /** Adds or replaces an extension (keeping its pinned/enabled state and grants when it's an update). */
+  put(entry: InstalledExtension) {
+    const index = this.data.extensions.findIndex((e) => e.id === entry.id);
+    if (index === -1) this.data.extensions.push(entry);
+    else this.data.extensions[index] = entry;
+    this.save();
+  }
+
+  update(id: string, change: Partial<InstalledExtension>) {
+    const entry = this.get(id);
+    if (!entry) return undefined;
+    Object.assign(entry, change);
+    this.save();
+    return entry;
+  }
+
+  remove(id: string) {
+    const entry = this.get(id);
+    if (!entry) return;
+    this.data.extensions = this.data.extensions.filter((e) => e.id !== id);
+    this.save();
+    if (entry.managed) rmSync(join(extensionsDir(), id), { recursive: true, force: true });
+    else if (entry.seed) rmSync(entry.seed, { recursive: true, force: true });
+  }
+
+  /** Where a copied extension's files go. */
+  static installDir(id: string, version: string) {
+    return join(extensionsDir(), id, version.replace(/[^\w.-]/g, "_"));
+  }
+}
+
+/** How an installed extension is shown in the NathApp window. */
+export function describe(entry: InstalledExtension, error: string | null, hasNativeHosts: boolean): ExtensionInfo {
+  let info: ManifestInfo | null = null;
+  try {
+    info = existsSync(entry.path) ? readManifest(entry.path) : null;
+  } catch {
+    info = null;
+  }
+  const m = info?.manifest ?? {};
+  const options = optionsPageOf(m);
+  return {
+    id: entry.id,
+    name: info?.name ?? entry.id,
+    version: info?.version ?? "",
+    description: info?.description ?? "",
+    icon: info ? imageDataUrl(entry.path, iconPath(m.icons, 48) ?? iconPath(actionOf(m)?.default_icon, 48)) : null,
+    enabled: entry.enabled,
+    pinned: entry.pinned,
+    source: entry.source,
+    path: entry.path,
+    hasAction: !!actionOf(m),
+    optionsUrl: options ? `chrome-extension://${entry.id}/${options.replace(/^\/+/, "")}` : null,
+    unsupported: unsupportedPermissions(m),
+    nativeMessaging: permissionsOf(m).includes("nativeMessaging") && hasNativeHosts,
+    updates: entry.source.kind !== "unpacked" && typeof m.update_url === "string",
+    error: info ? error : `The extension's folder is gone: ${entry.path}`,
+  };
+}

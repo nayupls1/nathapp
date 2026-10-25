@@ -1,12 +1,13 @@
 // Outside of Electron, the `electron` package exports the path to its binary.
 import electronBinary from "electron";
 
-// Bundles the Electron main + preload scripts with Bun. Electron ships its own
+// Bundles the Electron main + preload scripts (the window's, and the one of web
+// tab sessions for extensions) with Bun. Electron ships its own
 // Node runtime, so these target Node and are emitted as CommonJS (sandboxed
 // preload scripts must be CJS).
 export async function buildElectron({ dev = false } = {}) {
   const result = await Bun.build({
-    entrypoints: ["src/main/index.ts", "src/preload/index.ts"],
+    entrypoints: ["src/main/index.ts", "src/preload/index.ts", "src/extension-preload/index.ts"],
     outdir: "dist/electron",
     root: "src",
     target: "node",

@@ -279,7 +279,8 @@ const appRoutes = HttpRouter.addAll([
         const input = yield* decodeBody(
           Schema.Struct({
             kind: Schema.optionalKey(Schema.Literals(["app", "web"])),
-            url: Schema.optionalKey(str(8000).check(Schema.isPattern(/^https?:\/\//i, { message: "url must be an http(s) URL" }))),
+            // Extension pages (options, tabs extensions open) are web tabs too.
+            url: Schema.optionalKey(str(8000).check(Schema.isPattern(/^(https?:\/\/|chrome-extension:\/\/[a-p]{32}\/)/i, { message: "url must be an http(s) URL" }))),
             workspaceId: Schema.optionalKey(str(100)),
           }),
         );

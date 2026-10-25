@@ -4,6 +4,7 @@ import { ActivityPage } from "./components/ActivityPage";
 import { AppTab } from "./components/AppTab";
 import { CommandBar } from "./components/CommandBar";
 import { ConfirmHost } from "./components/ConfirmDialog";
+import { ExtensionImportHost } from "./components/ExtensionImport";
 import { HistoryPage } from "./components/History";
 import { PermissionHost } from "./components/PermissionHost";
 import { SettingsPage } from "./components/SettingsPage";
@@ -29,6 +30,7 @@ export default function App() {
     <div {...stylex.attrs(styles.root)}>
       <Sidebar />
       <ConfirmHost />
+      <ExtensionImportHost />
       <PermissionHost />
       <CommandBar />
       <ToastHost />

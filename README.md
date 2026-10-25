@@ -227,9 +227,40 @@ Every web tab's traffic is recorded in Electron's main process over the DevTools
 - **Credentials stay hidden:** cookies, `Authorization` and other credential headers, token-like URL parameters and JSON or form fields (`password`, `accessToken`…), JWTs and bearer tokens show as `[redacted]`. In the panel you can show them; the website agent only ever gets them redacted.
 - **Send again:** a captured request is sent again with the workspace's session (its cookies, plus the original credential headers), optionally changed.
 - **Save for later:** a saved request is stored per workspace with its credentials sealed (AES-GCM, with a key only the main process uses; the server stores the blob but never returns it). It can be sent from the panel's Saved tab or by the website agent without opening the site.
-- **Rules** block requests or set and remove request or response headers, for every workspace or one (Settings → Network, or "Block like this" in the panel). Patterns use `*` over the whole URL, or match text anywhere in it. They're applied with the session's `webRequest` hooks.
+- **Rules** block requests or set and remove request or response headers, for every workspace or one (Settings → Network, or "Block like this" in the panel). Patterns use `*` over the whole URL, or match text anywhere in it. A small built-in extension applies them as `declarativeNetRequest` session rules (`src/main/extensions/builtin.ts`), so they work alongside extensions like uBlock Origin Lite: Electron turns off every extension's blocking in a session that has `webRequest` hooks. Requests sent again from the panel check the rules themselves.
 
 The website agent has `network_requests`, `network_request`, `replay_request`, `save_request`, `saved_requests` and `send_saved_request`. Sending anything with the user's session asks first, once per site (permission `agent.network`), and every call is in the activity log.
+
+### Extensions
+
+Web tabs run Chrome extensions (Manifest V3 and V2) with Electron's extension support. Each workspace's session loads its own copy, so an extension only sees the tabs of its workspace and keeps separate data there (`chrome.storage.sync` is the exception: one copy per extension, shared). Settings → Extensions lists them. You can add one from the Chrome Web Store (link or ID), load an unpacked folder, or import from a browser. Store extensions update every 5 hours.
+
+**Import from your browser** (Settings → Extensions, or the puzzle menu in a web tab) reads the profiles of Chrome, Chromium, Brave, Edge and Vivaldi (including Flatpak and Snap installs). It offers what's turned on there. Store extensions are copied and keep their IDs. Unpacked ones are used from their folder. They come along with:
+
+- their pinned toolbar buttons;
+- the keyboard shortcuts changed there;
+- with "Bring their settings too", what they saved: `chrome.storage.local`, their dynamic blocking rules and IndexedDB (sign-ins, preferences).
+
+An imported extension gets `runtime.onInstalled` with `reason: "update"`, so it doesn't open its welcome pages again.
+
+**APIs.** What Electron lacks is added by a shim that the extension preload (`src/extension-preload/`) injects into extension pages and service workers; the main process does the work (`src/main/extensions/apis.ts`):
+
+- toolbar buttons (`action`, `browserAction`, `pageAction`: badges, popups, per-tab state);
+- `tabs`/`windows` (tabs open, select and close through NathApp's tab list);
+- `commands`, `contextMenus`, `permissions` (optional ones ask first);
+- `storage.sync`, `webNavigation`, `cookies`, `notifications`, `idle`, `management`;
+- `runtime.onInstalled`/`onStartup`/`openOptionsPage`;
+- native messaging.
+
+Stopped service workers are started again for the events they listened to. Electron doesn't enable static `declarativeNetRequest` rulesets by itself, so the shim enables the manifest's defaults on install and update.
+
+**Native messaging** uses the browser's own host manifests (`NativeMessagingHosts` in the browser's profile folder, `/etc/opt/chrome`, `/etc/chromium`), or NathApp's own (`<userData>/NativeMessagingHosts`). A host only runs for the extensions in its `allowed_origins`, and doesn't get NathApp's environment variables.
+
+**Caveats:**
+
+- Not provided: `userScripts`, `privacy`, `sidePanel`, `tabGroups`, `debugger`. Import and Settings show what an extension asks for that's missing.
+- `chrome.storage.sync` data isn't imported (Chrome keeps it in a LevelDB that NathApp doesn't parse).
+- Settings are imported into each workspace once, when the extension first loads there; later changes stay per workspace.
 
 ### Process model and security
 

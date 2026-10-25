@@ -2,7 +2,8 @@
 // into a bounded log per tab (bodies of structured responses only, within a
 // memory budget), replayed with the workspace's session (cookies come from the
 // session, other credentials stay in this process), and changed by rules
-// (block, set headers) through the session's webRequest hooks.
+// (block, set headers), which NathApp's built-in extension applies as
+// declarativeNetRequest rules (see extensions/builtin.ts).
 //
 // The NathApp window reads it over IPC. Credentials leave this process only
 // when the user asks to see them (reveal); the website agent gets everything
@@ -34,6 +35,8 @@ export interface NetworkOptions {
   webSession: (workspaceId: string) => Session;
   /** The workspace a web tab session belongs to, or undefined for other sessions. */
   workspaceOf: (session: Session) => string | undefined;
+  /** Puts the rules into effect. */
+  applyRules: (rules: NetworkRule[]) => void;
 }
 
 export function setupNetwork(options: NetworkOptions) {
@@ -48,33 +51,6 @@ export function setupNetwork(options: NetworkOptions) {
 
   const rulesFor = (workspaceId: string | undefined, url: string) =>
     workspaceId === undefined ? [] : rules.filter((r) => r.rule.enabled && (r.rule.workspaceId === null || r.rule.workspaceId === workspaceId) && r.matches(url));
-
-  /** Applies the rules to a web tab session (once per session). */
-  function hookSession(s: Session) {
-    const workspaceId = () => options.workspaceOf(s);
-    s.webRequest.onBeforeRequest((details, callback) => {
-      callback({ cancel: rulesFor(workspaceId(), details.url).some((r) => r.rule.action === "block") });
-    });
-    s.webRequest.onBeforeSendHeaders((details, callback) => {
-      const modify = rulesFor(workspaceId(), details.url).filter((r) => r.rule.action === "modify");
-      if (!modify.length) return callback({});
-      const headers = { ...details.requestHeaders };
-      for (const { rule } of modify) setHeaders(headers, rule.requestHeaders);
-      callback({ requestHeaders: headers });
-    });
-    s.webRequest.onHeadersReceived((details, callback) => {
-      const modify = rulesFor(workspaceId(), details.url).filter((r) => r.rule.action === "modify" && Object.keys(r.rule.responseHeaders).length);
-      if (!modify.length || !details.responseHeaders) return callback({});
-      const headers: Record<string, string[]> = { ...details.responseHeaders };
-      for (const { rule } of modify) {
-        for (const [name, value] of Object.entries(rule.responseHeaders)) {
-          for (const existing of Object.keys(headers)) if (existing.toLowerCase() === name.toLowerCase()) delete headers[existing];
-          if (value !== null) headers[name] = [value];
-        }
-      }
-      callback({ responseHeaders: headers });
-    });
-  }
 
   // --- Capture --------------------------------------------------------------------------
 
@@ -119,7 +95,8 @@ export function setupNetwork(options: NetworkOptions) {
     const onMessage = (_event: unknown, method: string, p: any) => {
       switch (method) {
         case "Network.requestWillBeSent": {
-          if (SKIPPED_SCHEMES.test(p.request.url)) return;
+          // Extensions' own requests (an options page in a tab) aren't the site's.
+          if (SKIPPED_SCHEMES.test(p.request.url) || SKIPPED_SCHEMES.test(p.documentURL ?? "")) return;
           const previous = current.get(p.requestId);
           if (previous && p.redirectResponse) {
             previous.status = p.redirectResponse.status;
@@ -202,7 +179,15 @@ export function setupNetwork(options: NetworkOptions) {
           if (!entry) return;
           finish(p.requestId);
           entry.durationMs = Math.round((p.timestamp - entry.startTs) * 1000);
-          entry.error = p.canceled ? "Canceled" : p.blockedReason ? `Blocked (${p.blockedReason})` : (p.errorText ?? "Failed");
+          entry.error = p.canceled
+            ? "Canceled"
+            : /ERR_BLOCKED_BY_CLIENT/.test(p.errorText ?? "")
+              ? entry.rule
+                ? "Blocked by a rule"
+                : "Blocked by an extension"
+              : p.blockedReason
+                ? `Blocked (${p.blockedReason})`
+                : (p.errorText ?? "Failed");
           break;
         }
         default:
@@ -339,6 +324,11 @@ export function setupNetwork(options: NetworkOptions) {
     const headers: Record<string, string> = {};
     for (const [name, value] of Object.entries(request.headers)) if (!HOP_HEADERS.test(name)) headers[name] = value;
     setHeaders(headers, overrides.headers ?? {});
+    // The rules apply here too (DNR only sees the pages' own requests).
+    const matched = rulesFor(options.workspaceOf(s), url);
+    const blocking = matched.find((r) => r.rule.action === "block");
+    if (blocking) throw new Error(`Blocked by a rule (${blocking.rule.pattern})`);
+    for (const { rule } of matched) setHeaders(headers, rule.requestHeaders);
     const body = overrides.body !== undefined ? overrides.body : request.body;
     const started = Date.now();
     const res = await s.fetch(url, {
@@ -430,12 +420,13 @@ export function setupNetwork(options: NetworkOptions) {
   ipcMain.on("nathapp:network-rules", (event, list: unknown) => {
     if (!fromWindow(event) || !Array.isArray(list)) return;
     rules = (list as NetworkRule[]).map((rule) => ({ rule, matches: urlMatcher(rule.pattern) }));
+    options.applyRules(list as NetworkRule[]);
   });
   ipcMain.on("nathapp:network-recording", (event, enabled: unknown) => {
     if (fromWindow(event)) setRecording(enabled !== false);
   });
 
-  return { watch, hookSession };
+  return { watch };
 }
 
 /** Sets headers case-insensitively; null removes one. */

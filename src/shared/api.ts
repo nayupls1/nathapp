@@ -1,5 +1,16 @@
 // Types shared between the Bun server, the Electron main/preload and the renderer.
 import type { Hunk } from "./diff";
+import type {
+  BrowserProfile,
+  ExtensionAction,
+  ExtensionInfo,
+  ExtensionPermissionRequest,
+  ExtensionPopupRequest,
+  ExtensionTabRequest,
+  ExtensionTabs,
+  ImportRequest,
+  InstallResult,
+} from "./extensions";
 import type { WorkspaceSettings } from "./settings";
 
 export interface HealthResponse {
@@ -52,6 +63,41 @@ export interface NathAppBridge {
       /** A tab's captured traffic changed (throttled). */
       onChanged: (fn: (webContentsId: number) => void) => () => void;
     };
+  };
+  /** Chrome extensions in web tabs (see main/extensions/). */
+  extensions: {
+    list: () => Promise<{ extensions: ExtensionInfo[]; autoUpdate: boolean }>;
+    /** Resolves once the workspace's extensions are running (or after a few seconds), so pages load with them. */
+    prepare: (workspaceId: string) => Promise<void>;
+    /** The toolbar buttons in a workspace, as they are for a tab. */
+    actions: (workspaceId: string, webContentsId: number | null) => Promise<ExtensionAction[]>;
+    /** A toolbar button was clicked: its popup to show, or null when the extension handles the click. */
+    click: (workspaceId: string, extensionId: string) => Promise<string | null>;
+    /** The menu of a toolbar button (right click), shown by the main process. */
+    actionMenu: (workspaceId: string, extensionId: string) => Promise<void>;
+    detectBrowsers: () => Promise<BrowserProfile[]>;
+    import: (request: ImportRequest) => Promise<InstallResult>;
+    /** From a Chrome Web Store link or ID. */
+    install: (input: string) => Promise<InstallResult>;
+    /** Asks for a folder; null when none was picked. */
+    loadUnpacked: () => Promise<InstallResult | null>;
+    setEnabled: (id: string, enabled: boolean) => Promise<void>;
+    setPinned: (id: string, pinned: boolean) => Promise<void>;
+    remove: (id: string) => Promise<void>;
+    setAutoUpdate: (enabled: boolean) => Promise<void>;
+    /** Checks for updates now; resolves with how many were updated. */
+    update: () => Promise<number>;
+    /** Which web tabs there are (extensions see them as their tabs). */
+    setTabs: (tabs: ExtensionTabs) => void;
+    /** Answers a tab or permission request. */
+    reply: (requestId: string, value: unknown) => void;
+    onChanged: (fn: () => void) => () => void;
+    onActionsChanged: (fn: (workspaceId: string) => void) => () => void;
+    onTabRequest: (fn: (request: ExtensionTabRequest) => void) => () => void;
+    onPermissionRequest: (fn: (request: ExtensionPermissionRequest) => void) => () => void;
+    onPopup: (fn: (request: ExtensionPopupRequest) => void) => () => void;
+    /** "Manage extensions" in a toolbar button's menu. */
+    onManage: (fn: () => void) => () => void;
   };
 }
 
