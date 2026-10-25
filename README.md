@@ -134,7 +134,7 @@ Providers are detected at startup (Settings → Providers shows their status,
 version and models). The picker in the composer chooses provider, model and
 effort per tab. Every provider gets the same instructions and NathApp's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
-`restart_app`, `app_logs`, `app_data`, `run_command`, `set_app_info`, `search_icons`, and the
+`restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, `set_app_info`, `search_icons`, and the
 page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
 that work on the preview or the web page. File editing is the provider's own.
 
@@ -201,6 +201,20 @@ Apps declare their actions in `nathapp.json`:
 - `endpoint`: NathApp starts the app if needed and POSTs `{ "input": … }` to its own server. The JSON reply's `message` (or `error`) is shown as a notice, and the call is recorded in Activity.
 - Paths and endpoints are always on the app's own server. Invalid actions are left out rather than breaking the manifest.
 
+### Tool registry
+
+Actions are part of a registry of what apps can do, for you, agents and other apps (`workspace/AppTools.ts`). An app's tools are:
+- its **actions** (above). `"params": { "month": { "type": "string", "required": true } }` gives agents and apps typed arguments; they arrive as `{ input, params }`, with `X-NathApp-Caller: user | agent | app:<id>`, and the whole JSON reply comes back;
+- the **basic tools from its data**: `list-`, `get-`, `add-`, `update-` and `delete-<table>` for each table (not those starting with `_`). `"dataTools": "read"` keeps only list and get, `"none"` turns them off, and an action with the same id replaces one.
+
+Every call goes through NathApp, the hub between apps:
+- **You**: the Tools panel (wrench button in an app tab) lists them with a form to run each; actions are also in the command bar.
+- **Agents**: `list_app_tools` and `use_app_tool`.
+- **Apps**: `GET $NATHAPP_API_URL/tools` lists the workspace's apps and their tools; `POST $NATHAPP_API_URL/tools/<app>/<tool>` with `{ params?, input? }` runs one. Server-only, like the data API.
+- **Permissions**: an app and its agent may use the app's own tools. Another app's tools are limited to the same workspace and need your OK: reading data is the app-data permission, anything else is asked per tool. Opening pages is only for you. Every call is in Activity.
+
+Data tools write the app's database directly: the app sees the change on its next read, but open windows aren't told (no realtime publish), and the app's own rules are skipped. Apps with rules worth keeping should replace those tools with actions or set `"dataTools": "read"`.
+
 ### Secrets
 
 Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab), to a workspace (Settings → Workspace, for all its apps) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.
@@ -223,6 +237,7 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 - an app using AI;
 - an app using a global secret;
 - an app reading another app's data;
+- an app (or its agent) using another app's tools;
 - the website agent customizing a site (per host).
 
 NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.

@@ -275,8 +275,10 @@ export interface Manifest {
   build?: string;
   /** Serve the built app on $PORT. */
   start: string;
-  /** What the app offers in NathApp's command bar. */
+  /** What the app offers in NathApp's command bar and tool registry. */
   actions?: AppAction[];
+  /** Which tools NathApp derives from the app's data: all (default), read (list/get) or none. */
+  dataTools?: "all" | "read" | "none";
 }
 
 /**
@@ -293,6 +295,57 @@ export interface AppAction {
   endpoint?: string;
   /** Asks for text first (this is the placeholder), sent as `input`. */
   input?: string;
+  /** Named, typed arguments (for agents and other apps), sent as `params`. */
+  params?: Record<string, ToolParam>;
+}
+
+export interface ToolParam {
+  type: "string" | "number" | "integer" | "boolean" | "object";
+  description?: string;
+  required?: boolean;
+}
+
+/**
+ * Something an app can do, in NathApp's tool registry: the app's own actions
+ * (nathapp.json) and the basic ones NathApp derives from its data (list, get,
+ * add, update, delete per table). An action with a data tool's id replaces it.
+ */
+export interface AppTool {
+  /** Stable, e.g. "add-expense" or "list-notes". */
+  id: string;
+  title: string;
+  description?: string;
+  /** "data": derived from a table; "action": declared by the app. */
+  source: "data" | "action";
+  /** Only reads (data list/get). */
+  readOnly: boolean;
+  params: Record<string, ToolParam>;
+  /** Actions: asks for text first (placeholder). */
+  input?: string;
+  /** Actions that open the app at a page (only the user can). */
+  path?: string;
+  /** Data tools: the table and what is done with it. */
+  table?: string;
+  op?: "list" | "get" | "add" | "update" | "delete";
+}
+
+/** An app's tools, with the app. */
+export interface AppToolsInfo {
+  appId: string;
+  appName: string;
+  appIcon: string | null;
+  workspaceId: string;
+  tools: AppTool[];
+}
+
+export interface ToolResult {
+  ok: boolean;
+  /** The app's HTTP status (actions), or NathApp's. */
+  status: number;
+  /** What happened, short (shown as a notice). */
+  message: string;
+  /** The result itself (rows, the app's JSON reply). */
+  data?: unknown;
 }
 
 /** An app action with the app it belongs to (for the command bar). */
@@ -555,7 +608,7 @@ export interface NetworkRule {
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool";
 
 export interface PermissionGrant {
   id: number;

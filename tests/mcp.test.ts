@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Exit, ManagedRuntime, Schema, Scope } from "effect";
 import { make, tool, type Tool } from "../src/server/agent/Mcp";
-import { appTools, pageTools, siteTools } from "../src/server/agent/tools";
+import { appTools, pageTools, registryTools, siteTools } from "../src/server/agent/tools";
 import { readConfig } from "../src/server/Config";
 import { core } from "../src/server/services";
 
@@ -21,7 +21,7 @@ afterAll(async () => {
   rmSync(dataDir, { recursive: true, force: true });
 });
 
-const env = { tabId: "tab", log: () => Effect.void, message: () => Effect.void };
+const env = { tabId: "tab", log: () => Effect.void, message: () => Effect.void, label: "Test agent" };
 
 async function session(tools: Tool[]) {
   const mcp = await Effect.runPromise(make("http://nathapp"));
@@ -67,7 +67,7 @@ describe("mcp", () => {
   test("every NathApp tool has an object input schema", async () => {
     const tools = await runtime.runPromise(
       Effect.gen(function* () {
-        return [...(yield* pageTools(env, { site: true })), ...(yield* siteTools(env)), ...(yield* appTools(env))];
+        return [...(yield* pageTools(env, { site: true })), ...(yield* siteTools(env)), ...(yield* appTools(env)), ...(yield* registryTools(env))];
       }),
     );
     const s = await session(tools);

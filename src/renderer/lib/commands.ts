@@ -163,7 +163,7 @@ function tabCommand(app: AppSummary): Command {
 }
 
 /** Opens an app at one of its pages, once its preview is up. */
-async function openInApp(appId: string, path: string) {
+export async function openInApp(appId: string, path: string) {
   await selectApp(appId);
   const deadline = Date.now() + 90_000;
   for (;;) {

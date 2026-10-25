@@ -18,13 +18,14 @@ import { Hub } from "../Hub";
 import type { TurnInput } from "../providers/Provider";
 import { Providers } from "../providers/Providers";
 import { AppData } from "../workspace/AppData";
+import { AppTools } from "../workspace/AppTools";
 import { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
 import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { networkTools } from "./networkTools";
-import { appTools, pageTools, siteTools, type ToolEnv } from "./tools";
+import { appTools, pageTools, registryTools, siteTools, type ToolEnv } from "./tools";
 
 /** Tool arguments for the audit log: short values as they are, long ones by size. */
 export function summarizeArgs(args: unknown): string | null {
@@ -68,7 +69,7 @@ export const make = Effect.gen(function* () {
   const audit = yield* Audit;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network | AppData>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network | AppData | AppTools>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
@@ -115,21 +116,27 @@ export const make = Effect.gen(function* () {
       yield* message(appId, "user", request.prompt);
       yield* apps.touch(appId);
 
+      const web = app.kind === "web";
+      const status = (yield* providers.list).find((p) => p.id === choice.provider);
+      const actorLabel = `${web ? "Website agent" : "App builder"} · ${status?.label ?? choice.provider}${choice.model ? ` (${choice.model})` : ""}`;
       const env: ToolEnv = {
         tabId: appId,
         log: (line) => Effect.asVoid(message(appId, "tool", line)),
         message: (role, content) => Effect.asVoid(message(appId, role, content)),
+        label: actorLabel,
       };
-      const web = app.kind === "web";
-      const status = (yield* providers.list).find((p) => p.id === choice.provider);
-      const actorLabel = `${web ? "Website agent" : "App builder"} · ${status?.label ?? choice.provider}${choice.model ? ` (${choice.model})` : ""}`;
       const tools = web
         ? [
             ...(yield* Effect.provide(pageTools(env, { site: true }), context)),
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
+            ...(yield* Effect.provide(registryTools(env), context)),
           ]
-        : [...(yield* Effect.provide(appTools(env), context)), ...(yield* Effect.provide(pageTools(env, { site: false }), context))];
+        : [
+            ...(yield* Effect.provide(appTools(env), context)),
+            ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
+            ...(yield* Effect.provide(registryTools(env), context)),
+          ];
       const mcpUrl = yield* mcp.register(tools.map((t) => audited(t, appId, actorLabel)));
       // Snapshots around the turn: what changed before it (the user, the app's data), and what the agent changed.
       const target = web ? "sites" : appTarget(appId);

@@ -342,6 +342,21 @@ try {
     await click(`${appTab()} [data-data-button]`);
   });
 
+  await check("tool registry: the app's tools from its data, run from the tools panel", async () => {
+    await click(`${appTab()} [data-tools-button]`);
+    const panel = `${appTab()} [data-tools-panel]`;
+    await page!.waitFor(`!!document.querySelector('${panel} [data-tool="add-expenses"]')`, { label: "derived tools" });
+    await click(`${panel} [data-tool="add-expenses"] button`);
+    await type(`${panel} [data-tool="add-expenses"] [data-tool-param="label"]`, "Coffee");
+    await type(`${panel} [data-tool="add-expenses"] [data-tool-param="amount"]`, "3.5");
+    await click(`${panel} [data-tool="add-expenses"] [data-run-tool]`);
+    await page!.waitFor(`document.querySelector('${panel} [data-tool="add-expenses"] [data-tool-result]')?.textContent.includes("Added a row")`, { label: "tool result" });
+    await shot("app-tools.png");
+    await click(`${appTab()} [data-tools-button]`);
+    const tools = await apiCall<{ id: string }[]>(`/api/apps/${appId}/tools`);
+    return `${tools.length} tools`;
+  });
+
   await check("secrets: added in the app tab, never shown again", async () => {
     const value = "e2e-secret-value-4711";
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app running" });

@@ -17,6 +17,7 @@ import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { DataPanel } from "./DataPanel";
 import { HistoryPanel } from "./History";
+import { ToolsPanel } from "./ToolsPanel";
 import { SecretsPanel } from "./Secrets";
 
 const examples = [
@@ -128,6 +129,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   const [secretsOpen, setSecretsOpen] = createSignal(false);
   const [historyOpen, setHistoryOpen] = createSignal(false);
   const [dataOpen, setDataOpen] = createSignal(false);
+  const [toolsOpen, setToolsOpen] = createSignal(false);
   const [picking, setPicking] = createSignal(false);
   const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
@@ -350,6 +352,16 @@ function Workbench(props: { appId: string; active: boolean }) {
           </button>
           <button
             type="button"
+            title="Tools: what the app can do, for you, agents and other apps"
+            disabled={!state().project}
+            onClick={() => setToolsOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, toolsOpen() && styles.iconButtonOn)}
+            data-tools-button
+          >
+            <Icon name="wrench" size={15} />
+          </button>
+          <button
+            type="button"
             title="Open in your browser"
             disabled={!running()}
             onClick={() => window.nathapp.web.openExternal(runtime()!.url!)}
@@ -396,6 +408,9 @@ function Workbench(props: { appId: string; active: boolean }) {
         </Show>
         <Show when={dataOpen()}>
           <DataPanel appId={props.appId} onClose={() => setDataOpen(false)} />
+        </Show>
+        <Show when={toolsOpen()}>
+          <ToolsPanel appId={props.appId} onClose={() => setToolsOpen(false)} />
         </Show>
       </div>
       <Show when={!collapsed()}>

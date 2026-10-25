@@ -8,10 +8,10 @@ import {
   workspaceOfScope,
   workspaceScope,
   type AppActionInfo,
+  type AppActionResult,
   type NetworkRule,
   type ReplayOverrides,
   type ReplayResult,
-  type AppActionResult,
   type AppDetail,
   type AppSummary,
   type HealthResponse,
@@ -40,6 +40,7 @@ import { Hub } from "./Hub";
 import { Providers } from "./providers/Providers";
 import { presetInfo, presets } from "./workspace/presets";
 import { AppData, type RowQuery } from "./workspace/AppData";
+import { AppTools, type ToolCaller } from "./workspace/AppTools";
 import { Runtime } from "./workspace/Runtime";
 import { Workspace } from "./workspace/Workspace";
 
@@ -814,6 +815,29 @@ const mayRead = (app: { id: string; name: string; workspaceId: string }, targetI
   });
 
 const appApiRoutes = HttpRouter.addAll([
+  // Every tool of the apps in this app's workspace (calls to other apps' need the user's OK).
+  HttpRouter.route(
+    "GET",
+    "/app-api/v1/tools",
+    handle(
+      Effect.gen(function* () {
+        const app = yield* apiApp;
+        const catalog = yield* (yield* AppTools).catalog(app.workspaceId);
+        return json(catalog.map((info) => ({ ...info, self: info.appId === app.id, tools: info.tools.filter((t) => !t.path) })));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/app-api/v1/tools/:app/:tool",
+    handle(
+      Effect.gen(function* () {
+        const app = yield* apiApp;
+        const args = yield* decodeBody(ToolCallBody);
+        return json(yield* callTool({ kind: "app", appId: app.id }, yield* param("app"), yield* param("tool"), args));
+      }),
+    ),
+  ),
   // The apps whose data this app could ask for: its workspace's.
   HttpRouter.route(
     "GET",
@@ -853,6 +877,16 @@ const appApiRoutes = HttpRouter.addAll([
 
 // --- App actions (command bar) ----------------------------------------------------------------
 
+const ToolCallBody = Schema.Struct({
+  params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+  input: Schema.optionalKey(Schema.NullOr(str(4000))),
+});
+
+const callTool = (caller: ToolCaller, appId: string, toolId: string, args: { params?: Record<string, unknown>; input?: string | null }) =>
+  Effect.gen(function* () {
+    return yield* (yield* AppTools).call(caller, appId, toolId, args).pipe(Effect.catchTag("AppToolError", (e) => fail(e.status, e.message)));
+  });
+
 const actionRoutes = HttpRouter.addAll([
   // Every app's actions, from their nathapp.json.
   HttpRouter.route(
@@ -872,59 +906,37 @@ const actionRoutes = HttpRouter.addAll([
       return json(list);
     }),
   ),
-  // Runs an endpoint action: POSTs { input } to the app's own server (started if needed).
+  // Runs an endpoint action (the command bar): through the tool registry, as the user.
   HttpRouter.route(
     "POST",
     "/api/apps/:id/actions/:action",
     handle(
       Effect.gen(function* () {
-        const apps = yield* Apps;
-        const workspace = yield* Workspace;
-        const runtime = yield* Runtime;
-        const audit = yield* Audit;
-        const id = yield* param("id");
-        const actionId = yield* param("action");
         const { input } = yield* decodeBody(Schema.Struct({ input: Schema.optionalKey(Schema.NullOr(str(4000))) }));
-        const app = yield* apps.get(id);
-        if (!app || app.kind !== "app") return yield* fail(404, "Not found");
-        const manifest = yield* workspace.manifest(id).pipe(Effect.orElseSucceed(() => null));
-        const action = manifest?.actions?.find((a) => a.id === actionId);
-        if (!action) return yield* fail(404, "The app doesn't offer this action (anymore)");
-        if (!action.endpoint) return yield* fail(400, "This action opens the app; it isn't run");
-        yield* runtime.ensure(id);
-        const status = yield* runtime.settled(id, 90_000);
-        if (status.state !== "running" || !status.url) return yield* fail(409, `${app.name} isn't running${status.error ? `: ${status.error}` : ""}`);
-        const response = yield* Effect.tryPromise({
-          try: async () => {
-            const res = await fetch(`${status.url}${action.endpoint}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ input: input ?? null }),
-              signal: AbortSignal.timeout(30_000),
-            });
-            const text = (await res.text()).slice(0, 8000);
-            let message = text.trim();
-            try {
-              const body = JSON.parse(text) as { message?: unknown; error?: unknown };
-              if (typeof body.message === "string") message = body.message;
-              else if (typeof body.error === "string") message = body.error;
-            } catch {
-              // plain text
-            }
-            return { ok: res.ok, status: res.status, message: message.slice(0, 500) } satisfies AppActionResult;
-          },
-          catch: (err) => new HttpFail({ status: 502, message: `${app.name} didn't answer: ${err instanceof Error ? err.message : String(err)}` }),
-        });
-        yield* audit.record({
-          actor: "user",
-          actorLabel: "You",
-          tabId: id,
-          action: "app.action",
-          target: action.title,
-          outcome: response.ok ? "ok" : "error",
-          detail: response.ok ? null : `HTTP ${response.status}`,
-        });
-        return json(response);
+        const { ok, status, message } = yield* callTool({ kind: "user" }, yield* param("id"), yield* param("action"), { input });
+        return json({ ok, status, message } satisfies AppActionResult);
+      }),
+    ),
+  ),
+  // The tool registry: an app's tools (its actions and the ones from its data).
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/tools",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        yield* requireApp(id);
+        return json(yield* (yield* AppTools).list(id));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/tools/:tool",
+    handle(
+      Effect.gen(function* () {
+        const args = yield* decodeBody(ToolCallBody);
+        return json(yield* callTool({ kind: "user" }, yield* param("id"), yield* param("tool"), args));
       }),
     ),
   ),
@@ -1196,7 +1208,7 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data"] as const satisfies readonly PermissionAction[];
+const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool"] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(

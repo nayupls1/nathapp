@@ -4,12 +4,14 @@ import type { Settings } from "../../shared/settings";
 import type {
   AppActionInfo,
   AppActionResult,
+  AppTool,
   AppDetail,
   AppMode,
   AppSummary,
   AuditEntry,
   DataOverview,
   DataRows,
+  ToolResult,
   PermissionAction,
   PermissionGrant,
   PermissionRequest,
@@ -142,6 +144,10 @@ export const api = {
   actions: () => request<AppActionInfo[]>("/api/actions"),
   runAction: (id: string, actionId: string, input?: string) =>
     post<AppActionResult>(`/api/apps/${id}/actions/${encodeURIComponent(actionId)}`, input === undefined ? {} : { input }),
+  /** An app's tools in the registry (its actions and the ones from its data). */
+  appTools: (id: string) => request<AppTool[]>(`/api/apps/${id}/tools`),
+  callTool: (id: string, toolId: string, args: { params?: Record<string, unknown>; input?: string }) =>
+    post<ToolResult>(`/api/apps/${id}/tools/${encodeURIComponent(toolId)}`, args),
 
   networkRules: () => request<NetworkRule[]>("/api/network/rules"),
   addNetworkRule: (rule: Omit<NetworkRule, "id" | "createdAt" | "enabled"> & { enabled?: boolean }) => post<NetworkRule>("/api/network/rules", rule),

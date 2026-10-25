@@ -508,7 +508,15 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
         ? `Send requests to ${g.resource}`
         : g.action === "app.data"
           ? `Read the data of ${appById(g.resource)?.name ?? "a deleted app"}`
-          : `Customize ${g.resource}`;
+          : g.action === "app.tool"
+            ? toolLabel(g.resource)
+            : `Customize ${g.resource}`;
+
+/** "<app id>/<tool id>" as "Use add-expense in Budget". */
+const toolLabel = (resource: string) => {
+  const [appId, tool] = resource.split("/");
+  return `Use ${tool} in ${appById(appId ?? "")?.name ?? "a deleted app"}`;
+};
 
 /** Remembered decisions, each revocable. */
 function PermissionRows() {

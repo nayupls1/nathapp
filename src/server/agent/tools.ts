@@ -10,13 +10,14 @@ import { Hub } from "../Hub";
 import { isIcon, searchIcons } from "../icons";
 import { presets } from "../workspace/presets";
 import { AppData } from "../workspace/AppData";
+import { AppTools } from "../workspace/AppTools";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
 import { topics } from "../../shared/hub";
-import { isReservedSecretName, SECRET_NAME_PATTERN, type ChatMessage, type LogLine, type RuntimeStatus } from "../../shared/api";
+import { isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type LogLine, type RuntimeStatus } from "../../shared/api";
 
 const transpiler = new Bun.Transpiler({ loader: "js" });
 
@@ -36,6 +37,8 @@ export interface ToolEnv {
   readonly log: (line: string) => Effect.Effect<void>;
   /** Adds another kind of message to the chat (e.g. a request for a secret). */
   readonly message: (role: ChatMessage["role"], content: string) => Effect.Effect<void>;
+  /** Who the agent is, for the audit log ("App builder · Claude (haiku)"). */
+  readonly label: string;
 }
 
 // --- Page tools ------------------------------------------------------------------------
@@ -182,6 +185,62 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
             ? `Saved and applied to ${host} (${sizes}).`
             : `Saved for ${host} (${sizes}), but customizations are turned off in Settings, so it isn't applied.`;
         }),
+    ),
+  ];
+});
+
+// --- Tool registry ---------------------------------------------------------------------
+
+const describeTool = (t: AppTool) => {
+  const params = Object.entries(t.params).map(([name, p]) => `${name}${p.required ? "" : "?"}: ${p.type}${p.description ? ` (${p.description})` : ""}`);
+  return `- ${t.id}: ${t.title}${t.description ? ` — ${t.description}` : ""}${t.readOnly ? " [read-only]" : ""}${params.length ? `\n    params: ${params.join("; ")}` : ""}${t.input ? `\n    input: text (${t.input})` : ""}`;
+};
+
+/** The apps' tools (their actions and data), for any agent. Other apps' need the user's OK. */
+export const registryTools = Effect.fn(function* (env: ToolEnv) {
+  const registry = yield* AppTools;
+  const apps = yield* Apps;
+  const own = yield* apps.get(env.tabId);
+  const self = own?.kind === "app" ? own.id : null;
+
+  return [
+    tool(
+      "list_app_tools",
+      "What the apps in this workspace can do: each app's actions and the basic tools NathApp derives from its data (list/get/add/update/delete per table), with their params. Use one with use_app_tool. Using another app's tools needs the user's OK.",
+      Schema.Struct({ app: Schema.optionalKey(Schema.String.annotate({ description: "An app id, to list only its tools" })) }),
+      ({ app }) =>
+        Effect.gen(function* () {
+          if (!own) return text("This tab no longer exists.", true);
+          const catalog = (yield* registry.catalog(own.workspaceId)).filter((info) => !app || info.appId === app);
+          if (!catalog.length) return app ? text(`No app "${app}" in this workspace.`, true) : "No apps in this workspace yet.";
+          return catalog
+            .map((info) => {
+              const tools = info.tools.filter((t) => !t.path);
+              const head = `## ${info.appName} (app: ${info.appId})${info.appId === self ? " — this app" : ""}`;
+              return `${head}\n${tools.length ? tools.map(describeTool).join("\n") : "No tools (no actions, no data yet)."}`;
+            })
+            .join("\n\n");
+        }),
+    ),
+
+    tool(
+      "use_app_tool",
+      "Run one of an app's tools (see list_app_tools). Leave out `app` for this tab's own app. Returns the tool's message and result as JSON.",
+      Schema.Struct({
+        app: Schema.optionalKey(Schema.String),
+        tool: Schema.String,
+        params: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
+        input: Schema.optionalKey(Schema.String),
+      }),
+      ({ app, tool: toolId, params, input }) =>
+        Effect.gen(function* () {
+          const appId = app ?? self;
+          if (!appId) return text("Say which app (list_app_tools shows their ids).", true);
+          const result = yield* registry.call({ kind: "agent", tabId: env.tabId, label: env.label }, appId, toolId, { params, input });
+          const data = result.data === undefined ? "" : JSON.stringify(result.data, null, 1);
+          const body = `${result.ok ? "" : `Failed (${result.status}): `}${result.message}${data ? `\n${data.length > 20_000 ? `${data.slice(0, 20_000)}…` : data}` : ""}`;
+          return result.ok ? body : text(body, true);
+        }).pipe(Effect.catchTag("AppToolError", (e) => Effect.succeed(text(e.message, true)))),
     ),
   ];
 });

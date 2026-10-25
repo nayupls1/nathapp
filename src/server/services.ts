@@ -20,13 +20,14 @@ import * as Permissions from "./security/Permissions";
 import * as Secrets from "./security/Secrets";
 import * as Vault from "./security/Vault";
 import * as AppData from "./workspace/AppData";
+import * as AppTools from "./workspace/AppTools";
 import * as Runtime from "./workspace/Runtime";
 import * as Sandbox from "./workspace/Sandbox";
 import * as Workspace from "./workspace/Workspace";
 
 /** Everything but the agents: storage, security, projects, the runtime and history (enough for most tests). */
 export const core = (config: ServerConfigShape) =>
-  History.layer.pipe(
+  Layer.mergeAll(History.layer, AppTools.layer).pipe(
     Layer.provideMerge(Runtime.layer),
     Layer.provideMerge(AppData.layer),
     Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),

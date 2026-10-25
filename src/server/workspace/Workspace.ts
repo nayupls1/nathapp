@@ -6,7 +6,7 @@ import { existsSync, renameSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Context, Data, Effect, Layer, Schema } from "effect";
-import type { AppAction, Manifest, ProjectInfo } from "../../shared/api";
+import type { AppAction, Manifest, ProjectInfo, ToolParam } from "../../shared/api";
 import { tokensCss } from "../../shared/theme";
 import { ServerConfig } from "../Config";
 import { Settings } from "../db/Settings";
@@ -53,7 +53,7 @@ export function parseActions(value: unknown): AppAction[] {
   const actions = new Map<string, AppAction>();
   for (const item of value.slice(0, 30)) {
     if (!item || typeof item !== "object") continue;
-    const { id, title, description, path, endpoint, input } = item as Record<string, unknown>;
+    const { id, title, description, path, endpoint, input, params } = item as Record<string, unknown>;
     if (typeof id !== "string" || !ACTION_ID.test(id) || typeof title !== "string" || !title.trim() || actions.has(id)) continue;
     const opens = route(path);
     const calls = route(endpoint);
@@ -65,10 +65,33 @@ export function parseActions(value: unknown): AppAction[] {
       ...(typeof description === "string" && description.trim() ? { description: description.trim().slice(0, 200) } : {}),
       ...(opens ? { path: opens } : { endpoint: calls }),
       ...(typeof input === "string" && input.trim() ? { input: input.trim().slice(0, 80) } : {}),
+      ...(calls && Object.keys(parseParams(params)).length ? { params: parseParams(params) } : {}),
     });
   }
   return [...actions.values()];
 }
+
+const PARAM_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+const PARAM_TYPES = new Set<ToolParam["type"]>(["string", "number", "integer", "boolean", "object"]);
+
+/** An action's `params`: { name: { type, description?, required? } }, invalid ones left out. */
+export function parseParams(value: unknown): Record<string, ToolParam> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, ToolParam> = {};
+  for (const [name, spec] of Object.entries(value).slice(0, 30)) {
+    if (!PARAM_NAME.test(name) || !spec || typeof spec !== "object") continue;
+    const { type, description, required } = spec as Record<string, unknown>;
+    if (!PARAM_TYPES.has(type as ToolParam["type"])) continue;
+    out[name] = {
+      type: type as ToolParam["type"],
+      ...(typeof description === "string" && description.trim() ? { description: description.trim().slice(0, 200) } : {}),
+      ...(required === true ? { required: true } : {}),
+    };
+  }
+  return out;
+}
+
+const parseDataTools = (value: unknown): Manifest["dataTools"] => (value === "read" || value === "none" || value === "all" ? value : undefined);
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -102,7 +125,8 @@ export const make = Effect.gen(function* () {
       }
       try {
         const actions = parseActions((json as { actions?: unknown } | null)?.actions);
-        return { ...(decodeManifest(json) as Manifest), ...(actions.length ? { actions } : {}) };
+        const dataTools = parseDataTools((json as { dataTools?: unknown } | null)?.dataTools);
+        return { ...(decodeManifest(json) as Manifest), ...(actions.length ? { actions } : {}), ...(dataTools ? { dataTools } : {}) };
       } catch (err) {
         return yield* new WorkspaceError({ message: `${MANIFEST} is invalid: ${(err as Error).message}` });
       }
