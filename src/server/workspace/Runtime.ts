@@ -16,6 +16,7 @@ import { Apps } from "../db/Apps";
 import { Audit } from "../security/Audit";
 import { Secrets } from "../security/Secrets";
 import { Hub } from "../Hub";
+import { AppData } from "./AppData";
 import { Sandbox } from "./Sandbox";
 import { Workspace } from "./Workspace";
 
@@ -107,6 +108,7 @@ export const make = Effect.gen(function* () {
   const hub = yield* Hub;
   const sandbox = yield* Sandbox;
   const workspace = yield* Workspace;
+  const appData = yield* AppData;
   const sessions = yield* FiberMap.make<string>();
   const states = new Map<string, State>();
 
@@ -153,15 +155,18 @@ export const make = Effect.gen(function* () {
     hub.publishUnsafe({ type: "log", topic: topics.logs(appId), appId, lines });
   };
 
-  /** Environment NathApp provides to the app's processes. */
-  const appEnv = (appId: string, mode: AppMode, port: number | null): Record<string, string> => {
-    const db = join(workspace.stateDir(appId), "data.sqlite");
-    return {
+  /** Environment NathApp provides to the app's processes. Its data lives outside the project (AppData.ts). */
+  const appEnv = (appId: string, mode: AppMode, port: number | null) =>
+    Effect.map(appData.ensure(appId), (data): Record<string, string> => ({
       ...(port ? { PORT: String(port), HOST: "127.0.0.1", APP_URL: `http://127.0.0.1:${port}` } : {}),
-      DATABASE_PATH: db,
-      DATABASE_URL: `file:${db}`,
+      DATABASE_PATH: data.database,
+      DATABASE_URL: `file:${data.database}`,
+      NATHAPP_FILES_DIR: data.files,
       NATHAPP_APP_ID: appId,
       NATHAPP_MODE: mode,
+      // NathApp's API for apps (other apps' data, with the user's OK). Server-side only, like AI.
+      NATHAPP_API_URL: `${config.url}/app-api/v1`,
+      NATHAPP_API_TOKEN: aiTokens.tokenFor(appId),
       // AI through NathApp (src/ai.ts in the presets). Server-side only: the token is the app's key.
       NATHAPP_AI_URL: `${config.url}/ai/v1`,
       NATHAPP_AI_TOKEN: aiTokens.tokenFor(appId),
@@ -169,14 +174,13 @@ export const make = Effect.gen(function* () {
       GAPP_AI_URL: `${config.url}/ai/v1`,
       GAPP_AI_TOKEN: aiTokens.tokenFor(appId),
       NODE_ENV: mode === "live" ? "production" : "development",
-    };
-  };
+    }));
 
   /** Starts a command in the sandbox; stopping the scope kills it. */
   const spawnIn = (appId: string, command: string, env: Record<string, string>) =>
     Effect.acquireRelease(
       Effect.gen(function* () {
-        const spec = yield* sandbox.spawnSpec({ dir: workspace.dir(appId), command, env });
+        const spec = yield* sandbox.spawnSpec({ dir: workspace.dir(appId), command, env, binds: [appData.dir(appId)] });
         const [file, ...args] = spec.argv;
         const child = spawnChild(file!, args, {
           cwd: spec.cwd,
@@ -243,7 +247,7 @@ export const make = Effect.gen(function* () {
         setStatus(appId, { state: "stopped" });
         return;
       }
-      const env = appEnv(appId, mode, null);
+      const env = yield* appEnv(appId, mode, null);
       // The app's secrets: for build and serve, not for installing dependencies.
       const secretEnv = yield* secrets.envFor(appId).pipe(
         Effect.catchTag("VaultLocked", (e) => Effect.sync(() => (log(appId, "system", `${e.message}; starting without secrets`), {} as Record<string, string>))),
@@ -276,7 +280,7 @@ export const make = Effect.gen(function* () {
 
       yield* Effect.scoped(
         Effect.gen(function* () {
-          const { exited } = yield* spawnIn(appId, command, { ...secretEnv, ...appEnv(appId, mode, port) });
+          const { exited } = yield* spawnIn(appId, command, { ...secretEnv, ...(yield* appEnv(appId, mode, port)) });
           const ready = yield* Effect.forkScoped(
             Effect.gen(function* () {
               while (!(yield* Effect.promise(() => listening(port)))) yield* Effect.sleep(250);
@@ -340,7 +344,12 @@ export const make = Effect.gen(function* () {
           const mode = yield* modeOf(appId);
           let output = "";
           // The app's port too, so commands can talk to the running app (curl $APP_URL/…).
-          const spec = yield* sandbox.spawnSpec({ dir: workspace.dir(appId), command, env: appEnv(appId, mode, stateOf(appId).port) });
+          const spec = yield* sandbox.spawnSpec({
+            dir: workspace.dir(appId),
+            command,
+            env: yield* appEnv(appId, mode, stateOf(appId).port),
+            binds: [appData.dir(appId)],
+          });
           const [file, ...args] = spec.argv;
           const child = yield* Effect.acquireRelease(
             Effect.sync(() => spawnChild(file!, args, { cwd: spec.cwd, env: spec.env, stdio: ["ignore", "pipe", "pipe"], detached: true })),

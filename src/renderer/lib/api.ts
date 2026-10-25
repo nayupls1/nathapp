@@ -8,6 +8,8 @@ import type {
   AppMode,
   AppSummary,
   AuditEntry,
+  DataOverview,
+  DataRows,
   PermissionAction,
   PermissionGrant,
   PermissionRequest,
@@ -110,6 +112,20 @@ export const api = {
     const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
     return request<AuditEntry[]>(`/api/audit${params.size ? `?${params}` : ""}`);
   },
+
+  appData: (id: string) => request<DataOverview>(`/api/apps/${id}/data`),
+  appDataRows: (id: string, table: string, query: { offset?: number; limit?: number; search?: string } = {}) => {
+    const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    return request<DataRows>(`/api/apps/${id}/data/tables/${encodeURIComponent(table)}${params.size ? `?${params}` : ""}`);
+  },
+  /** The app's data as a .tar.gz, with the file name the server suggests. */
+  exportAppData: async (id: string) => {
+    const res = await fetch(url(`/api/apps/${id}/data/export`), { headers: { Authorization: `Bearer ${window.nathapp.token}` } });
+    if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `${res.status} ${res.statusText}`);
+    const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "app-data.tar.gz";
+    return { blob: await res.blob(), name };
+  },
+  deleteAppData: (id: string) => request<void>(`/api/apps/${id}/data`, { method: "DELETE" }),
 
   history: (filter: { target?: string; workspace?: string; before?: number; limit?: number } = {}) => {
     const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));

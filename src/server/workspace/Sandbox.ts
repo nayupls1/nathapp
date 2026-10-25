@@ -1,6 +1,6 @@
 // Where app processes run. With bubblewrap (Linux) every app gets a light
 // sandbox of its own: it sees the system read-only, its project folder
-// read-write and a private /tmp, with its own process and IPC namespaces, so
+// read-write (and its data folder) and a private /tmp, with its own process and IPC namespaces, so
 // an app can't read your files or other apps. Without it, processes run
 // directly in the project folder.
 import { lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -19,8 +19,8 @@ export interface SpawnSpec {
 export interface SandboxShape {
   /** What the current settings resolve to on this machine. */
   readonly kind: Effect.Effect<SandboxKind>;
-  /** How to run `command` (a shell command line) for an app. */
-  readonly spawnSpec: (options: { dir: string; command: string; env: Record<string, string> }) => Effect.Effect<SpawnSpec>;
+  /** How to run `command` (a shell command line) for an app. `binds`: more folders it may read and write (its data). */
+  readonly spawnSpec: (options: { dir: string; command: string; env: Record<string, string>; binds?: readonly string[] }) => Effect.Effect<SpawnSpec>;
   /** Directory with `bun`, `bunx` and `node` for app processes and agents. */
   readonly binDir: string;
 }
@@ -105,7 +105,7 @@ export const make = Effect.gen(function* () {
   return {
     binDir,
     kind,
-    spawnSpec: ({ dir, command, env }) =>
+    spawnSpec: ({ dir, command, env, binds = [] }) =>
       Effect.gen(function* () {
         const home = join(dir, ".nathapp", "home");
         mkdirSync(home, { recursive: true });
@@ -160,6 +160,7 @@ export const make = Effect.gen(function* () {
           "--bind",
           dir,
           dir,
+          ...binds.flatMap((path) => ["--bind", path, path]),
           "--chdir",
           dir,
           "--",

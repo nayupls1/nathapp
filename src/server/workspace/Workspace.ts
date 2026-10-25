@@ -1,6 +1,7 @@
 // App projects: one folder per app (the app's disk), with nathapp.json saying how
 // to install, develop, build and start it. NathApp keeps its runtime state in
-// .nathapp/ inside the folder (the app's SQLite database, a home directory).
+// .nathapp/ inside the folder (a home directory); the app's data is elsewhere
+// (AppData.ts).
 import { existsSync, renameSync } from "node:fs";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";

@@ -92,7 +92,8 @@ database, a small realtime library (server `publish`, client `subscribe` /
 theme. It can also write any other stack itself. NathApp gives every app:
 
 - `PORT` (a stable port per app on 127.0.0.1), `APP_URL`
-- `DATABASE_PATH` / `DATABASE_URL=file:…` (SQLite inside the project's `.nathapp/`)
+- `DATABASE_PATH` / `DATABASE_URL=file:…` (its SQLite database) and `NATHAPP_FILES_DIR` (a folder for uploads and other files), both kept by NathApp outside the project (see App data)
+- `NATHAPP_API_URL` / `NATHAPP_API_TOKEN` for NathApp's app API (other apps' data)
 - `NODE_ENV` / `NATHAPP_MODE`: development while editing, production when done
 
 **Editing** runs the `dev` command (Bun `--hot` with HMR), so the agent's changes
@@ -101,9 +102,31 @@ shows the finished app. Dependencies are installed when `package.json` or the
 lockfile change.
 
 **Sandbox.** With bubblewrap every app process (installs, dev server, the
-agent's `run_command`) sees the system read-only, its own project read-write, a
-private `/tmp`, and its own PID/IPC namespaces. Your files and other apps are
+agent's `run_command`) sees the system read-only, its own project and data folder
+read-write, a private `/tmp`, and its own PID/IPC namespaces. Your files and other apps are
 invisible, and the environment is cleared. Settings → Apps can turn it off.
+
+### App data
+
+What an app stores belongs to NathApp, not to the project: its database and
+files live in `<data>/appdata/<id>`, mounted into the app's sandbox. Rebuilding,
+resetting or rewriting the project leaves them alone, and the agent's file
+tools never touch them (it reads them with `app_data`). Projects from before
+this keep their old `.nathapp/data.sqlite`: it moves there on first start.
+
+- **Look at it:** the database button in an app tab lists the tables and pages through their rows, with search.
+- **Export:** a `.tar.gz` with the database, every table as JSON and the files.
+- **Delete:** stops the app, deletes its database and files and restarts it. A snapshot is taken first, so History can bring them back.
+- **Snapshots:** an app's data is part of its snapshots (`@data/…`). Undo and restore leave it alone unless asked.
+- **Other apps' data:** an app can read (never write) another app's tables in the same workspace, after you allow it:
+
+```
+GET $NATHAPP_API_URL/data                      Authorization: Bearer $NATHAPP_API_TOKEN
+GET $NATHAPP_API_URL/data/<app id>             → its tables (name, row count, columns)
+GET $NATHAPP_API_URL/data/<app id>/<table>?offset=&limit=&search=&order=&desc=1&where.<column>=
+```
+
+  Like the AI API, it only answers the app's server (no `Origin` header). Every read of another app's data is in Activity. Apps in other workspaces aren't listed and can't ask.
 
 ### Agents
 
@@ -111,7 +134,7 @@ Providers are detected at startup (Settings → Providers shows their status,
 version and models). The picker in the composer chooses provider, model and
 effort per tab. Every provider gets the same instructions and NathApp's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
-`restart_app`, `app_logs`, `run_command`, `set_app_info`, `search_icons`, and the
+`restart_app`, `app_logs`, `app_data`, `run_command`, `set_app_info`, `search_icons`, and the
 page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
 that work on the preview or the web page. File editing is the provider's own.
 
@@ -145,7 +168,7 @@ GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
 ### History
 
 Every change is saved as a snapshot you can look at and take back (History page in the sidebar; the clock button in an app tab). A snapshot covers one of:
-- an **app**: its project files (without `node_modules`, builds, `.git`) and its data. SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
+- an **app**: its project files (without `node_modules`, builds, `.git`) and its data (see App data). SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
 - the **site customizations** the website agent made;
 - NathApp's **settings**, including each workspace's.
 
@@ -199,6 +222,7 @@ Apps get secrets (API keys, passwords) as environment variables. A secret belong
 Anything an app or agent does beyond its own sandbox needs your OK:
 - an app using AI;
 - an app using a global secret;
+- an app reading another app's data;
 - the website agent customizing a site (per host).
 
 NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.

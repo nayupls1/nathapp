@@ -325,6 +325,23 @@ try {
       return true;
     })()`);
 
+  await check("app data: tables and rows in the data panel", async () => {
+    const { Database } = await import("bun:sqlite");
+    const db = new Database(join(profile, "data", "appdata", appId, "data.sqlite"));
+    db.run("CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY, label TEXT, amount REAL)");
+    for (const [label, amount] of [["Lunch", 12.5], ["Train", 4.2], ["Books", 31]] as const) db.run("INSERT INTO expenses (label, amount) VALUES (?, ?)", [label, amount]);
+    db.close();
+    await click(`${appTab()} [data-data-button]`);
+    const panel = `${appTab()} [data-data-panel]`;
+    await page!.waitFor(`!!document.querySelector('${panel} [data-data-table="expenses"]')`, { label: "expenses table" });
+    await click(`${panel} [data-data-table="expenses"]`);
+    await page!.waitFor(`document.querySelectorAll('${panel} [data-data-rows] tbody tr').length === 3`, { label: "rows" });
+    await type(`${panel} [data-data-search]`, "train");
+    await page!.waitFor(`document.querySelectorAll('${panel} [data-data-rows] tbody tr').length === 1`, { label: "search" });
+    await shot("app-data.png");
+    await click(`${appTab()} [data-data-button]`);
+  });
+
   await check("secrets: added in the app tab, never shown again", async () => {
     const value = "e2e-secret-value-4711";
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app running" });

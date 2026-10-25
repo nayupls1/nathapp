@@ -12,12 +12,14 @@ describe("history", () => {
   let server: Awaited<ReturnType<typeof startServer>>;
   let app: AppSummary;
   let dir: string;
+  /** The app's managed data (outside the project). */
+  let dataDir: string;
   const target = () => `app:${app.id}`;
   const list = (t = target()) => server.api<HistoryEntry[]>(`/api/history?target=${encodeURIComponent(t)}`);
   const snapshot = (t = target()) => server.api<HistoryEntry | undefined>("/api/history", { method: "POST", json: { target: t } });
   const file = (path: string) => (existsSync(join(dir, path)) ? readFileSync(join(dir, path), "utf8") : null);
   const rows = () => {
-    const db = new Database(join(dir, ".nathapp/data.sqlite"));
+    const db = new Database(join(dataDir, "data.sqlite"));
     try {
       return db.query<{ n: number }, []>("SELECT COUNT(*) AS n FROM notes").get()!.n;
     } catch {
@@ -27,8 +29,8 @@ describe("history", () => {
     }
   };
   const addNotes = (n: number) => {
-    mkdirSync(join(dir, ".nathapp"), { recursive: true });
-    const db = new Database(join(dir, ".nathapp/data.sqlite"));
+    mkdirSync(dataDir, { recursive: true });
+    const db = new Database(join(dataDir, "data.sqlite"));
     db.run("PRAGMA journal_mode = WAL");
     db.run("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, text TEXT)");
     for (let i = 0; i < n; i++) db.run("INSERT INTO notes (text) VALUES (?)", [`note ${i}`]);
@@ -41,6 +43,7 @@ describe("history", () => {
     app = await server.api<AppSummary>("/api/apps", { method: "POST" });
     await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
     dir = join(server.dataDir, "apps", app.id);
+    dataDir = join(server.dataDir, "appdata", app.id);
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "stop" } });
   });
   afterAll(() => server.stop());
@@ -61,15 +64,15 @@ describe("history", () => {
     const db = addNotes(3);
     const entry = (await snapshot())!;
     db.close();
-    expect(entry.added).toEqual([".nathapp/data.sqlite", "notes.md"]);
+    expect(entry.added).toEqual(["@data/data.sqlite", "notes.md"]);
     expect(entry.modified).toEqual(["src/server.ts"]);
-    expect(entry.data).toEqual({ ".nathapp/data.sqlite": { notes: [null, 3] } });
+    expect(entry.data).toEqual({ "@data/data.sqlite": { notes: [null, 3] } });
 
     const detail = await server.api<HistoryDetail>(`/api/history/${entry.id}`);
     const server_ = detail.files.find((f) => f.path === "src/server.ts")!;
     expect(server_).toMatchObject({ kind: "text", status: "modified", linesAdded: 2, linesRemoved: 0 });
     expect(server_.hunks![0]!.lines.some((l) => l.type === "+" && l.text === "// a change")).toBe(true);
-    expect(detail.files.find((f) => f.path === ".nathapp/data.sqlite")).toMatchObject({ kind: "data", tables: { notes: [null, 3] } });
+    expect(detail.files.find((f) => f.path === "@data/data.sqlite")).toMatchObject({ kind: "data", tables: { notes: [null, 3] } });
   });
 
   test("undo reverts just that change", async () => {
@@ -90,7 +93,7 @@ describe("history", () => {
     db.close();
     writeFileSync(join(dir, "notes.md"), "with data\n");
     const change = (await snapshot())!;
-    expect(change.data[".nathapp/data.sqlite"]).toEqual({ notes: [3, 4] });
+    expect(change.data["@data/data.sqlite"]).toEqual({ notes: [3, 4] });
     await server.api(`/api/history/${change.id}/undo`, { method: "POST", json: {} });
     expect(file("notes.md")).toBe("hello\n");
     expect(rows()).toBe(4);
@@ -117,7 +120,7 @@ describe("history", () => {
     db.close();
     const entries = await list();
     // The snapshot where the database first appeared, with 3 notes.
-    const withThreeNotes = entries.find((e) => e.data[".nathapp/data.sqlite"]?.notes?.[0] === null)!;
+    const withThreeNotes = entries.find((e) => e.data["@data/data.sqlite"]?.notes?.[0] === null)!;
 
     await server.api(`/api/history/${withThreeNotes.id}/restore`, { method: "POST", json: { data: false } });
     expect(file("notes.md")).toBe("hello\n");
@@ -126,12 +129,12 @@ describe("history", () => {
 
     await server.api(`/api/history/${withThreeNotes.id}/restore`, { method: "POST", json: { data: true } });
     expect(rows()).toBe(3);
-    expect(existsSync(join(dir, ".nathapp/data.sqlite-wal"))).toBe(false);
+    expect(existsSync(join(dataDir, "data.sqlite-wal"))).toBe(false);
 
     // The very first version had no database at all.
     const first = (await list()).at(-1)!;
     await server.api(`/api/history/${first.id}/restore`, { method: "POST", json: { data: true } });
-    expect(existsSync(join(dir, ".nathapp/data.sqlite"))).toBe(false);
+    expect(existsSync(join(dataDir, "data.sqlite"))).toBe(false);
     expect(file("notes.md")).toBeNull();
     // ...and that restore can be undone in turn.
     const [restored] = await list();

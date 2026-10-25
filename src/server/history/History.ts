@@ -5,8 +5,9 @@
 //
 // Targets:
 // - app:<id>: the project folder (without dependencies and builds) and its
-//   data. SQLite databases are copied consistently (sqlite3_serialize), even
-//   while the app runs, with their tables' row counts for the timeline.
+//   data (workspace/AppData.ts), under "@data/". SQLite databases are copied
+//   consistently (sqlite3_serialize), even while the app runs, with their
+//   tables' row counts for the timeline.
 // - sites: the site customizations (<host>/style.css, script.js, site.json).
 // - settings: NathApp's settings and each workspace's (settings.json,
 //   workspaces/<id>.json).
@@ -36,6 +37,7 @@ import { Settings } from "../db/Settings";
 import { Sites } from "../db/Sites";
 import { Workspaces } from "../db/Workspaces";
 import { Hub } from "../Hub";
+import { AppData, DATA_PREFIX, DATABASE_FILE } from "../workspace/AppData";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 
@@ -101,6 +103,13 @@ const sameTree = (a: Tree, b: Tree) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 };
+
+/** Snapshots from before managed app data have the database in the project's .nathapp/. */
+const LEGACY_DATABASE = ".nathapp/data.sqlite";
+const renamePath = (path: string) => (path === LEGACY_DATABASE ? `${DATA_PREFIX}${DATABASE_FILE}` : path);
+function legacyPaths<T>(record: Record<string, T>): Record<string, T> {
+  return LEGACY_DATABASE in record ? Object.fromEntries(Object.entries(record).map(([k, v]) => [renamePath(k), v])) : record;
+}
 
 const isBinary = (bytes: Uint8Array) => bytes.subarray(0, 8000).includes(0);
 
@@ -175,6 +184,7 @@ export const make = Effect.gen(function* () {
   const hub = yield* Hub;
   const workspace = yield* Workspace;
   const runtime = yield* Runtime;
+  const appData = yield* AppData;
   const settings = yield* Settings;
   const sites = yield* Sites;
   const workspaces = yield* Workspaces;
@@ -223,34 +233,38 @@ export const make = Effect.gen(function* () {
 
   // --- Capturing ----------------------------------------------------------------------
 
-  /** An app's files and databases; null if it has no project folder yet. */
+  /** Where a snapshot path of an app is on disk: its project, or its managed data for "@data/…". */
+  const appPath = (appId: string, path: string) =>
+    path.startsWith(DATA_PREFIX) ? join(appData.dir(appId), path.slice(DATA_PREFIX.length)) : join(workspace.dir(appId), path);
+
+  /** An app's files and data; null if it has no project folder yet. */
   const captureApp = (appId: string) =>
     Effect.gen(function* () {
       const root = workspace.dir(appId);
       if (!existsSync(root)) return null;
+      yield* appData.ensure(appId);
       const tree: Tree = {};
       const data: DataStats = {};
       const files: string[] = [];
       yield* Effect.promise(async () => {
-        const walk = async (dir: string, rel: string) => {
+        const walk = async (dir: string, rel: string, skipDirs: boolean) => {
           for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
             const path = rel ? `${rel}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
-              // NathApp's state folder: only the app's database.
-              if (path === ".nathapp") {
-                if (existsSync(join(dir, entry.name, "data.sqlite"))) files.push(".nathapp/data.sqlite");
-              } else if (!SKIP_DIRS.has(entry.name)) await walk(join(dir, entry.name), path);
+              // NathApp's state folder (dependency stamp, home) isn't the app's.
+              if (path !== ".nathapp" && !(skipDirs && SKIP_DIRS.has(entry.name))) await walk(join(dir, entry.name), path, skipDirs);
             } else if (entry.isFile() && !SKIP_FILES.test(entry.name) && files.length < MAX_FILES) files.push(path);
           }
         };
-        await walk(root, "");
+        await walk(root, "", true);
+        // The app's data: its database and every file it stored.
+        await walk(appData.dir(appId), DATA_PREFIX.slice(0, -1), false);
       });
       // The previous snapshot's contents stand in for files that can't be read right now.
       const last = yield* latest(`app:${appId}`);
-      const previous = last ? (JSON.parse(last.tree) as Tree) : {};
-      const previousData = last ? (JSON.parse(last.data) as DataStats) : {};
+      const { tree: previous, data: previousData } = last ? stored(last) : { tree: {} as Tree, data: {} as DataStats };
       for (const path of files) {
-        const file = join(root, path);
+        const file = appPath(appId, path);
         const size = yield* Effect.promise(() => stat(file).then((s) => s.size, () => -1));
         if (size < 0 || size > MAX_FILE_BYTES) continue;
         const head = yield* Effect.promise(() => Bun.file(file).slice(0, 16).text().catch(() => ""));
@@ -306,15 +320,15 @@ export const make = Effect.gen(function* () {
 
   const applyApp = (appId: string, desired: Tree, current: Tree) =>
     Effect.gen(function* () {
-      const root = workspace.dir(appId);
       const status = yield* runtime.status(appId);
       yield* runtime.stop(appId);
       for (const path of Object.keys(current)) {
         if (path in desired) continue;
+        const root = path.startsWith(DATA_PREFIX) ? appData.dir(appId) : workspace.dir(appId);
         yield* Effect.promise(async () => {
-          await rm(join(root, path), { force: true });
+          await rm(appPath(appId, path), { force: true });
           // Folders left empty go too.
-          for (let dir = dirname(join(root, path)); dir.startsWith(root) && dir !== root; dir = dirname(dir)) {
+          for (let dir = dirname(appPath(appId, path)); dir.startsWith(root) && dir !== root; dir = dirname(dir)) {
             if ((await readdir(dir).catch(() => ["?"])).length) break;
             await rmdir(dir).catch(() => {});
           }
@@ -324,7 +338,7 @@ export const make = Effect.gen(function* () {
         if (current[path] === hash) continue;
         const bytes = yield* get(hash);
         yield* Effect.promise(async () => {
-          const file = join(root, path);
+          const file = appPath(appId, path);
           await mkdir(dirname(file), { recursive: true });
           // A database replaced as a whole: its journal belongs to the old one.
           if (SQLITE_NAME.test(path)) for (const suffix of ["-wal", "-shm", "-journal"]) await rm(file + suffix, { force: true });
@@ -397,6 +411,8 @@ export const make = Effect.gen(function* () {
 
   const toEntry = (r: SnapshotRow): HistoryEntry => {
     const changes = JSON.parse(r.changes) as Changes;
+    for (const list of [changes.added, changes.modified, changes.removed]) list.forEach((p, i) => (list[i] = renamePath(p)));
+    changes.data = legacyPaths(changes.data);
     return {
       id: r.id,
       target: r.target,
@@ -413,7 +429,7 @@ export const make = Effect.gen(function* () {
       first: changes.first,
     };
   };
-  const stored = (r: SnapshotRow) => ({ tree: JSON.parse(r.tree) as Tree, data: JSON.parse(r.data) as DataStats });
+  const stored = (r: SnapshotRow) => ({ tree: legacyPaths(JSON.parse(r.tree) as Tree), data: legacyPaths(JSON.parse(r.data) as DataStats) });
 
   const publish = (row: SnapshotRow | null) => (row ? hub.publish({ type: "snapshot", topic: topics.history, entry: toEntry(row) }) : Effect.void);
   const changed = (target: string) => hub.publish({ type: "history-changed", topic: topics.history, target });
@@ -423,12 +439,12 @@ export const make = Effect.gen(function* () {
       const last = yield* latest(target);
       // An app's empty folder isn't worth a snapshot; no site customizations yet is (it's what undoing the first one goes back to).
       const empty = !Object.keys(captured.tree).length && !!appOfTarget(target);
-      if (last ? sameTree(JSON.parse(last.tree), captured.tree) : empty) return null;
+      if (last ? sameTree(stored(last).tree, captured.tree) : empty) return null;
       const summary = by.summary.slice(0, 500);
 
       if (last && by.coalesceMs && last.actor === by.actor && last.summary === summary && Date.parse(last.at) > Date.now() - by.coalesceMs) {
         const parent = yield* parentOf(last);
-        if (parent && sameTree(JSON.parse(parent.tree), captured.tree)) {
+        if (parent && sameTree(stored(parent).tree, captured.tree)) {
           // Changed back to how it was: nothing left to remember.
           yield* sql`DELETE FROM snapshots WHERE id = ${last.id}`.pipe(Effect.orDie);
           yield* changed(target);
@@ -484,7 +500,9 @@ export const make = Effect.gen(function* () {
       if (appId && !existsSync(workspace.dir(appId))) return yield* fail(404, "The app no longer exists");
     });
 
-  const isDatabase = (path: string, ...stats: DataStats[]) => stats.some((s) => path in s) || (SQLITE_NAME.test(path) && path.startsWith(".nathapp/"));
+  const isDatabase = (path: string, ...stats: DataStats[]) => stats.some((s) => path in s) || (SQLITE_NAME.test(path) && path.startsWith(DATA_PREFIX));
+  /** The app's data (kept as it is unless restoring "with its data"): its managed folder and any database in the project. */
+  const isData = (path: string, ...stats: DataStats[]) => path.startsWith(DATA_PREFIX) || isDatabase(path, ...stats);
 
   // Where undoing the first change of settings or sites goes back to (also catches changes made while NathApp wasn't running).
   for (const target of ["settings", "sites"] as const) {
@@ -570,8 +588,8 @@ export const make = Effect.gen(function* () {
             const desired: Tree = { ...target.tree };
             if (!options.data) {
               // Databases stay as they are now.
-              for (const path of Object.keys(desired)) if (isDatabase(path, target.data, current.data)) delete desired[path];
-              for (const path of Object.keys(current.tree)) if (isDatabase(path, target.data, current.data)) desired[path] = current.tree[path]!;
+              for (const path of Object.keys(desired)) if (isData(path, target.data, current.data)) delete desired[path];
+              for (const path of Object.keys(current.tree)) if (isData(path, target.data, current.data)) desired[path] = current.tree[path]!;
             }
             yield* apply(row.target, desired, current.tree);
             const after = yield* capture(row.target);
@@ -606,7 +624,7 @@ export const make = Effect.gen(function* () {
             let skippedData = false;
             for (const path of new Set([...Object.keys(before.tree), ...Object.keys(after.tree)])) {
               if (before.tree[path] === after.tree[path]) continue;
-              const database = isDatabase(path, before.data, after.data, current.data);
+              const database = isData(path, before.data, after.data, current.data);
               if (database && !options.data) {
                 skippedData = true;
                 continue;

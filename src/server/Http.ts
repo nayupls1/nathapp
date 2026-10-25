@@ -39,6 +39,7 @@ import { History, type By } from "./history/History";
 import { Hub } from "./Hub";
 import { Providers } from "./providers/Providers";
 import { presetInfo, presets } from "./workspace/presets";
+import { AppData, type RowQuery } from "./workspace/AppData";
 import { Runtime } from "./workspace/Runtime";
 import { Workspace } from "./workspace/Workspace";
 
@@ -91,8 +92,14 @@ const guard = HttpRouter.middleware(
       const config = yield* ServerConfig;
       const req = yield* HttpServerRequest.HttpServerRequest;
       const url = new URL(req.url, "http://localhost");
-      // MCP and AI have tokens of their own (per agent turn, per app).
-      if (req.method === "OPTIONS" || url.pathname === "/api/health" || url.pathname.startsWith("/mcp/") || url.pathname.startsWith("/ai/")) {
+      // MCP, AI and the app API have tokens of their own (per agent turn, per app).
+      if (
+        req.method === "OPTIONS" ||
+        url.pathname === "/api/health" ||
+        url.pathname.startsWith("/mcp/") ||
+        url.pathname.startsWith("/ai/") ||
+        url.pathname.startsWith("/app-api/")
+      ) {
         return yield* effect;
       }
       const origin = req.headers.origin;
@@ -253,6 +260,7 @@ const removeApp = (id: string) =>
     yield* runtime.forget(id);
     yield* apps.remove(id);
     yield* workspace.remove(id);
+    yield* (yield* AppData).remove(id);
     yield* secrets.removeScope(id);
     yield* permissions.forget(id);
     yield* (yield* History).forget(appTarget(id));
@@ -670,6 +678,179 @@ const aiRoutes = HttpRouter.addAll([
   ),
 ]);
 
+// --- Managed app data -------------------------------------------------------------------------
+
+/** Paging, search, order and filters from the query string (`where.<column>=value`). */
+const rowQuery = Effect.gen(function* () {
+  const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
+  const where: Record<string, string> = {};
+  for (const [key, value] of params) if (key.startsWith("where.")) where[key.slice(6)] = value;
+  const number = (name: string) => (params.get(name) ? Number(params.get(name)) || 0 : undefined);
+  return {
+    offset: number("offset"),
+    limit: number("limit"),
+    search: params.get("search") ?? undefined,
+    orderBy: params.get("order") ?? undefined,
+    desc: params.get("desc") === "1" || params.get("desc") === "true",
+    where,
+  } satisfies RowQuery;
+});
+
+const requireApp = (id: string) =>
+  Effect.gen(function* () {
+    const app = yield* (yield* Apps).get(id);
+    if (!app || app.kind !== "app") return yield* fail(404, "Not found");
+    return app;
+  });
+
+const dataRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/data",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        yield* requireApp(id);
+        return json(yield* (yield* AppData).overview(id));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/data/tables/:table",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        yield* requireApp(id);
+        const table = decodeURIComponent(yield* param("table"));
+        const rows = yield* (yield* AppData).rows(id, table, yield* rowQuery).pipe(Effect.catchTag("AppDataError", (e) => fail(e.status, e.message)));
+        return json(rows);
+      }),
+    ),
+  ),
+  // Everything the app stored, as a .tar.gz (database, tables as JSON, files).
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/data/export",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        const app = yield* requireApp(id);
+        const bytes = yield* (yield* AppData).exportArchive(id);
+        yield* youDid(id, "data.export", app.name, `${bytes.byteLength} bytes`);
+        const name = `${app.name.replace(/[^\w .-]/g, "").trim().replace(/\s+/g, "-") || "app"}-data.tar.gz`;
+        return HttpServerResponse.uint8Array(bytes, {
+          contentType: "application/gzip",
+          headers: { "Content-Disposition": `attachment; filename="${name}"` },
+        });
+      }),
+    ),
+  ),
+  // Deletes the app's database and files. A snapshot first, so History can bring them back.
+  HttpRouter.route(
+    "DELETE",
+    "/api/apps/:id/data",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        const app = yield* requireApp(id);
+        const runtime = yield* Runtime;
+        const history = yield* History;
+        if (yield* (yield* Agent).isRunning(id)) return yield* fail(409, "Stop the agent before deleting the app's data");
+        yield* history.record(appTarget(id), { actor: "nathapp", actorLabel: "NathApp", summary: "Before deleting the app's data" });
+        const status = yield* runtime.status(id);
+        yield* runtime.stop(id);
+        yield* (yield* AppData).clear(id);
+        yield* history.record(appTarget(id), { actor: "user", actorLabel: "You", summary: "Deleted the app's data" });
+        yield* youDid(id, "data.delete", app.name);
+        runtime.note(id, "Its data was deleted");
+        if (status.state !== "stopped") yield* Effect.forkDetach(runtime.restart(id));
+        return noContent;
+      }),
+    ),
+  ),
+]);
+
+/** The app calling NathApp's app API: from its token, and only from its server (never a browser). */
+const apiApp = Effect.gen(function* () {
+  const tokens = yield* AiTokens;
+  const req = yield* HttpServerRequest.HttpServerRequest;
+  if (req.headers.origin !== undefined) return yield* fail(403, "NathApp's app API is for the app's server, not the browser.");
+  const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
+  if (!appId) return yield* fail(401, "Missing or invalid NATHAPP_API_TOKEN");
+  const app = yield* (yield* Apps).get(appId);
+  if (!app) return yield* fail(401, "The app no longer exists");
+  return app;
+});
+
+/**
+ * Whether `appId` may read `targetId`'s data: always its own; another app's in
+ * the same workspace once the user allows it (other workspaces stay apart).
+ */
+const mayRead = (app: { id: string; name: string; workspaceId: string }, targetId: string) =>
+  Effect.gen(function* () {
+    if (targetId === app.id) return app;
+    const target = yield* (yield* Apps).get(targetId);
+    if (!target || target.kind !== "app" || target.workspaceId !== app.workspaceId) return yield* fail(404, "No such app in this workspace");
+    const permissions = yield* Permissions;
+    const allowed = yield* permissions.ask({
+      subject: app.id,
+      action: "app.data",
+      resource: target.id,
+      title: `Let "${app.name}" read the data of "${target.name}"?`,
+      detail: `Its server wants to read what "${target.name}" stored (its tables). It can't change anything.`,
+      timeoutMs: 60_000,
+    });
+    yield* (yield* Audit).record({
+      actor: "app",
+      actorLabel: app.name,
+      tabId: app.id,
+      action: "data.read",
+      target: target.name,
+      outcome: allowed ? "ok" : "denied",
+    });
+    if (!allowed) return yield* fail(403, `The user didn't allow reading the data of "${target.name}". It can be allowed in NathApp's Settings → Permissions.`);
+    return target;
+  });
+
+const appApiRoutes = HttpRouter.addAll([
+  // The apps whose data this app could ask for: its workspace's.
+  HttpRouter.route(
+    "GET",
+    "/app-api/v1/data",
+    handle(
+      Effect.gen(function* () {
+        const app = yield* apiApp;
+        const all = yield* (yield* Apps).list();
+        return json(all.filter((a) => a.kind === "app" && a.workspaceId === app.workspaceId).map((a) => ({ id: a.id, name: a.name, self: a.id === app.id })));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/app-api/v1/data/:app",
+    handle(
+      Effect.gen(function* () {
+        const target = yield* mayRead(yield* apiApp, yield* param("app"));
+        const { tables } = yield* (yield* AppData).overview(target.id);
+        return json({ app: { id: target.id, name: target.name }, tables });
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/app-api/v1/data/:app/:table",
+    handle(
+      Effect.gen(function* () {
+        const target = yield* mayRead(yield* apiApp, yield* param("app"));
+        const table = decodeURIComponent(yield* param("table"));
+        const rows = yield* (yield* AppData).rows(target.id, table, yield* rowQuery).pipe(Effect.catchTag("AppDataError", (e) => fail(e.status, e.message)));
+        return json(rows);
+      }),
+    ),
+  ),
+]);
+
 // --- App actions (command bar) ----------------------------------------------------------------
 
 const actionRoutes = HttpRouter.addAll([
@@ -1015,7 +1196,7 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network"] as const satisfies readonly PermissionAction[];
+const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data"] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(
@@ -1287,12 +1468,13 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({
     allowedOrigins: [allowedOrigin],
     allowedMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
+    exposedHeaders: ["Content-Disposition"],
     maxAge: 600,
   });

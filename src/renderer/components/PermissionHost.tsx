@@ -15,6 +15,7 @@ const icons: Record<PermissionRequest["action"], string> = {
   "app.secret": "key-round",
   "agent.site": "paintbrush",
   "agent.network": "network",
+  "app.data": "database",
 };
 
 /** Mount once at the app root. */

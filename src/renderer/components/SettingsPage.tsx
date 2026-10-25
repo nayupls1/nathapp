@@ -12,7 +12,7 @@ import { autoUpdate, extensionList } from "../lib/extensions";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
-import { currentWorkspace, deleteWorkspace, editWorkspaceSettings, newWebTab, providerById, refreshProviders, updateWorkspace, workspaces } from "../lib/store";
+import { appById, currentWorkspace, deleteWorkspace, editWorkspaceSettings, newWebTab, providerById, refreshProviders, updateWorkspace, workspaces } from "../lib/store";
 import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AgentPicker } from "./AgentPicker";
@@ -506,7 +506,9 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
       ? `Use the global secret ${g.resource}`
       : g.action === "agent.network"
         ? `Send requests to ${g.resource}`
-        : `Customize ${g.resource}`;
+        : g.action === "app.data"
+          ? `Read the data of ${appById(g.resource)?.name ?? "a deleted app"}`
+          : `Customize ${g.resource}`;
 
 /** Remembered decisions, each revocable. */
 function PermissionRows() {

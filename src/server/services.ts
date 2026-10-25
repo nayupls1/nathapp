@@ -19,6 +19,7 @@ import * as Audit from "./security/Audit";
 import * as Permissions from "./security/Permissions";
 import * as Secrets from "./security/Secrets";
 import * as Vault from "./security/Vault";
+import * as AppData from "./workspace/AppData";
 import * as Runtime from "./workspace/Runtime";
 import * as Sandbox from "./workspace/Sandbox";
 import * as Workspace from "./workspace/Workspace";
@@ -27,6 +28,7 @@ import * as Workspace from "./workspace/Workspace";
 export const core = (config: ServerConfigShape) =>
   History.layer.pipe(
     Layer.provideMerge(Runtime.layer),
+    Layer.provideMerge(AppData.layer),
     Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
     Layer.provideMerge(Secrets.layer),
     Layer.provideMerge(Permissions.layer),

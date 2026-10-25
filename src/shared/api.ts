@@ -227,6 +227,42 @@ export interface ProjectInfo {
   manifest: Manifest;
 }
 
+// --- Managed app data -----------------------------------------------------------
+
+export interface DataColumn {
+  name: string;
+  /** SQLite's declared type ("" when none). */
+  type: string;
+  primaryKey: boolean;
+}
+
+export interface DataTable {
+  name: string;
+  rows: number;
+  columns: DataColumn[];
+}
+
+/** What an app has stored (its database and files), for the Data panel. */
+export interface DataOverview {
+  tables: DataTable[];
+  /** The database file (with its write-ahead log). */
+  databaseBytes: number;
+  files: { count: number; bytes: number };
+  /** Set when the database exists but can't be read. */
+  error: string | null;
+}
+
+/** A page of a table's rows. Blobs show as "<n bytes>", big integers as text. */
+export interface DataRows {
+  table: string;
+  columns: DataColumn[];
+  rows: Record<string, unknown>[];
+  /** Rows matching the filters. */
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 /** nathapp.json at the root of an app's project. */
 export interface Manifest {
   /** The preset the project started from. */
@@ -517,8 +553,9 @@ export interface NetworkRule {
  * app.secret: an app uses a global secret (resource: its name).
  * agent.site: the website agent customizes a site (subject "website-agent", resource: the host).
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
+ * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data";
 
 export interface PermissionGrant {
   id: number;

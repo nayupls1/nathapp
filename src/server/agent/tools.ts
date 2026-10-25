@@ -9,6 +9,7 @@ import { Sites } from "../db/Sites";
 import { Hub } from "../Hub";
 import { isIcon, searchIcons } from "../icons";
 import { presets } from "../workspace/presets";
+import { AppData } from "../workspace/AppData";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
@@ -205,6 +206,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
   const apps = yield* Apps;
   const workspace = yield* Workspace;
   const runtime = yield* Runtime;
+  const appData = yield* AppData;
   const hub = yield* Hub;
   const appId = env.tabId;
 
@@ -274,6 +276,36 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           yield* env.log(`Ran \`${command.length > 70 ? `${command.slice(0, 69)}…` : command}\``);
           const head = result.timedOut ? "Timed out." : `Exit code ${result.code}.`;
           return text(`${head}\n${result.output || "(no output)"}`, result.timedOut || result.code !== 0);
+        }),
+    ),
+
+    tool(
+      "app_data",
+      "The data the app stored (kept by NathApp outside the project, at DATABASE_PATH and NATHAPP_FILES_DIR): its tables with columns and row counts, or with `table` a page of that table's rows (optionally only rows containing `search`). Read-only; change data through the app or run_command.",
+      Schema.Struct({
+        table: Schema.optionalKey(Schema.String),
+        search: Schema.optionalKey(Schema.String),
+        limit: Schema.optionalKey(Schema.Finite),
+        offset: Schema.optionalKey(Schema.Finite),
+      }),
+      ({ table, search, limit, offset }) =>
+        Effect.gen(function* () {
+          if (!table) {
+            const overview = yield* appData.overview(appId);
+            if (overview.error) return text(overview.error, true);
+            const tables = overview.tables.map((t) => `- ${t.name} (${t.rows} rows): ${t.columns.map((c) => `${c.name}${c.type ? ` ${c.type}` : ""}`).join(", ")}`);
+            return [
+              tables.length ? `Tables:\n${tables.join("\n")}` : "No tables yet.",
+              `Files: ${overview.files.count} (${overview.files.bytes} bytes)`,
+            ].join("\n");
+          }
+          return yield* appData.rows(appId, table, { search, limit: Math.min(limit ?? 20, 100), offset }).pipe(
+            Effect.map((page) => {
+              const json = JSON.stringify(page.rows, null, 1);
+              return `${page.total} rows${search ? ` containing "${search}"` : ""}; showing ${page.offset + 1}–${page.offset + page.rows.length}:\n${json.length > 20_000 ? `${json.slice(0, 20_000)}…` : json}`;
+            }),
+            Effect.catchTag("AppDataError", (e) => Effect.succeed(text(e.message, true))),
+          );
         }),
     ),
 

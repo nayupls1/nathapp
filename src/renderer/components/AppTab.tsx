@@ -15,6 +15,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip, ShowAgentButton } from "./Chat";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
+import { DataPanel } from "./DataPanel";
 import { HistoryPanel } from "./History";
 import { SecretsPanel } from "./Secrets";
 
@@ -126,6 +127,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   const [logsOpen, setLogsOpen] = createSignal(false);
   const [secretsOpen, setSecretsOpen] = createSignal(false);
   const [historyOpen, setHistoryOpen] = createSignal(false);
+  const [dataOpen, setDataOpen] = createSignal(false);
   const [picking, setPicking] = createSignal(false);
   const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
@@ -338,6 +340,16 @@ function Workbench(props: { appId: string; active: boolean }) {
           </button>
           <button
             type="button"
+            title="Data: what the app has stored"
+            disabled={!state().project}
+            onClick={() => setDataOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, dataOpen() && styles.iconButtonOn)}
+            data-data-button
+          >
+            <Icon name="database" size={15} />
+          </button>
+          <button
+            type="button"
             title="Open in your browser"
             disabled={!running()}
             onClick={() => window.nathapp.web.openExternal(runtime()!.url!)}
@@ -381,6 +393,9 @@ function Workbench(props: { appId: string; active: boolean }) {
         </Show>
         <Show when={historyOpen()}>
           <HistoryPanel appId={props.appId} onClose={() => setHistoryOpen(false)} />
+        </Show>
+        <Show when={dataOpen()}>
+          <DataPanel appId={props.appId} onClose={() => setDataOpen(false)} />
         </Show>
       </div>
       <Show when={!collapsed()}>

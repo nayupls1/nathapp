@@ -17,6 +17,7 @@ import { Secrets } from "../security/Secrets";
 import { Hub } from "../Hub";
 import type { TurnInput } from "../providers/Provider";
 import { Providers } from "../providers/Providers";
+import { AppData } from "../workspace/AppData";
 import { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
 import { Workspace } from "../workspace/Workspace";
@@ -67,7 +68,7 @@ export const make = Effect.gen(function* () {
   const audit = yield* Audit;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network | AppData>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
