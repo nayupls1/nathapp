@@ -68,6 +68,14 @@ ipcMain.on("nathapp:relaunch", (event, safe: unknown) => {
   if (event.sender === mainWindow?.webContents) relaunch(safe === true);
 });
 
+// A folder of the user's (importing an existing project as an app).
+ipcMain.handle("nathapp:pick-folder", async (event, title: unknown) => {
+  const win = mainWindow;
+  if (!win || event.sender !== win.webContents) return null;
+  const picked = await dialog.showOpenDialog(win, { title: typeof title === "string" ? title.slice(0, 200) : "Choose a folder", properties: ["openDirectory"] });
+  return picked.canceled ? null : (picked.filePaths[0] ?? null);
+});
+
 // The window's buttons (drawn by the renderer when there's no frame) and double-clicking a top bar.
 ipcMain.on("nathapp:window", (event, action: unknown) => {
   const win = mainWindow;

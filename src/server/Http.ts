@@ -592,6 +592,26 @@ const runtimeRoutes = HttpRouter.addAll([
     ),
   ),
 
+  // An existing project as the app: cloned from Git (https) or copied from a folder.
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/import",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const id = yield* param("id");
+        const input = yield* decodeBody(Schema.Struct({ git: Schema.optionalKey(str(2000)), folder: Schema.optionalKey(str(4000)) }));
+        const app = yield* apps.get(id);
+        if (!app || app.kind !== "app") return yield* fail(404, "Not found");
+        if (!input.git === !input.folder) return yield* fail(400, "Give either git or folder");
+        const source = input.git ? ({ kind: "git", url: input.git } as const) : ({ kind: "folder", path: input.folder! } as const);
+        const project = yield* (yield* Projects).importApp(id, source).pipe(Effect.catchTag("WorkspaceError", (e) => fail(400, e.message)));
+        yield* youDid(id, "app.import", input.git ?? input.folder ?? null);
+        return json({ project }, 201);
+      }),
+    ),
+  ),
+
   // Sets up the project from a preset without the agent (tests, "start from a preset").
   HttpRouter.route(
     "POST",

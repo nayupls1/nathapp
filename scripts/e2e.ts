@@ -8,10 +8,10 @@
 //   bun run e2e --only <text>   only the checks whose name contains it (and the boot check)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { launchElectron } from "./electron";
 import { Page } from "./lib/cdp";
 import { writeFixtureBrowser } from "./lib/fixture-browser";
@@ -498,6 +498,24 @@ try {
       return `built "${name}": ${text.slice(0, 80).replace(/\s+/g, " ")}`;
     });
   }
+
+  await check("import: a folder of your own becomes an app tab, run like any other", async () => {
+    const folder = join(mkdtempSync(join(tmpdir(), "nathapp-e2e-import-")), "hello-import");
+    mkdirSync(folder);
+    writeFileSync(join(folder, "package.json"), JSON.stringify({ name: "hello-import", scripts: { dev: "bun server.ts", start: "bun server.ts" } }));
+    writeFileSync(join(folder, "server.ts"), `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("<h1>Imported and running</h1>", { headers: { "Content-Type": "text/html" } }) });`);
+    const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "app" } });
+    await click(`nav li[data-app-id="${tab.id}"]`);
+    await page!.waitFor(`!!document.querySelector('[data-app-tab="${tab.id}"] [data-import-folder]')`, { label: "import buttons" });
+    await apiCall(`/api/apps/${tab.id}/import`, { method: "POST", body: { folder } });
+    const root = `[data-app-tab="${tab.id}"]`;
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${tab.id}"]')?.innerText.includes("hello-import")`, { label: "named after the folder" });
+    await page!.waitFor(`!!document.querySelector('${root} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "running" });
+    await waitForValue(async () => ((await inView<string>(root, `document.body.innerText`)).includes("Imported and running") ? true : undefined), 20_000);
+    await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    rmSync(dirname(folder), { recursive: true, force: true });
+    return "named, manifest from package.json, running in the preview";
+  });
 
   await check("sidebar context menu: rename, duplicate, delete", async () => {
     const appNames = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.innerText.split("\\n")[0].trim())`);

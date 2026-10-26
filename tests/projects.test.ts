@@ -16,7 +16,7 @@ import { core } from "../src/server/services";
 import { AppData } from "../src/server/workspace/AppData";
 import { Projects } from "../src/server/workspace/Projects";
 import { Runtime } from "../src/server/workspace/Runtime";
-import { Workspace } from "../src/server/workspace/Workspace";
+import { inferManifest, Workspace } from "../src/server/workspace/Workspace";
 
 describe("projects", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "nathapp-projects-"));
@@ -113,5 +113,76 @@ describe("projects", () => {
       }),
     );
     expect(result).toEqual({ moved: true, splits: [], tab: null, project: false, data: false, history: 0 });
+  });
+});
+
+describe("importing an existing project", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-import-"));
+  const source = mkdtempSync(join(tmpdir(), "nathapp-import-src-"));
+  const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+  afterAll(async () => {
+    await runtime.dispose();
+    rmSync(dataDir, { recursive: true, force: true });
+    rmSync(source, { recursive: true, force: true });
+  });
+  const run = <A>(effect: Effect.Effect<A, unknown, any>) => runtime.runPromise(effect as Effect.Effect<A>);
+
+  test("nathapp.json from package.json's scripts", () => {
+    expect(inferManifest({ scripts: { dev: "vite", build: "vite build", start: "node server.js" } })).toEqual({ dev: "bun run dev", build: "bun run build", start: "bun run start" });
+    expect(inferManifest({ scripts: { start: "node server.js" } })).toEqual({ dev: "bun run start", start: "bun run start" });
+    expect(inferManifest({ scripts: { test: "jest" } })).toBeNull();
+    expect(inferManifest(null)).toBeNull();
+  });
+
+  test("a folder becomes the app's project, named after it, like any other app", async () => {
+    const folder = join(source, "budget-tool");
+    mkdirSync(join(folder, "node_modules", "dep"), { recursive: true });
+    writeFileSync(join(folder, "package.json"), JSON.stringify({ name: "budget-tool", scripts: { dev: "bun --hot server.ts", start: "bun server.ts" } }));
+    writeFileSync(join(folder, "server.ts"), "Bun.serve({ port: Number(process.env.PORT), fetch: () => new Response('hi') });");
+    const plain = join(source, "notes");
+    mkdirSync(plain);
+    writeFileSync(join(plain, "README.md"), "Just notes");
+    const result = await run(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const projects = yield* Projects;
+        const workspace = yield* Workspace;
+        const history = yield* History;
+        const a = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
+        const project = yield* projects.importApp(a.id, { kind: "folder", path: folder });
+        yield* (yield* Runtime).stop(a.id);
+        const again = yield* projects.importApp(a.id, { kind: "folder", path: plain }).pipe(Effect.flip, Effect.map((e) => e.message));
+        const b = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
+        const none = yield* projects.importApp(b.id, { kind: "folder", path: plain });
+        const c = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
+        const notFolder = yield* projects.importApp(c.id, { kind: "folder", path: join(source, "missing") }).pipe(Effect.flip, Effect.map((e) => e.message));
+        const own = yield* projects.importApp(c.id, { kind: "folder", path: dataDir }).pipe(Effect.flip, Effect.map((e) => e.message));
+        const git = yield* projects.importApp(c.id, { kind: "git", url: "file:///etc" }).pipe(Effect.flip, Effect.map((e) => e.message));
+        return {
+          manifest: project?.manifest,
+          name: (yield* apps.get(a.id))!.name,
+          deps: existsSync(join(workspace.dir(a.id), "node_modules")),
+          first: (yield* history.list({ target: appTarget(a.id) })).at(-1)?.summary,
+          note: (yield* apps.messages(a.id))[0]?.content,
+          again,
+          none,
+          noneNote: (yield* apps.messages(b.id))[0]?.content,
+          notFolder,
+          own,
+          git,
+        };
+      }),
+    );
+    expect(result.manifest).toEqual({ dev: "bun run dev", start: "bun run start" });
+    expect(result.name).toBe("budget-tool");
+    expect(result.deps).toBe(false);
+    expect(result.first).toBe(`Imported from ${folder}`);
+    expect(result.note).toContain("bun run dev");
+    expect(result.again).toBe("The app already has a project.");
+    expect(result.none).toBeNull();
+    expect(result.noneNote).toContain("ask the agent to set it up");
+    expect(result.notFolder).toContain("isn't a folder");
+    expect(result.own).toBe("That folder is NathApp's own data.");
+    expect(result.git).toContain("https link");
   });
 });

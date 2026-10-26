@@ -24,6 +24,7 @@ const bridge: NathAppBridge = {
     close: () => ipcRenderer.send("nathapp:window", "close"),
     onMaximized: listen("nathapp:maximized"),
   },
+  pickFolder: (title) => ipcRenderer.invoke("nathapp:pick-folder", title),
   versions: {
     electron: process.versions.electron ?? "",
     chrome: process.versions.chrome ?? "",

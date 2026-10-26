@@ -114,6 +114,7 @@ export const api = {
   runtime: (id: string) => request<{ status: RuntimeStatus; logs: LogLine[] }>(`/api/apps/${id}/runtime`),
   controlRuntime: (id: string, action: "start" | "stop" | "restart") => post<RuntimeStatus>(`/api/apps/${id}/runtime`, { action }),
   setMode: (id: string, mode: AppMode) => post<RuntimeStatus>(`/api/apps/${id}/mode`, { mode }),
+  importApp: (id: string, source: { git: string } | { folder: string }) => post<{ project: ProjectInfo | null }>(`/api/apps/${id}/import`, source),
   createProject: (id: string, preset: string, name?: string) => post<ProjectInfo>(`/api/apps/${id}/project`, { preset, name }),
 
   secrets: (scope?: string) => request<SecretsOverview>(`/api/secrets${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),

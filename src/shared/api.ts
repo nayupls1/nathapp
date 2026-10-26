@@ -30,6 +30,8 @@ export interface NathAppBridge {
     close: () => void;
     onMaximized: (fn: (maximized: boolean) => void) => () => void;
   };
+  /** Asks for a folder (a system dialog); null if none was picked. */
+  pickFolder: (title: string) => Promise<string | null>;
   serverUrl: string;
   /** Sent with every request to the NathApp server (and the hub). */
   token: string;

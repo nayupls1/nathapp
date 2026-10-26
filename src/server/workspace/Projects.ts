@@ -1,6 +1,6 @@
 // The life of an app tab, whatever made it: the agent (create_project, or a
-// nathapp.json it wrote itself), the user (a template) or a copy of another
-// app. Every app goes through the same steps here, and the three concerns stay
+// nathapp.json it wrote itself), the user (a template, or a project of their
+// own imported from a folder or cloned from Git) or a copy of another app. Every app goes through the same steps here, and the three concerns stay
 // apart:
 //   building:   the project's files and manifest (Workspace), its data (AppData)
 //   running:    its processes, in dev or live mode (Runtime)
@@ -20,7 +20,7 @@ import { Permissions } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { AppData } from "./AppData";
 import { Runtime } from "./Runtime";
-import { Workspace, type WorkspaceError } from "./Workspace";
+import { Workspace, type ImportSource, type WorkspaceError } from "./Workspace";
 
 export interface ProjectsShape {
   /** Tells the renderer about a changed tab (name, icon, workspace…). */
@@ -30,6 +30,12 @@ export interface ProjectsShape {
    * the app, records the first snapshot and starts it for editing.
    */
   readonly create: (appId: string, preset: string, options: { name?: string; by: Omit<By, "summary"> }) => Effect.Effect<ProjectInfo, WorkspaceError>;
+  /**
+   * Brings in an existing project (cloned from Git or copied from a folder) as
+   * the app's project: named after it, first snapshot, started for editing. If
+   * NathApp can't tell how to run it, the chat says so (the agent sets it up).
+   */
+  readonly importApp: (appId: string, source: ImportSource) => Effect.Effect<ProjectInfo | null, WorkspaceError>;
   /** A copy of a tab: an app's project comes along (not its data, chat or secrets), as a first snapshot of the copy. */
   readonly copy: (appId: string) => Effect.Effect<AppSummary | null>;
   /** Moves a tab to another workspace: it leaves its split, and a running app restarts with the new workspace's secrets. */
@@ -90,6 +96,22 @@ export const make = Effect.gen(function* () {
         if (name) yield* publish(yield* apps.setInfo(appId, { name }));
         yield* history.record(appTarget(appId), { ...by, summary: `Started from the ${preset} template` });
         yield* runtime.setMode(appId, "dev");
+        return project;
+      }),
+
+    importApp: (appId, source) =>
+      Effect.gen(function* () {
+        const { project, name } = yield* workspace.importFrom(appId, source);
+        const from = source.kind === "git" ? source.url : source.path;
+        const app = yield* apps.get(appId);
+        if (app && app.name === "New app" && name) yield* publish(yield* apps.setInfo(appId, { name: name.slice(0, 80) }));
+        yield* history.record(appTarget(appId), { actor: "user", actorLabel: "You", summary: `Imported from ${from.slice(0, 200)}` });
+        if (project) yield* runtime.setMode(appId, "dev");
+        const note = project
+          ? `Imported from ${from}. NathApp runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
+          : `Imported from ${from}. NathApp couldn't tell how to run it (no nathapp.json, and package.json has no dev or start script): ask the agent to set it up.`;
+        const message = yield* apps.addMessage(appId, "tool", note);
+        yield* hub.publish({ type: "chat", topic: topics.app(appId), appId, event: { type: "message", message } });
         return project;
       }),
 

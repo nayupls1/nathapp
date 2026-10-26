@@ -2,9 +2,9 @@
 // to install, develop, build and start it. NathApp keeps its runtime state in
 // .nathapp/ inside the folder (a home directory); the app's data is elsewhere
 // (AppData.ts).
-import { existsSync, renameSync } from "node:fs";
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, renameSync } from "node:fs";
+import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { AppAction, Manifest, ProjectInfo, ToolParam } from "../../shared/api";
 import { tokensCss } from "../../shared/theme";
@@ -37,10 +37,35 @@ export interface WorkspaceShape {
   readonly scaffold: (appId: string, presetId: string, name: string) => Effect.Effect<ProjectInfo, WorkspaceError>;
   /** Copies a project (without dependencies, builds and NathApp's runtime state). */
   readonly duplicate: (fromId: string, toId: string) => Effect.Effect<void>;
+  /**
+   * Brings in an existing project: cloned from a Git repository (https) or
+   * copied from a folder. If it has no nathapp.json, one is written when
+   * package.json says how to run it. Fails if the app already has a project.
+   */
+  readonly importFrom: (appId: string, source: ImportSource) => Effect.Effect<{ project: ProjectInfo | null; name: string }, WorkspaceError>;
   readonly remove: (appId: string) => Effect.Effect<void>;
 }
 
 export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("nathapp/Workspace") {}
+
+/** Where an imported app comes from. */
+export type ImportSource = { readonly kind: "git"; readonly url: string } | { readonly kind: "folder"; readonly path: string };
+
+/**
+ * nathapp.json for a project that doesn't have one, from its package.json
+ * scripts (dev, start, build); null when they don't say how to run it.
+ */
+export function inferManifest(packageJson: unknown): Manifest | null {
+  const scripts = (packageJson as { scripts?: Record<string, unknown> } | null)?.scripts;
+  if (!scripts || typeof scripts !== "object") return null;
+  const has = (name: string) => typeof scripts[name] === "string";
+  if (!has("dev") && !has("start")) return null;
+  return {
+    dev: has("dev") ? "bun run dev" : "bun run start",
+    ...(has("build") ? { build: "bun run build" } : {}),
+    start: has("start") ? "bun run start" : "bun run dev",
+  };
+}
 
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
 
@@ -174,6 +199,56 @@ export const make = Effect.gen(function* () {
       Effect.promise(async () => {
         const skip = new Set(["node_modules", "dist", ".nathapp"].map((name) => join(dir(fromId), name)));
         await cp(dir(fromId), dir(toId), { recursive: true, filter: (src) => !skip.has(src) }).catch(() => {});
+      }),
+
+    importFrom: (appId, source) =>
+      Effect.gen(function* () {
+        const target = dir(appId);
+        if (existsSync(join(target, MANIFEST)) || (existsSync(target) && readdirSync(target).some((f) => f !== ".nathapp"))) {
+          return yield* new WorkspaceError({ message: "The app already has a project." });
+        }
+        let name: string;
+        if (source.kind === "git") {
+          const url = source.url.trim();
+          if (!/^https:\/\/[^\s]+$/i.test(url)) return yield* new WorkspaceError({ message: "Clone from an https link (like https://github.com/owner/repo)." });
+          name = basename(url.replace(/\.git$/i, "").replace(/\/+$/, ""));
+          yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
+          yield* Effect.promise(() => mkdir(dirname(target), { recursive: true }));
+          const result = yield* Effect.promise(async () => {
+            // No prompts for credentials (private repositories fail instead), and no hooks.
+            const proc = Bun.spawn(["git", "-c", "core.hooksPath=/dev/null", "clone", "--depth", "1", "--", url, target], {
+              env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", GIT_TERMINAL_PROMPT: "0" },
+              stdout: "ignore",
+              stderr: "pipe",
+            });
+            const timer = setTimeout(() => proc.kill(), 5 * 60_000);
+            const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+            clearTimeout(timer);
+            return { code, err };
+          }).pipe(Effect.catchDefect(() => Effect.succeed({ code: -1, err: "git isn't installed" })));
+          if (result.code !== 0) {
+            yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
+            return yield* new WorkspaceError({ message: `Cloning failed: ${result.err.trim().split("\n").at(-1) || `git exited with ${result.code}`}` });
+          }
+        } else {
+          const from = resolve(source.path);
+          const info = yield* Effect.promise(() => stat(from).catch(() => null));
+          if (!info?.isDirectory()) return yield* new WorkspaceError({ message: `${source.path} isn't a folder.` });
+          if (from === config.dataDir || from.startsWith(config.dataDir + sep) || config.dataDir.startsWith(from + sep)) {
+            return yield* new WorkspaceError({ message: "That folder is NathApp's own data." });
+          }
+          name = basename(from);
+          // Not its dependencies, builds or NathApp state: they're made again here.
+          const skip = new Set(["node_modules", ".nathapp"]);
+          yield* Effect.promise(() => cp(from, target, { recursive: true, filter: (src) => !skip.has(basename(src)) || src === from }));
+        }
+        if (!existsSync(join(target, MANIFEST))) {
+          const pkg = yield* Effect.promise(() => readFile(join(target, "package.json"), "utf8").then(JSON.parse).catch(() => null));
+          const inferred = inferManifest(pkg);
+          if (inferred) yield* Effect.promise(() => writeFile(join(target, MANIFEST), `${JSON.stringify(inferred, null, 2)}\n`));
+        }
+        const project = yield* manifest(appId).pipe(Effect.orElseSucceed(() => null));
+        return { project: project ? { dir: target, manifest: project } : null, name };
       }),
 
     remove: (appId) => Effect.promise(() => rm(dir(appId), { recursive: true, force: true })),
