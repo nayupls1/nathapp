@@ -90,6 +90,12 @@ export const Settings = Schema.Struct({
   apps: Schema.Struct({
     /** How app processes are isolated. auto: bubblewrap when it's installed. */
     sandbox: Schema.Literals(["auto", "bwrap", "none"]).pipe(withDefault("auto")),
+    /** The shell app commands run in: "auto" (sh; Bun's shell on Windows), "bun", a detected shell's id or a path. */
+    shell: Schema.String.check(Schema.isMaxLength(1000)).pipe(withDefault("auto")),
+    /** Show the toolchains installed in your home folder (mise, nvm, rustup…) to the sandbox, read-only. */
+    sandboxToolchains: Schema.Boolean.pipe(withDefault(true)),
+    /** More folders the sandbox may read (absolute paths). */
+    sandboxReadOnly: Schema.Array(Schema.String.check(Schema.isMaxLength(4000))).check(Schema.isMaxLength(50)).pipe(withDefault([])),
     /** Start an app's server when its tab is opened. */
     autoStart: Schema.Boolean.pipe(withDefault(true)),
     /** Build and switch to the finished app when the agent is done. */

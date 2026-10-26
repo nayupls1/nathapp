@@ -225,17 +225,7 @@ export function SettingsPage() {
       <ExtensionsSection />
 
       <Section title="Apps" icon="box">
-        <Row label="Sandbox" description="How app processes are isolated. Bubblewrap gives every app its own view of the system: only its project folder is writable, your files are invisible.">
-          <Segmented
-            value={settings().apps.sandbox}
-            options={[
-              ["auto", "Automatic"],
-              ["bwrap", "Bubblewrap"],
-              ["none", "Off"],
-            ]}
-            onChange={(sandbox) => set("apps", { sandbox })}
-          />
-        </Row>
+        <SandboxRows />
         <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
           <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
         </Row>
@@ -873,6 +863,139 @@ function SiteRows() {
   );
 }
 
+/** How app processes run: the sandbox, the shell, and what the sandbox shows of the system. */
+function SandboxRows() {
+  const apps = () => settings().apps;
+  const setApps = (value: Partial<Settings["apps"]>) => updateSettings((s) => ({ ...s, apps: { ...s.apps, ...value } }));
+  // Asked again when the settings change: they decide the shell and what the sandbox shows.
+  const [info] = createResource(() => JSON.stringify([apps().sandbox, apps().shell, apps().sandboxToolchains, apps().sandboxReadOnly]), () => api.sandbox());
+  const isCustom = () => !["auto", ...(info()?.shells.map((s) => s.id) ?? [])].includes(apps().shell);
+  const [custom, setCustom] = createSignal(false);
+  const shellValue = () => (custom() || isCustom() ? "custom" : apps().shell);
+  const autoLabel = () => {
+    const shells = info()?.shells ?? [];
+    const auto = info()?.platform === "win32" ? "bun" : "sh";
+    return `Automatic (${shells.find((s) => s.id === auto)?.label ?? auto})`;
+  };
+  const isLinux = () => info()?.platform === "linux";
+  const sandboxed = () => info()?.kind === "bwrap";
+  const sandboxNote = () => {
+    const i = info();
+    if (!i) return "";
+    if (i.platform !== "linux") return "Apps run directly in their project folder: the sandbox needs Linux.";
+    if (!i.bwrapAvailable) return "Bubblewrap (bwrap) isn't installed or doesn't work here, so apps run unsandboxed.";
+    return "";
+  };
+  const addFolder = async () => {
+    const folder = await window.nathapp.pickFolder("A folder apps may read");
+    if (folder && !apps().sandboxReadOnly.includes(folder)) setApps({ sandboxReadOnly: [...apps().sandboxReadOnly, folder] });
+  };
+
+  return (
+    <>
+      <Row
+        label="Sandbox"
+        description={`How app processes are isolated. Bubblewrap gives every app its own view of the system: only its project folder is writable, your files are invisible. ${sandboxNote()}`}
+      >
+        <Segmented
+          value={apps().sandbox}
+          options={[
+            ["auto", "Automatic"],
+            ["bwrap", "Bubblewrap"],
+            ["none", "Off"],
+          ]}
+          onChange={(sandbox) => setApps({ sandbox })}
+        />
+      </Row>
+      <Row
+        label="Shell"
+        description="What app commands run in: installing, the dev server, builds, the agent's commands and scheduled ones. Bun's shell works the same on every system."
+      >
+        <div {...stylex.attrs(styles.control)} data-shell>
+          <Select
+            value={shellValue()}
+            onChange={(e) => {
+              const value = e.currentTarget.value;
+              setCustom(value === "custom");
+              if (value !== "custom") setApps({ shell: value });
+            }}
+            xstyle={styles.select}
+          >
+            <option value="auto">{autoLabel()}</option>
+            <For each={info()?.shells ?? []}>{(shell) => <option value={shell.id}>{shell.label}</option>}</For>
+            <option value="custom">Another program…</option>
+          </Select>
+          <Show when={shellValue() === "custom"}>
+            <input
+              value={isCustom() ? apps().shell : ""}
+              placeholder={info()?.platform === "win32" ? "C:\\path\\to\\shell.exe" : "/path/to/shell"}
+              spellcheck={false}
+              onChange={(e) => {
+                const path = e.currentTarget.value.trim();
+                setApps({ shell: path || "auto" });
+                if (!path) setCustom(false);
+              }}
+              {...stylex.attrs(styles.textInput, styles.mono)}
+            />
+          </Show>
+        </div>
+      </Row>
+      <Show when={info()?.shell.id === "bun" || info()?.shell.path}>
+        <p {...stylex.attrs(styles.muted, styles.note)}>
+          Commands run with <span {...stylex.attrs(styles.mono)}>{info()?.shell.id === "bun" ? "bun exec" : info()?.shell.path}</span>
+          {shellValue() === "custom" && info()?.shell.id !== "custom" ? " (that program wasn't found, so the automatic shell is used)" : ""}.
+        </p>
+      </Show>
+      <Show when={isLinux()}>
+        <Row
+          label="Your toolchains"
+          description="Show the runtimes you installed with version managers (mise, asdf, nvm, Volta, rustup, pyenv, Bun, Deno, Go…) to apps, read-only. System tools like git, curl and compilers are always there; your other files and credentials never are."
+        >
+          <Toggle checked={apps().sandboxToolchains} onChange={(sandboxToolchains) => setApps({ sandboxToolchains })} />
+        </Row>
+        <Row label="More folders apps can read" description="Read-only, in every app's sandbox. NathApp's own data stays hidden even if it's inside one." wide>
+          <div {...stylex.attrs(styles.folderList)} data-sandbox-folders>
+            <For each={apps().sandboxReadOnly}>
+              {(folder) => (
+                <div {...stylex.attrs(styles.folderRow)}>
+                  <span {...stylex.attrs(styles.mono, styles.folderPath)}>{folder}</span>
+                  <button
+                    type="button"
+                    title="Remove"
+                    aria-label={`Remove ${folder}`}
+                    onClick={() => setApps({ sandboxReadOnly: apps().sandboxReadOnly.filter((f) => f !== folder) })}
+                    {...stylex.attrs(styles.iconButton)}
+                  >
+                    <Icon name="trash" size={15} />
+                  </button>
+                </div>
+              )}
+            </For>
+            <button type="button" onClick={() => void addFolder()} {...stylex.attrs(styles.linkButton)}>
+              Add a folder…
+            </button>
+          </div>
+        </Row>
+        <Show when={sandboxed()}>
+          <Row label="What apps see" description="Besides the system (/usr, /etc, /opt) and their own project and data." wide>
+            <details {...stylex.attrs(styles.details)} data-sandbox-view>
+              <summary>
+                {info()?.readOnly.length ?? 0} folders from your home, {info()?.path.length ?? 0} folders on PATH
+              </summary>
+              <span {...stylex.attrs(styles.rowLabel)}>Read-only</span>
+              <For each={info()?.readOnly} fallback={<span {...stylex.attrs(styles.muted)}>None</span>}>
+                {(dir) => <span {...stylex.attrs(styles.mono, styles.folderPath)}>{dir}</span>}
+              </For>
+              <span {...stylex.attrs(styles.rowLabel)}>PATH</span>
+              <For each={info()?.path}>{(dir) => <span {...stylex.attrs(styles.mono, styles.folderPath)}>{dir}</span>}</For>
+            </details>
+          </Row>
+        </Show>
+      </Show>
+    </>
+  );
+}
+
 const unloadChoices = (current: number): [number, string][] => {
   const choices: [number, string][] = [
     [5, "After 5 minutes"],
@@ -1004,6 +1127,10 @@ const varOf = (ref: string) => /var\((--[^),\s]+)/.exec(ref)?.[1] ?? ref;
 
 const styles = stylex.create({
   numberInput: { width: 110 },
+  folderList: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: space.xs, width: "100%" },
+  folderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.sm, width: "100%" },
+  folderPath: { overflowWrap: "anywhere", color: colors.text },
+  details: { display: "flex", flexDirection: "column", gap: 4, fontSize: font.sm, color: colors.muted, cursor: "default" },
   secretRow: { paddingBlock: space.xs, paddingInline: space.lg, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: colors.border },
   warning: {
     marginBlock: space.sm,

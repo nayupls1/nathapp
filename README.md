@@ -111,6 +111,10 @@ lockfile change.
 agent's `run_command`) sees the system read-only, its own project and data folder
 read-write, a private `/tmp`, and its own PID/IPC namespaces. Your files and other apps are
 invisible, and the environment is cleared. Settings → Apps can turn it off.
+- **Developer tools:** the system (`/usr`, `/etc`, `/opt`, `/nix`) is there read-only, so git, curl, Python, compilers and the like work. Git has an identity of its own ("NathApp", in the app's `.nathapp/home/.gitconfig`), not yours.
+- **Your toolchains:** what version managers installed in your home folder (mise, asdf, nvm, Volta, rustup, pyenv, Bun, Deno, Go…) is shown read-only and kept on PATH; their shims, which need your config, aren't. Settings → Apps can turn this off and add more read-only folders. Nothing else of your home is visible: no `~/.ssh`, `~/.gitconfig` or credentials, and NathApp's own data stays hidden even inside a folder you add.
+- **Shell:** commands run in the shell chosen in Settings → Apps (`workspace/shells.ts`): `/bin/sh` by default, Bun's cross-platform shell (`bun exec`) on Windows, or bash, zsh, fish, PowerShell, cmd, Git Bash or any program that takes `-c`.
+- **Windows and macOS** have no sandbox: processes run in the project folder with a cleared environment (plus what Windows programs need), without a console window, and stopping an app ends its whole process tree (`taskkill /T`).
 
 ### App data
 

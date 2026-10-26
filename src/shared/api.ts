@@ -451,6 +451,27 @@ export interface RuntimeStatus {
 
 export type SandboxKind = "bwrap" | "none";
 
+/** A shell app commands can run in (Settings → Apps). path: null for Bun's built-in shell. */
+export interface ShellInfo {
+  id: string;
+  label: string;
+  path: string | null;
+}
+
+/** What app processes run with on this machine (Settings → Apps). */
+export interface SandboxInfo {
+  platform: string;
+  /** Whether bubblewrap works here, and what the settings resolve to. */
+  bwrapAvailable: boolean;
+  kind: SandboxKind;
+  shells: ShellInfo[];
+  /** The shell commands run in now: an id from `shells`, or "custom". */
+  shell: { id: string; path: string | null };
+  /** Folders the sandbox shows read-only besides the system (toolchains, your additions), and the PATH it gets. */
+  readOnly: string[];
+  path: string[];
+}
+
 export interface LogLine {
   /** Milliseconds since the epoch. */
   at: number;

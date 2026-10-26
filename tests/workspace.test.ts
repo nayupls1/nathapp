@@ -9,6 +9,7 @@ import { Effect, ManagedRuntime } from "effect";
 import { readConfig } from "../src/server/Config";
 import { core } from "../src/server/services";
 import * as Apps from "../src/server/db/Apps";
+import * as SettingsDb from "../src/server/db/Settings";
 import * as Runtime from "../src/server/workspace/Runtime";
 import * as Sandbox from "../src/server/workspace/Sandbox";
 import * as Workspace from "../src/server/workspace/Workspace";
@@ -20,7 +21,7 @@ const config = readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" });
 
 const layer = core(config);
 const runtime = ManagedRuntime.make(layer);
-const run = <A, E>(effect: Effect.Effect<A, E, Runtime.Runtime | Workspace.Workspace | Sandbox.Sandbox | Apps.Apps>) =>
+const run = <A, E>(effect: Effect.Effect<A, E, Runtime.Runtime | Workspace.Workspace | Sandbox.Sandbox | Apps.Apps | SettingsDb.Settings>) =>
   runtime.runPromise(effect);
 
 afterAll(async () => {
@@ -76,6 +77,43 @@ describe.if(hasBwrap)("sandbox", () => {
     expect((await exec("echo ${NATHAPP_TEST_SECRET:-unset}")).output.trim()).toBe("unset");
     expect((await exec("cat /proc/1/cmdline | tr '\\0' ' '")).output).toContain("bwrap");
     expect((await exec("bun -e 'console.log(6 * 7)'")).output.trim()).toBe("42");
+  });
+
+  test("developer tools work: git with an identity, the system's tools, toolchains read-only", async () => {
+    const app = await createApp();
+    await run(Effect.flatMap(Workspace.Workspace, (w) => w.ensureDir(app.id)));
+    const exec = (command: string) => run(Effect.flatMap(Runtime.Runtime, (r) => r.exec(app.id, command, 20_000)));
+    const git = await exec("git init -q && echo x > a && git add a && git commit -qm first && git log --format='%an %s'");
+    expect(git.output).toBe("NathApp first");
+    expect(git.code).toBe(0);
+    // Credentials and personal files in your home stay hidden.
+    const home = homedir();
+    expect((await exec(`ls ${JSON.stringify(join(home, ".ssh"))} ${JSON.stringify(join(home, ".gitconfig"))} 2>&1 | grep -c 'No such file'`)).output).toBe("2");
+    const info = await run(Effect.flatMap(Sandbox.Sandbox, (s) => s.info));
+    for (const dir of info.readOnly) {
+      expect(dir.startsWith(home)).toBe(true);
+      expect((await exec(`test -d ${JSON.stringify(dir)} && echo yes; touch ${JSON.stringify(join(dir, "x"))} 2>&1 | grep -c 'Read-only'`)).output).toBe("yes\n1");
+    }
+  });
+
+  test("commands run in the chosen shell", async () => {
+    const app = await createApp();
+    await run(Effect.flatMap(Workspace.Workspace, (w) => w.ensureDir(app.id)));
+    const exec = (command: string) => run(Effect.flatMap(Runtime.Runtime, (r) => r.exec(app.id, command, 20_000)));
+    const useShell = (shell: string) => run(Effect.flatMap(SettingsDb.Settings, (s) => Effect.flatMap(s.get(), (current) => s.save({ ...current, apps: { ...current.apps, shell } }))));
+    try {
+      await useShell("bun");
+      // Bun's shell: cross-platform builtins and $VARIABLES, no /bin/sh needed.
+      expect((await exec("echo $NATHAPP_MODE && ls nathapp.json 2>&1 || echo missing")).output).toContain("dev");
+      if (Bun.which("bash")) {
+        await useShell("bash");
+        expect((await exec("echo $BASH_VERSION")).output).toMatch(/^\d+\./);
+      }
+      await useShell("/definitely/not/a/shell");
+      expect((await exec("echo fallback")).output).toBe("fallback");
+    } finally {
+      await useShell("auto");
+    }
   });
 });
 

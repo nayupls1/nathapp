@@ -54,6 +54,7 @@ import { AppData, type RowQuery } from "./workspace/AppData";
 import { AppTools, type ToolCaller } from "./workspace/AppTools";
 import { Projects } from "./workspace/Projects";
 import { Runtime } from "./workspace/Runtime";
+import { Sandbox } from "./workspace/Sandbox";
 import { Workspace } from "./workspace/Workspace";
 
 class HttpFail extends Data.TaggedError("HttpFail")<{ readonly status: number; readonly message: string }> {}
@@ -221,6 +222,15 @@ const settingsRoutes = HttpRouter.addAll([
     ),
   ),
 ]);
+
+// What app processes run with here: the sandbox, the shells to choose from, the toolchains it shows.
+const sandboxRoute = HttpRouter.add(
+  "GET",
+  "/api/sandbox",
+  Effect.gen(function* () {
+    return json(yield* (yield* Sandbox).info);
+  }),
+);
 
 const presetsRoute = HttpRouter.add("GET", "/api/presets", Effect.succeed(json(presets.map(presetInfo))));
 
@@ -1959,7 +1969,7 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, sandboxRoute, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

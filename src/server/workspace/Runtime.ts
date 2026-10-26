@@ -3,7 +3,6 @@
 // runs its start command. Either way the app listens on a port NathApp assigns
 // and the renderer shows it in a preview tab. Processes run in the app's
 // sandbox and stop with the server.
-import { spawn as spawnChild, type ChildProcess } from "node:child_process";
 import { existsSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -17,7 +16,7 @@ import { Audit } from "../security/Audit";
 import { Secrets } from "../security/Secrets";
 import { Hub } from "../Hub";
 import { AppData } from "./AppData";
-import { Sandbox } from "./Sandbox";
+import { killTree, Sandbox, spawnProcess } from "./Sandbox";
 import { Workspace } from "./Workspace";
 
 const MAX_LOG_LINES = 2000;
@@ -77,23 +76,6 @@ const listening = (port: number) =>
       },
     }).catch(() => resolve(false));
   });
-
-/** Kills a process and everything it started (it leads its own process group). */
-async function killTree(child: ChildProcess) {
-  if (child.exitCode !== null || child.signalCode !== null || !child.pid) return;
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  const signal = (sig: NodeJS.Signals) => {
-    try {
-      process.kill(-child.pid!, sig);
-    } catch {
-      child.kill(sig);
-    }
-  };
-  signal("SIGTERM");
-  const timer = setTimeout(() => signal("SIGKILL"), 3000);
-  await exited;
-  clearTimeout(timer);
-}
 
 interface State {
   status: RuntimeStatus;
@@ -186,13 +168,7 @@ export const make = Effect.gen(function* () {
     Effect.acquireRelease(
       Effect.gen(function* () {
         const spec = yield* sandbox.spawnSpec({ dir: workspace.dir(appId), command, env, binds: [appData.dir(appId)] });
-        const [file, ...args] = spec.argv;
-        const child = spawnChild(file!, args, {
-          cwd: spec.cwd,
-          env: spec.env,
-          stdio: ["ignore", "pipe", "pipe"],
-          detached: true, // its own process group, so it can be killed with its children
-        });
+        const child = spawnProcess(spec);
         child.stdout!.on("data", (chunk: Buffer) => log(appId, "out", chunk.toString()));
         child.stderr!.on("data", (chunk: Buffer) => log(appId, "err", chunk.toString()));
         const exited = new Promise<number | null>((resolve) => {
@@ -362,9 +338,8 @@ export const make = Effect.gen(function* () {
             env: yield* appEnv(appId, mode, stateOf(appId).port),
             binds: [appData.dir(appId)],
           });
-          const [file, ...args] = spec.argv;
           const child = yield* Effect.acquireRelease(
-            Effect.sync(() => spawnChild(file!, args, { cwd: spec.cwd, env: spec.env, stdio: ["ignore", "pipe", "pipe"], detached: true })),
+            Effect.sync(() => spawnProcess(spec)),
             (c) => Effect.promise(() => killTree(c)),
           );
           const append = (chunk: Buffer) => {

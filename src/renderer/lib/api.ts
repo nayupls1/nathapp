@@ -35,6 +35,7 @@ import type {
   ReplayResult,
   RequestDraft,
   RuntimeStatus,
+  SandboxInfo,
   SavedRequest,
   SiteOverride,
   Schedule,
@@ -74,6 +75,7 @@ export const api = {
   providers: () => request<ProviderStatus[]>("/api/providers"),
   refreshProviders: (id?: ProviderId) => post<ProviderStatus[]>("/api/providers/refresh", id ? { id } : {}),
   presets: () => request<PresetInfo[]>("/api/presets"),
+  sandbox: () => request<SandboxInfo>("/api/sandbox"),
 
   getSettings: () => request<Settings>("/api/settings"),
   saveSettings: (settings: Settings) => request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
