@@ -194,6 +194,16 @@ Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in t
 
 Every tab can have its own icon ("Change icon…" in its menu): a Lucide icon (searchable), an emoji or an uploaded image (scaled to a 64px PNG). It's shown in the sidebar and the command bar; "Use the default" brings back the app icon or the site's favicon. An app's agent picks an icon with `set_app_info` (a Lucide name, or `icon_file`, an image from the project), but never replaces one you chose.
 
+### Split view
+
+Tabs of a workspace can be shown side by side or stacked, any kind together (apps, web tabs, extension pages), up to four at once.
+- **Making one:** drag a tab from the sidebar onto a side of the tab on screen (or onto an end of the split on screen), choose "Show beside …" in a tab's menu, or type "split" in the command bar.
+- **Using it:** clicking into a pane focuses its tab (the outlined one; shortcuts and the address bar go to it). Drag the line between panes to resize them, double-click it for equal sizes.
+- **In the sidebar** a split is one block with its tabs, which takes the place of its first tab. Its handle drags the whole split, its menu stacks or unstacks it, evens out the sizes or unsplits it. Dropping a tab next to one of its tabs adds it there, dropping one of its tabs elsewhere takes it out.
+- **Saved** with the workspace (`PUT /api/workspaces/:id/splits`, kept consistent by `normalizeSplits`): a deleted or moved tab leaves its split, and a split of one ends.
+
+Tabs aren't moved in the DOM for this (a webview that moves reloads): every tab keeps its layer, and a split only places its tabs' layers in their panes (`components/SplitView.tsx`, `lib/splits.ts`).
+
 ### Command bar
 
 Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, NathApp's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.

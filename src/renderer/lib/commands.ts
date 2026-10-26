@@ -37,6 +37,7 @@ import {
   workspaces,
 } from "./store";
 import { isSidebarCollapsed, toggleSidebar } from "./layout";
+import { removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "./splits";
 import { pageOf } from "./webtabs";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { toast } from "../components/Toast";
@@ -344,6 +345,28 @@ function nathappCommands(): Command[] {
   ];
 }
 
+/** The split view of the tab you're on, and (when something is typed) splitting it with another tab. */
+function splitCommands(id: string, typed: boolean): Command[] {
+  const app = apps.find((a) => a.id === id);
+  if (!app) return [];
+  const split = splitOf(id);
+  const list: Command[] = [];
+  if (split) {
+    list.push(
+      { id: "split.rotate", title: split.direction === "row" ? "Stack the split view" : "Split view side by side", icon: split.direction === "row" ? "rows-2" : "columns-2", group: "Split view", keywords: "rotate vertical horizontal", run: () => rotateSplit(split.id) },
+      { id: "split.remove", title: "Remove from split view", subtitle: app.name, icon: "square-x", group: "Split view", run: () => removeFromSplit(id) },
+      { id: "split.end", title: "Unsplit", icon: "square-split-horizontal", group: "Split view", keywords: "close split view", run: () => unsplit(split.id) },
+    );
+  }
+  if (typed) {
+    for (const tab of apps) {
+      if (tab.workspaceId !== app.workspaceId || visibleTabs().includes(tab.id)) continue;
+      list.push({ id: `split.with:${tab.id}`, title: `Split with ${tab.name}`, icon: "columns-2", group: "Split view", keywords: "side by side split view", run: () => splitWith(id, tab.id, "right") });
+    }
+  }
+  return list;
+}
+
 /** For free text: open it, ask about it, build it or search for it. */
 function routed(query: string, best: number): Command[] {
   const text = query.trim();
@@ -404,6 +427,7 @@ export function commands(query: string): Command[] {
     ...tabs.filter((a) => a.id !== id).map(tabCommand),
     ...actions.map(actionCommand),
     ...(isTab(id) ? currentTabCommands(id) : []),
+    ...(isTab(id) ? splitCommands(id, !!query.trim()) : []),
     ...workspaces
       .filter((w) => w.id !== current)
       .map((w): Command => ({ id: `workspace:${w.id}`, title: w.name, subtitle: "Switch workspace", icon: w.icon ?? "layers", group: "Workspace", run: () => showWorkspace(w.id) })),

@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { For, Match, onMount, Show, Switch } from "solid-js";
+import { createEffect, For, Match, on, onMount, Show, Switch } from "solid-js";
 import { ActivityPage } from "./components/ActivityPage";
 import { AppTab } from "./components/AppTab";
 import { CommandBar } from "./components/CommandBar";
@@ -9,6 +9,8 @@ import { HistoryPage } from "./components/History";
 import { PermissionHost } from "./components/PermissionHost";
 import { SchedulesPage } from "./components/SchedulesPage";
 import { SettingsPage } from "./components/SettingsPage";
+import { paneStyle, SplitChrome, SplitDropZones } from "./components/SplitView";
+import { visibleTabs } from "./lib/splits";
 import { Sidebar } from "./components/Sidebar";
 import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
@@ -16,7 +18,7 @@ import { WebTab } from "./components/WebTab";
 import "./lib/schedules";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
-import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, SCHEDULES_VIEW, selectApp, loadApps, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
+import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, SCHEDULES_VIEW, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -27,6 +29,20 @@ export default function App() {
   });
 
   const isSelected = (id: string) => selectedId() === id;
+
+  // Every tab of the split on screen is shown, not only the one selected.
+  createEffect(() => {
+    for (const id of visibleTabs()) void openTab(id).catch(() => {});
+  });
+
+  // Focus left in another pane of a split would keep a click there from focusing its tab again.
+  createEffect(
+    on(selectedId, (id) => {
+      const active = document.activeElement as HTMLElement | null;
+      const layer = active?.closest<HTMLElement>("[data-tab-layer]");
+      if (layer && layer.dataset.tabLayer !== id) active!.blur();
+    }),
+  );
 
   return (
     <div {...stylex.attrs(styles.root)}>
@@ -79,12 +95,23 @@ export default function App() {
             </Match>
             <Match when={openTabs().some((t) => t.id === selectedId())}>{null}</Match>
           </Switch>
-          {/* Tabs stay mounted (hidden) so pages and previews keep their state between visits. */}
+          {/* Tabs stay mounted (hidden) so pages and previews keep their state between visits.
+              In a split view, its tabs' layers are placed side by side. */}
           <For each={openTabs()}>
             {(tab) => {
-              const inBackground = () => !isSelected(tab.id);
+              const inBackground = () => !isSelected(tab.id) && !paneStyle(tab.id);
+              const focus = () => {
+                if (!isSelected(tab.id)) void selectApp(tab.id);
+              };
               return (
-                <div {...stylex.attrs(styles.layer, inBackground() && styles.hidden)}>
+                <div
+                  {...stylex.attrs(styles.layer, inBackground() && styles.hidden)}
+                  style={paneStyle(tab.id)}
+                  // Clicking into a pane (its page included: the webview takes the focus) focuses its tab.
+                  onPointerDown={focus}
+                  onFocusIn={focus}
+                  data-tab-layer={tab.id}
+                >
                   <Show when={tab.kind === "web"} fallback={<AppTab appId={tab.id} active={isSelected(tab.id)} />}>
                     <WebTab appId={tab.id} active={isSelected(tab.id)} />
                   </Show>
@@ -92,6 +119,8 @@ export default function App() {
               );
             }}
           </For>
+          <SplitChrome />
+          <SplitDropZones />
         </div>
       </div>
     </div>

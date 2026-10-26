@@ -254,10 +254,21 @@ const snapshot = (target: "settings" | "sites" | `app:${string}`, summary: strin
     yield* history.record(target, by);
   });
 
+/** Drops tabs that left a workspace (deleted, moved) from its splits. */
+const pruneSplits = (workspaceId: string) =>
+  Effect.gen(function* () {
+    const workspaces = yield* Workspaces;
+    const space = yield* workspaces.get(workspaceId);
+    if (!space?.splits.length) return;
+    const updated = yield* workspaces.setSplits(workspaceId, space.splits);
+    if (JSON.stringify(updated?.splits) !== JSON.stringify(space.splits)) yield* publishWorkspace(workspaceId);
+  });
+
 /** Deletes a tab with everything that belongs to it: chat, project folder, secrets, permissions, history. */
 const removeApp = (id: string) =>
   Effect.gen(function* () {
     const apps = yield* Apps;
+    const tab = yield* apps.get(id);
     const agent = yield* Agent;
     const runtime = yield* Runtime;
     const workspace = yield* Workspace;
@@ -273,6 +284,7 @@ const removeApp = (id: string) =>
     yield* permissions.forget(id);
     yield* (yield* History).forget(appTarget(id));
     yield* (yield* Scheduler).forgetApp(id);
+    if (tab) yield* pruneSplits(tab.workspaceId);
     yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
   });
 
@@ -392,6 +404,7 @@ const appRoutes = HttpRouter.addAll([
         const moved = yield* apps.move(id, workspaceId);
         yield* youDid(id, "tab.move", target.name);
         yield* publishApp(moved);
+        yield* pruneSplits(app.workspaceId);
         if (app.kind === "app") {
           const status = yield* runtime.status(id);
           if (status.state !== "stopped" && status.state !== "crashed") yield* Effect.forkDetach(runtime.restart(id));
@@ -1300,6 +1313,32 @@ const workspaceRoutes = HttpRouter.addAll([
         const updated = yield* workspaces.update(id, { ...input, name: input.name?.trim() });
         if (!updated) return yield* fail(404, "Not found");
         yield* snapshot("settings", `Changed the workspace ${updated.name}`, true);
+        return json(yield* publishWorkspace(id));
+      }),
+    ),
+  ),
+  // Its split views (tabs side by side). Saved as given, made consistent with its tabs.
+  HttpRouter.route(
+    "PUT",
+    "/api/workspaces/:id/splits",
+    handle(
+      Effect.gen(function* () {
+        const workspaces = yield* Workspaces;
+        const id = yield* param("id");
+        const { splits } = yield* decodeBody(
+          Schema.Struct({
+            splits: Schema.Array(
+              Schema.Struct({
+                id: str(100),
+                direction: Schema.Literals(["row", "column"]),
+                tabs: Schema.Array(str(100)),
+                sizes: Schema.Array(Schema.Number),
+              }),
+            ).check(Schema.isMaxLength(100)),
+          }),
+        );
+        const updated = yield* workspaces.setSplits(id, splits.map((s) => ({ ...s, tabs: [...s.tabs], sizes: [...s.sizes] })));
+        if (!updated) return yield* fail(404, "Not found");
         return json(yield* publishWorkspace(id));
       }),
     ),

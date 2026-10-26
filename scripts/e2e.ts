@@ -667,6 +667,115 @@ try {
     return `rocket, uploaded image (${size}), reset; ${Math.round(image.length / 1024)} kB`;
   });
 
+  await check("split view: drag a tab beside another, focus, resize, rotate, remove", async () => {
+    type Workspace = { id: string; splits: { id: string; direction: string; tabs: string[]; sizes: number[] }[] };
+    const make = (path: string) => apiCall<{ id: string; workspaceId: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}${path}` } });
+    // The sidebar has loaded its workspace (right after booting, it may not have yet).
+    await page!.waitFor(`!!document.querySelector("[data-workspace-switcher]")?.innerText.trim()`, { label: "workspace loaded" });
+    const a = await make("/");
+    const b = await make("/second");
+    const liOf = (id: string) => `nav li[data-app-id="${id}"]`;
+    await page!.waitFor(`!!document.querySelector('${liOf(b.id)}')`, { label: "tabs in the sidebar" });
+    await click(liOf(a.id));
+    await page!.waitFor(`!!document.querySelector('[data-tab-layer="${a.id}"] webview')`, { label: "first tab open" });
+    const splitsNow = async () => (await apiCall<Workspace[]>("/api/workspaces")).find((w) => w.id === a.workspaceId)!.splits;
+
+    // Drag the second tab from the sidebar onto the right half of the page.
+    await page!.eval(`(() => {
+      window.__splitDrag = new DataTransfer();
+      document.querySelector('${liOf(b.id)}').dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: window.__splitDrag }));
+      return true;
+    })()`);
+    await page!.waitFor(`!!document.querySelector("[data-split-drop]")`, { label: "drop zones" });
+    await page!.eval(`(() => {
+      const zone = document.querySelector("[data-split-drop]");
+      const r = zone.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true, dataTransfer: window.__splitDrag, clientX: r.right - 40, clientY: r.top + r.height / 2 };
+      zone.dispatchEvent(new DragEvent("dragover", at));
+      return true;
+    })()`);
+    await page!.waitFor(`!!document.querySelector('[data-split-preview="right"]')`, { label: "preview on the right" });
+    await shot("split-drop.png");
+    await page!.eval(`(() => {
+      const zone = document.querySelector("[data-split-drop]");
+      const r = zone.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true, dataTransfer: window.__splitDrag, clientX: r.right - 40, clientY: r.top + r.height / 2 };
+      zone.dispatchEvent(new DragEvent("drop", at));
+      document.querySelector('${liOf(b.id)}').dispatchEvent(new DragEvent("dragend", at));
+      return true;
+    })()`);
+    const saved = await waitForValue(async () => {
+      const splits = await splitsNow();
+      return splits.length === 1 && splits[0]!.tabs.join() === [a.id, b.id].join() ? splits[0] : undefined;
+    });
+    if (saved.direction !== "row") throw new Error(`direction ${saved.direction}`);
+
+    // Both pages on screen, half each; the dropped tab has the focus; the sidebar groups them.
+    const rects = () =>
+      page!.eval<{ a: DOMRect; b: DOMRect; area: DOMRect }>(`(() => {
+        const r = (sel) => document.querySelector(sel).getBoundingClientRect().toJSON();
+        return { a: r('[data-tab-layer="${a.id}"]'), b: r('[data-tab-layer="${b.id}"]'), area: r('[data-split-drop], [data-tab-layer="${a.id}"]') };
+      })()`);
+    await page!.waitFor(`!!document.querySelector('[data-tab-layer="${b.id}"] webview') && getComputedStyle(document.querySelector('[data-tab-layer="${a.id}"]')).visibility === "visible"`, { label: "both panes shown" });
+    const half = await rects();
+    if (Math.abs(half.a.width - half.b.width) > 2 || Math.abs(half.a.right - half.b.left) > 1) throw new Error(`panes ${JSON.stringify(half)}`);
+    await page!.waitFor(`document.querySelector('${liOf(b.id)}').getAttribute("aria-current") === "page"`, { label: "dropped tab focused" });
+    await page!.waitFor(`document.querySelectorAll('[data-split-group="${saved.id}"] li[data-app-id]').length === 2`, { label: "split group in the sidebar" });
+
+    // Clicking into the other page (a real click, inside its webview) focuses its tab.
+    const point = { x: Math.round(half.a.left + half.a.width / 2), y: Math.round(half.a.top + half.a.height / 2) };
+    await page!.send("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
+    await page!.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...point, button: "left", clickCount: 1 });
+    await page!.waitFor(`document.querySelector('${liOf(a.id)}').getAttribute("aria-current") === "page"`, { label: "clicked pane focused" });
+    await shot("split-view.png");
+
+    // Drag the gutter to 30%.
+    await page!.eval(`(() => {
+      const gutter = document.querySelector("[data-split-gutter]");
+      const area = gutter.parentElement.getBoundingClientRect();
+      const g = gutter.getBoundingClientRect();
+      const y = g.top + 100;
+      gutter.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: g.left + 3, clientY: y }));
+      window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: area.left + area.width * 0.3, clientY: y }));
+      window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: area.left + area.width * 0.3, clientY: y }));
+      return true;
+    })()`);
+    const resized = await waitForValue(async () => {
+      const sizes = (await splitsNow())[0]?.sizes;
+      return sizes && Math.abs(sizes[0]! - 0.3) < 0.02 ? sizes : undefined;
+    });
+
+    // Another tab on its own hides the split; coming back shows it again.
+    const other = await make("/");
+    await page!.waitFor(`!!document.querySelector('${liOf(other.id)}')`, { label: "third tab" });
+    await click(liOf(other.id));
+    await page!.waitFor(`getComputedStyle(document.querySelector('[data-tab-layer="${a.id}"]')).visibility === "hidden"`, { label: "split hidden" });
+    await click(liOf(a.id));
+    await page!.waitFor(`getComputedStyle(document.querySelector('[data-tab-layer="${b.id}"]')).visibility === "visible"`, { label: "split shown again" });
+
+    // Stacked from the group's menu.
+    await click(`[data-split-group="${saved.id}"] [data-split-menu]`);
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "split menu" });
+    await click("[data-context-menu] button", "Stack them");
+    await waitForValue(async () => ((await splitsNow())[0]?.direction === "column" ? true : undefined));
+    const stacked = await rects();
+    if (Math.abs(stacked.a.bottom - stacked.b.top) > 1 || Math.abs(stacked.a.width - stacked.b.width) > 1) throw new Error(`stacked panes ${JSON.stringify(stacked)}`);
+
+    // Removing a tab from a split of two ends it.
+    await page!.eval(`(() => {
+      const li = document.querySelector('${liOf(b.id)}');
+      const r = li.getBoundingClientRect();
+      li.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 20, clientY: r.top + 10 }));
+      return true;
+    })()`);
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "tab menu" });
+    await click("[data-context-menu] button", "Remove from split view");
+    await waitForValue(async () => ((await splitsNow()).length === 0 ? true : undefined));
+    await page!.waitFor(`!document.querySelector("[data-split-group]")`, { label: "group gone" });
+    for (const tab of [a, b, other]) await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    return `side by side, resized to ${Math.round(resized[0]! * 100)}/${Math.round(resized[1]! * 100)}, stacked, removed`;
+  });
+
   await check("web tab: browse, pick an element, site customization applies", async () => {
     const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
     await newTab("New web tab");

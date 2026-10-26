@@ -105,8 +105,11 @@ const styles = stylex.create({
     backgroundColor: "transparent",
     fontSize: font.md,
     lineHeight: 1.45,
+    // One line in a narrow panel (e.g. in a split view), instead of a wrapped placeholder with a scrollbar.
+    "::placeholder": { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   },
   inputLarge: { fontSize: font.lg, minHeight: 72 },
   actions: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.sm },
-  options: { display: "flex", alignItems: "center", gap: 2, minWidth: 0 },
+  // Clipped rather than running under Send in a narrow panel.
+  options: { display: "flex", alignItems: "center", gap: 2, minWidth: 0, overflow: "hidden" },
 });

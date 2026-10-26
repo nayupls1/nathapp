@@ -2,6 +2,7 @@ import * as stylex from "@stylexjs/stylex";
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import type { AppSummary, WorkspaceInfo } from "../../shared/api";
 import {
+  appById,
   clearChat,
   createWorkspace,
   currentWorkspace,
@@ -9,6 +10,7 @@ import {
   duplicateApp,
   moveApp,
   moveTab,
+  moveTabs,
   newApp,
   newWebTab,
   renameApp,
@@ -24,13 +26,32 @@ import {
   workspaces,
   workspaceTabs,
 } from "../lib/store";
-import { draggedTab, isSidebarCollapsed, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
+import { draggedSplit, draggedTab, isSidebarCollapsed, setDraggedSplit, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
+import { evenSplit, placeInSplit, removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "../lib/splits";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { IconPicker, TabIcon } from "./TabIcon";
 import { Button } from "./ui";
+
+/**
+ * What the list shows, in the tabs' order: tab ids, and "split:<id>" for a
+ * split view, which takes the place of its first tab and lists its tabs in it.
+ */
+const entries = () => {
+  const seen = new Set<string>();
+  const list: string[] = [];
+  for (const tab of workspaceTabs()) {
+    const split = splitOf(tab.id);
+    if (!split) list.push(tab.id);
+    else if (!seen.has(split.id)) {
+      seen.add(split.id);
+      list.push(`split:${split.id}`);
+    }
+  }
+  return list;
+};
 
 /** Width of the collapsed sidebar: icons only. */
 const RAIL_WIDTH = 52;
@@ -70,7 +91,13 @@ export function Sidebar() {
         {(position) => <ContextMenu items={newItems} position={position()} onClose={() => setNewMenu()} />}
       </Show>
       <ul {...stylex.attrs(styles.list)}>
-        <For each={workspaceTabs()}>{(app) => <Item app={app} />}</For>
+        <For each={entries()}>
+          {(key) => (
+            <Show when={key.startsWith("split:")} fallback={<Show when={appById(key)}>{(app) => <Item app={app()} />}</Show>}>
+              <SplitGroup splitId={key.slice(6)} />
+            </Show>
+          )}
+        </For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
         <Show when={compact()}>
@@ -281,8 +308,100 @@ function PageLink(props: { id: string; icon: string; label: string }) {
   );
 }
 
+/** A split view: its tabs in one block, with a handle to drag them all and a menu. */
+function SplitGroup(props: { splitId: string }) {
+  const [menu, setMenu] = createSignal<MenuPosition>();
+  const split = () => workspaces.flatMap((w) => w.splits).find((x) => x.id === props.splitId);
+  const isRow = () => split()?.direction === "row";
+  const isDragged = () => draggedSplit() === props.splitId;
+  const openMenu = (position: MenuPosition) => setMenu(position);
+
+  const items = (): MenuItem[] => [
+    {
+      label: isRow() ? "Stack them" : "Side by side",
+      icon: isRow() ? "rows-2" : "columns-2",
+      onSelect: () => rotateSplit(props.splitId),
+    },
+    { label: "Equal sizes", icon: "equal", onSelect: () => evenSplit(props.splitId) },
+    { label: "Unsplit", icon: "square-split-horizontal", onSelect: () => unsplit(props.splitId) },
+  ];
+
+  return (
+    <Show when={split()}>
+      {(s) => (
+        <li {...stylex.attrs(styles.group, isDragged() && styles.dragging)} data-split-group={props.splitId}>
+          <div
+            {...stylex.attrs(stylex.defaultMarker(), styles.groupHeader, isSidebarCollapsed() && styles.groupHeaderCompact)}
+            title={isSidebarCollapsed() ? "Split view" : "Drag to move the split view"}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer!.setData(TAB_DRAG_TYPE, `split:${props.splitId}`);
+              e.dataTransfer!.effectAllowed = "move";
+              setDraggedSplit(props.splitId);
+            }}
+            onDragEnd={() => {
+              setDraggedSplit(null);
+              setDropAt(null);
+            }}
+            onClick={() => {
+              // Shows the split: on the tab last focused in it, else its first.
+              const tabs = s().tabs;
+              if (!tabs.includes(selectedId() ?? "")) void selectApp(tabs[0]!);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openMenu({ x: e.clientX, y: e.clientY });
+            }}
+          >
+            <Icon name={isRow() ? "columns-2" : "rows-2"} size={13} />
+            <Show when={!isSidebarCollapsed()}>
+              <span {...stylex.attrs(styles.groupLabel)}>Split view</span>
+              <button
+                type="button"
+                title="Split view options"
+                aria-haspopup="menu"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const r = e.currentTarget.getBoundingClientRect();
+                  openMenu({ x: r.left, y: r.bottom + 4 });
+                }}
+                {...stylex.attrs(styles.more, styles.groupMore)}
+                data-split-menu
+              >
+                <Icon name="ellipsis" size={14} />
+              </button>
+            </Show>
+          </div>
+          <ul {...stylex.attrs(styles.list)}>
+            <For each={s().tabs}>{(id) => <Show when={appById(id)}>{(app) => <Item app={app()} />}</Show>}</For>
+          </ul>
+          <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
+        </li>
+      )}
+    </Show>
+  );
+}
+
 /** Where a dragged tab would land: before or after which tab. */
 const [dropAt, setDropAt] = createSignal<{ id: string; side: "before" | "after" } | null>(null);
+
+/**
+ * A tab dropped next to a tab of a split view joins it there (or moves within
+ * it); next to any other tab it leaves its split. A dragged split view moves
+ * with all its tabs.
+ */
+function dropOn(at: { id: string; side: "before" | "after" }, tabId: string | null, groupId: string | null) {
+  const target = splitOf(at.id);
+  if (groupId) {
+    const group = workspaces.flatMap((w) => w.splits).find((x) => x.id === groupId);
+    if (group && target?.id !== groupId) void moveTabs(group.tabs, at.id, at.side);
+    return;
+  }
+  if (!tabId) return;
+  if (target) placeInSplit(target.id, tabId, target.tabs.indexOf(at.id) + (at.side === "after" ? 1 : 0));
+  else removeFromSplit(tabId);
+  void moveTab(tabId, at.id, at.side);
+}
 
 function Item(props: { app: AppSummary }) {
   const [editing, setEditing] = createSignal(false);
@@ -290,6 +409,14 @@ function Item(props: { app: AppSummary }) {
   const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
   const dropBefore = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "before";
   const dropAfter = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "after";
+  const split = () => splitOf(props.app.id);
+  // On screen next to the selected tab, in a split view.
+  const beside = () => selectedId() !== props.app.id && visibleTabs().includes(props.app.id);
+  // The tab on screen this one could be shown beside.
+  const current = () => {
+    const id = selectedId();
+    return id && id !== props.app.id && appById(id)?.workspaceId === props.app.workspaceId ? appById(id) : undefined;
+  };
   const isDragged = () => draggedTab() === props.app.id;
   const neighbour = (offset: number) => {
     const tabs = workspaceTabs();
@@ -315,8 +442,13 @@ function Item(props: { app: AppSummary }) {
 
   const menuItems = (): (MenuItem | "separator")[] => [
     { label: "Rename", icon: "pencil", onSelect: rename },
-    { label: "Change icon…", icon: "smile-plus", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
+    { label: "Change icon…", icon: "shapes", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
     { label: "Duplicate", icon: "copy", onSelect: () => duplicateApp(props.app.id) },
+    ...(split()
+      ? [{ label: "Remove from split view", icon: "square-x", onSelect: () => removeFromSplit(props.app.id) }]
+      : current()
+        ? [{ label: `Show beside “${current()!.name}”`, icon: "columns-2", onSelect: () => splitWith(current()!.id, props.app.id, "right") }]
+        : []),
     { label: "Move up", icon: "arrow-up", disabled: !neighbour(-1), onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before") },
     { label: "Move down", icon: "arrow-down", disabled: !neighbour(1), onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after") },
     ...workspaces
@@ -352,6 +484,7 @@ function Item(props: { app: AppSummary }) {
         stylex.defaultMarker(),
         styles.item,
         highlighted() && styles.selected,
+        beside() && styles.beside,
         isSidebarCollapsed() && styles.itemCompact,
         isDragged() && styles.dragging,
         dropBefore() && styles.dropBefore,
@@ -377,7 +510,7 @@ function Item(props: { app: AppSummary }) {
         setDropAt(null);
       }}
       onDragOver={(e) => {
-        if (!draggedTab()) return;
+        if (!draggedTab() && !draggedSplit()) return;
         e.preventDefault();
         e.dataTransfer!.dropEffect = "move";
         const r = e.currentTarget.getBoundingClientRect();
@@ -388,12 +521,14 @@ function Item(props: { app: AppSummary }) {
       }}
       onDrop={(e) => {
         const id = draggedTab();
+        const group = draggedSplit();
         const at = dropAt();
         setDraggedTab(null);
+        setDraggedSplit(null);
         setDropAt(null);
-        if (!id || !at) return;
+        if (!at) return;
         e.preventDefault();
-        void moveTab(id, at.id, at.side);
+        dropOn(at, id, group);
       }}
     >
       <TabIcon tab={props.app} />
@@ -493,7 +628,33 @@ const styles = stylex.create({
   newButtonCompact: { justifyContent: "center", width: "100%", paddingInline: 0 },
   itemCompact: { justifyContent: "center", paddingInline: 0, position: "relative" },
   hiddenText: { display: "none" },
+  group: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    padding: 3,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.border,
+  },
+  groupHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    height: 20,
+    paddingInline: 6,
+    color: colors.muted,
+    fontSize: font.xs,
+    cursor: "grab",
+    userSelect: "none",
+  },
+  groupHeaderCompact: { justifyContent: "center", paddingInline: 0 },
+  groupLabel: { flex: 1, fontWeight: 600, letterSpacing: "0.02em" },
+  groupMore: { width: 18, height: 18 },
   dragging: { opacity: 0.45 },
+  // In the split view on screen, next to the selected tab.
+  beside: { backgroundColor: { default: colors.surfaceHover, ":hover": colors.surfaceHover } },
   // A line where the dragged tab would land (the list has a 2px gap).
   dropBefore: { boxShadow: `0 -2px 0 0 ${colors.accent}` },
   dropAfter: { boxShadow: `0 2px 0 0 ${colors.accent}` },

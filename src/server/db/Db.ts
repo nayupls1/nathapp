@@ -161,6 +161,10 @@ const migrate = Effect.gen(function* () {
       position   INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (${now})
     )`);
+  if (!(yield* sql.unsafe<{ name: string }>("PRAGMA table_info(workspaces)")).some((c) => c.name === "splits")) {
+    // Tabs shown side by side (TabSplit[] as JSON).
+    yield* sql.unsafe("ALTER TABLE workspaces ADD COLUMN splits TEXT NOT NULL DEFAULT '[]'");
+  }
   yield* sql.unsafe(`INSERT INTO workspaces (id, name) SELECT '${DEFAULT_WORKSPACE}', 'Personal' WHERE NOT EXISTS (SELECT 1 FROM workspaces)`);
   // The network layer (db/Network.ts): rules for web tabs' requests, and requests saved to send again.
   yield* sql.unsafe(`

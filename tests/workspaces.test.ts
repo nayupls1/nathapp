@@ -155,6 +155,38 @@ describe("workspaces", () => {
     await server.api(`/api/workspaces/${space.id}`, { method: "DELETE" });
   });
 
+  test("split views are saved consistent with the tabs, and lose tabs that leave", async () => {
+    const space = await server.api<WorkspaceInfo>("/api/workspaces", { method: "POST", json: { name: "Splits" } });
+    expect(space.splits).toEqual([]);
+    const web = () => server.api<AppSummary>("/api/apps", { method: "POST", json: { kind: "web", url: "https://example.com/", workspaceId: space.id } });
+    const [a, b, c, d] = [await web(), await web(), await web(), await web()];
+    const put = (splits: unknown) => server.api<WorkspaceInfo>(`/api/workspaces/${space.id}/splits`, { method: "PUT", json: { splits } });
+    const saved = await put([
+      // Other workspaces' tabs and repeats are dropped; sizes are made to add up to 1.
+      { id: "one", direction: "row", tabs: [a.id, inPersonal.id, b.id, a.id], sizes: [2, 1, 2, 1] },
+      // c is in one split only; this one keeps a single tab and goes.
+      { id: "two", direction: "column", tabs: [b.id, c.id], sizes: [1, 1] },
+      { id: "three", direction: "column", tabs: [c.id, d.id], sizes: [0.7] },
+    ]);
+    expect(saved.splits).toEqual([
+      { id: "one", direction: "row", tabs: [a.id, b.id], sizes: [0.5, 0.5] },
+      { id: "three", direction: "column", tabs: [c.id, d.id], sizes: [0.5, 0.5] },
+    ]);
+    expect((await server.api<WorkspaceInfo[]>("/api/workspaces")).find((w) => w.id === space.id)?.splits).toEqual(saved.splits);
+    await expect(put([{ id: "x", direction: "diagonal", tabs: [], sizes: [] }])).rejects.toThrow("400");
+    await expect(server.api(`/api/workspaces/nope/splits`, { method: "PUT", json: { splits: [] } })).rejects.toThrow("404");
+
+    // A deleted tab leaves its split (which goes when one tab is left); so does a moved one.
+    await server.api(`/api/apps/${b.id}`, { method: "DELETE" });
+    const e = await web();
+    await put([...saved.splits.slice(1), { id: "four", direction: "row", tabs: [a.id, e.id], sizes: [0.25, 0.75] }]);
+    await server.api(`/api/apps/${d.id}/move`, { method: "POST", json: { workspaceId: DEFAULT_WORKSPACE } });
+    const after = (await server.api<WorkspaceInfo[]>("/api/workspaces")).find((w) => w.id === space.id)!;
+    expect(after.splits).toEqual([{ id: "four", direction: "row", tabs: [a.id, e.id], sizes: [0.25, 0.75] }]);
+    await server.api(`/api/apps/${d.id}`, { method: "DELETE" });
+    await server.api(`/api/workspaces/${space.id}`, { method: "DELETE" });
+  });
+
   test("deleting a workspace deletes its tabs, data, secrets and permissions; the last one stays", async () => {
     await server.api(`/api/workspaces/${client.id}`, { method: "DELETE" });
     expect((await server.api<WorkspaceInfo[]>("/api/workspaces")).map((w) => w.id)).toEqual([DEFAULT_WORKSPACE]);

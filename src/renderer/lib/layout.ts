@@ -42,3 +42,5 @@ export const toggleSidebar = () => setSidebarCollapsed(!collapsed());
 export const [draggedTab, setDraggedTab] = createSignal<string | null>(null);
 /** The data type of a tab drag. */
 export const TAB_DRAG_TYPE = "application/x-nathapp-tab";
+/** A split view being dragged from the sidebar (all its tabs move together). */
+export const [draggedSplit, setDraggedSplit] = createSignal<string | null>(null);

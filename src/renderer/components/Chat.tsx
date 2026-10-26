@@ -162,7 +162,8 @@ const styles = stylex.create({
   root: {
     display: "flex",
     flexDirection: "column",
-    width: 380,
+    // Narrower in a narrow tab (a pane of a split view), so the page keeps room.
+    width: "clamp(260px, 42%, 380px)",
     flexShrink: 0,
     borderLeftWidth: 1,
     borderLeftStyle: "solid",

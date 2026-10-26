@@ -4,7 +4,7 @@
 // folder.) There is always at least one.
 import { Context, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
-import type { WorkspaceInfo } from "../../shared/api";
+import { normalizeSplits, type TabSplit, type WorkspaceInfo } from "../../shared/api";
 import { decodeWorkspaceSettings, type WorkspaceSettings } from "../../shared/settings";
 import { orDieAll, type OrDie } from "./Db";
 
@@ -13,6 +13,7 @@ interface WorkspaceRow {
   name: string;
   icon: string | null;
   settings: string;
+  splits: string;
   position: number;
   created_at: string;
 }
@@ -25,11 +26,21 @@ const parseSettings = (json: string): WorkspaceSettings => {
   }
 };
 
+const parseSplits = (json: string): TabSplit[] => {
+  try {
+    const value = JSON.parse(json);
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+};
+
 const toInfo = (r: WorkspaceRow): WorkspaceInfo => ({
   id: r.id,
   name: r.name,
   icon: r.icon,
   settings: parseSettings(r.settings),
+  splits: parseSplits(r.splits),
   createdAt: r.created_at,
 });
 
@@ -70,6 +81,15 @@ export const make = Effect.gen(function* () {
           icon = ${fields.icon !== undefined ? fields.icon : current.icon},
           settings = ${JSON.stringify(fields.settings ?? current.settings)}
           WHERE id = ${id}`;
+        return yield* get(id);
+      }),
+
+    /** Saves its splits, made consistent with its tabs (see normalizeSplits). */
+    setSplits: (id: string, splits: readonly TabSplit[]) =>
+      Effect.gen(function* () {
+        const tabs = yield* sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id}`;
+        const clean = normalizeSplits(splits, tabs.map((t) => t.id));
+        yield* sql`UPDATE workspaces SET splits = ${JSON.stringify(clean)} WHERE id = ${id}`;
         return yield* get(id);
       }),
 

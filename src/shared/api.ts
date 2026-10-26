@@ -191,7 +191,50 @@ export interface WorkspaceInfo {
   /** Lucide icon name or an emoji. */
   icon: string | null;
   settings: WorkspaceSettings;
+  /** Tabs shown side by side. A tab is in at most one. */
+  splits: TabSplit[];
   createdAt: string;
+}
+
+/** Tabs shown side by side ("row") or stacked ("column") in one view. */
+export interface TabSplit {
+  id: string;
+  direction: "row" | "column";
+  /** Left to right, or top to bottom. */
+  tabs: string[];
+  /** Each pane's share of the space; they add up to 1. */
+  sizes: number[];
+}
+
+export const SPLIT_MAX_TABS = 4;
+
+/**
+ * A workspace's splits made consistent: only its own tabs, each in one split,
+ * 2 to SPLIT_MAX_TABS per split, sizes matching (equal ones if they don't) and
+ * adding up to 1.
+ */
+export function normalizeSplits(splits: readonly TabSplit[], tabIds: readonly string[]): TabSplit[] {
+  const known = new Set(tabIds);
+  const used = new Set<string>();
+  const result: TabSplit[] = [];
+  for (const split of splits) {
+    const panes: { id: string; size: number | undefined }[] = [];
+    split.tabs.forEach((id, i) => {
+      if (panes.length < SPLIT_MAX_TABS && known.has(id) && !used.has(id) && !panes.some((p) => p.id === id)) panes.push({ id, size: split.sizes[i] });
+    });
+    if (panes.length < 2) continue;
+    for (const p of panes) used.add(p.id);
+    const valid = panes.every((p) => typeof p.size === "number" && Number.isFinite(p.size) && p.size > 0);
+    const sizes = valid ? panes.map((p) => p.size!) : panes.map(() => 1);
+    const total = sizes.reduce((a, b) => a + b, 0);
+    result.push({
+      id: split.id,
+      direction: split.direction === "column" ? "column" : "row",
+      tabs: panes.map((p) => p.id),
+      sizes: sizes.map((s) => s / total),
+    });
+  }
+  return result;
 }
 
 // --- Apps and web tabs (one per sidebar tab) ------------------------------------

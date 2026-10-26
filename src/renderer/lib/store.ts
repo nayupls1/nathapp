@@ -4,7 +4,7 @@
 // Tabs of every workspace stay loaded; the sidebar shows the current one's.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
-import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "../../shared/api";
+import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, TabSplit, WorkspaceInfo } from "../../shared/api";
 import type { WorkspaceSettings } from "../../shared/settings";
 import { topics } from "../../shared/hub";
 import { normalizeUrl } from "../../shared/web";
@@ -235,6 +235,11 @@ export async function selectApp(id: string) {
   if (tab && tab.workspaceId !== currentWorkspace()?.id) setCurrentWorkspace(tab.workspaceId);
   if (tab) rememberTab(tab.workspaceId, id);
   setSelectedId(id);
+  await openTab(id);
+}
+
+/** Mounts a tab (its page or preview starts) and loads its chat, without selecting it: the other tabs of a split view. */
+export async function openTab(id: string) {
   markOpened(id);
   if (!isTab(id) || states[id]?.loaded) return;
   watch(id);
@@ -363,17 +368,19 @@ export async function reorderTabs(ids: string[]) {
   }
 }
 
-/** Moves a tab before or after another one of its workspace. */
-export function moveTab(id: string, targetId: string, side: "before" | "after") {
-  if (id === targetId) return;
+/** Moves tabs (in this order) before or after another one of their workspace. */
+export function moveTabs(moving: string[], targetId: string, side: "before" | "after") {
+  if (moving.includes(targetId)) return;
   const ids = workspaceTabs()
     .map((t) => t.id)
-    .filter((x) => x !== id);
+    .filter((x) => !moving.includes(x));
   const at = ids.indexOf(targetId);
   if (at === -1) return;
-  ids.splice(side === "before" ? at : at + 1, 0, id);
+  ids.splice(side === "before" ? at : at + 1, 0, ...moving);
   return reorderTabs(ids);
 }
+
+export const moveTab = (id: string, targetId: string, side: "before" | "after") => moveTabs([id], targetId, side);
 
 /** Moves a tab to another workspace. It closes here; web tabs reopen with that workspace's session. */
 export async function moveApp(id: string, workspaceId: string) {
@@ -426,6 +433,11 @@ function forgetWorkspace(id: string) {
   for (const tab of apps.filter((a) => a.workspaceId === id)) forgetApp(tab.id);
   setWorkspaces((list) => list.filter((w) => w.id !== id));
   if (wasCurrent && workspaces[0]) void showWorkspace(workspaces[0].id);
+}
+
+/** Shows a workspace's splits right away (lib/splits.ts saves them). */
+export function showSplits(workspaceId: string, splits: TabSplit[]) {
+  setWorkspaces((w) => w.id === workspaceId, "splits", reconcile(splits));
 }
 
 // Settings being typed are saved shortly after; until then, echoes of older saves are ignored.
