@@ -547,6 +547,21 @@ try {
     if (after.length !== before.length) throw new Error(`expected ${before.length} apps, got ${after.join(", ")}`);
   });
 
+  await check("no title bar: window buttons top right, the bar under them makes room", async () => {
+    const r = await page!.eval<{ controls: { right: number; top: number; width: number } | null; padded: string[]; underneath: number }>(`(() => {
+      const c = document.querySelector("[data-window-controls]")?.getBoundingClientRect();
+      const bars = [...document.querySelectorAll("[data-titlebar]")];
+      const padded = bars.filter((b) => b.style.paddingRight).map((b) => b.tagName.toLowerCase());
+      const underneath = bars.filter((b) => b.getBoundingClientRect().right >= innerWidth - 1 && b.getBoundingClientRect().top < 44).length;
+      return { controls: c ? { right: Math.round(c.right), top: Math.round(c.top), width: Math.round(c.width) } : null, padded, underneath };
+    })()`);
+    if (!r.controls || r.controls.top !== 0 || r.controls.right !== 1400) throw new Error(`controls: ${JSON.stringify(r.controls)}`);
+    if (r.padded.length !== r.underneath) throw new Error(`${r.underneath} bars run under the buttons, ${r.padded.length} padded`);
+    const drag = await page!.eval<string>(`getComputedStyle(document.querySelector("[data-titlebar]")).webkitAppRegion || getComputedStyle(document.querySelector("[data-titlebar]")).getPropertyValue("-webkit-app-region")`);
+    if (drag !== "drag") throw new Error(`top bars aren't drag regions: ${drag}`);
+    return `${r.controls.width}px of buttons; padded: ${r.padded.join(", ") || "none needed"}`;
+  });
+
   await check("sidebar: collapses to icons, resizes, remembers both", async () => {
     const navWidth = () => page!.eval<number>(`document.querySelector("nav").getBoundingClientRect().width`);
     await click("[data-sidebar-toggle]");

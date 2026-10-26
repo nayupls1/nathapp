@@ -16,8 +16,10 @@ import { Sidebar } from "./components/Sidebar";
 import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
+import { WindowControls } from "./components/WindowControls";
 import "./lib/schedules";
 import { startUnloading } from "./lib/unload";
+import { startWindowChrome } from "./lib/windowChrome";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
 import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, MODS_VIEW, SCHEDULES_VIEW, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
@@ -26,6 +28,7 @@ import { colors, font, space } from "./theme.stylex";
 export default function App() {
   onMount(async () => {
     startUnloading();
+    startWindowChrome();
     await loadSettings().catch((err) => console.error("Loading settings failed:", err));
     void loadProviders().catch((err) => console.error("Loading providers failed:", err));
     await loadApps();
@@ -48,7 +51,7 @@ export default function App() {
   );
 
   return (
-    <div {...stylex.attrs(styles.root)}>
+    <div {...stylex.attrs(styles.root)} data-app-root>
       <Sidebar />
       <ConfirmHost />
       <ExtensionImportHost />
@@ -56,9 +59,10 @@ export default function App() {
       <ModReviewHost />
       <CommandBar />
       <ToastHost />
+      <WindowControls />
       <div {...stylex.attrs(styles.column)}>
         <Show when={window.nathapp.safeMode}>
-          <div role="status" {...stylex.attrs(styles.safeMode)} data-safe-mode>
+          <div role="status" {...stylex.attrs(styles.safeMode)} data-safe-mode data-titlebar>
             <Icon name="life-buoy" size={16} />
             <span {...stylex.attrs(styles.safeModeText)}>
               <strong>Safe mode.</strong> Your theme and site customizations are off. Undo what broke things in History, then restart normally.

@@ -220,7 +220,7 @@ function WorkspaceSwitcher() {
   };
 
   return (
-    <div {...stylex.attrs(styles.header)}>
+    <div {...stylex.attrs(styles.header)} data-titlebar>
       <Show
         when={naming()}
         fallback={

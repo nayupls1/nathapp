@@ -22,6 +22,14 @@ export interface HealthResponse {
 
 /** API exposed on `window.nathapp` by the preload script. */
 export interface NathAppBridge {
+  /** The window without a title bar (renderer: lib/windowChrome.ts, components/WindowControls.tsx). */
+  window: {
+    platform: string;
+    minimize: () => void;
+    toggleMaximize: () => void;
+    close: () => void;
+    onMaximized: (fn: (maximized: boolean) => void) => () => void;
+  };
   serverUrl: string;
   /** Sent with every request to the NathApp server (and the hub). */
   token: string;

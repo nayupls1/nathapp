@@ -295,7 +295,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   return (
     <div {...stylex.attrs(styles.split)} data-app-tab={props.appId}>
       <div {...stylex.attrs(styles.main)}>
-        <div {...stylex.attrs(styles.toolbar)}>
+        <div {...stylex.attrs(styles.toolbar)} data-titlebar>
           <Show when={state().project}>
             <span
               {...stylex.attrs(styles.status)}

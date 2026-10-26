@@ -28,6 +28,12 @@
   }
 }
 
+/* Top bars are where the window is dragged (it has no title bar: lib/windowChrome.ts);
+   what's clickable in them still clicks. */
+[data-titlebar] { -webkit-app-region: drag; }
+[data-window-controls] { -webkit-app-region: no-drag; }
+[data-titlebar] :is(button, input, select, textarea, a, label, webview, [role="button"], [role="switch"], [role="tab"], [contenteditable]) { -webkit-app-region: no-drag; }
+
 /* Markdown in agent replies (generated HTML, so it can't
    carry StyleX classes). */
 .nathapp-markdown > :first-child { margin-top: 0; }

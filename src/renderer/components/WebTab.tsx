@@ -486,7 +486,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   return (
     <div {...stylex.attrs(styles.split)} data-web-tab={props.appId}>
       <div {...stylex.attrs(styles.main)}>
-        <div {...stylex.attrs(styles.toolbar)}>
+        <div {...stylex.attrs(styles.toolbar)} data-titlebar>
           <button type="button" title="Back (Alt+←)" disabled={!history().back} onClick={() => webview?.goBack()} {...stylex.attrs(styles.iconButton)}>
             <Icon name="arrow-left" size={16} />
           </button>

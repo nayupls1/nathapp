@@ -68,6 +68,18 @@ ipcMain.on("nathapp:relaunch", (event, safe: unknown) => {
   if (event.sender === mainWindow?.webContents) relaunch(safe === true);
 });
 
+// The window's buttons (drawn by the renderer when there's no frame) and double-clicking a top bar.
+ipcMain.on("nathapp:window", (event, action: unknown) => {
+  const win = mainWindow;
+  if (!win || event.sender !== win.webContents) return;
+  if (action === "minimize") win.minimize();
+  else if (action === "close") win.close();
+  else if (action === "toggle-maximize") {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  }
+});
+
 function registerAppProtocol() {
   const root = join(distDir, "renderer");
   protocol.handle(APP_SCHEME, (req) => {
@@ -85,6 +97,10 @@ function createWindow(server: ServerHandle) {
     height: 750,
     show: false,
     autoHideMenuBar: true,
+    // No title bar (like Chrome). macOS keeps its traffic lights (top left); elsewhere the
+    // window is frameless and the renderer draws minimize, maximize and close (top right).
+    // Its top bars are where the window is dragged (lib/windowChrome.ts).
+    ...(process.platform === "darwin" ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 16, y: 16 } } : { frame: false }),
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
       additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`, ...(safeMode ? ["--nathapp-safe-mode=1"] : []), ...(process.env.NATHAPP_OFFSCREEN === "1" ? ["--nathapp-offscreen=1"] : [])],
@@ -105,6 +121,9 @@ function createWindow(server: ServerHandle) {
   });
 
   mainWindow = win;
+  const sendMaximized = () => win.webContents.send("nathapp:maximized", win.isMaximized());
+  win.on("maximize", sendMaximized);
+  win.on("unmaximize", sendMaximized);
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = undefined;
   });

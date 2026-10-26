@@ -17,6 +17,13 @@ const bridge: NathAppBridge = {
   safeMode: arg("nathapp-safe-mode") === "1",
   offscreen: arg("nathapp-offscreen") === "1",
   relaunch: (safeMode) => ipcRenderer.send("nathapp:relaunch", safeMode),
+  window: {
+    platform: process.platform,
+    minimize: () => ipcRenderer.send("nathapp:window", "minimize"),
+    toggleMaximize: () => ipcRenderer.send("nathapp:window", "toggle-maximize"),
+    close: () => ipcRenderer.send("nathapp:window", "close"),
+    onMaximized: listen("nathapp:maximized"),
+  },
   versions: {
     electron: process.versions.electron ?? "",
     chrome: process.versions.chrome ?? "",

@@ -200,6 +200,10 @@ If something breaks NathApp's own UI, **safe mode** starts it without the theme 
 
 Contents are stored once (content-addressed, gzipped) under `<data dir>/history/`. The last 200 snapshots are kept per app, for site customizations and for settings.
 
+### Window
+
+The window has no title bar, like Chrome. On Linux and Windows it's frameless and NathApp draws minimize, maximize and close in the top right (`components/WindowControls.tsx`); macOS keeps its traffic lights, top left. The top bars (the sidebar's header, a tab's toolbar, the agent panel's header) are where the window is dragged, and double-clicking one maximizes it. A bar running under the window's buttons is padded so nothing hides behind them (`lib/windowChrome.ts`).
+
 ### Sidebar
 
 The sidebar collapses to a column of icons (the button next to the workspace, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.

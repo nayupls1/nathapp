@@ -31,7 +31,7 @@ export function Chat(props: {
 
   return (
     <aside {...stylex.attrs(styles.root)} data-agent-panel>
-      <header {...stylex.attrs(styles.header)}>
+      <header {...stylex.attrs(styles.header)} data-titlebar>
         <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
         <span {...stylex.attrs(styles.headerTitle)}>{props.web ? "Website agent" : "Agent"}</span>
         <button
