@@ -2,8 +2,10 @@
 // the agent sidebar; here are ideas, templates, and importing a project from
 // Git or a folder. Each way ends in the same app lifecycle (server: Projects).
 import * as stylex from "@stylexjs/stylex";
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
+import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { topics } from "../../shared/hub";
 import { api } from "../lib/api";
+import { watchTopic } from "../lib/realtime";
 import { sendWithShares } from "../lib/sharing";
 import { isAgentCollapsed, setAgentCollapsed } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -25,20 +27,44 @@ export function NewApp(props: { appId: string }) {
   const [starting, setStarting] = createSignal<string>();
 
   const [gitUrl, setGitUrl] = createSignal("");
-  const [importing, setImporting] = createSignal<string>();
+  const [branch, setBranch] = createSignal("");
+  const [showBranch, setShowBranch] = createSignal(false);
+  const [importing, setImporting] = createSignal<"git" | "folder">();
+  const [progress, setProgress] = createSignal<{ phase: string; percent: number | null }>();
   const [importError, setImportError] = createSignal<string>();
-  const failed = () => !!importError();
+  const cloning = () => importing() === "git";
+  const percent = () => progress()?.percent ?? null;
+  const hasPercent = () => percent() !== null;
+  const indeterminate = () => percent() === null;
+  onCleanup(
+    watchTopic(topics.app(props.appId), (msg) => {
+      if (msg.type === "import-progress" && importing()) setProgress({ phase: msg.phase, percent: msg.percent });
+    }),
+  );
   /** Cloned or copied in, then it's an app like any other (Projects.importApp). */
-  const importFrom = async (source: { git: string } | { folder: string }) => {
+  const importFrom = async (source: { git: string; branch?: string } | { folder: string }) => {
     setImportError();
-    setImporting("git" in source ? "Cloning…" : "Copying…");
+    setImporting("git" in source ? "git" : "folder");
+    setProgress({ phase: "git" in source ? "Starting git…" : "Copying…", percent: null });
     try {
-      await api.importApp(props.appId, source);
+      const { project } = await api.importApp(props.appId, source);
+      // NathApp couldn't tell how to run it: the agent sets it up.
+      if (!project) {
+        setAgentCollapsed(props.appId, false);
+        await send(
+          "I imported this project. Look at it and set it up so NathApp can run it: write nathapp.json (install, dev, build and start commands), make the server listen on $PORT, then start it and check that it works.",
+        );
+      }
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting();
+      setProgress();
     }
+  };
+  const clone = () => {
+    const url = gitUrl().trim();
+    if (url) void importFrom({ git: url, ...(branch().trim() ? { branch: branch().trim() } : {}) });
   };
   const pickFolder = async () => {
     const folder = await window.nathapp.pickFolder("Import an app from a folder");
@@ -112,15 +138,27 @@ export function NewApp(props: { appId: string }) {
           <div {...stylex.attrs(styles.importRow)}>
             <input
               value={gitUrl()}
-              placeholder="https://github.com/owner/repo"
+              placeholder="https://github.com/owner/repo, owner/repo or git@…"
               spellcheck={false}
               disabled={!!importing()}
               onInput={(e) => setGitUrl(e.currentTarget.value)}
-              onKeyDown={(e) => e.key === "Enter" && gitUrl().trim() && void importFrom({ git: gitUrl().trim() })}
+              onKeyDown={(e) => e.key === "Enter" && clone()}
               {...stylex.attrs(styles.importInput)}
               data-import-git
             />
-            <Button disabled={!!importing() || !gitUrl().trim()} onClick={() => void importFrom({ git: gitUrl().trim() })} data-import-clone>
+            <Show when={showBranch()}>
+              <input
+                value={branch()}
+                placeholder="Branch"
+                spellcheck={false}
+                disabled={!!importing()}
+                onInput={(e) => setBranch(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === "Enter" && clone()}
+                {...stylex.attrs(styles.importInput, styles.branchInput)}
+                data-import-branch
+              />
+            </Show>
+            <Button disabled={!!importing() || !gitUrl().trim()} onClick={clone} data-import-clone>
               <Icon name="git-branch" size={14} />
               Clone
             </Button>
@@ -129,8 +167,37 @@ export function NewApp(props: { appId: string }) {
               Import a folder…
             </Button>
           </div>
-          <Show when={importing() ?? importError()}>
-            {(text) => <span {...stylex.attrs(styles.presetStack, failed() && styles.importError)}>{text()}</span>}
+          <Show when={!showBranch() && !importing()}>
+            <button type="button" onClick={() => setShowBranch(true)} {...stylex.attrs(styles.linkButton)}>
+              Choose a branch
+            </button>
+          </Show>
+          <Show when={importing() && progress()}>
+            {(p) => (
+              <div {...stylex.attrs(styles.progress)} data-import-progress>
+                <div {...stylex.attrs(styles.progressHead)}>
+                  <span {...stylex.attrs(styles.progressPhase)}>{p().phase}</span>
+                  <Show when={hasPercent()}>
+                    <span {...stylex.attrs(styles.presetStack)}>{percent()}%</span>
+                  </Show>
+                  <Show when={cloning()}>
+                    <button type="button" onClick={() => void api.cancelImport(props.appId).catch(() => {})} {...stylex.attrs(styles.linkButton)} data-import-cancel>
+                      Cancel
+                    </button>
+                  </Show>
+                </div>
+                <div {...stylex.attrs(styles.track)} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent() ?? undefined}>
+                  <div {...stylex.attrs(styles.bar, indeterminate() && styles.barBusy)} style={{ width: hasPercent() ? `${percent()}%` : "30%" }} />
+                </div>
+              </div>
+            )}
+          </Show>
+          <Show when={!importing() && importError()}>
+            {(text) => (
+              <span {...stylex.attrs(styles.presetStack, styles.importError)} data-import-error>
+                {text()}
+              </span>
+            )}
           </Show>
         </div>
       </div>
@@ -138,6 +205,11 @@ export function NewApp(props: { appId: string }) {
   );
 }
 
+
+const busy = stylex.keyframes({
+  from: { transform: "translateX(-100%)" },
+  to: { transform: "translateX(340%)" },
+});
 
 const styles = stylex.create({
   newRoot: {
@@ -201,5 +273,21 @@ const styles = stylex.create({
     fontSize: font.sm,
     outline: "none",
   },
-  importError: { color: colors.danger },
+  importError: { color: colors.danger, overflowWrap: "anywhere" },
+  branchInput: { flex: "0 1 140px", minWidth: 100 },
+  linkButton: {
+    alignSelf: "flex-start",
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: { default: colors.muted, ":hover": colors.accent },
+    fontSize: font.xs,
+    cursor: "pointer",
+  },
+  progress: { display: "flex", flexDirection: "column", gap: 6 },
+  progressHead: { display: "flex", alignItems: "baseline", gap: space.sm },
+  progressPhase: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm },
+  track: { position: "relative", height: 4, borderRadius: radius.full, backgroundColor: colors.border, overflow: "hidden" },
+  bar: { height: "100%", borderRadius: radius.full, backgroundColor: colors.accent, transition: "width 200ms" },
+  barBusy: { animationName: busy, animationDuration: "1.2s", animationIterationCount: "infinite", animationTimingFunction: "ease-in-out" },
 });

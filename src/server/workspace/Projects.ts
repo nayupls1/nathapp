@@ -20,7 +20,7 @@ import { Permissions } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { AppData } from "./AppData";
 import { Runtime } from "./Runtime";
-import { Workspace, type ImportSource, type WorkspaceError } from "./Workspace";
+import { Workspace, type ImportProgress, type ImportSource, type WorkspaceError } from "./Workspace";
 
 export interface ProjectsShape {
   /** Tells the renderer about a changed tab (name, icon, workspace…). */
@@ -101,7 +101,8 @@ export const make = Effect.gen(function* () {
 
     importApp: (appId, source) =>
       Effect.gen(function* () {
-        const { project, name } = yield* workspace.importFrom(appId, source);
+        const progress = (p: ImportProgress) => hub.publishUnsafe({ type: "import-progress", topic: topics.app(appId), appId, phase: p.phase, percent: p.percent });
+        const { project, name } = yield* workspace.importFrom(appId, source, progress);
         const from = source.kind === "git" ? source.url : source.path;
         const app = yield* apps.get(appId);
         if (app && app.name === "New app" && name) yield* publish(yield* apps.setInfo(appId, { name: name.slice(0, 80) }));
@@ -109,7 +110,7 @@ export const make = Effect.gen(function* () {
         if (project) yield* runtime.setMode(appId, "dev");
         const note = project
           ? `Imported from ${from}. NathApp runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
-          : `Imported from ${from}. NathApp couldn't tell how to run it (no nathapp.json, and package.json has no dev or start script): ask the agent to set it up.`;
+          : `Imported from ${from}. NathApp couldn't tell how to run it (no nathapp.json, and package.json has no dev or start script), so the agent sets it up.`;
         const message = yield* apps.addMessage(appId, "tool", note);
         yield* hub.publish({ type: "chat", topic: topics.app(appId), appId, event: { type: "message", message } });
         return project;

@@ -83,6 +83,8 @@ interface State {
   /** Secret values the app's processes got: masked in its logs and command output. */
   redact: string[];
   port: number | null;
+  /** Said that the app seems to listen on another port (once per start). */
+  portHint: boolean;
   lock: Semaphore.Semaphore;
 }
 
@@ -107,6 +109,7 @@ export const make = Effect.gen(function* () {
         logs: [],
         redact: [],
         port: null,
+        portHint: false,
         lock: Semaphore.makeUnsafe(1),
       };
       states.set(appId, state);
@@ -137,6 +140,18 @@ export const make = Effect.gen(function* () {
       .filter((line, i, all) => line.length > 0 || i < all.length - 1)
       .map((line): LogLine => ({ at: Date.now(), stream, text: line }));
     if (!lines.length) return;
+    // A server that ignores $PORT never shows up: say so when its output names another port.
+    if (stream !== "system" && state.status.state === "starting" && !state.portHint && state.port) {
+      const other = lines.map((l) => /\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d{2,5})\b/.exec(l.text)?.[1]).find((p) => p && Number(p) !== state.port);
+      if (other) {
+        state.portHint = true;
+        lines.push({
+          at: Date.now(),
+          stream: "system",
+          text: `The app seems to listen on port ${other}, but NathApp shows it on $PORT (${state.port}). Make its server use $PORT (or ask the agent to).`,
+        });
+      }
+    }
     state.logs.push(...lines);
     if (state.logs.length > MAX_LOG_LINES) state.logs.splice(0, state.logs.length - MAX_LOG_LINES);
     hub.publishUnsafe({ type: "log", topic: topics.logs(appId), appId, lines });
@@ -218,6 +233,7 @@ export const make = Effect.gen(function* () {
   const session = (appId: string, mode: AppMode) =>
     Effect.gen(function* () {
       const state = stateOf(appId);
+      state.portHint = false;
       const kind = yield* sandbox.kind;
       setStatus(appId, { mode, sandbox: kind, exitCode: null, error: null, url: null, port: null, startedAt: null });
       const manifest = yield* workspace.manifest(appId).pipe(

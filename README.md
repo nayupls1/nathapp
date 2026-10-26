@@ -103,7 +103,11 @@ preview right away. Closing it (Ctrl+J) means **done**: NathApp runs `build` and
 with it. An agent turn always edits, so it reopens the panel. Dependencies are installed when `package.json` or the
 lockfile change.
 
-**Bring your own.** A new app tab can also start from a project you have: cloned from Git (an https link; no credential prompts, so private repositories need their own access, and no hooks run) or copied from a folder (without `node_modules`). Without a `nathapp.json`, NathApp writes one from `package.json`'s `dev`, `start` and `build` scripts; if it can't tell how to run the project, the chat says so and the agent sets it up. The app has to listen on `$PORT` (`POST /api/apps/:id/import`).
+**Bring your own.** A new app tab can also start from a project you have (`POST /api/apps/:id/import`):
+- **Cloned from Git:** an https link, `owner/repo` (GitHub), a page showing a branch (`…/tree/<branch>`), an SSH link (`git@github.com:owner/repo.git`), with an optional branch. It's a shallow clone with submodules. The tab shows git's progress (receiving objects, resolving deltas) and can cancel it (`DELETE /api/apps/:id/import`).
+- **Private repositories** work with your own Git setup: credential helpers (`gh auth login`, Git Credential Manager) and SSH keys in ssh-agent. Git never prompts (there's no terminal to answer in), and no hooks run. Errors say what's missing.
+- **Copied from a folder** (without `node_modules`).
+- **Running it:** without a `nathapp.json`, NathApp writes one from `package.json`'s `dev`, `start`, `build` and `preview` scripts. Servers that don't read `$PORT` themselves (Vite and what's built on it, Astro, Angular) are given the port, and a Vite site's build is served with `vite preview`. If NathApp can't tell how to run the project, the agent is asked to set it up. When an app's output names another port than `$PORT`, its logs say so.
 
 **One lifecycle.** However an app came to be (the agent's `create_project` or a `nathapp.json` it wrote itself, a template you picked, a project you imported or cloned, a copy of another app), it goes through the same steps in `workspace/Projects.ts`: setting up, opening, editing and publishing, copying, moving and deleting. Building (the project's files: `Workspace.ts`, its data: `AppData.ts`), running (`Runtime.ts`) and displaying (the renderer, which only sees `AppDetail` and the hub's messages) stay separate. A copy brings the project along as its first snapshot, but not its data, chat or secrets.
 

@@ -16,7 +16,32 @@ import { core } from "../src/server/services";
 import { AppData } from "../src/server/workspace/AppData";
 import { Projects } from "../src/server/workspace/Projects";
 import { Runtime } from "../src/server/workspace/Runtime";
-import { inferManifest, Workspace } from "../src/server/workspace/Workspace";
+import { inferManifest, parseGitProgress, parseGitSource, Workspace } from "../src/server/workspace/Workspace";
+
+describe("repository links", () => {
+  test("links, shorthands and branch pages become a clone URL, a branch and a name", () => {
+    expect(parseGitSource("https://github.com/owner/repo")).toEqual({ url: "https://github.com/owner/repo", branch: null, name: "repo" });
+    expect(parseGitSource("https://github.com/owner/repo.git/")).toEqual({ url: "https://github.com/owner/repo.git", branch: null, name: "repo" });
+    expect(parseGitSource("owner/repo")).toEqual({ url: "https://github.com/owner/repo", branch: null, name: "repo" });
+    expect(parseGitSource("github.com/owner/repo")).toEqual({ url: "https://github.com/owner/repo", branch: null, name: "repo" });
+    expect(parseGitSource("https://github.com/owner/repo/tree/next?tab=readme#x")).toEqual({ url: "https://github.com/owner/repo", branch: "next", name: "repo" });
+    expect(parseGitSource("https://gitlab.com/group/proj/-/tree/dev")).toEqual({ url: "https://gitlab.com/group/proj", branch: "dev", name: "proj" });
+    expect(parseGitSource("https://github.com/owner/repo", "release/1.x")?.branch).toBe("release/1.x");
+    expect(parseGitSource("git@github.com:owner/repo.git")).toEqual({ url: "git@github.com:owner/repo.git", branch: null, name: "repo" });
+    expect(parseGitSource("ssh://git@host.example:2222/team/app.git")?.name).toBe("app");
+    for (const bad of ["file:///etc", "/home/me/project", "http://example.com/x/y", "not a link", "../x", "https://github.com/owner/repo", ""]) {
+      if (bad === "https://github.com/owner/repo") expect(parseGitSource(bad, "bad branch; rm")).toBeNull();
+      else expect(parseGitSource(bad)).toBeNull();
+    }
+  });
+
+  test("git's progress lines", () => {
+    expect(parseGitProgress("Receiving objects:  45% (450/1000), 1.20 MiB | 2.00 MiB/s")).toEqual({ phase: "Receiving objects (1.20 MiB · 2.00 MiB/s)", percent: 45 });
+    expect(parseGitProgress("Resolving deltas: 100% (20/20), done.")).toEqual({ phase: "Resolving deltas", percent: 100 });
+    expect(parseGitProgress("remote: Counting objects:  12% (3/25)")).toEqual({ phase: "Counting objects", percent: 12 });
+    expect(parseGitProgress("Cloning into '/tmp/x'...")).toBeNull();
+  });
+});
 
 describe("projects", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "nathapp-projects-"));
@@ -128,7 +153,17 @@ describe("importing an existing project", () => {
   const run = <A>(effect: Effect.Effect<A, unknown, any>) => runtime.runPromise(effect as Effect.Effect<A>);
 
   test("nathapp.json from package.json's scripts", () => {
-    expect(inferManifest({ scripts: { dev: "vite", build: "vite build", start: "node server.js" } })).toEqual({ dev: "bun run dev", build: "bun run build", start: "bun run start" });
+    const port = " --port $PORT --strictPort --host 127.0.0.1";
+    expect(inferManifest({ scripts: { dev: "vite", build: "vite build", start: "node server.js" } })).toEqual({ dev: `bun run dev${port}`, build: "bun run build", start: "bun run start" });
+    // Vite sites: the dev server gets NathApp's port; the build is served with vite preview.
+    expect(inferManifest({ scripts: { dev: "vite", build: "tsc && vite build" } })).toEqual({ dev: `bun run dev${port}`, build: "bun run build", start: `bunx vite preview${port}` });
+    expect(inferManifest({ scripts: { dev: "vite dev", build: "vite build", preview: "vite preview", start: "vite" } })).toEqual({
+      dev: `bun run dev${port}`,
+      build: "bun run build",
+      start: `bun run preview${port}`,
+    });
+    // Next.js and the like read $PORT themselves.
+    expect(inferManifest({ scripts: { dev: "next dev", build: "next build", start: "next start" } })).toEqual({ dev: "bun run dev", build: "bun run build", start: "bun run start" });
     expect(inferManifest({ scripts: { start: "node server.js" } })).toEqual({ dev: "bun run start", start: "bun run start" });
     expect(inferManifest({ scripts: { test: "jest" } })).toBeNull();
     expect(inferManifest(null)).toBeNull();

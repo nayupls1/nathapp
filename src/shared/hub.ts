@@ -48,6 +48,8 @@ export type ServerMessage =
   | { type: "chat"; topic: string; appId: string; event: ChatEvent }
   | { type: "runtime"; topic: string; appId: string; status: RuntimeStatus }
   | { type: "log"; topic: string; appId: string; lines: LogLine[] }
+  /** Cloning or copying a project into a new app tab: what's happening (percent when git says). */
+  | { type: "import-progress"; topic: string; appId: string; phase: string; percent: number | null }
   | { type: "site"; topic: string; host: string }
   /** Page changes were added, changed or removed (refetch). */
   | { type: "page-changes"; topic: string }
