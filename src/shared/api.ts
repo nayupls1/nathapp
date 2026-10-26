@@ -545,7 +545,9 @@ export type ChatEvent =
   | { type: "started" }
   | { type: "message"; message: ChatMessage }
   | { type: "delta"; text: string }
-  | { type: "done" };
+  | { type: "done" }
+  /** A new chat started (a scheduled prompt): the current messages went to the tab's earlier chats. */
+  | { type: "new-chat" };
 
 // --- Web tabs -----------------------------------------------------------------------
 
@@ -610,10 +612,16 @@ export interface PageChange extends PageChangeSpec {
  */
 export type ScheduleTrigger = { type: "once"; at: string } | { type: "cron"; cron: string } | { type: "event"; event: string };
 
-/** What a schedule does: use one of an app's tools, or run a command in its sandbox. */
+/**
+ * What a schedule does: use one of an app's tools, run a command in its
+ * sandbox, or ask a tab's agent something (each run is a new chat in the tab).
+ * A prompt runs in an existing tab (`appId`), or in one it opens on its first
+ * run (`newTab`; the schedule then keeps using that tab).
+ */
 export type ScheduleTask =
   | { type: "tool"; appId: string; tool: string; params?: Record<string, unknown>; input?: string }
-  | { type: "command"; appId: string; command: string };
+  | { type: "command"; appId: string; command: string }
+  | { type: "prompt"; prompt: string; appId?: string; newTab?: { kind: TabKind; workspaceId: string; url?: string } };
 
 export interface ScheduleSpec {
   name: string;
@@ -627,7 +635,7 @@ export interface ScheduleSpec {
 
 export interface Schedule extends ScheduleSpec {
   id: string;
-  /** The task's app's workspace. */
+  /** The task's tab's workspace. */
   workspaceId: string;
   paused: boolean;
   createdBy: "user" | "agent";

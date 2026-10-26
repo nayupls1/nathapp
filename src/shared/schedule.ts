@@ -1,11 +1,15 @@
 // Schedules: checking them and describing them, for the server and the UI.
-import type { ScheduleSpec, ScheduleTrigger } from "./api";
+import type { ScheduleSpec, ScheduleTask, ScheduleTrigger } from "./api";
 import { describeCron, parseCron, shortestGapMinutes } from "./cron";
 
 /** Recurring schedules run at most this often. */
 export const MIN_INTERVAL_MINUTES = 5;
 export const MAX_TIMEOUT_SEC = 1800;
 export const DEFAULT_TIMEOUT_SEC = 300;
+export const MAX_PROMPT = 20_000;
+
+/** The tab a schedule's task runs in (null: a prompt that opens one on its first run). */
+export const taskTab = (task: ScheduleTask): string | null => task.appId ?? null;
 
 const EVENT = /^(nathapp\.started|app\.(started|crashed):[\w-]+|app:[\w-]+:[\w.-]{1,64})$/;
 
@@ -26,13 +30,23 @@ export function scheduleProblem(spec: ScheduleSpec, now = new Date()): string | 
     if (!EVENT.test(t.event ?? "")) return 'Events are "nathapp.started", "app.started:<app>", "app.crashed:<app>" or "app:<app>:<name>"';
   } else return "trigger.type must be once, cron or event";
   const task = spec.task;
-  if (!task?.appId) return "Which app?";
-  if (task.type === "tool") {
+  if (task?.type === "prompt") {
+    if (!task.prompt?.trim()) return "What should the agent do?";
+    if (task.prompt.length > MAX_PROMPT) return "The prompt is too long";
+    if (!task.appId && !task.newTab) return "Which tab?";
+    if (task.appId && task.newTab) return "Either a tab or a new tab, not both";
+    if (task.newTab) {
+      if (task.newTab.kind !== "app" && task.newTab.kind !== "web") return "newTab.kind must be app or web";
+      if (!task.newTab.workspaceId) return "Which workspace?";
+      if (task.newTab.kind === "web" && !/^https?:\/\/\S+$/i.test(task.newTab.url ?? "")) return "Which website? Give an http(s) address";
+    }
+  } else if (!task?.appId) return "Which app?";
+  else if (task.type === "tool") {
     if (!task.tool?.trim()) return "Which tool?";
   } else if (task.type === "command") {
     if (!task.command?.trim()) return "Which command?";
     if (task.command.length > 2000) return "The command is too long";
-  } else return "task.type must be tool or command";
+  } else return "task.type must be tool, command or prompt";
   if (!["always", "failure", "never"].includes(spec.notify)) return "notify must be always, failure or never";
   if (!Number.isInteger(spec.timeoutSec) || spec.timeoutSec < 5 || spec.timeoutSec > MAX_TIMEOUT_SEC) return `The timeout must be 5 to ${MAX_TIMEOUT_SEC} seconds`;
   return null;

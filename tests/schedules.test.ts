@@ -3,7 +3,8 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AppSummary, AuditEntry, Schedule, ScheduleRun, ScheduleSpec } from "../src/shared/api";
+import type { AppSummary, AuditEntry, Schedule, ScheduleRun, ScheduleSpec, WorkspaceInfo } from "../src/shared/api";
+import type { Settings } from "../src/shared/settings";
 import { describeCron, nextCron, parseCron, shortestGapMinutes, type Cron } from "../src/shared/cron";
 import { scheduleProblem } from "../src/shared/schedule";
 import { startServer } from "./lib/server";
@@ -50,6 +51,14 @@ describe("checks", () => {
     expect(scheduleProblem({ ...spec, trigger: { type: "event", event: "whenever" } })).toContain("Events are");
     expect(scheduleProblem({ ...spec, timeoutSec: 99_999 })).toContain("timeout");
     expect(scheduleProblem({ ...spec, task: { type: "tool", appId: "a", tool: "" } })).toBe("Which tool?");
+  });
+
+  test("prompts: in a tab, or in a new one", () => {
+    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Summarize the news", appId: "a" } })).toBeNull();
+    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi", newTab: { kind: "app", workspaceId: "w" } } })).toBeNull();
+    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: " ", appId: "a" } })).toBe("What should the agent do?");
+    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi" } })).toBe("Which tab?");
+    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi", newTab: { kind: "web", workspaceId: "w", url: "example.com" } } })).toContain("http(s)");
   });
 });
 
@@ -181,5 +190,65 @@ describe("scheduler", () => {
     await expect(create({ task: { type: "command", appId: "nope", command: "true" } })).rejects.toThrow("404");
     await server.api(`/api/apps/${app.id}`, { method: "DELETE" });
     expect(await server.api<Schedule[]>("/api/schedules")).toEqual([]);
+  });
+});
+
+describe("scheduled prompts", () => {
+  let server: Awaited<ReturnType<typeof startServer>>;
+  beforeAll(async () => {
+    server = await startServer();
+    // No provider can run: the run fails at the agent, after everything around it.
+    const settings = await server.api<Settings>("/api/settings");
+    const off = { enabled: false };
+    await server.api("/api/settings", {
+      method: "PUT",
+      json: { ...settings, providers: { claude: { ...settings.providers.claude, ...off }, codex: { ...settings.providers.codex, ...off }, opencode: { ...settings.providers.opencode, ...off } } },
+    });
+    // A refresh joins the startup check if it's still going: again until they're off.
+    for (let i = 0; i < 20; i++) {
+      const providers = await server.api<{ state: string }[]>("/api/providers/refresh", { method: "POST", json: {} });
+      if (providers.every((p) => p.state === "disabled")) break;
+    }
+  }, 60_000);
+  afterAll(() => server.stop());
+
+  test("a new tab is opened on the first run and kept", async () => {
+    const [space] = await server.api<WorkspaceInfo[]>("/api/workspaces");
+    const before = (await server.api<AppSummary[]>("/api/apps")).length;
+    const schedule = await server.api<Schedule>("/api/schedules", {
+      method: "POST",
+      json: { name: "Morning", trigger: { type: "cron", cron: "0 8 * * *" }, task: { type: "prompt", prompt: "Summarize", newTab: { kind: "app", workspaceId: space!.id } }, notify: "never", timeoutSec: 60 },
+    });
+    expect(schedule.workspaceId).toBe(space!.id);
+    const runOnce = async () => {
+      const run = await server.api<ScheduleRun>(`/api/schedules/${schedule.id}/run`, { method: "POST" });
+      for (let i = 0; i < 100; i++) {
+        const runs = await server.api<ScheduleRun[]>(`/api/schedules/runs?schedule=${schedule.id}`);
+        const done = runs.find((r) => r.id === run.id && r.status !== "running");
+        if (done) return done;
+        await Bun.sleep(100);
+      }
+      throw new Error("the run didn't finish");
+    };
+    const first = await runOnce();
+    expect(first.status).toBe("error");
+    expect(first.message).toContain("turned off in Settings");
+    const tabs = await server.api<AppSummary[]>("/api/apps");
+    expect(tabs.length).toBe(before + 1);
+    const updated = (await server.api<Schedule[]>("/api/schedules")).find((s) => s.id === schedule.id)!;
+    expect(updated.task).toEqual({ type: "prompt", prompt: "Summarize", appId: tabs.at(-1)!.id });
+
+    // The next run uses that tab.
+    await runOnce();
+    expect((await server.api<AppSummary[]>("/api/apps")).length).toBe(before + 1);
+  });
+
+  test("a prompt for a tab that doesn't exist is refused", async () => {
+    await expect(
+      server.api("/api/schedules", {
+        method: "POST",
+        json: { name: "X", trigger: { type: "cron", cron: "0 8 * * *" }, task: { type: "prompt", prompt: "Hi", appId: "nope" }, notify: "never", timeoutSec: 60 },
+      }),
+    ).rejects.toThrow("404");
   });
 });

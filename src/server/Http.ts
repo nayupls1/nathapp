@@ -24,6 +24,7 @@ import {
   type SecretsOverview,
 } from "../shared/api";
 import { topics } from "../shared/hub";
+import { taskTab } from "../shared/schedule";
 import { Settings as SettingsSchema, WorkspaceSettings } from "../shared/settings";
 import { Agent } from "./agent/Agent";
 import { Mcp } from "./agent/Mcp";
@@ -886,6 +887,12 @@ export const ScheduleBody = Schema.Struct({
       input: Schema.optionalKey(str(4000)),
     }),
     Schema.Struct({ type: Schema.Literal("command"), appId: str(64), command: str(2000) }),
+    Schema.Struct({
+      type: Schema.Literal("prompt"),
+      prompt: str(20_000),
+      appId: Schema.optionalKey(str(64)),
+      newTab: Schema.optionalKey(Schema.Struct({ kind: Schema.Literals(["app", "web"]), workspaceId: str(100), url: Schema.optionalKey(str(8000)) })),
+    }),
   ]),
   notify: Schema.Literals(["always", "failure", "never"]),
   timeoutSec: Schema.Finite,
@@ -932,7 +939,7 @@ const scheduleRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const spec = yield* decodeBody(ScheduleBody);
         const schedule = yield* scheduleFail((yield* Scheduler).create(spec, { by: "user" }));
-        yield* youDid(spec.task.appId, "schedule.create", schedule.name);
+        yield* youDid(taskTab(spec.task) ?? (spec.task.type === "prompt" ? `workspace:${spec.task.newTab?.workspaceId}` : null), "schedule.create", schedule.name);
         return json(schedule);
       }),
     ),
@@ -956,7 +963,7 @@ const scheduleRoutes = HttpRouter.addAll([
         const schedule = yield* scheduler.get(yield* param("id"));
         if (!schedule) return yield* fail(404, "Not found");
         yield* scheduler.remove(schedule.id);
-        yield* youDid(schedule.task.appId, "schedule.delete", schedule.name);
+        yield* youDid(taskTab(schedule.task) ?? `workspace:${schedule.workspaceId}`, "schedule.delete", schedule.name);
         return noContent;
       }),
     ),

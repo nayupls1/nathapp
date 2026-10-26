@@ -1,7 +1,8 @@
 // The scheduler: runs things in the background, without a tab open. A
 // schedule uses one of an app's tools (the tool registry, so permissions and
-// the audit log apply as for any call) or runs a command in the app's sandbox,
-// once at a time, on a cron expression, or on an event (NathApp started, an
+// the audit log apply as for any call), runs a command in the app's sandbox,
+// or asks a tab's agent something (a new chat in the tab each run; the agent
+// runs it as if the user had sent it, see setPromptRunner), once at a time, on a cron expression, or on an event (NathApp started, an
 // app started or crashed, or an event an app sends through the app API).
 //
 // Limits: recurring schedules run at most every few minutes, two runs at a
@@ -12,11 +13,12 @@
 // recorded in the audit log.
 import { Cause, Context, Data, Effect, Layer, Semaphore } from "effect";
 import { SqlClient } from "effect/sql";
-import type { Schedule, ScheduleRun, ScheduleSpec, ToolResult } from "../../shared/api";
+import type { Schedule, ScheduleRun, ScheduleSpec, ScheduleTask, ToolResult } from "../../shared/api";
 import { nextCron, parseCron } from "../../shared/cron";
 import { topics } from "../../shared/hub";
-import { scheduleProblem } from "../../shared/schedule";
+import { scheduleProblem, taskTab } from "../../shared/schedule";
 import { Apps } from "../db/Apps";
+import { Workspaces } from "../db/Workspaces";
 import { Hub } from "../Hub";
 import { Audit } from "../security/Audit";
 import { AppTools, type ToolCaller } from "../workspace/AppTools";
@@ -28,6 +30,20 @@ export interface ScheduleCreator {
   readonly by: "user" | "agent";
   /** The tab whose agent made it (its tool calls are made as that agent). */
   readonly tabId?: string;
+}
+
+/** How a run went. */
+export interface Outcome {
+  readonly status: ScheduleRun["status"];
+  readonly message: string;
+  readonly output: string | null;
+}
+
+/** A scheduled prompt to run: in its tab, or in a new one (`opened` is told which, so the schedule keeps it). */
+export interface PromptRun {
+  readonly scheduleName: string;
+  readonly task: Extract<ScheduleTask, { type: "prompt" }>;
+  readonly opened: (tabId: string) => Effect.Effect<void>;
 }
 
 export interface SchedulerShape {
@@ -46,6 +62,8 @@ export interface SchedulerShape {
   readonly emit: (event: string) => Effect.Effect<void>;
   /** The app was deleted: its schedules go too. */
   readonly forgetApp: (appId: string) => Effect.Effect<void>;
+  /** Runs scheduled prompts (the agents sit above the scheduler, so they register it: Agent.make). Interrupted on timeout. */
+  readonly setPromptRunner: (runner: (run: PromptRun) => Effect.Effect<Outcome>) => void;
 }
 
 export class Scheduler extends Context.Service<Scheduler, SchedulerShape>()("nathapp/Scheduler") {}
@@ -106,6 +124,7 @@ const clip = (text: string) => (text.length > MAX_OUTPUT ? `…${text.slice(-MAX
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const apps = yield* Apps;
+  const workspaces = yield* Workspaces;
   const hub = yield* Hub;
   const audit = yield* Audit;
   const appTools = yield* AppTools;
@@ -113,6 +132,7 @@ export const make = Effect.gen(function* () {
   const slots = yield* Semaphore.make(CONCURRENT_RUNS);
   const running = new Set<string>();
   const lastEventRun = new Map<string, number>();
+  let promptRunner: ((run: PromptRun) => Effect.Effect<Outcome>) | null = null;
 
   // Runs that were going when NathApp stopped.
   yield* sql`UPDATE schedule_runs SET status = 'error', message = 'NathApp stopped during the run', finished_at = ${new Date().toISOString()}
@@ -131,11 +151,12 @@ export const make = Effect.gen(function* () {
       const out: Schedule[] = [];
       for (const r of rows) {
         const spec = JSON.parse(r.spec) as ScheduleSpec;
-        const app = yield* apps.get(spec.task.appId);
+        const tab = taskTab(spec.task);
+        const app = tab ? yield* apps.get(tab) : null;
         out.push({
           ...spec,
           id: r.id,
-          workspaceId: app?.workspaceId ?? "",
+          workspaceId: app?.workspaceId ?? (spec.task.type === "prompt" && spec.task.newTab ? spec.task.newTab.workspaceId : ""),
           paused: r.paused === 1,
           createdBy: r.created_by,
           nextRunAt: r.paused ? null : r.next_run_at,
@@ -160,6 +181,12 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const problem = scheduleProblem(spec);
       if (problem) return yield* new ScheduleError({ status: 400, message: problem });
+      if (spec.task.type === "prompt") {
+        // Any tab can be asked (app or web).
+        if (spec.task.appId && !(yield* apps.get(spec.task.appId))) return yield* new ScheduleError({ status: 404, message: "No such tab" });
+        if (spec.task.newTab && !(yield* workspaces.get(spec.task.newTab.workspaceId))) return yield* new ScheduleError({ status: 404, message: "No such workspace" });
+        return null;
+      }
       const app = yield* apps.get(spec.task.appId);
       if (!app || app.kind !== "app") return yield* new ScheduleError({ status: 404, message: "No such app" });
       if (spec.task.type === "tool") {
@@ -172,10 +199,23 @@ export const make = Effect.gen(function* () {
 
   // --- Running --------------------------------------------------------------------------
 
-  type Outcome = { status: ScheduleRun["status"]; message: string; output: string | null };
-
   const perform = (row: ScheduleRow, spec: ScheduleSpec): Effect.Effect<Outcome> => {
     const task = spec.task;
+    if (task.type === "prompt") {
+      if (!promptRunner) return Effect.succeed<Outcome>({ status: "error", message: "Agents aren't available", output: null });
+      // A new tab is opened once; the schedule then runs in it.
+      const opened = (tabId: string) =>
+        Effect.gen(function* () {
+          const current = yield* rowOf(row.id);
+          if (!current) return;
+          const now = JSON.parse(current.spec) as ScheduleSpec;
+          if (now.task.type !== "prompt") return;
+          const { newTab: _, ...rest } = now.task;
+          yield* sql`UPDATE schedules SET spec = ${JSON.stringify({ ...now, task: { ...rest, appId: tabId } })} WHERE id = ${row.id}`;
+          yield* changed;
+        }).pipe(Effect.orDie);
+      return promptRunner({ scheduleName: spec.name, task, opened });
+    }
     if (task.type === "command") {
       return runtime.exec(task.appId, task.command, spec.timeoutSec * 1000).pipe(
         Effect.map(({ code, output, timedOut }) => ({
@@ -234,7 +274,7 @@ export const make = Effect.gen(function* () {
           yield* audit.record({
             actor: "nathapp",
             actorLabel: "Scheduler",
-            tabId: spec.task.appId,
+            tabId: taskTab(spec.task) ?? undefined,
             action: "schedule.run",
             target: spec.name,
             outcome: finished.status === "ok" ? "ok" : "error",
@@ -389,6 +429,10 @@ export const make = Effect.gen(function* () {
       }).pipe(Effect.orDie),
 
     emit,
+
+    setPromptRunner: (runner) => {
+      promptRunner = runner;
+    },
 
     forgetApp: (appId) =>
       Effect.gen(function* () {

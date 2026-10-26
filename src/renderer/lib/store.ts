@@ -216,6 +216,8 @@ function watch(id: string) {
     if (msg.type !== "chat") return;
     const event = msg.event;
     if (event.type === "started") setStates(id, { running: true, draft: "" });
+    // A scheduled prompt started a chat: the current one went to the earlier chats.
+    else if (event.type === "new-chat") setStates(id, { messages: [], draft: "" });
     else if (event.type === "message") addMessage(id, event.message);
     else if (event.type === "delta") setStates(id, "draft", (d) => d + event.text);
     else if (event.type === "done") {

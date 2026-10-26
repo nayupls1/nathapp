@@ -1,7 +1,7 @@
 // Runs agent turns: picks the provider, gives it NathApp's instructions and tools,
 // persists the conversation and pushes everything to the renderer on the hub
 // (topic app:<id>). A turn runs in the background; stopping interrupts it.
-import { Context, Data, Effect, FiberMap, Layer, Stream } from "effect";
+import { Context, Data, Effect, Fiber, FiberMap, Layer, Option, Stream } from "effect";
 import { appTarget, type AgentChoice, type ChatEvent, type ChatMessage, type PageContext, type ProviderId } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { ServerConfig } from "../Config";
@@ -20,7 +20,7 @@ import { Providers } from "../providers/Providers";
 import { AppData } from "../workspace/AppData";
 import { AppTools } from "../workspace/AppTools";
 import { PageChanges } from "../db/PageChanges";
-import { Scheduler } from "../scheduler/Scheduler";
+import { Scheduler, type Outcome, type PromptRun } from "../scheduler/Scheduler";
 import { Projects } from "../workspace/Projects";
 import type { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
@@ -74,6 +74,7 @@ export const make = Effect.gen(function* () {
   const projects = yield* Projects;
   const sandbox = yield* Sandbox;
   const audit = yield* Audit;
+  const scheduler = yield* Scheduler;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
   const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler>();
@@ -225,12 +226,7 @@ export const make = Effect.gen(function* () {
       Effect.ensuring(emit(app.id, { type: "done" })),
     );
 
-  return {
-    isRunning: (appId) => FiberMap.has(running, appId),
-
-    stop: (appId) => FiberMap.remove(running, appId),
-
-    start: (appId, request) =>
+  const start = (appId: string, request: TurnRequest) =>
       Effect.gen(function* () {
         const app = yield* apps.get(appId);
         if (!app) return yield* new AgentError({ status: 404, message: "Not found" });
@@ -254,7 +250,46 @@ export const make = Effect.gen(function* () {
         }
         yield* apps.setAgent(appId, choice);
         yield* FiberMap.run(running, appId, turn(app, choice, request, shared), { onlyIfMissing: true });
-      }),
+      });
+
+  /**
+   * A scheduled prompt: a new chat in its tab (the current one goes to the
+   * tab's earlier chats), the turn as if the user had sent it, and its reply
+   * as the run's output. Stopped if the run times out.
+   */
+  const runPrompt = ({ task, opened }: PromptRun) =>
+    Effect.gen(function* () {
+      const failed = (message: string): Outcome => ({ status: "error", message, output: null });
+      let tabId = task.appId ?? null;
+      if (!tabId) {
+        const space = task.newTab ? yield* workspaces.get(task.newTab.workspaceId) : null;
+        if (!space || !task.newTab) return failed("The workspace is gone");
+        const app = yield* apps.create(space.id, task.newTab.kind, task.newTab.kind === "web" ? (task.newTab.url ?? null) : null);
+        yield* projects.publish(app);
+        yield* opened(app.id);
+        tabId = app.id;
+      }
+      const id = tabId;
+      if (yield* FiberMap.has(running, id)) return failed("The agent was busy in this tab");
+      yield* apps.newChat(id);
+      yield* emit(id, { type: "new-chat" });
+      const started = yield* start(id, { prompt: task.prompt }).pipe(Effect.result);
+      if (started._tag === "Failure") return failed(started.failure.message);
+      const fiber = yield* FiberMap.get(running, id);
+      if (Option.isSome(fiber)) yield* Fiber.await(fiber.value).pipe(Effect.onInterrupt(() => FiberMap.remove(running, id)));
+      // The chat is the turn: its errors, else the agent's last reply.
+      const messages = yield* apps.messages(id);
+      const error = messages.findLast((m) => m.role === "error");
+      if (error) return { status: "error", message: error.content.slice(0, 500), output: null } satisfies Outcome;
+      const reply = messages.findLast((m) => m.role === "assistant")?.content.trim() ?? "";
+      return { status: "ok", message: reply ? reply.split("\n")[0]!.slice(0, 200) : "Done", output: reply || null } satisfies Outcome;
+    }).pipe(Effect.orDie);
+  scheduler.setPromptRunner(runPrompt);
+
+  return {
+    isRunning: (appId) => FiberMap.has(running, appId),
+    stop: (appId) => FiberMap.remove(running, appId),
+    start,
   } satisfies AgentShape;
 });
 

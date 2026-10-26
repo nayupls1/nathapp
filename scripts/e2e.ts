@@ -378,7 +378,7 @@ try {
     return `${tools.length} tools`;
   });
 
-  await check("schedules: created on the page, run now, paused, deleted", async () => {
+  await check("schedules: created on the page, run now, paused, deleted; a prompt for an agent", async () => {
     const choose = (selector: string, value: string) =>
       page!.eval(`(() => {
         const select = document.querySelector(${JSON.stringify(selector)});
@@ -409,6 +409,26 @@ try {
     await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
     await click("[data-confirm-dialog] [data-confirm]");
     await page!.waitFor(`!document.querySelector('${row}')`, { label: "deleted" });
+
+    // A prompt for an agent, in a new web tab (not run: that needs a model).
+    await click("[data-new-schedule]");
+    await page!.waitFor(`!!document.querySelector("[data-schedule-editor]")`, { label: "editor again" });
+    await choose("[data-schedule-task]", "prompt");
+    await page!.waitFor(`!!document.querySelector("[data-schedule-prompt]") && !!document.querySelector("[data-schedule-target]")`, { label: "prompt fields" });
+    await type("[data-schedule-prompt]", "Summarize what's new on the front page");
+    await choose("[data-schedule-target]", "new:web");
+    await page!.waitFor(`!!document.querySelector("[data-schedule-url]")`, { label: "url field" });
+    await type("[data-schedule-url]", "https://example.com");
+    await shot("schedule-prompt.png");
+    await click("[data-save-schedule]");
+    await page!.waitFor(
+      `!document.querySelector("[data-schedule-editor]") && (document.querySelector('${row}')?.innerText ?? "").includes("a new tab (https://example.com)")`,
+      { label: "prompt schedule listed" },
+    );
+    await click(`${row} [data-delete-schedule]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    await page!.waitFor(`!document.querySelector('${row}')`, { label: "prompt schedule deleted" });
     await click(`nav li[data-app-id="${appId}"]`);
   });
 

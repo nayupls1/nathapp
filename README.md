@@ -278,8 +278,9 @@ Data tools write the app's database directly: the app sees the change on its nex
 
 ### Schedules
 
-Schedules run apps' tools and commands in the background, without a tab open (`scheduler/Scheduler.ts`). The Schedules page (sidebar) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
+Schedules run apps' tools and commands in the background, without a tab open, and prompts for a tab's agent (`scheduler/Scheduler.ts`). The Schedules page (sidebar) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
 - **What:** one of an app's tools from the registry, with params; the call goes through the registry's permissions and audit log, as the user (or as the agent that made it). Or a command in the app's sandbox, without its secrets, like `run_command`.
+- **Prompts:** or a prompt for an agent (made by you, not by agents). It runs in a tab of the workspace, or in a new app or web tab opened on its first run, which the schedule then keeps. Each run starts a new chat in that tab (the current chat goes to its earlier chats) and sends the prompt as if you had, so the run can be read and continued there; its tools ask for permissions as usual. A run fails if the tab's agent is busy, and the agent is stopped at the time limit. The run's result is the agent's last reply, or its error.
 - **When:**
   - once at a time;
   - a cron expression in local time (`0 8 * * 1-5`);

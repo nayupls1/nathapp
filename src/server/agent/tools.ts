@@ -448,7 +448,7 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
     });
   });
   const describe = (s: Schedule) =>
-    `- ${s.id}: ${s.name}${s.paused ? " [paused]" : ""} — ${describeTrigger(s.trigger)} — ${s.task.type === "tool" ? `tool ${s.task.tool}` : `command: ${s.task.command}`}${
+    `- ${s.id}: ${s.name}${s.paused ? " [paused]" : ""} — ${describeTrigger(s.trigger)} — ${s.task.type === "tool" ? `tool ${s.task.tool}` : s.task.type === "command" ? `command: ${s.task.command}` : `prompt: ${s.task.prompt.slice(0, 80)}`}${
       s.nextRunAt ? `; next ${s.nextRunAt}` : ""
     }${s.lastRun ? `; last run ${s.lastRun.status}: ${s.lastRun.message}` : ""}`;
 
