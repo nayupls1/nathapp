@@ -1455,7 +1455,7 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool", "agent.schedule", "agent.tab"] as const satisfies readonly PermissionAction[];
+const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool", "agent.schedule", "agent.tab", "agent.browse"] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(

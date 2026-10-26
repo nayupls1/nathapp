@@ -41,6 +41,8 @@ export interface AskInput {
   readonly title: string;
   readonly detail: string;
   readonly timeoutMs: number;
+  /** Asked every time: the answer is never remembered (confirming one action). */
+  readonly once?: boolean;
 }
 
 export interface PermissionsShape {
@@ -131,7 +133,7 @@ export const make = Effect.gen(function* () {
 
     ask: (input) =>
       Effect.gen(function* () {
-        const known = yield* decision(input.subject, input.action, input.resource);
+        const known = input.once ? null : yield* decision(input.subject, input.action, input.resource);
         if (known) return known === "allow";
         // The same question asked twice while waiting gets the same answer.
         let entry = [...waiting.values()].find(
@@ -147,6 +149,7 @@ export const make = Effect.gen(function* () {
             resource: input.resource,
             title: input.title,
             detail: input.detail,
+            ...(input.once ? { once: true } : {}),
             createdAt: new Date().toISOString(),
           };
           entry = { request, deferred: yield* Deferred.make<boolean>() };
@@ -181,6 +184,8 @@ export const make = Effect.gen(function* () {
         const entry = waiting.get(id);
         if (!entry) return false;
         const { request } = entry;
+        // Confirmations of one action are never remembered.
+        if (request.once) remember = false;
         const forWorkspace = remember === "workspace" && request.workspace;
         if (remember) {
           const subject = forWorkspace ? workspaceScope(request.workspace!.id) : request.subject;

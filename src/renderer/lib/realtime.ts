@@ -30,6 +30,13 @@ export function handleRpc(method: string, fn: RpcHandler) {
   rpcHandlers.set(method, fn);
 }
 
+// For the e2e checks: what the server's requests to the window do, without an agent turn.
+(window as unknown as { __nathappRpc?: (method: string, params: unknown) => unknown }).__nathappRpc = (method, params) => {
+  const fn = rpcHandlers.get(method);
+  if (!fn) throw new Error(`Unknown request: ${method}`);
+  return fn(params);
+};
+
 socket.onRpc = (method, params) => {
   const fn = rpcHandlers.get(method);
   if (!fn) throw new Error(`Unknown request: ${method}`);

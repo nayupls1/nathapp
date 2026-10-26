@@ -785,7 +785,7 @@ export interface NetworkRule {
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule" | "agent.tab";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule" | "agent.tab" | "agent.browse" | "agent.confirm";
 
 export interface PermissionGrant {
   id: number;
@@ -811,6 +811,8 @@ export interface PermissionRequest {
   resource: string;
   title: string;
   detail: string;
+  /** Confirms one action: there's no remembering the answer. */
+  once?: boolean;
   createdAt: string;
 }
 

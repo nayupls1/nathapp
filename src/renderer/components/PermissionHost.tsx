@@ -19,6 +19,8 @@ const icons: Record<PermissionRequest["action"], string> = {
   "app.tool": "wrench",
   "agent.schedule": "calendar-clock",
   "agent.tab": "app-window",
+  "agent.browse": "mouse-pointer-click",
+  "agent.confirm": "shield-alert",
 };
 
 /** Mount once at the app root. */
@@ -55,10 +57,12 @@ function Prompt(props: { request: PermissionRequest; more: number }) {
             </div>
           </div>
           <p {...stylex.attrs(styles.detail)}>{props.request.detail}</p>
-          <label {...stylex.attrs(styles.remember)}>
-            <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} data-remember />
-            Remember my choice (you can change it in Settings → Permissions)
-          </label>
+          <Show when={!props.request.once}>
+            <label {...stylex.attrs(styles.remember)}>
+              <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} data-remember />
+              Remember my choice (you can change it in Settings → Permissions)
+            </label>
+          </Show>
           <Show when={showWorkspaceOption()}>
             <label {...stylex.attrs(styles.remember, styles.indented)}>
               <input type="checkbox" checked={wholeWorkspace()} onChange={(e) => setWholeWorkspace(e.currentTarget.checked)} data-remember-workspace />

@@ -81,6 +81,12 @@ const site = Bun.serve({
     const body =
       path === "/feed"
         ? feedPage
+        : path === "/act"
+        ? `<title>Act page</title><h1>Act</h1><form action="/act-done"><input id="q" name="q"><button id="go">Search</button></form>
+           <select id="size"><option>S</option><option>M</option></select><input type="checkbox" id="gift">
+           <button id="next" onclick="document.getElementById('out').textContent = 'clicked next ' + event.isTrusted">Next</button><p id="out"></p>`
+        : path === "/act-done"
+        ? `<title>Searched</title><h1>Results for ${url.searchParams.get("q")}</h1>`
         : path === "/form"
         ? `<title>Form page</title><h1>Form</h1><div style="height:2400px"></div><input id="note" value=""><textarea id="long"></textarea><input id="pw" type="password">`
         : path === "/second"
@@ -1055,6 +1061,49 @@ try {
     await type(appTab, "");
     if (wasHidden) await click(`${appTab} [data-agent-hide]`);
     return "mentioned, shared, unshared; web page refused for the app builder";
+  });
+
+  await check("browse: the website agent's clicks, typing and keys are real input in the tab", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+    await newTab("New web tab");
+    const tabId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "web tab in the sidebar" },
+    );
+    const tab = `[data-web-tab="${tabId}"]`;
+    const rpc = <T>(method: string, params: object = {}) => page!.eval<T>(`window.__nathappRpc(${JSON.stringify(method)}, ${JSON.stringify({ tabId, ...params })})`);
+    const inPage = <T>(code: string) => page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+    await page!.waitFor(`!!document.querySelector('${tab} [data-address]')`, { label: "address bar" });
+    await rpc("page.navigate", { url: `${site.url.origin}/act` });
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${tabId}"]')?.innerText.includes("Act page")`, { timeoutMs: 20_000, label: "act page" });
+
+    // Found by its text, clicked with a real (trusted) click, shown where it happened.
+    const next = await rpc<{ x: number; y: number; label: string }>("page.target", { text: "Next" });
+    if (next.label !== "Next") throw new Error(`found ${JSON.stringify(next)}`);
+    await rpc("page.act", { kind: "click", x: next.x, y: next.y });
+    await page!.waitFor(`!!document.querySelector('${tab} [data-agent-marker]')`, { label: "click marker" });
+    await shot("browse-click.png");
+    await waitForValue(async () => ((await inPage<string>(`document.querySelector("#out").textContent`)) === "clicked next true" ? true : undefined));
+
+    // Typed into a field, then Enter submits its form.
+    const field = await rpc<{ x: number; y: number; form: { action: string } | null }>("page.target", { selector: "#q" });
+    if (!field.form?.action.endsWith("/act-done")) throw new Error(`form: ${JSON.stringify(field.form)}`);
+    await rpc("page.act", { kind: "type", x: field.x, y: field.y, value: "socks", clear: true });
+    const typed = await inPage<string>(`document.querySelector("#q").value`);
+    if (typed !== "socks") throw new Error(`typed ${JSON.stringify(typed)}`);
+    await rpc("page.act", { kind: "key", key: "Enter" });
+    const settled = await rpc<{ url: string; title: string }>("page.settle");
+    if (!settled.url.includes("/act-done?q=socks")) throw new Error(`after Enter: ${settled.url}`);
+
+    // A select and a checkbox filled in.
+    await rpc("page.navigate", { url: `${site.url.origin}/act` });
+    await rpc("page.act", { kind: "fill", selector: "#size", x: 0, y: 0, value: "M" });
+    await rpc("page.act", { kind: "fill", selector: "#gift", x: 0, y: 0, value: "true" });
+    const filled = await inPage<string>(`document.querySelector("#size").value + "|" + document.querySelector("#gift").checked`);
+    if (filled !== "M|true") throw new Error(`filled ${filled}`);
+    if (!(await rpc<boolean>("page.waitFor", { text: "act", timeoutMs: 1000 }))) throw new Error("wait_for didn't see the page");
+    await apiCall(`/api/apps/${tabId}`, { method: "DELETE" });
+    return "clicked (trusted), typed and submitted with Enter, filled a select and a checkbox";
   });
 
   await check("network: requests with their data, credentials hidden, sent again, saved, blocked", async () => {

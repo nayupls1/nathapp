@@ -299,7 +299,9 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 - an app reading another app's data;
 - an app (or its agent) using another app's tools;
 - an app's agent creating schedules (once per app);
-- the website agent customizing a site or changing pages (per host or pattern).
+- the website agent customizing a site or changing pages (per host or pattern);
+- the website agent using a site for you (per host), and each action with consequences (every time);
+- an agent reading another tab.
 
 NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
 
@@ -326,6 +328,14 @@ open page and saves changes that apply on every visit. It gets only the page too
 - **Visible:** the paintbrush in the address bar lists every change on the page (and the site's CSS/JS override) with a switch and a remove button, and Settings → Web tabs lists all of them. Turning one off undoes it in place; only scripts need a reload, since what they did can't be taken back.
 - **Tools:** the website agent uses `add_page_change`, `update_page_change`, `remove_page_change` and `list_page_changes`, and asks per site or pattern first (`agent.site`). The API is `/api/page-changes`.
 - **History:** changes are part of the site customizations' snapshots (`@changes/<id>.json`).
+
+**Using pages for you.** The website agent can also do things on the web: open pages, click, type, fill in forms, press keys, scroll and wait for content (`agent/browseTools.ts`), with real input events in the tab you're looking at, so it works with your logins there.
+- **Every action names its element first** (by selector, visible text or a point on a screenshot; `lib/browse.ts` finds it in the page), so NathApp can check it before anything happens.
+- **Your OK per site:** acting on a site with your session asks once per site (`agent.browse`, rememberable in Settings → Permissions).
+- **Confirmation every time** for what has consequences: clicking or submitting something that buys, pays, books, sends, posts, subscribes or deletes, submitting a form that takes card details, and typing card details (`agent.confirm`, never remembered). The agent asks for anything else with consequences itself (`confirm_action`). Passwords are never typed: you sign in yourself.
+- **Visible:** a marker shows where it clicks or types, and a banner says the agent is using the page, with **Take over**, which stops it.
+- **App actions:** what it finds can go into your apps with `use_app_tool` (after your OK for that app's tool).
+- **Limits:** the checks read the element's text, name and form, so a site that labels "Buy" as an icon only can slip past the confirmation (the agent is told to use `confirm_action` then). `run_js` can still change a page directly; it's meant for exploring.
 
 The older **site override** (one stylesheet and script per hostname, `set_site_override`) still exists for larger reworks.
 

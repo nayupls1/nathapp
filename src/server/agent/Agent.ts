@@ -27,6 +27,7 @@ import { Sandbox } from "../workspace/Sandbox";
 import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
+import { browseTools } from "./browseTools";
 import { networkTools } from "./networkTools";
 import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
 import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools, type ToolEnv } from "./tools";
@@ -140,6 +141,7 @@ export const make = Effect.gen(function* () {
       const tools = web
         ? [
             ...(yield* Effect.provide(pageTools(env, { site: true }), context)),
+            ...(yield* Effect.provide(browseTools(env), context)),
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),

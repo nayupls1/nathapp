@@ -9,13 +9,14 @@ import { createEffect, createSignal, For, on, onCleanup, Show, untrack } from "s
 import { DEFAULT_WORKSPACE, webPartition, type ElementInfo, type PageContext } from "../../shared/api";
 import { isExtensionUrl } from "../../shared/extensions";
 import { hostOf, normalizeUrl, overrideScript, pageChangeHandlerScript, pageChangesCss, pageChangesScript, scopeMatches } from "../../shared/web";
+import { fillScript, focusScript, keyCodeOf, scrollScript } from "../lib/browse";
 import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { settings } from "../lib/settings";
 import { sendWithShares } from "../lib/sharing";
-import { appById, isAgentCollapsed, setAgentCollapsed, states, updatePage } from "../lib/store";
+import { appById, isAgentCollapsed, setAgentCollapsed, states, stopAgent, updatePage } from "../lib/store";
 import { showExtensionSettings } from "../lib/extensions";
-import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type PageInfo } from "../lib/webtabs";
+import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type BrowseAction, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip } from "./Chat";
 import type { MenuPosition } from "./ContextMenu";
@@ -23,6 +24,7 @@ import { openExtensionImport } from "./ExtensionImport";
 import { ExtensionsBar } from "./ExtensionsBar";
 import { Icon } from "./Icon";
 import { NetworkPanel } from "./NetworkPanel";
+import { toast } from "./Toast";
 import { changesFor, PageChangesPopover } from "./PageChanges";
 
 export function WebTab(props: { appId: string; active: boolean }) {
@@ -54,6 +56,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
   let addressInput!: HTMLInputElement;
   let ready = false;
   let editing = false;
+  /** Where to go once the webview is ready (asked for before it was). */
+  let pendingUrl: string | null = null;
 
   // --- Loading ---------------------------------------------------------------------
 
@@ -87,7 +91,9 @@ export function WebTab(props: { appId: string; active: boolean }) {
     if (!target) return false;
     setAddress(target);
     if (!src()) setSrc(target); // creates the webview
-    else webview?.loadURL(target).catch(() => {}); // failures show up as did-fail-load
+    // Its first page is still on its way: loadURL would throw until it's ready.
+    else if (!webview || !ready) pendingUrl = target;
+    else webview.loadURL(target).catch(() => {}); // failures show up as did-fail-load
     return true;
   }
 
@@ -276,6 +282,81 @@ export function WebTab(props: { appId: string; active: boolean }) {
     void sendWithShares(props.appId, prompt, page);
   }
 
+  // --- The website agent using the page (agent/browseTools.ts) ------------------------
+
+  // Shown while the agent acts in this turn: where it clicks or types, and a way to take over.
+  const [acting, setActing] = createSignal(false);
+  const [marker, setMarker] = createSignal<{ x: number; y: number; key: number } | null>(null);
+  createEffect(
+    on(
+      () => state()?.running,
+      (running) => {
+        if (!running) {
+          setActing(false);
+          setMarker(null);
+        }
+      },
+    ),
+  );
+  const mark = (x: number, y: number) => {
+    setActing(true);
+    const key = Date.now();
+    setMarker({ x, y, key });
+    setTimeout(() => setMarker((m) => (m?.key === key ? null : m)), 1200);
+  };
+  const takeOver = () => {
+    void stopAgent(props.appId);
+    setActing(false);
+    toast({ message: "You have the page. The agent stopped.", kind: "info" });
+  };
+
+  async function act(action: BrowseAction) {
+    const view = requireReady();
+    const click = (x: number, y: number) => {
+      view.sendInputEvent({ type: "mouseMove", x, y });
+      view.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 });
+      view.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 });
+    };
+    switch (action.kind) {
+      case "click":
+        mark(action.x, action.y);
+        click(action.x, action.y);
+        return true;
+      case "type":
+        mark(action.x, action.y);
+        await view.executeJavaScript(focusScript(action.x, action.y, action.clear));
+        await view.insertText(action.value);
+        return true;
+      case "fill": {
+        mark(action.x, action.y);
+        const error = (await view.executeJavaScript(fillScript(action.selector, action.value))) as string | null;
+        if (error) throw new Error(error);
+        return true;
+      }
+      case "key": {
+        setActing(true);
+        const keyCode = keyCodeOf(action.key);
+        view.sendInputEvent({ type: "keyDown", keyCode });
+        // Enter and printable keys also type a character (that's what submits a form).
+        const char = keyCode === "Enter" ? "\r" : keyCode === "Space" ? " " : keyCode.length === 1 ? keyCode : null;
+        if (char) view.sendInputEvent({ type: "char", keyCode: char });
+        view.sendInputEvent({ type: "keyUp", keyCode });
+        return true;
+      }
+      case "scroll":
+        setActing(true);
+        return view.executeJavaScript(scrollScript(action.direction, action.pixels, action.selector));
+    }
+  }
+
+  /** After an action: a navigation it started has loaded (or nothing happened for a moment). */
+  async function settle() {
+    await new Promise((r) => setTimeout(r, 400));
+    if (loading()) await waitForLoad(15_000);
+    await loadApplied;
+    return info();
+  }
+
   // --- The page handle (agent RPC, shortcuts) --------------------------------------
 
   const unregister = registerPage(props.appId, {
@@ -322,6 +403,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
         return false;
       }
     },
+    act,
+    settle,
   });
   onCleanup(unregister);
 
@@ -364,6 +447,11 @@ export function WebTab(props: { appId: string; active: boolean }) {
     view.addEventListener("dom-ready", () => {
       const first = !ready;
       ready = true;
+      if (pendingUrl) {
+        const url = pendingUrl;
+        pendingUrl = null;
+        view.loadURL(url).catch(() => {});
+      }
       if (first) {
         setContentsId(view.getWebContentsId());
         pagesChanged();
@@ -508,6 +596,18 @@ export function WebTab(props: { appId: string; active: boolean }) {
           <Show when={picking()}>
             <div {...stylex.attrs(styles.banner)}>Click an element to pick it · Esc to cancel</div>
           </Show>
+          <Show when={marker()} keyed>
+            {(m) => <span {...stylex.attrs(styles.marker)} style={{ left: `${m.x}px`, top: `${m.y}px` }} data-agent-marker />}
+          </Show>
+          <Show when={acting() && state()?.running}>
+            <div {...stylex.attrs(styles.agentBanner)} data-agent-acting>
+              <span {...stylex.attrs(styles.runningDot)} />
+              The agent is using this page
+              <button type="button" onClick={takeOver} {...stylex.attrs(styles.bannerButton)} data-take-over>
+                Take over
+              </button>
+            </div>
+          </Show>
           <Show when={loadError()}>
             <div {...stylex.attrs(styles.banner, styles.bannerError)}>
               {loadError()}
@@ -584,6 +684,11 @@ function StartPage(props: { onGo: (input: string) => boolean }) {
 const progress = stylex.keyframes({
   "0%": { transform: "translateX(-100%)" },
   "100%": { transform: "translateX(250%)" },
+});
+
+const ping = stylex.keyframes({
+  "0%": { transform: "scale(0.6)", opacity: 1 },
+  "100%": { transform: "scale(1.6)", opacity: 0 },
 });
 
 const pulse = stylex.keyframes({
@@ -725,6 +830,42 @@ const styles = stylex.create({
     pointerEvents: "none",
   },
   bannerError: { backgroundColor: colors.danger, pointerEvents: "auto" },
+  agentBanner: {
+    position: "absolute",
+    bottom: space.md,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 3,
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    paddingBlock: 6,
+    paddingLeft: space.md,
+    paddingRight: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.text,
+    color: colors.bg,
+    fontSize: font.sm,
+    fontWeight: 500,
+    boxShadow: "0 4px 14px rgb(0 0 0 / 0.22)",
+  },
+  marker: {
+    position: "absolute",
+    zIndex: 3,
+    width: 28,
+    height: 28,
+    marginLeft: -14,
+    marginTop: -14,
+    borderRadius: radius.full,
+    borderWidth: 3,
+    borderStyle: "solid",
+    borderColor: colors.accent,
+    backgroundColor: colors.accentSoft,
+    pointerEvents: "none",
+    animationName: ping,
+    animationDuration: "1.2s",
+    animationFillMode: "forwards",
+  },
   bannerButton: {
     paddingBlock: 2,
     paddingInline: space.sm,

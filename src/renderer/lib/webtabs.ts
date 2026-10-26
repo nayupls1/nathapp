@@ -10,6 +10,7 @@ import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
 import { appById, isTab, newWebTab, openTab, selectedId, toggleAgent } from "./store";
+import { targetScript, waitForScript, type Locator } from "./browse";
 import { readPageScript, type SavedPage } from "./pagestate";
 import { toggleSidebar } from "./layout";
 
@@ -52,7 +53,18 @@ export interface PageHandle {
   saveState: () => Promise<SavedPage | null>;
   /** Something the user would notice going away is happening (sound playing). */
   busy: () => boolean;
+  /** Web tabs: an action of the website agent, with real input events (lib/browse.ts). */
+  act?: (action: BrowseAction) => Promise<unknown>;
+  /** Web tabs: waits for what an action started (a navigation) to finish. */
+  settle?: () => Promise<PageInfo>;
 }
+
+export type BrowseAction =
+  | { kind: "click"; x: number; y: number }
+  | { kind: "type"; x: number; y: number; value: string; clear: boolean }
+  | { kind: "fill"; selector: string; x: number; y: number; value: string }
+  | { kind: "key"; key: string }
+  | { kind: "scroll"; direction: "down" | "up"; pixels: number | null; selector: string | null };
 
 const pages = new Map<string, PageHandle>();
 // Bumped when pages come and go or get their webContents (extensions follow the tabs).
@@ -122,6 +134,18 @@ handleRpc("page.eval", async ({ tabId, code }) => (await page(tabId)).eval(Strin
 handleRpc("page.capture", async ({ tabId }) => (await page(tabId)).capture());
 handleRpc("page.navigate", async ({ tabId, url }) => (await page(tabId)).navigate(String(url)));
 handleRpc("page.reload", async ({ tabId }) => (await page(tabId)).reload());
+// The website agent's browse tools (agent/browseTools.ts): find the element, then act on it.
+const browsing = async (tabId: unknown) => {
+  const handle = await page(tabId);
+  if (!handle.act || !handle.settle) throw new Error("Only web pages can be used this way");
+  return handle as PageHandle & Required<Pick<PageHandle, "act" | "settle">>;
+};
+handleRpc("page.target", async (params) => (await browsing(params.tabId)).eval(targetScript(params as Locator)));
+handleRpc("page.act", async (params) => (await browsing(params.tabId)).act(params as unknown as BrowseAction));
+handleRpc("page.settle", async ({ tabId }) => (await browsing(tabId)).settle());
+handleRpc("page.waitFor", async ({ tabId, text, selector, timeoutMs }) =>
+  (await browsing(tabId)).eval(waitForScript((text as string | null) ?? null, (selector as string | null) ?? null, Math.min(Number(timeoutMs) || 10_000, 60_000))),
+);
 // read_tab (shared tab context): what another tab's page shows, as text.
 handleRpc("page.read", async ({ tabId }) => (await page(tabId)).eval(readPageScript));
 // The agent just saved the site's customization: apply the fresh version (the

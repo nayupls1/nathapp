@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Exit, ManagedRuntime, Schema, Scope } from "effect";
 import { make, tool, type Tool } from "../src/server/agent/Mcp";
-import { appTools, pageTools, registryTools, scheduleTools, siteTools } from "../src/server/agent/tools";
+import { browseTools } from "../src/server/agent/browseTools";
+import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools } from "../src/server/agent/tools";
 import { readConfig } from "../src/server/Config";
 import { core } from "../src/server/services";
 
@@ -67,7 +68,15 @@ describe("mcp", () => {
   test("every NathApp tool has an object input schema", async () => {
     const tools = await runtime.runPromise(
       Effect.gen(function* () {
-        return [...(yield* pageTools(env, { site: true })), ...(yield* siteTools(env)), ...(yield* appTools(env)), ...(yield* registryTools(env)), ...(yield* scheduleTools(env))];
+        return [
+          ...(yield* pageTools(env, { site: true })),
+          ...(yield* browseTools(env)),
+          ...(yield* siteTools(env)),
+          ...(yield* appTools(env)),
+          ...(yield* registryTools(env)),
+          ...(yield* scheduleTools(env)),
+          ...(yield* tabTools(env)),
+        ];
       }),
     );
     const s = await session(tools);
