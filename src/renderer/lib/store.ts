@@ -71,20 +71,25 @@ export const isLoaded = (id: string) => opened().includes(id);
 /** Unmounts a tab's page (lib/unload.ts saves its state first). Opening it mounts it again. */
 export const unmountTab = (id: string) => setOpened(opened().filter((x) => x !== id));
 
-// Whether the agent panel is hidden, per tab. For apps with a project it's
-// their mode: the panel is open exactly while the app is being edited (dev
-// server), and closing it means done (built and started). Other tabs
-// remember it across restarts.
-const COLLAPSED_KEY = "nathapp.agentCollapsed";
-const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>(
+// Whether the agent sidebar is open, per tab. It's open by default only where
+// it's needed: a new app tab, to describe the app. For apps with a project
+// it's their mode: open exactly while the app is being edited (dev server),
+// and closing it means done (built and started; NathApp starts them done).
+// Other tabs (web pages) start closed and remember being opened, also across
+// restarts, until it's closed again.
+const OPEN_KEY = "nathapp.agentOpen";
+localStorage.removeItem("nathapp.agentCollapsed"); // before: open by default, closed remembered
+const [openChoice, setOpenChoice] = createSignal<Record<string, boolean>>(
   (() => {
     try {
-      return JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "{}");
+      return JSON.parse(localStorage.getItem(OPEN_KEY) ?? "{}");
     } catch {
       return {};
     }
   })(),
 );
+/** Open unless chosen otherwise: new app tabs (nothing built yet). */
+const openByDefault = (id: string) => appById(id)?.kind === "app" && !states[id]?.project;
 
 /** A mode switch asked for and not answered yet, shown already. */
 const [pendingModes, setPendingModes] = createStore<Record<string, AppMode>>({});
@@ -92,7 +97,7 @@ const followsMode = (id: string) => appById(id)?.kind === "app" && !!states[id]?
 /** The app's mode, including a switch on its way. */
 export const appMode = (id: string): AppMode => pendingModes[id] ?? states[id]?.runtime?.mode ?? "dev";
 
-export const isAgentCollapsed = (id: string) => (followsMode(id) ? appMode(id) === "live" : !!collapsed()[id]);
+export const isAgentCollapsed = (id: string) => (followsMode(id) ? appMode(id) === "live" : !(openChoice()[id] ?? openByDefault(id)));
 
 /** Editing (dev server, agent open) or done (built and started, agent hidden). */
 export async function setAppMode(id: string, mode: AppMode) {
@@ -107,11 +112,11 @@ export async function setAppMode(id: string, mode: AppMode) {
 
 export function setAgentCollapsed(id: string, value: boolean) {
   if (followsMode(id)) return void setAppMode(id, value ? "live" : "dev").catch((err) => console.error("Switching the mode failed:", err));
-  const next = { ...collapsed() };
-  if (value) next[id] = true;
-  else delete next[id];
-  setCollapsed(next);
-  localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+  const next = { ...openChoice() };
+  if (!value === openByDefault(id)) delete next[id];
+  else next[id] = !value;
+  setOpenChoice(next);
+  localStorage.setItem(OPEN_KEY, JSON.stringify(next));
 }
 
 export const toggleAgent = (id: string) => setAgentCollapsed(id, !isAgentCollapsed(id));

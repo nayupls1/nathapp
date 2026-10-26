@@ -248,6 +248,8 @@ try {
       `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
       { label: "new app in the sidebar" },
     );
+    // A new app tab opens with the agent sidebar, ready to describe the app.
+    await page!.waitFor(`!!document.querySelector('[data-agent-for="${appId}"] textarea')`, { label: "agent sidebar open on a new app" });
     await click("[data-agent-picker]");
     await page!.waitFor(`!!document.querySelector("[data-agent-popover]")`, { label: "picker popover" });
     const rail = await page!.eval<number>(`document.querySelectorAll("[data-agent-popover] [data-provider]").length`);
@@ -907,6 +909,29 @@ try {
     );
     await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     return "picked, customized, popup";
+  });
+
+  await check("agent sidebar: closed on web tabs until opened (Ctrl+J), remembered per tab", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+    await newTab("New web tab");
+    const tabId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "web tab in the sidebar" },
+    );
+    await page!.waitFor(`!!document.querySelector('[data-web-tab="${tabId}"] [data-address]')`, { label: "web tab" });
+    if (await page!.eval<boolean>(`!!document.querySelector("[data-agent-sidebar]")`)) throw new Error("the agent sidebar is open on a new web tab");
+    const ctrlJ = () => page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true })), true`);
+    await ctrlJ();
+    await page!.waitFor(`!!document.querySelector('[data-agent-for="${tabId}"]')`, { label: "opened with Ctrl+J" });
+    // Another tab and back: still open for this one.
+    await click(`nav li[data-app-id="${webTabId}"]`);
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${tabId}"]').getAttribute("aria-current") !== "page"`, { label: "other tab" });
+    await click(`nav li[data-app-id="${tabId}"]`);
+    await page!.waitFor(`!!document.querySelector('[data-agent-for="${tabId}"]')`, { label: "still open" });
+    await ctrlJ();
+    await page!.waitFor(`!document.querySelector("[data-agent-sidebar]")`, { label: "closed with Ctrl+J" });
+    await apiCall(`/api/apps/${tabId}`, { method: "DELETE" });
+    return "closed by default, opened, remembered, closed";
   });
 
   await check("page changes: hide, rewrite, insert, buttons; dynamic content, toggles, removal, reloads", async () => {

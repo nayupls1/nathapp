@@ -160,6 +160,9 @@ export const make = Effect.gen(function* () {
 
     setMode: (id: string, mode: AppMode) => sql`UPDATE apps SET mode = ${mode} WHERE id = ${id}`.pipe(Effect.asVoid),
 
+    /** When NathApp starts, apps left being edited are done: no agent is working on them anymore. */
+    finishEditing: () => sql`UPDATE apps SET mode = 'live' WHERE kind = 'app' AND mode = 'dev'`.pipe(Effect.asVoid),
+
     touch: (id: string) => touch(id).pipe(Effect.asVoid),
 
     /** Copies a tab's name, icon, URL and agent settings (not its chat) to a new tab. */
