@@ -1,16 +1,13 @@
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, For, Match, on, onMount, Show, Switch } from "solid-js";
-import { ActivityPage } from "./components/ActivityPage";
 import { AgentSidebar } from "./components/AgentSidebar";
 import { AppTab } from "./components/AppTab";
 import { CommandBar } from "./components/CommandBar";
 import { ConfirmHost } from "./components/ConfirmDialog";
 import { ExtensionImportHost } from "./components/ExtensionImport";
-import { HistoryPage } from "./components/History";
 import { PermissionHost } from "./components/PermissionHost";
-import { ModReviewHost, ModsPage } from "./components/ModsPage";
-import { SchedulesPage } from "./components/SchedulesPage";
-import { SettingsPage } from "./components/SettingsPage";
+import { ModReviewHost } from "./components/ModsPage";
+import { SettingsShell } from "./components/SettingsPage";
 import { paneStyle, SplitChrome, SplitDropZones } from "./components/SplitView";
 import { visibleTabs } from "./lib/splits";
 import { Sidebar } from "./components/Sidebar";
@@ -23,7 +20,7 @@ import { startUnloading } from "./lib/unload";
 import { startWindowChrome } from "./lib/windowChrome";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
-import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, MODS_VIEW, SCHEDULES_VIEW, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
+import { currentWorkspace, HISTORY_VIEW, isSettingsView, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, workspaceTabs } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -89,20 +86,8 @@ export default function App() {
               </div>
             }
           >
-            <Match when={selectedId() === SETTINGS_VIEW}>
-              <SettingsPage />
-            </Match>
-            <Match when={selectedId() === ACTIVITY_VIEW}>
-              <ActivityPage />
-            </Match>
-            <Match when={selectedId() === HISTORY_VIEW}>
-              <HistoryPage />
-            </Match>
-            <Match when={selectedId() === SCHEDULES_VIEW}>
-              <SchedulesPage />
-            </Match>
-            <Match when={selectedId() === MODS_VIEW}>
-              <ModsPage />
+            <Match when={isSettingsView(selectedId())}>
+              <SettingsShell view={selectedId()!} />
             </Match>
             <Match when={openTabs().some((t) => t.id === selectedId())}>{null}</Match>
           </Switch>

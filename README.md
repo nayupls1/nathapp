@@ -66,7 +66,7 @@ tests/               bun:test tests
 
 ### Workspaces
 
-Workspaces keep projects and contexts apart, like Zen Browser's: each is a collection of tabs, shown as icons at the bottom of the tab sidebar. Click one to switch (or Ctrl+Alt+1…9, also from inside web pages), "+" makes a new one, dragging an icon reorders them (`PUT /api/workspaces/order`), dropping a tab on one moves the tab there, and an icon's menu renames it, changes its icon, moves it or deletes it. The current workspace's name is at the top of the sidebar. Each has:
+Workspaces keep projects and contexts apart, like Zen Browser's: each is a collection of tabs, shown as icons at the bottom of the tab sidebar. Click one to switch (or Ctrl+Alt+1…9, also from inside web pages), "+" makes a new one (and asks for its name), dragging an icon reorders them (`PUT /api/workspaces/order`), dropping a tab on one moves the tab there, and an icon's menu renames it, changes its icon, moves it or deletes it. The current workspace's icon is the highlighted one (its name is in the tooltip). Each has:
 - its own tabs. Tabs can be moved between workspaces (tab menu → Move to);
 - its own default agent and instructions, added after the global ones (Settings → Workspace);
 - secrets every app in it gets (an app's own secret of the same name wins);
@@ -193,7 +193,7 @@ GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
 
 ### History
 
-Every change is saved as a snapshot you can look at and take back (History page in the sidebar; the clock button in an app tab). A snapshot covers one of:
+Every change is saved as a snapshot you can look at and take back (Settings → History; the clock button in an app tab). A snapshot covers one of:
 - an **app**: its project files (without `node_modules`, builds, `.git`) and its data (see App data). SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
 - the **site customizations** and **page changes** the website agent (or you) made;
 - NathApp's **settings**, including each workspace's.
@@ -226,9 +226,13 @@ It's resized like the tab sidebar: drag its left edge (or use the arrow keys on 
 
 ### Sidebar
 
-The sidebar collapses to a column of icons (the button next to the workspace, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
+The sidebar is the tabs and the workspaces. At the top, "New tab" (the strip around it drags the window). At the very bottom, one row: the collapse button on the left, the workspaces' icons centered, Settings on the right.
 
-Its pages (History, Schedules, Mods, Activity, Settings) are a row of icon buttons at the bottom, each named by its tooltip and label (a column when the sidebar is collapsed).
+It collapses to a column of icons (the collapse button, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
+
+### Settings
+
+Settings has a sidebar of its own on the left, one category at a time on the right (`components/SettingsPage.tsx`, the list in `lib/settingsSections.ts`): Appearance, Workspace, Agent, Providers, Apps, Web tabs, Network, Extensions, Secrets, Permissions, About, and NathApp's pages: History, Schedules, Mods and Activity. Each category is also in the command bar ("Settings: Apps"), and the pages keep their own commands ("Open History").
 
 Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in their menu). The order is saved per workspace (`PUT /api/workspaces/:id/order`); new tabs, copies and tabs moved in from another workspace go last.
 
@@ -286,7 +290,7 @@ Data tools write the app's database directly: the app sees the change on its nex
 
 ### Schedules
 
-Schedules run apps' tools and commands in the background, without a tab open, and prompts for a tab's agent (`scheduler/Scheduler.ts`). The Schedules page (sidebar) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
+Schedules run apps' tools and commands in the background, without a tab open, and prompts for a tab's agent (`scheduler/Scheduler.ts`). The Schedules page (in Settings) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
 - **What:** one of an app's tools from the registry, with params; the call goes through the registry's permissions and audit log, as the user (or as the agent that made it). Or a command in the app's sandbox, without its secrets, like `run_command`.
 - **Prompts:** or a prompt for an agent (made by you, not by agents). It runs in a tab of the workspace, or in a new app or web tab opened on its first run, which the schedule then keeps. Each run starts a new chat in that tab (the current chat goes to its earlier chats) and sends the prompt as if you had, so the run can be read and continued there; its tools ask for permissions as usual. A run fails if the tab's agent is busy, and the agent is stopped at the time limit. The run's result is the agent's last reply, or its error.
 - **When:**
@@ -334,7 +338,7 @@ NathApp asks in a dialog; you can remember the answer. Unanswered requests are d
 
 **Full access** (Settings → Agent → Permissions, after a warning) lets agents do all of this without asking: what the website agent does on sites (customizing, acting with your logins, confirming purchases and messages, sending requests), reading other tabs, using other apps' tools and data, scheduling. Apps' own requests (AI, global secrets, other apps' data from their servers) still ask. While it's on, the agent sidebar shows a red "Full access" badge (click it to go back to asking) and working agents a red dot in the tab list. Every request allowed this way is in Activity (`permission.auto`), and History can still undo what an agent changed in apps and customizations (not what it did on websites).
 
-The **Activity** page (sidebar) is the audit log: who, what, which tab and when. It records:
+The **Activity** page (in Settings) is the audit log: who, what, which tab and when. It records:
 - every agent turn and tool call (arguments summarized, long text only as a size);
 - AI requests;
 - secret changes and injections;
@@ -374,7 +378,7 @@ Web tabs say they're plain Chrome, because some sites turn away other browsers. 
 
 ### Mods
 
-Customizations packaged to share with others (sidebar → Mods). A mod is one JSON document (`shared/mods.ts`, format `nathapp-mod`, version 1):
+Customizations packaged to share with others (Settings → Mods). A mod is one JSON document (`shared/mods.ts`, format `nathapp-mod`, version 1):
 - **What's in it:** page changes (how sites look and work), NathApp's theme, and Chrome Web Store extensions (by id: they're installed from the store, not their settings).
 - **Making one:** "Make a mod" picks your own page changes, your theme and your store extensions, and gives a share code (`NATHAPP-MOD:` and the compressed JSON), copied right away, or a file.
 - **Installing:** paste a share code or an https link into "Install a mod" (or the command bar), or open a file. A review comes first: what it changes, where it runs its own JavaScript (scripts, buttons, HTML with handlers: flagged as able to read everything there, with your logins), which extensions it installs, whether it changes the theme. A mod with the same id updates the installed one.

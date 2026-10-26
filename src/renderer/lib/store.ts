@@ -26,12 +26,27 @@ export interface TabState {
   runtime: RuntimeStatus | null;
 }
 
-/** Pseudo tab ids for the pages at the bottom of the sidebar. */
+/** Pseudo tab ids for NathApp's own pages, all shown in Settings (its sidebar lists them). */
 export const SETTINGS_VIEW = "settings";
 export const ACTIVITY_VIEW = "activity";
 export const HISTORY_VIEW = "history";
 export const SCHEDULES_VIEW = "schedules";
 export const MODS_VIEW = "mods";
+const settingsViews = [SETTINGS_VIEW, ACTIVITY_VIEW, HISTORY_VIEW, SCHEDULES_VIEW, MODS_VIEW];
+/** Settings or one of the pages in it. */
+export const isSettingsView = (id: string | null) => !!id && settingsViews.includes(id);
+
+/** The category Settings shows (SettingsPage.tsx: settingsSections). */
+const [settingsSection, setSettingsSection] = createSignal(sessionStorage.getItem("nathapp.settings-section") ?? "appearance");
+export { settingsSection };
+/** Opens Settings, at a category if given (the one last shown otherwise). */
+export function openSettings(section?: string) {
+  if (section) {
+    setSettingsSection(section);
+    sessionStorage.setItem("nathapp.settings-section", section);
+  }
+  return selectApp(SETTINGS_VIEW);
+}
 
 const [apps, setApps] = createStore<AppSummary[]>([]);
 const [states, setStates] = createStore<Record<string, TabState>>({});
@@ -51,7 +66,7 @@ const byPosition = (a: AppSummary, b: AppSummary) => a.position - b.position || 
 export const workspaceTabs = () => apps.filter((a) => a.workspaceId === currentWorkspace()?.id).sort(byPosition);
 export const isWebTab = (id: string | null) => appById(id)?.kind === "web";
 /** Tabs (app or web) as opposed to the Settings page. */
-export const isTab = (id: string | null): id is string => !!id && id !== SETTINGS_VIEW && id !== ACTIVITY_VIEW && id !== HISTORY_VIEW && id !== SCHEDULES_VIEW && id !== MODS_VIEW;
+export const isTab = (id: string | null): id is string => !!id && !isSettingsView(id);
 
 // Tabs stay alive (pages, previews, scroll) once opened, until they're
 // unloaded (lib/unload.ts) or deleted. Their chat state stays either way.

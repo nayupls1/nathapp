@@ -210,6 +210,16 @@ const click = (selector: string, text?: string) =>
     return true;
   })()`);
 
+/** Opens Settings at a category of its sidebar, or one of the pages in it (History, Schedules, Mods, Activity). */
+const openSettingsAt = async (section: string) => {
+  await click('[data-page-link="Settings"]');
+  await page!.waitFor(`!!document.querySelector('[data-settings-nav="${section}"]')`, { label: "settings sidebar" });
+  await click(`[data-settings-nav="${section}"]`);
+  await page!.waitFor(`document.querySelector("[data-settings-shell]")?.dataset.settingsShell === "${section}"`, { label: `settings: ${section}` });
+};
+/** The workspace shown (its icon is the selected one at the bottom of the sidebar). */
+const currentWorkspaceName = `document.querySelector("[data-workspace-bar]")?.dataset.currentWorkspace`;
+
 try {
   console.log("Launching NathApp…");
   page = await Page.connect(port);
@@ -326,7 +336,7 @@ try {
     await click(`${appTab()} [data-history-button]`);
 
     // The History page has everything in the workspace.
-    await click('[data-page-link="History"]');
+    await openSettingsAt("history");
     await page!.waitFor(`document.querySelectorAll("[data-history-page] [data-snapshot]").length >= 3`, { label: "history page" });
     // An entry opened on the page offers putting everything back to that moment.
     await click("[data-history-page] [data-snapshot] button");
@@ -386,7 +396,7 @@ try {
         select.dispatchEvent(new Event("change", { bubbles: true }));
         return true;
       })()`);
-    await click('[data-page-link="Schedules"]');
+    await openSettingsAt("schedules");
     await page!.waitFor(`!!document.querySelector("[data-schedules]")`, { label: "schedules page" });
     await click("[data-new-schedule]");
     await page!.waitFor(`!!document.querySelector("[data-schedule-editor]")`, { label: "editor" });
@@ -480,7 +490,7 @@ try {
   });
 
   await check("activity: the audit log shows what happened", async () => {
-    await click('[data-page-link="Activity"]');
+    await openSettingsAt("activity");
     await page!.waitFor(`!!document.querySelector('[data-activity] [data-audit-action="secret.create"]') && !!document.querySelector('[data-activity] [data-audit-action="permission.deny"]')`, {
       label: "secret and permission entries",
     });
@@ -693,20 +703,28 @@ try {
     if (chats.length) throw new Error("unexpected chats");
   });
 
-  await check("sidebar footer: one row of icon buttons with labels, also at the minimum width", async () => {
+  await check("sidebar: no header; collapse, workspaces and Settings in one row at the bottom, also at the minimum width", async () => {
+    if (await page!.eval<boolean>(`!!document.querySelector("[data-workspace-switcher]")`)) throw new Error("the workspace header is still there");
     const layout = () =>
-      page!.eval<{ tops: number[]; labels: (string | null)[]; texts: string[]; inside: boolean }>(`(() => {
+      page!.eval<{ tops: number[]; order: string[]; inside: boolean; centered: boolean; bottom: boolean }>(`(() => {
         const nav = document.querySelector("nav").getBoundingClientRect();
-        const links = [...document.querySelectorAll("[data-page-link]")];
+        const footer = document.querySelector("[data-sidebar-footer]");
+        const parts = [footer.querySelector("[data-sidebar-toggle]"), footer.querySelector("[data-workspace-bar]"), footer.querySelector('[data-page-link="Settings"]')];
+        const rects = parts.map((p) => p.getBoundingClientRect());
+        const bar = rects[1];
+        const icons = [...footer.querySelectorAll("[data-workspace-bar] button")].map((b) => b.getBoundingClientRect());
+        const left = icons[0].left - bar.left, right = bar.right - icons.at(-1).right;
         return {
-          tops: [...new Set(links.map((b) => Math.round(b.getBoundingClientRect().top)))],
-          labels: links.map((b) => b.getAttribute("aria-label")),
-          texts: links.map((b) => b.innerText.trim()).filter(Boolean),
-          inside: links.every((b) => b.getBoundingClientRect().right <= nav.right + 0.5),
+          tops: [...new Set(parts.filter((p, i) => i !== 1).map((p) => Math.round(p.getBoundingClientRect().bottom)))],
+          order: rects.map((r) => Math.round(r.left)).map(String),
+          inside: rects.every((r) => r.right <= nav.right + 0.5),
+          centered: Math.abs(left - right) <= 2,
+          bottom: nav.bottom - footer.getBoundingClientRect().bottom < 20,
         };
       })()`);
     const wide = await layout();
-    if (wide.tops.length !== 1 || wide.texts.length || wide.labels.includes(null)) throw new Error(`footer: ${JSON.stringify(wide)}`);
+    const ordered = (o: string[]) => Number(o[0]) < Number(o[1]) && Number(o[1]) < Number(o[2]);
+    if (wide.tops.length !== 1 || !ordered(wide.order) || !wide.centered || !wide.bottom) throw new Error(`footer: ${JSON.stringify(wide)}`);
     await page!.eval(`(() => {
       const h = document.querySelector("[data-sidebar-resizer]");
       const r = h.getBoundingClientRect();
@@ -721,8 +739,11 @@ try {
     if (width !== 180) throw new Error(`expected the minimum width, got ${width}px`);
     await shot("sidebar-footer-narrow.png");
     await page!.eval(`document.querySelector("[data-sidebar-resizer]").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })), true`);
-    if (narrow.tops.length !== 1 || !narrow.inside) throw new Error(`at the minimum width: ${JSON.stringify(narrow)}`);
-    return `${wide.labels.join(", ")}`;
+    if (narrow.tops.length !== 1 || !narrow.inside || !ordered(narrow.order)) throw new Error(`at the minimum width: ${JSON.stringify(narrow)}`);
+    await shot("sidebar.png");
+    // The pages that were there are in Settings now.
+    await openSettingsAt("history");
+    return "collapse · workspaces · Settings; History in Settings";
   });
 
   await check("sidebar: tabs are reordered by dragging", async () => {
@@ -826,7 +847,7 @@ try {
     type Workspace = { id: string; splits: { id: string; direction: string; tabs: string[]; sizes: number[] }[] };
     const make = (path: string) => apiCall<{ id: string; workspaceId: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}${path}` } });
     // The sidebar has loaded its workspace (right after booting, it may not have yet).
-    await page!.waitFor(`!!document.querySelector("[data-workspace-switcher]")?.innerText.trim()`, { label: "workspace loaded" });
+    await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
     const a = await make("/");
     const b = await make("/second");
     const liOf = (id: string) => `nav li[data-app-id="${id}"]`;
@@ -1284,7 +1305,7 @@ try {
       method: "POST",
       body: { title: "E2E mod change", scope: { type: "site", value: "127.0.0.1" }, action: "css", value: "body { outline: 1px solid red }" },
     });
-    await click('[data-page-link="Mods"]');
+    await openSettingsAt("mods");
     await page!.waitFor(`!!document.querySelector("[data-mods]")`, { label: "mods page" });
 
     await click(`[data-mods-tab="gallery"]`);
@@ -1473,7 +1494,7 @@ try {
   await check("extensions: imported from Chrome with their settings, toolbar, popup, shortcut, blocking", async () => {
     const id = fixture.extensionId;
     // Import from the (fake) browser profile, settings included.
-    await click('[data-page-link="Settings"]');
+    await openSettingsAt("extensions");
     await page!.waitFor(`!!document.querySelector('[data-section="extensions"] [data-extensions-import]')`, { label: "extensions settings" });
     await click('[data-section="extensions"] [data-extensions-import]');
     await page!.waitFor(`!!document.querySelector('[data-extension-import] [data-import-candidate="${id}"]')`, { label: "the extension offered", timeoutMs: 15_000 });
@@ -1540,7 +1561,7 @@ try {
     }
 
     // Its options page opens as a web tab; there, its storage tells what it got.
-    await click('[data-page-link="Settings"]');
+    await openSettingsAt("extensions");
     await page!.waitFor(`!!document.querySelector('[data-extension="${id}"] [data-extension-options]')`, { label: "options button" });
     await click(`[data-extension="${id}"] [data-extension-options]`);
     const optionsTab = await page!.waitFor<string>(
@@ -1565,7 +1586,7 @@ try {
   await check("workspaces: icons at the bottom, own tabs and web logins, switching keeps state, reorder, move tabs, shortcuts", async () => {
     const tabIds = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.dataset.appId)`);
     const selected = () => page!.eval<string | undefined>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
-    const header = () => page!.eval<string>(`document.querySelector("[data-workspace-switcher]").innerText.trim().split("\\n").pop()`);
+    const header = () => page!.eval<string>(currentWorkspaceName);
     const order = () => page!.eval<string[]>(`[...document.querySelectorAll("[data-workspace-bar] [data-workspace]")].map((b) => b.dataset.workspace)`);
     const menuOn = async (id: string, label: string) => {
       await page!.eval(`(() => {
@@ -1590,7 +1611,7 @@ try {
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
       return true;
     })()`);
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`, { label: "renamed workspace" });
+    await page!.waitFor(`${currentWorkspaceName} === "Client"`, { label: "renamed workspace" });
     if ((await tabIds()).length) throw new Error("a new workspace should have no tabs");
     const client = (await apiCall<{ id: string; name: string }[]>("/api/workspaces")).find((w) => w.name === "Client")!;
     if ((await order()).join() !== [personal, client.id].join()) throw new Error(`bar: ${(await order()).join()}`);
@@ -1613,19 +1634,22 @@ try {
     await waitForValue(async () => ((await apiCall<{ id: string; icon: string | null }[]>("/api/workspaces")).find((w) => w.id === client.id)?.icon === "briefcase" ? true : undefined));
     await shot("workspaces.png");
     await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Digit1", ctrlKey: true, altKey: true, bubbles: true })), true`);
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "Ctrl+Alt+1" });
+    await page!.waitFor(`${currentWorkspaceName} === "Personal"`, { label: "Ctrl+Alt+1" });
     const back = await tabIds();
     if (back.join() !== personalTabs.join()) throw new Error(`Personal's tabs changed: ${back.join()} vs ${personalTabs.join()}`);
     if ((await selected()) !== personalSelected) throw new Error("the tab selected in Personal wasn't restored");
     await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", code: "Digit2", ctrlKey: true, altKey: true, bubbles: true })), true`);
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`, { label: "Ctrl+Alt+2" });
+    await page!.waitFor(`${currentWorkspaceName} === "Client"`, { label: "Ctrl+Alt+2" });
     await click(`[data-workspace="${personal}"]`);
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "clicked Personal" });
+    await page!.waitFor(`${currentWorkspaceName} === "Personal"`, { label: "clicked Personal" });
 
     // Reordered from its menu (saved); a tab dropped on a workspace moves there.
     await menuOn(client.id, "Move left");
     await page!.waitFor(`[...document.querySelectorAll("[data-workspace-bar] [data-workspace]")][0]?.dataset.workspace === "${client.id}"`, { label: "reordered" });
-    if ((await apiCall<{ id: string }[]>("/api/workspaces"))[0]!.id !== client.id) throw new Error("the order wasn't saved");
+    // The bar reorders right away; the server has it a moment later.
+    await waitForValue(async () => ((await apiCall<{ id: string }[]>("/api/workspaces"))[0]!.id === client.id ? true : undefined)).catch(() => {
+      throw new Error("the order wasn't saved");
+    });
     const moving = personalTabs.at(-1)!;
     await page!.eval(`(() => {
       const from = document.querySelector('nav li[data-app-id="${moving}"]');
@@ -1675,7 +1699,7 @@ try {
     await Bun.write(manifestFile, JSON.stringify({ ...manifest, actions: [{ id: "second", title: "Open the second page", path: "/?from=command-bar" }] }));
 
     await openBar();
-    await search("settings", "open.settings");
+    await search("open settings", "open.settings");
     await key("Enter");
     await page!.waitFor(`!!document.querySelector("[data-settings]")`, { label: "settings page" });
 
@@ -1718,7 +1742,7 @@ try {
   });
 
   await check("full access: switched on in Settings after a warning, shown in the agent sidebar, switched off there", async () => {
-    await click('[data-page-link="Settings"]');
+    await openSettingsAt("agent");
     await page!.waitFor(`!!document.querySelector("[data-permission-mode]")`, { label: "permissions setting" });
     await click("[data-permission-mode] button", "Full access");
     await page!.waitFor(`document.querySelector("[data-confirm-dialog]")?.innerText.includes("A web page can try")`, { label: "warning" });
@@ -1735,9 +1759,15 @@ try {
     return "on with a warning, badge shown, back to asking";
   });
 
-  await check("settings: theme presets apply and prompt additions are saved", async () => {
-    await click('[data-page-link="Settings"]');
+  await check("settings: categories in a sidebar, theme presets apply and prompt additions are saved", async () => {
+    await openSettingsAt("appearance");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
+    // Its sidebar lists the categories and NathApp's pages; only the chosen one is shown.
+    const nav = await page!.eval<string[]>(`[...document.querySelectorAll("[data-settings-nav]")].map((b) => b.dataset.settingsNav)`);
+    for (const id of ["appearance", "workspace", "agent", "providers", "apps", "secrets", "permissions", "history", "schedules", "mods", "activity"]) {
+      if (!nav.includes(id)) throw new Error(`settings sidebar: ${nav.join(", ")}`);
+    }
+    if (await page!.eval<boolean>(`!!document.querySelector("[data-provider-row]")`)) throw new Error("another category is shown too");
     const rootBg = () => page!.eval<string>(`getComputedStyle(document.querySelector("#root > div")).backgroundColor`);
     await click("[data-preset]", "Midnight");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor === "rgb(11, 16, 32)"`, {
@@ -1745,6 +1775,7 @@ try {
     });
     await Bun.sleep(300); // let color transitions finish
     await shot("settings.png");
+    await openSettingsAt("agent");
     await page!.eval(`(() => {
       const t = document.querySelector('textarea[name="instructions"]');
       t.value = "Amounts are in EUR.";
@@ -1755,20 +1786,26 @@ try {
       const s = await apiCall<{ agent: { instructions: string }; theme: { background?: string } }>("/api/settings");
       return s.agent.instructions === "Amounts are in EUR." && s.theme.background === "#0b1020" ? true : undefined;
     });
+    await openSettingsAt("providers");
     const rows = await page!.eval<string[]>(`[...document.querySelectorAll("[data-provider-row]")].map((r) => r.dataset.providerRow + ":" + r.querySelector("[data-provider-state]")?.dataset.providerState)`);
     if (rows.length !== 3) throw new Error(`provider rows: ${rows.join(", ")}`);
-    await page!.eval(`document.querySelector("[data-provider-row]").scrollIntoView({ block: "start" }), true`);
     await shot("settings-providers.png");
+    await openSettingsAt("apps");
     await page!.waitFor(`!!document.querySelector("[data-app-ai-agent] [data-agent-picker]") && !!document.querySelector("[data-ai-limit]")`, { label: "AI in apps settings" });
+    // The shell commands run in, from the ones found here.
+    const shells = await page!.waitFor<string[]>(`(() => { const o = [...document.querySelectorAll("[data-shell] option")].map((o) => o.value); return o.length > 2 ? o : null; })()`, { label: "shells" });
+    if (!shells.includes("auto") || !shells.includes("bun")) throw new Error(`shells: ${shells.join(", ")}`);
+    await shot("settings-apps.png");
     await page!.eval(`document.querySelector("[data-app-ai-agent]").scrollIntoView({ block: "center" }), true`);
     await shot("settings-ai.png");
+    await openSettingsAt("secrets");
     await click("[data-add-global-secret]");
     await page!.waitFor(`!!document.querySelector("[data-global-secret-warning]")`, { label: "global secret warning" });
-    await page!.eval(`document.querySelector("[data-global-secret-warning]").scrollIntoView({ block: "center" }), true`);
     await shot("settings-secrets.png");
+    await openSettingsAt("appearance");
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
-    return `${rows.join(", ")}; background ${await rootBg()} after reset`;
+    return `${nav.length} categories; ${rows.join(", ")}; shells ${shells.join(", ")}; background ${await rootBg()} after reset`;
   });
 
   await check("no uncaught errors in the renderer", async () => {

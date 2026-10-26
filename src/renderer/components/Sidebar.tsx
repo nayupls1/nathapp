@@ -18,14 +18,11 @@ import {
   selectApp,
   selectedId,
   setTabPinned,
-  SETTINGS_VIEW,
-  ACTIVITY_VIEW,
   apps,
   deleteWorkspace,
+  isSettingsView,
+  openSettings,
   reorderWorkspaces,
-  SCHEDULES_VIEW,
-  HISTORY_VIEW,
-  MODS_VIEW,
   showWorkspace,
   states,
   updateWorkspace,
@@ -79,23 +76,24 @@ export function Sidebar() {
       style={{ width: `${compact() ? RAIL_WIDTH : sidebarWidth()}px` }}
       data-sidebar={compact() ? "collapsed" : "expanded"}
     >
-      <WorkspaceSwitcher />
-      <Button
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setNewMenu({ x: r.left, y: r.bottom + 4 });
-        }}
-        xstyle={compact() ? styles.newButtonCompact : styles.newButton}
-        title={compact() ? "New tab" : undefined}
-        aria-haspopup="menu"
-        data-new-tab
-      >
-        <Icon name="plus" size={15} />
-        <Show when={!compact()}>
-          New tab
-          <Icon name="chevron-down" size={14} {...stylex.attrs(styles.chevron)} />
-        </Show>
-      </Button>
+      <div {...stylex.attrs(styles.top, compact() && styles.topCompact)} data-titlebar>
+        <Button
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setNewMenu({ x: r.left, y: r.bottom + 4 });
+          }}
+          xstyle={compact() ? styles.newButtonCompact : styles.newButton}
+          title={compact() ? "New tab" : undefined}
+          aria-haspopup="menu"
+          data-new-tab
+        >
+          <Icon name="plus" size={15} />
+          <Show when={!compact()}>
+            New tab
+            <Icon name="chevron-down" size={14} {...stylex.attrs(styles.chevron)} />
+          </Show>
+        </Button>
+      </div>
       <Show when={newMenu()}>
         {(position) => <ContextMenu items={newItems} position={position()} onClose={() => setNewMenu()} />}
       </Show>
@@ -108,17 +106,18 @@ export function Sidebar() {
           )}
         </For>
       </ul>
-      <div {...stylex.attrs(styles.footer, compact() && styles.footerCompact)} role="toolbar" aria-label="Pages" data-sidebar-footer>
+      <WorkspaceName />
+      {/* At the very bottom: collapse, the workspaces in the middle, Settings (a column when collapsed). */}
+      <div {...stylex.attrs(styles.footer, compact() && styles.footerCompact)} data-sidebar-footer>
+        <Show when={!compact()}>
+          <CollapseButton />
+        </Show>
+        <WorkspaceBar />
+        <SettingsLink />
         <Show when={compact()}>
           <CollapseButton />
         </Show>
-        <PageLink id={HISTORY_VIEW} icon="file-clock" label="History" />
-        <PageLink id={SCHEDULES_VIEW} icon="calendar-clock" label="Schedules" />
-        <PageLink id={MODS_VIEW} icon="puzzle" label="Mods" />
-        <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
-        <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
-      <WorkspaceBar />
     </nav>
     <Show when={!compact()}>
       <Resizer />
@@ -190,60 +189,24 @@ function Resizer() {
   );
 }
 
-/** The current workspace's name (double-click renames it) and its menu. Workspaces are switched in the bar at the bottom (WorkspaceBar). */
-function WorkspaceSwitcher() {
-  const [menu, setMenu] = createSignal<MenuPosition>();
+/** Where a workspace's name is typed: right after "+" made it, or "Rename" in its menu. */
+function WorkspaceName() {
   const [naming, setNaming] = createSignal(false);
-  const current = () => currentWorkspace();
-  const menuOpen = () => menu() !== undefined;
-
-  const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
-  const items = (): (MenuItem | "separator")[] => [
-    { label: "Rename workspace", icon: "pencil", onSelect: () => setNaming(true) },
-    { label: "Change icon…", icon: "shapes", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
-    { label: "Workspace settings", icon: "settings-2", onSelect: () => void openWorkspaceSettings() },
-    "separator",
-    { label: "New workspace", icon: "plus", onSelect: () => void newWorkspace() },
-  ];
-  // A workspace just made from the bar's "+" gets its name typed here.
   createEffect(on(namingRequest, (n) => n && setNaming(true), { defer: true }));
-
   const commit = (value: string) => {
     if (!naming()) return;
     setNaming(false);
     const name = value.trim();
-    const workspace = current();
+    const workspace = currentWorkspace();
     if (workspace && name && name !== workspace.name) void updateWorkspace(workspace.id, { name });
   };
-
   return (
-    <div {...stylex.attrs(styles.header)} data-titlebar>
-      <Show
-        when={naming()}
-        fallback={
-          <button
-            type="button"
-            aria-haspopup="menu"
-            title="Switch workspace"
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenu({ x: r.left, y: r.bottom + 4 });
-            }}
-            onDblClick={() => setNaming(true)}
-            {...stylex.attrs(styles.switcher, menuOpen() && styles.switcherOpen, isSidebarCollapsed() && styles.switcherCompact)}
-            data-workspace-switcher
-          >
-            <Show when={current()}>{(w) => <WorkspaceBadge workspace={w()} />}</Show>
-            <Show when={!isSidebarCollapsed()}>
-              <span {...stylex.attrs(styles.workspaceName)}>{current()?.name}</span>
-              <Icon name="chevrons-up-down" size={14} {...stylex.attrs(styles.chevron)} />
-            </Show>
-          </button>
-        }
-      >
+    <Show when={naming()}>
+      <div {...stylex.attrs(styles.naming)}>
+        <Show when={currentWorkspace()}>{(w) => <WorkspaceBadge workspace={w()} />}</Show>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
-          value={current()?.name ?? ""}
+          value={currentWorkspace()?.name ?? ""}
           aria-label="Workspace name"
           onBlur={(e) => commit(e.currentTarget.value)}
           onKeyDown={(e) => {
@@ -253,15 +216,8 @@ function WorkspaceSwitcher() {
           {...stylex.attrs(styles.rename, styles.workspaceRename)}
           data-workspace-name
         />
-      </Show>
-      <Show when={!isSidebarCollapsed()}>
-        <CollapseButton />
-      </Show>
-      <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
-      <Show when={iconPicker() && current()}>
-        <IconPicker workspace={current()!} position={iconPicker()!} onClose={() => setIconPicker()} />
-      </Show>
-    </div>
+      </div>
+    </Show>
   );
 }
 
@@ -291,7 +247,13 @@ function WorkspaceBar() {
     void reorderWorkspaces(ids);
   };
   return (
-    <div {...stylex.attrs(styles.workspaceBar, isSidebarCollapsed() && styles.workspaceBarCompact)} role="tablist" aria-label="Workspaces" data-workspace-bar>
+    <div
+      {...stylex.attrs(styles.workspaceBar, isSidebarCollapsed() && styles.workspaceBarCompact)}
+      role="tablist"
+      aria-label="Workspaces"
+      data-workspace-bar
+      data-current-workspace={currentWorkspace()?.name}
+    >
       <For each={workspaces}>
         {(w, i) => {
           const [menu, setMenu] = createSignal<MenuPosition>();
@@ -397,9 +359,8 @@ function CollapseButton() {
 }
 
 /** Opens Settings at the current workspace's section. */
-async function openWorkspaceSettings() {
-  await selectApp(SETTINGS_VIEW);
-  requestAnimationFrame(() => document.querySelector('[data-section="workspace"]')?.scrollIntoView({ block: "start" }));
+function openWorkspaceSettings() {
+  return openSettings("workspace");
 }
 
 /** The workspace's icon, or its initial. */
@@ -411,20 +372,20 @@ export function WorkspaceBadge(props: { workspace: WorkspaceInfo }) {
   );
 }
 
-/** One of the pages at the bottom of the sidebar: an icon button, named by its tooltip and label. */
-function PageLink(props: { id: string; icon: string; label: string }) {
-  const selected = () => selectedId() === props.id;
+/** Settings (and the pages in it: History, Schedules, Mods, Activity), at the bottom right of the sidebar. */
+function SettingsLink() {
+  const selected = () => isSettingsView(selectedId());
   return (
     <button
       type="button"
-      title={props.label}
-      aria-label={props.label}
+      title="Settings"
+      aria-label="Settings"
       aria-current={selected() ? "page" : undefined}
-      onClick={() => selectApp(props.id)}
+      onClick={() => void openSettings()}
       {...stylex.attrs(styles.pageLink, selected() && styles.pageLinkOn)}
-      data-page-link={props.label}
+      data-page-link="Settings"
     >
-      <Icon name={props.icon} size={17} />
+      <Icon name="settings" size={17} />
     </button>
   );
 }
@@ -726,7 +687,10 @@ const styles = stylex.create({
     overflowY: "auto",
   },
   rootCompact: { paddingInline: 8 },
-  header: { display: "flex", alignItems: "center", gap: 2, height: 34 },
+  // The window is dragged by the strip around the New tab button (it has no title bar).
+  top: { flexShrink: 0, marginTop: `calc(-1 * ${space.md})`, marginInline: `calc(-1 * ${space.md})`, paddingTop: space.md, paddingInline: space.md },
+  topCompact: { marginInline: -8, paddingInline: 8 },
+  naming: { display: "flex", alignItems: "center", gap: space.sm, flexShrink: 0 },
   collapse: {
     display: "grid",
     placeItems: "center",
@@ -756,7 +720,6 @@ const styles = stylex.create({
   },
   handleActive: { backgroundColor: colors.accent, opacity: 0.5 },
   dragShield: { position: "fixed", inset: 0, zIndex: 1000, cursor: "col-resize" },
-  switcherCompact: { justifyContent: "center", paddingInline: 0 },
   newButtonCompact: { justifyContent: "center", width: "100%", paddingInline: 0 },
   itemCompact: { justifyContent: "center", paddingInline: 0, position: "relative" },
   hiddenText: { display: "none" },
@@ -792,26 +755,6 @@ const styles = stylex.create({
   dropAfter: { boxShadow: `0 2px 0 0 ${colors.accent}` },
   dotCompact: { position: "absolute", top: 5, right: 5 },
   dotFull: { backgroundColor: colors.danger },
-  switcher: {
-    display: "flex",
-    alignItems: "center",
-    gap: space.sm,
-    width: "100%",
-    height: 34,
-    paddingInline: space.sm,
-    borderWidth: 0,
-    borderRadius: radius.sm,
-    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
-    color: colors.text,
-    fontFamily: font.sans,
-    fontSize: font.md,
-    fontWeight: 650,
-    letterSpacing: "-0.01em",
-    textAlign: "left",
-    cursor: "pointer",
-  },
-  switcherOpen: { backgroundColor: colors.surfaceHover },
-  workspaceName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   workspaceRename: { height: 30, fontSize: font.md },
   badge: {
     display: "grid",
@@ -850,19 +793,19 @@ const styles = stylex.create({
   // Not loaded: dimmed, like a sleeping tab.
   asleep: { opacity: 0.45, filter: "grayscale(0.6)" },
   pin: { flexShrink: 0, color: colors.muted, transform: "rotate(45deg)" },
-  // A row of icon buttons (a column when the sidebar is collapsed to icons).
+  // Collapse | workspaces (centered) | Settings; a column when the sidebar is collapsed to icons.
   footer: {
     display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 2,
+    alignItems: "flex-end",
+    gap: 4,
+    flexShrink: 0,
     marginTop: "auto",
     paddingTop: space.sm,
     borderTopWidth: 1,
     borderTopStyle: "solid",
     borderTopColor: colors.border,
   },
-  footerCompact: { flexDirection: "column", justifyContent: "flex-start" },
+  footerCompact: { flexDirection: "column", alignItems: "center" },
   pageLink: {
     display: "grid",
     placeItems: "center",
@@ -924,14 +867,13 @@ const styles = stylex.create({
   workspaceBar: {
     display: "flex",
     flexWrap: "wrap",
+    justifyContent: "center",
     alignItems: "center",
     gap: 4,
-    paddingTop: space.sm,
-    borderTopWidth: 1,
-    borderTopStyle: "solid",
-    borderTopColor: colors.border,
+    flex: 1,
+    minWidth: 0,
   },
-  workspaceBarCompact: { flexDirection: "column", flexWrap: "nowrap" },
+  workspaceBarCompact: { flexDirection: "column", flexWrap: "nowrap", flex: "none" },
   workspaceIcon: {
     display: "grid",
     placeItems: "center",

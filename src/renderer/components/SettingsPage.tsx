@@ -1,8 +1,9 @@
-// The Settings tab: the current workspace, appearance, providers, agent
-// defaults and prompt additions, apps, web tabs and their extensions, secrets
-// and permissions.
+// Settings: a sidebar of categories (appearance, the current workspace,
+// agent defaults and providers, apps, web tabs and their network and
+// extensions, secrets and permissions) and NathApp's pages (History,
+// Schedules, Mods, Activity), with the chosen one beside it.
 import * as stylex from "@stylexjs/stylex";
-import { createResource, createSignal, For, onCleanup, Show, type JSX } from "solid-js";
+import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
 import { defaultAppModel, providerIds, workspaceScope, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
@@ -12,7 +13,30 @@ import { autoUpdate, extensionList } from "../lib/extensions";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
-import { appById, currentWorkspace, deleteWorkspace, editWorkspaceSettings, newWebTab, providerById, refreshProviders, updateWorkspace, workspaces } from "../lib/store";
+import {
+  ACTIVITY_VIEW,
+  appById,
+  currentWorkspace,
+  deleteWorkspace,
+  editWorkspaceSettings,
+  HISTORY_VIEW,
+  MODS_VIEW,
+  newWebTab,
+  openSettings,
+  providerById,
+  refreshProviders,
+  SCHEDULES_VIEW,
+  selectApp,
+  SETTINGS_VIEW,
+  settingsSection,
+  updateWorkspace,
+  workspaces,
+} from "../lib/store";
+import { settingsSections } from "../lib/settingsSections";
+import { ActivityPage } from "./ActivityPage";
+import { HistoryPage } from "./History";
+import { ModsPage } from "./ModsPage";
+import { SchedulesPage } from "./SchedulesPage";
 import { resolveMode, systemDark, themePresets, themeVars } from "../lib/theme";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AgentPicker } from "./AgentPicker";
@@ -25,268 +49,396 @@ import { setFullAccess } from "../lib/access";
 import { SecretForm, SecretRow } from "./Secrets";
 import { Button, Select } from "./ui";
 
-export function SettingsPage() {
-  const [health] = createResource(() => api.health());
-  const set = <K extends keyof Settings>(key: K, value: Partial<Settings[K]>) =>
-    updateSettings((s) => ({ ...s, [key]: typeof value === "object" ? { ...(s[key] as object), ...value } : value }));
-  const setTheme = (value: Partial<GlobalTheme>) => set("theme", value);
-  const setAi = (value: Partial<Settings["apps"]["ai"]>) =>
-    updateSettings((s) => ({ ...s, apps: { ...s.apps, ai: { ...s.apps.ai, ...value } } }));
+/**
+ * Settings: a sidebar of categories on the left, the chosen one on the right.
+ * NathApp's pages (History, Schedules, Mods, Activity) are categories too.
+ */
+export function SettingsShell(props: { view: string }) {
+  const current = () => settingsSections.find((s) => (s.view ? s.view === props.view : props.view === SETTINGS_VIEW && s.id === settingsSection())) ?? settingsSections[0]!;
+  const isCurrent = (id: string) => current().id === id;
+  const open = (section: (typeof settingsSections)[number]) => void (section.view ? selectApp(section.view) : openSettings(section.id));
+  let main!: HTMLDivElement;
+  // A new category starts at its top.
+  createEffect(on(() => current().id, () => main?.scrollTo({ top: 0 }), { defer: true }));
+  const group = (name: string) => settingsSections.filter((s) => s.group === name);
+  const Item = (p: { section: (typeof settingsSections)[number] }) => (
+    <button
+      type="button"
+      aria-current={isCurrent(p.section.id) ? "page" : undefined}
+      onClick={() => open(p.section)}
+      {...stylex.attrs(styles.navItem, isCurrent(p.section.id) && styles.navItemOn)}
+      data-settings-nav={p.section.id}
+      data-page-link={p.section.view ? p.section.label : undefined}
+    >
+      <Icon name={p.section.icon} size={16} />
+      {p.section.label}
+    </button>
+  );
+  return (
+    <div {...stylex.attrs(styles.shell)} data-settings-shell={current().id}>
+      <aside {...stylex.attrs(styles.nav)} aria-label="Settings categories">
+        <div {...stylex.attrs(styles.navTitle)} data-titlebar>
+          <Icon name="settings" size={18} {...stylex.attrs(styles.accent)} />
+          Settings
+        </div>
+        <For each={group("settings")}>{(section) => <Item section={section} />}</For>
+        <span {...stylex.attrs(styles.navGroup)}>Activity and history</span>
+        <For each={group("pages")}>{(section) => <Item section={section} />}</For>
+        <div {...stylex.attrs(styles.navEnd)}>
+          <For each={group("about")}>{(section) => <Item section={section} />}</For>
+        </div>
+      </aside>
+      <div ref={main} {...stylex.attrs(styles.main)}>
+        <Switch fallback={<SettingsPage section={current().id} />}>
+          <Match when={props.view === HISTORY_VIEW}>
+            <HistoryPage />
+          </Match>
+          <Match when={props.view === SCHEDULES_VIEW}>
+            <SchedulesPage />
+          </Match>
+          <Match when={props.view === MODS_VIEW}>
+            <ModsPage />
+          </Match>
+          <Match when={props.view === ACTIVITY_VIEW}>
+            <ActivityPage />
+          </Match>
+        </Switch>
+      </div>
+    </div>
+  );
+}
+
+const set = <K extends keyof Settings>(key: K, value: Partial<Settings[K]>) =>
+  updateSettings((s) => ({ ...s, [key]: typeof value === "object" ? { ...(s[key] as object), ...value } : value }));
+const setTheme = (value: Partial<GlobalTheme>) => set("theme", value);
+const setAi = (value: Partial<Settings["apps"]["ai"]>) => updateSettings((s) => ({ ...s, apps: { ...s.apps, ai: { ...s.apps.ai, ...value } } }));
+
+/** One category of settings. */
+export function SettingsPage(props: { section: string }) {
+  const title = () => settingsSections.find((s) => s.id === props.section)?.label ?? "Settings";
+  return (
+    <div {...stylex.attrs(styles.page)} data-settings={props.section}>
+      <header {...stylex.attrs(styles.header)}>
+        <h1 {...stylex.attrs(styles.title)}>{title()}</h1>
+        <p {...stylex.attrs(styles.muted)}>Changes are saved automatically.</p>
+      </header>
+      <Switch>
+        <Match when={props.section === "appearance"}>
+          <AppearanceSection />
+        </Match>
+        <Match when={props.section === "workspace"}>
+          <WorkspaceSection />
+        </Match>
+        <Match when={props.section === "agent"}>
+          <AgentSection />
+        </Match>
+        <Match when={props.section === "providers"}>
+          <ProvidersSection />
+        </Match>
+        <Match when={props.section === "apps"}>
+          <AppsSection />
+        </Match>
+        <Match when={props.section === "web"}>
+          <WebSection />
+        </Match>
+        <Match when={props.section === "network"}>
+          <NetworkSection />
+        </Match>
+        <Match when={props.section === "extensions"}>
+          <ExtensionsSection />
+        </Match>
+        <Match when={props.section === "secrets"}>
+          <SecretsSection />
+        </Match>
+        <Match when={props.section === "permissions"}>
+          <PermissionsSection />
+        </Match>
+        <Match when={props.section === "about"}>
+          <AboutSection />
+        </Match>
+      </Switch>
+    </div>
+  );
+}
+
+function AppearanceSection() {
+  const theme = () => settings().theme;
+  return (
+        <Section title="Theme" icon="palette" anchor="appearance">
+          <Row label="Theme presets" description="A starting point; tweak the colors below." wide>
+            <div {...stylex.attrs(styles.presets)}>
+              <For each={themePresets}>
+                {(preset) => (
+                  <PresetButton
+                    name={preset.name}
+                    theme={{ mode: theme().mode, ...preset.theme }}
+                    onClick={() => updateSettings((s) => ({ ...s, theme: { mode: s.theme.mode, ...preset.theme } }))}
+                  />
+                )}
+              </For>
+            </div>
+          </Row>
+          <Row label="Mode">
+            <Segmented
+              value={theme().mode}
+              options={[
+                ["system", "System"],
+                ["light", "Light"],
+                ["dark", "Dark"],
+              ]}
+              onChange={(mode) => setTheme({ mode })}
+            />
+          </Row>
+          <Row label="Accent color">
+            <ColorField value={theme().accent} onChange={(accent) => setTheme({ accent })} />
+          </Row>
+          <Row label="Background">
+            <ColorField value={theme().background} onChange={(background) => setTheme({ background })} />
+          </Row>
+          <Row label="Surfaces" description="Cards, inputs, panels.">
+            <ColorField value={theme().surface} onChange={(surface) => setTheme({ surface })} />
+          </Row>
+          <Row label="Text">
+            <ColorField value={theme().text} onChange={(text) => setTheme({ text })} />
+          </Row>
+          <Row label="Corners">
+            <Segmented
+              value={theme().radius ?? "md"}
+              options={[
+                ["none", "Square"],
+                ["sm", "Subtle"],
+                ["md", "Rounded"],
+                ["lg", "Round"],
+              ]}
+              onChange={(radius) => setTheme({ radius })}
+            />
+          </Row>
+          <Row label="Font">
+            <Segmented
+              value={theme().font ?? "sans"}
+              options={[
+                ["sans", "Sans"],
+                ["serif", "Serif"],
+                ["mono", "Mono"],
+                ["rounded", "Rounded"],
+              ]}
+              onChange={(font) => setTheme({ font })}
+            />
+          </Row>
+          <p {...stylex.attrs(styles.muted, styles.note)}>New apps start with this look as their design tokens (src/tokens.css); the agent can change an app's tokens when you ask for a different style.</p>
+        </Section>
+  );
+}
+
+function ProvidersSection() {
+  return (
+        <Section title="Coding agents" icon="plug" anchor="providers">
+          <p {...stylex.attrs(styles.muted, styles.note)}>
+            The coding agents NathApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
+          </p>
+          <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
+        </Section>
+  );
+}
+
+function AgentSection() {
+  return (
+        <Section title="Defaults" icon="bot" anchor="agent">
+          <Row label="Default agent" description="For new tabs. Each tab remembers its own choice.">
+            <div {...stylex.attrs(styles.pickerBox)} data-default-agent>
+              <AgentPicker
+                choice={{ provider: settings().agent.provider, model: settings().agent.model, effort: settings().agent.effort }}
+                onChange={(choice) => set("agent", choice)}
+              />
+            </div>
+          </Row>
+          <Row
+            label="Instructions for building apps"
+            description="Added to the app builder's prompt in every tab, e.g. your language, currency, style preferences."
+            wide
+          >
+            <TextArea
+              value={settings().agent.instructions}
+              placeholder={"e.g. Answer in German. Amounts are in EUR. Prefer dark themes with a green accent."}
+              onInput={(instructions) => set("agent", { instructions })}
+              name="instructions"
+            />
+          </Row>
+          <Row label="Instructions for customizing websites" description="Added to the website agent's prompt." wide>
+            <TextArea
+              value={settings().agent.webInstructions}
+              placeholder={"e.g. Keep changes minimal. Never hide ads by removing content the page needs."}
+              onInput={(webInstructions) => set("agent", { webInstructions })}
+              name="webInstructions"
+            />
+          </Row>
+          <Row
+            label="Permissions"
+            description="Ask for everything: agents ask before customizing or using sites, reading other tabs, using other apps or scheduling. Full access: they don't ask (still logged in Activity)."
+          >
+            <div data-permission-mode>
+              <Segmented
+                value={settings().agent.permissions}
+                options={[
+                  ["ask", "Ask for everything"],
+                  ["full", "Full access"],
+                ]}
+                onChange={(mode) => void setFullAccess(mode === "full")}
+              />
+            </div>
+          </Row>
+          <Row label="Show tool activity" description='Lines like "Edited src/App.tsx" or "Ran bun add zod" in the chat.'>
+            <Toggle checked={settings().agent.showToolMessages} onChange={(showToolMessages) => set("agent", { showToolMessages })} />
+          </Row>
+        </Section>
+  );
+}
+
+function WebSection() {
+  return (
+    <>
+          <Section title="Browsing" icon="globe" anchor="web">
+            <Row label="Home page" description="Opened by new web tabs.">
+              <input
+                value={settings().web.homePage}
+                onChange={(e) => set("web", { homePage: e.currentTarget.value.trim() || "about:blank" })}
+                {...stylex.attrs(styles.textInput)}
+              />
+            </Row>
+            <Row label="Search engine" description="Used when the address bar input isn't a URL.">
+              <Select
+                value={settings().web.searchEngine}
+                onChange={(e) => set("web", { searchEngine: e.currentTarget.value as Settings["web"]["searchEngine"] })}
+                xstyle={styles.select}
+              >
+                <For each={Object.entries(searchEngines)}>{([key, engine]) => <option value={key}>{engine.label}</option>}</For>
+              </Select>
+            </Row>
+            <Row label="Site customizations and page changes" description="Apply the changes the agent made to websites (hidden, restyled or added elements, CSS and JavaScript).">
+              <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
+            </Row>
+            <SiteRows />
+            <Row label="Page changes" description="Each change to pages, sites or patterns of sites, with its own switch." wide>
+              <PageChangeRows />
+            </Row>
+          </Section>
+
+          <Section title="Tabs" icon="layers" anchor="tabs">
+            <Row
+              label="Unload idle tabs"
+              description="Tabs you haven't looked at for a while close their page to save memory, and come back where you left them (scroll position, what you typed). Pinned tabs (Keep loaded), tabs playing sound and tabs whose agent is working stay loaded."
+            >
+              <Select
+                value={String(settings().tabs.unloadAfterMinutes)}
+                onChange={(e) => set("tabs", { unloadAfterMinutes: Number(e.currentTarget.value) })}
+                xstyle={styles.select}
+                data-unload-after
+              >
+                <For each={unloadChoices(settings().tabs.unloadAfterMinutes)}>{([minutes, label]) => <option value={minutes}>{label}</option>}</For>
+              </Select>
+            </Row>
+          </Section>
+    </>
+  );
+}
+
+function NetworkSection() {
+  return (
+        <Section title="Network" icon="network" anchor="network">
+          <Row
+            label="Record web tabs' traffic"
+            description="Keep each web tab's recent requests (in memory, bounded) for the Network panel and the website agent, which only ever sees them with credentials hidden."
+          >
+            <Toggle checked={settings().web.recordNetwork} onChange={(recordNetwork) => set("web", { recordNetwork })} />
+          </Row>
+          <NetworkRules />
+        </Section>
+  );
+}
+
+function AppsSection() {
   const aiDefaultModel = () => {
     const status = providerById(settings().apps.ai.provider);
     return status ? defaultAppModel(status) : null;
   };
-  const theme = () => settings().theme;
-
   return (
-    <div {...stylex.attrs(styles.page)} data-settings>
-      <header {...stylex.attrs(styles.header)}>
-        <h1 {...stylex.attrs(styles.title)}>
-          <Icon name="settings" size={24} {...stylex.attrs(styles.accent)} />
-          Settings
-        </h1>
-        <p {...stylex.attrs(styles.muted)}>Changes are saved automatically.</p>
-      </header>
+    <>
+          <Section title="Running apps" icon="box" anchor="apps">
+            <SandboxRows />
+            <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
+              <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
+            </Row>
+            <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn (this hides the agent; opening it goes back to editing).">
+              <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
+            </Row>
+          </Section>
 
-      <WorkspaceSection />
-
-      <Section title="Appearance" icon="palette">
-        <Row label="Theme presets" description="A starting point; tweak the colors below." wide>
-          <div {...stylex.attrs(styles.presets)}>
-            <For each={themePresets}>
-              {(preset) => (
-                <PresetButton
-                  name={preset.name}
-                  theme={{ mode: theme().mode, ...preset.theme }}
-                  onClick={() => updateSettings((s) => ({ ...s, theme: { mode: s.theme.mode, ...preset.theme } }))}
+          <Section title="AI in apps" icon="sparkles">
+            <p {...stylex.attrs(styles.muted, styles.note)}>
+              Apps can use AI (summaries, suggestions, chat) through NathApp, on your own subscription: no API keys in your apps. Only an
+              app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
+              shows up in the app's logs.
+            </p>
+            <Row label="Let apps use AI">
+              <Toggle checked={settings().apps.ai.enabled} onChange={(enabled) => setAi({ enabled })} />
+            </Row>
+            <Row label="Model" description="Who answers apps' requests. By default a fast model, to spare your plan's limits.">
+              <div {...stylex.attrs(styles.pickerBox)} data-app-ai-agent>
+                <AgentPicker
+                  choice={{ provider: settings().apps.ai.provider, model: settings().apps.ai.model ?? aiDefaultModel(), effort: settings().apps.ai.effort }}
+                  onChange={(choice) => setAi({ provider: choice.provider, model: choice.model, effort: choice.effort })}
                 />
-              )}
-            </For>
-          </div>
-        </Row>
-        <Row label="Mode">
-          <Segmented
-            value={theme().mode}
-            options={[
-              ["system", "System"],
-              ["light", "Light"],
-              ["dark", "Dark"],
-            ]}
-            onChange={(mode) => setTheme({ mode })}
-          />
-        </Row>
-        <Row label="Accent color">
-          <ColorField value={theme().accent} onChange={(accent) => setTheme({ accent })} />
-        </Row>
-        <Row label="Background">
-          <ColorField value={theme().background} onChange={(background) => setTheme({ background })} />
-        </Row>
-        <Row label="Surfaces" description="Cards, inputs, panels.">
-          <ColorField value={theme().surface} onChange={(surface) => setTheme({ surface })} />
-        </Row>
-        <Row label="Text">
-          <ColorField value={theme().text} onChange={(text) => setTheme({ text })} />
-        </Row>
-        <Row label="Corners">
-          <Segmented
-            value={theme().radius ?? "md"}
-            options={[
-              ["none", "Square"],
-              ["sm", "Subtle"],
-              ["md", "Rounded"],
-              ["lg", "Round"],
-            ]}
-            onChange={(radius) => setTheme({ radius })}
-          />
-        </Row>
-        <Row label="Font">
-          <Segmented
-            value={theme().font ?? "sans"}
-            options={[
-              ["sans", "Sans"],
-              ["serif", "Serif"],
-              ["mono", "Mono"],
-              ["rounded", "Rounded"],
-            ]}
-            onChange={(font) => setTheme({ font })}
-          />
-        </Row>
-        <p {...stylex.attrs(styles.muted, styles.note)}>New apps start with this look as their design tokens (src/tokens.css); the agent can change an app's tokens when you ask for a different style.</p>
-      </Section>
+              </div>
+            </Row>
+            <Row label="Daily limit" description="Requests per app and day.">
+              <input
+                type="number"
+                min="1"
+                max="100000"
+                value={settings().apps.ai.dailyLimit}
+                onChange={(e) => {
+                  const n = Math.round(Number(e.currentTarget.value));
+                  if (n >= 1 && n <= 100_000) setAi({ dailyLimit: n });
+                  else e.currentTarget.value = String(settings().apps.ai.dailyLimit);
+                }}
+                {...stylex.attrs(styles.textInput, styles.numberInput)}
+                data-ai-limit
+              />
+            </Row>
+          </Section>
+    </>
+  );
+}
 
-      <Section title="Providers" icon="plug">
-        <p {...stylex.attrs(styles.muted, styles.note)}>
-          The coding agents NathApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
-        </p>
-        <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
-      </Section>
+function SecretsSection() {
+  return (
+        <Section title="Global secrets" icon="key-round" anchor="secrets">
+          <GlobalSecrets />
+        </Section>
+  );
+}
 
-      <Section title="Agent" icon="bot">
-        <Row label="Default agent" description="For new tabs. Each tab remembers its own choice.">
-          <div {...stylex.attrs(styles.pickerBox)} data-default-agent>
-            <AgentPicker
-              choice={{ provider: settings().agent.provider, model: settings().agent.model, effort: settings().agent.effort }}
-              onChange={(choice) => set("agent", choice)}
-            />
-          </div>
-        </Row>
-        <Row
-          label="Instructions for building apps"
-          description="Added to the app builder's prompt in every tab, e.g. your language, currency, style preferences."
-          wide
-        >
-          <TextArea
-            value={settings().agent.instructions}
-            placeholder={"e.g. Answer in German. Amounts are in EUR. Prefer dark themes with a green accent."}
-            onInput={(instructions) => set("agent", { instructions })}
-            name="instructions"
-          />
-        </Row>
-        <Row label="Instructions for customizing websites" description="Added to the website agent's prompt." wide>
-          <TextArea
-            value={settings().agent.webInstructions}
-            placeholder={"e.g. Keep changes minimal. Never hide ads by removing content the page needs."}
-            onInput={(webInstructions) => set("agent", { webInstructions })}
-            name="webInstructions"
-          />
-        </Row>
-        <Row
-          label="Permissions"
-          description="Ask for everything: agents ask before customizing or using sites, reading other tabs, using other apps or scheduling. Full access: they don't ask (still logged in Activity)."
-        >
-          <div data-permission-mode>
-            <Segmented
-              value={settings().agent.permissions}
-              options={[
-                ["ask", "Ask for everything"],
-                ["full", "Full access"],
-              ]}
-              onChange={(mode) => void setFullAccess(mode === "full")}
-            />
-          </div>
-        </Row>
-        <Row label="Show tool activity" description='Lines like "Edited src/App.tsx" or "Ran bun add zod" in the chat.'>
-          <Toggle checked={settings().agent.showToolMessages} onChange={(showToolMessages) => set("agent", { showToolMessages })} />
-        </Row>
-      </Section>
+function PermissionsSection() {
+  return (
+        <Section title="Remembered decisions" icon="shield-check" anchor="permissions">
+          <PermissionRows />
+        </Section>
+  );
+}
 
-      <Section title="Web tabs" icon="globe">
-        <Row label="Home page" description="Opened by new web tabs.">
-          <input
-            value={settings().web.homePage}
-            onChange={(e) => set("web", { homePage: e.currentTarget.value.trim() || "about:blank" })}
-            {...stylex.attrs(styles.textInput)}
-          />
-        </Row>
-        <Row label="Search engine" description="Used when the address bar input isn't a URL.">
-          <Select
-            value={settings().web.searchEngine}
-            onChange={(e) => set("web", { searchEngine: e.currentTarget.value as Settings["web"]["searchEngine"] })}
-            xstyle={styles.select}
-          >
-            <For each={Object.entries(searchEngines)}>{([key, engine]) => <option value={key}>{engine.label}</option>}</For>
-          </Select>
-        </Row>
-        <Row label="Site customizations and page changes" description="Apply the changes the agent made to websites (hidden, restyled or added elements, CSS and JavaScript).">
-          <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
-        </Row>
-        <SiteRows />
-        <Row label="Page changes" description="Each change to pages, sites or patterns of sites, with its own switch." wide>
-          <PageChangeRows />
-        </Row>
-      </Section>
-
-      <Section title="Tabs" icon="layers" anchor="tabs">
-        <Row
-          label="Unload idle tabs"
-          description="Tabs you haven't looked at for a while close their page to save memory, and come back where you left them (scroll position, what you typed). Pinned tabs (Keep loaded), tabs playing sound and tabs whose agent is working stay loaded."
-        >
-          <Select
-            value={String(settings().tabs.unloadAfterMinutes)}
-            onChange={(e) => set("tabs", { unloadAfterMinutes: Number(e.currentTarget.value) })}
-            xstyle={styles.select}
-            data-unload-after
-          >
-            <For each={unloadChoices(settings().tabs.unloadAfterMinutes)}>{([minutes, label]) => <option value={minutes}>{label}</option>}</For>
-          </Select>
-        </Row>
-      </Section>
-
-      <Section title="Network" icon="network" anchor="network">
-        <Row
-          label="Record web tabs' traffic"
-          description="Keep each web tab's recent requests (in memory, bounded) for the Network panel and the website agent, which only ever sees them with credentials hidden."
-        >
-          <Toggle checked={settings().web.recordNetwork} onChange={(recordNetwork) => set("web", { recordNetwork })} />
-        </Row>
-        <NetworkRules />
-      </Section>
-
-      <ExtensionsSection />
-
-      <Section title="Apps" icon="box">
-        <SandboxRows />
-        <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
-          <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
-        </Row>
-        <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn (this hides the agent; opening it goes back to editing).">
-          <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
-        </Row>
-      </Section>
-
-      <Section title="AI in apps" icon="sparkles">
-        <p {...stylex.attrs(styles.muted, styles.note)}>
-          Apps can use AI (summaries, suggestions, chat) through NathApp, on your own subscription: no API keys in your apps. Only an
-          app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
-          shows up in the app's logs.
-        </p>
-        <Row label="Let apps use AI">
-          <Toggle checked={settings().apps.ai.enabled} onChange={(enabled) => setAi({ enabled })} />
-        </Row>
-        <Row label="Model" description="Who answers apps' requests. By default a fast model, to spare your plan's limits.">
-          <div {...stylex.attrs(styles.pickerBox)} data-app-ai-agent>
-            <AgentPicker
-              choice={{ provider: settings().apps.ai.provider, model: settings().apps.ai.model ?? aiDefaultModel(), effort: settings().apps.ai.effort }}
-              onChange={(choice) => setAi({ provider: choice.provider, model: choice.model, effort: choice.effort })}
-            />
-          </div>
-        </Row>
-        <Row label="Daily limit" description="Requests per app and day.">
-          <input
-            type="number"
-            min="1"
-            max="100000"
-            value={settings().apps.ai.dailyLimit}
-            onChange={(e) => {
-              const n = Math.round(Number(e.currentTarget.value));
-              if (n >= 1 && n <= 100_000) setAi({ dailyLimit: n });
-              else e.currentTarget.value = String(settings().apps.ai.dailyLimit);
-            }}
-            {...stylex.attrs(styles.textInput, styles.numberInput)}
-            data-ai-limit
-          />
-        </Row>
-      </Section>
-
-      <Section title="Secrets" icon="key-round">
-        <GlobalSecrets />
-      </Section>
-
-      <Section title="Permissions" icon="shield-check">
-        <PermissionRows />
-      </Section>
-
-      <Section title="About" icon="info">
-        <dl {...stylex.attrs(styles.about)}>
-          <dt>Data folder</dt>
-          <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
-          <dt>Versions</dt>
-          <dd {...stylex.attrs(styles.dd, styles.mono)}>
-            Electron {window.nathapp.versions.electron} · Chrome {window.nathapp.versions.chrome} · Bun {health()?.bun ?? "…"}
-          </dd>
-        </dl>
-      </Section>
-    </div>
+function AboutSection() {
+  const [health] = createResource(() => api.health());
+  return (
+        <Section title="NathApp" icon="info" anchor="about">
+          <dl {...stylex.attrs(styles.about)}>
+            <dt>Data folder</dt>
+            <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
+            <dt>Versions</dt>
+            <dd {...stylex.attrs(styles.dd, styles.mono)}>
+              Electron {window.nathapp.versions.electron} · Chrome {window.nathapp.versions.chrome} · Bun {health()?.bun ?? "…"}
+            </dd>
+          </dl>
+        </Section>
   );
 }
 
@@ -1126,6 +1278,70 @@ function PresetButton(props: { name: string; theme: GlobalTheme; onClick: () => 
 const varOf = (ref: string) => /var\((--[^),\s]+)/.exec(ref)?.[1] ?? ref;
 
 const styles = stylex.create({
+  shell: { display: "flex", height: "100%", minHeight: 0 },
+  nav: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 1,
+    flexShrink: 0,
+    width: 220,
+    paddingInline: space.sm,
+    paddingBottom: space.md,
+    borderRightWidth: 1,
+    borderRightStyle: "solid",
+    borderRightColor: colors.border,
+    backgroundColor: colors.sidebar,
+    overflowY: "auto",
+  },
+  navTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    flexShrink: 0,
+    height: 52,
+    paddingInline: space.sm,
+    fontSize: font.lg,
+    fontWeight: 650,
+    letterSpacing: "-0.01em",
+  },
+  navGroup: {
+    marginTop: space.md,
+    marginBottom: 2,
+    paddingInline: space.sm,
+    color: colors.muted,
+    fontSize: font.xs,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
+  navEnd: { display: "flex", flexDirection: "column", marginTop: "auto", paddingTop: space.md },
+  navItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    flexShrink: 0,
+    height: 32,
+    paddingInline: space.sm,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.text },
+    fontFamily: font.sans,
+    fontSize: font.sm,
+    textAlign: "left",
+    cursor: "pointer",
+    outlineStyle: { default: "none", ":focus-visible": "solid" },
+    outlineWidth: 2,
+    outlineColor: colors.accent,
+    outlineOffset: -2,
+  },
+  navItemOn: {
+    backgroundColor: { default: colors.surface, ":hover": colors.surface },
+    color: colors.text,
+    fontWeight: 500,
+    boxShadow: `0 0 0 1px ${colors.border}`,
+  },
+  main: { flex: 1, minWidth: 0, overflowY: "auto" },
   numberInput: { width: 110 },
   folderList: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: space.xs, width: "100%" },
   folderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.sm, width: "100%" },

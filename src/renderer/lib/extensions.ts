@@ -6,7 +6,7 @@
 import { createEffect, createRoot, createSignal } from "solid-js";
 import type { ExtensionInfo, ExtensionPermissionRequest, ExtensionPopupRequest, ExtensionTabs } from "../../shared/extensions";
 import { confirmDialog } from "../components/ConfirmDialog";
-import { apps, deleteApp, lastTabOf, newWebTab, openedIds, selectApp, selectedId, SETTINGS_VIEW, currentWorkspace, appById } from "./store";
+import { apps, deleteApp, lastTabOf, newWebTab, openedIds, openSettings, selectApp, selectedId, currentWorkspace, appById } from "./store";
 import { pageOf, pagesVersion, tabOfContents } from "./webtabs";
 
 const bridge = window.nathapp.extensions;
@@ -37,8 +37,7 @@ bridge.onPopup((request) => setPopupRequest(request));
 
 /** Settings → Extensions. */
 export function showExtensionSettings() {
-  void selectApp(SETTINGS_VIEW);
-  requestAnimationFrame(() => document.querySelector('[data-section="extensions"]')?.scrollIntoView({ block: "start" }));
+  void openSettings("extensions");
 }
 bridge.onManage(showExtensionSettings);
 

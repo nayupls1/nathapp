@@ -30,7 +30,7 @@ import {
   setAgentCollapsed,
   setRuntime,
   setTabPinned,
-  SETTINGS_VIEW,
+  openSettings,
   showWorkspace,
   states,
   stopAgent,
@@ -43,6 +43,7 @@ import { pageOf } from "./webtabs";
 import { unloadOtherTabs } from "./unload";
 import { sendWithShares } from "./sharing";
 import { reviewMod } from "./mods";
+import { settingsSections } from "./settingsSections";
 import { isShareCode } from "../../shared/mods";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { toast } from "../components/Toast";
@@ -223,8 +224,7 @@ function askAgent(id: string, prompt: string) {
 }
 
 function scrollToWorkspaceSettings() {
-  void selectApp(SETTINGS_VIEW);
-  requestAnimationFrame(() => document.querySelector('[data-section="workspace"]')?.scrollIntoView({ block: "start" }));
+  void openSettings("workspace");
 }
 
 /** Commands about the tab you're on. */
@@ -343,11 +343,24 @@ function nathappCommands(): Command[] {
       keywords: "toggle hide show tabs",
       run: toggleSidebar,
     },
+    // Every category of Settings, by name ("Settings: Apps").
+    ...settingsSections
+      .filter((section) => !section.view)
+      .map(
+        (section): Command => ({
+          id: `settings.${section.id}`,
+          title: `Settings: ${section.label}`,
+          icon: section.icon,
+          group: "NathApp",
+          keywords: `preferences ${section.keywords ?? ""}`,
+          run: () => openSettings(section.id),
+        }),
+      ),
     { id: "open.history", title: "Open History", icon: "history", group: "NathApp", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
     { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "NathApp", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
     { id: "open.mods", title: "Open Mods", icon: "puzzle", group: "NathApp", keywords: "install share gallery themes customizations extensions", run: () => selectApp(MODS_VIEW) },
     { id: "open.activity", title: "Open Activity", icon: "activity", group: "NathApp", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },
-    { id: "open.settings", title: "Open Settings", icon: "settings", group: "NathApp", keywords: "preferences", run: () => selectApp(SETTINGS_VIEW) },
+    { id: "open.settings", title: "Open Settings", icon: "settings", group: "NathApp", keywords: "preferences", run: () => openSettings() },
     {
       id: "open.workspace-settings",
       title: "Workspace settings",
