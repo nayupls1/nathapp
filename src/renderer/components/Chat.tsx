@@ -80,7 +80,7 @@ export function Chat(props: { appId: string }) {
           {...stylex.attrs(styles.headerButton)}
           data-chat-history-button
         >
-          <Icon name="history" size={16} />
+          <Icon name="clock" size={16} />
         </button>
         <Show when={history()}>{(at) => <ChatHistory appId={props.appId} position={at()} onClose={() => setHistory()} />}</Show>
         <button
