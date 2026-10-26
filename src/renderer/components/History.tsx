@@ -203,7 +203,7 @@ function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean;
             </Button>
             <Show when={props.restoreAllIn !== undefined}>
               <Button onClick={() => void restoreAll()} disabled={busy()} title="Settings, site customizations and every app back to this moment" data-restore-all>
-                <Icon name="history" size={14} />
+                <Icon name="rewind" size={14} />
                 Restore everything to here
               </Button>
             </Show>
