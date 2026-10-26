@@ -60,7 +60,6 @@ export default function App() {
       <ModReviewHost />
       <CommandBar />
       <ToastHost />
-      <WindowControls />
       <div {...stylex.attrs(styles.column)}>
         <Show when={window.nathapp.safeMode}>
           <div role="status" {...stylex.attrs(styles.safeMode)} data-safe-mode data-titlebar>
@@ -136,6 +135,9 @@ export default function App() {
         </div>
       </div>
       <AgentSidebar />
+      {/* Last: the window's drag area is worked out in document order, so a top bar after the
+          buttons (the agent sidebar's header) would make them a drag area again (Windows). */}
+      <WindowControls />
     </div>
   );
 }

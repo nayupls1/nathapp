@@ -604,6 +604,12 @@ try {
     if (r.padded.length !== r.underneath) throw new Error(`${r.underneath} bars run under the buttons, ${r.padded.length} padded`);
     const drag = await page!.eval<string>(`getComputedStyle(document.querySelector("[data-titlebar]")).webkitAppRegion || getComputedStyle(document.querySelector("[data-titlebar]")).getPropertyValue("-webkit-app-region")`);
     if (drag !== "drag") throw new Error(`top bars aren't drag regions: ${drag}`);
+    // The drag area is worked out in document order: a bar after the buttons would cover them again (Windows).
+    const barAfter = await page!.eval<boolean>(`(() => {
+      const c = document.querySelector("[data-window-controls]");
+      return [...document.querySelectorAll("[data-titlebar]")].some((b) => c.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    })()`);
+    if (barAfter) throw new Error("a top bar comes after the window buttons in the document");
     return `${r.controls.width}px of buttons; padded: ${r.padded.join(", ") || "none needed"}`;
   });
 
