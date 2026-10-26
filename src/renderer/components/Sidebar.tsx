@@ -29,6 +29,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { IconPicker, TabIcon } from "./TabIcon";
 import { Button } from "./ui";
 
 /** Width of the collapsed sidebar: icons only. */
@@ -286,6 +287,7 @@ const [dropAt, setDropAt] = createSignal<{ id: string; side: "before" | "after" 
 function Item(props: { app: AppSummary }) {
   const [editing, setEditing] = createSignal(false);
   const [menu, setMenu] = createSignal<MenuPosition>();
+  const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
   const dropBefore = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "before";
   const dropAfter = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "after";
   const isDragged = () => draggedTab() === props.app.id;
@@ -313,6 +315,7 @@ function Item(props: { app: AppSummary }) {
 
   const menuItems = (): (MenuItem | "separator")[] => [
     { label: "Rename", icon: "pencil", onSelect: rename },
+    { label: "Change icon…", icon: "smile-plus", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
     { label: "Duplicate", icon: "copy", onSelect: () => duplicateApp(props.app.id) },
     { label: "Move up", icon: "arrow-up", disabled: !neighbour(-1), onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before") },
     { label: "Move down", icon: "arrow-down", disabled: !neighbour(1), onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after") },
@@ -393,19 +396,7 @@ function Item(props: { app: AppSummary }) {
         void moveTab(id, at.id, at.side);
       }}
     >
-      <Show
-        when={props.app.kind === "web"}
-        fallback={
-          <Icon
-            name={props.app.icon ?? "app-window"}
-            size={16}
-            {...stylex.attrs(styles.icon)}
-            fallback={<span {...stylex.attrs(styles.icon)}>{props.app.icon}</span>}
-          />
-        }
-      >
-        <Favicon url={props.app.favicon} />
-      </Show>
+      <TabIcon tab={props.app} />
       <Show when={editing()} fallback={<span {...stylex.attrs(styles.name, isSidebarCollapsed() && styles.hiddenText)}>{props.app.name}</span>}>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
@@ -440,16 +431,10 @@ function Item(props: { app: AppSummary }) {
       <Show when={menu()}>
         {(position) => <ContextMenu items={menuItems()} position={position()} onClose={() => setMenu()} />}
       </Show>
+      <Show when={iconPicker()}>
+        {(position) => <IconPicker tab={props.app} position={position()} onClose={() => setIconPicker()} />}
+      </Show>
     </li>
-  );
-}
-
-function Favicon(props: { url: string | null }) {
-  const [broken, setBroken] = createSignal<string | null>(null);
-  return (
-    <Show when={props.url && broken() !== props.url} fallback={<Icon name="globe" size={16} {...stylex.attrs(styles.icon)} />}>
-      <img src={props.url!} alt="" onError={() => setBroken(props.url)} {...stylex.attrs(styles.favicon)} />
-    </Show>
   );
 }
 
@@ -548,7 +533,6 @@ const styles = stylex.create({
   },
   newButton: { justifyContent: "flex-start", width: "100%" },
   chevron: { marginLeft: "auto", opacity: 0.6 },
-  favicon: { width: 16, height: 16, marginInline: 1, flexShrink: 0, objectFit: "contain", borderRadius: 3 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 },
   item: {
     display: "flex",

@@ -3,7 +3,7 @@
 // nathapp.json, plus routing for free text: a URL opens, a sentence goes to
 // the agent (or a new app), anything else can be searched for.
 import { createSignal } from "solid-js";
-import type { AppActionInfo, AppSummary } from "../../shared/api";
+import { isImageIcon, type AppActionInfo, type AppSummary } from "../../shared/api";
 import { searchEngines } from "../../shared/settings";
 import { normalizeUrl } from "../../shared/web";
 import { api } from "./api";
@@ -156,8 +156,9 @@ function tabCommand(app: AppSummary): Command {
     id: `tab:${app.id}`,
     title: app.name,
     subtitle: where || undefined,
-    icon: app.kind === "web" ? "globe" : (app.icon ?? "app-window"),
-    favicon: app.kind === "web" ? app.favicon : undefined,
+    // Its own icon (an image shows like a favicon), else the default.
+    icon: app.icon && !isImageIcon(app.icon) ? app.icon : app.kind === "web" ? "globe" : "app-window",
+    favicon: isImageIcon(app.icon) ? app.icon : app.kind === "web" && !app.icon ? app.favicon : undefined,
     group: app.kind === "web" ? "Web tab" : "App",
     keywords: app.kind === "web" ? (app.url ?? "") : undefined,
     run: () => selectApp(app.id),

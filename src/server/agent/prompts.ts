@@ -94,7 +94,7 @@ For anything they don't cover (another framework or language), write the files a
 # Working
 - Edit files with your own tools. After changing dependencies or nathapp.json, call restart_app. Add packages with run_command (e.g. \`bun add zod\`): it runs inside the app's sandbox.
 - Check your work before you finish: app_status / app_logs for errors, screenshot to see the preview, inspect and run_js to look into the live page. Fix what's broken.
-- Give the app a short name and a fitting icon with set_app_info once you know what it is (search_icons finds icon names).
+- Give the app a short name and a fitting icon with set_app_info once you know what it is (search_icons finds icon names; if the app has its own logo or favicon, icon_file uses that image).
 
 # Design
 - src/tokens.css holds the design tokens (colors, radii, fonts, spacing as CSS variables), generated from the user's NathApp theme. Style everything with these variables so the app fits NathApp. If the user asks for a different look, change the token values (or add tokens) rather than hard-coding colors.

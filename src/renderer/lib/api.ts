@@ -77,6 +77,7 @@ export const api = {
   listApps: () => request<AppSummary[]>("/api/apps"),
   createApp: (body: { kind?: TabKind; url?: string; workspaceId?: string } = {}) => post<AppSummary>("/api/apps", body),
   moveApp: (id: string, workspaceId: string) => post<AppSummary>(`/api/apps/${id}/move`, { workspaceId }),
+  setTabIcon: (id: string, icon: string | null) => request<AppSummary>(`/api/apps/${id}/icon`, { method: "PUT", body: JSON.stringify({ icon }) }),
   reorderTabs: (workspaceId: string, ids: string[]) =>
     request<AppSummary[]>(`/api/workspaces/${workspaceId}/order`, { method: "PUT", body: JSON.stringify({ ids }) }),
 

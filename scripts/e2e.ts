@@ -572,8 +572,8 @@ try {
 
   await check("sidebar: tabs are reordered by dragging", async () => {
     const ids = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li[data-app-id]")].map((li) => li.dataset.appId)`);
-    const first = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: "https://example.com/" } });
-    const extra = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: "https://example.com/" } });
+    const first = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/second` } });
+    const extra = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/second` } });
     await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${extra.id}"]')`, { label: "new tab in the sidebar" });
     const before = await ids();
     if (before.length < 2 || before.at(-1) !== extra.id) throw new Error(`unexpected order ${before.join(", ")}`);
@@ -603,6 +603,68 @@ try {
     for (const tab of [first, extra]) await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
     await page!.waitFor(`!document.querySelector('nav li[data-app-id="${extra.id}"]')`, { label: "tabs removed" });
     return `${saved.length} tabs, last one moved to the top`;
+  });
+
+  await check("tab icons: picked from Lucide, uploaded, reset", async () => {
+    const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/second` } });
+    const li = `nav li[data-app-id="${tab.id}"]`;
+    await page!.waitFor(`!!document.querySelector('${li}')`, { label: "tab in the sidebar" });
+    const iconOf = async () => (await apiCall<{ id: string; icon: string | null }[]>("/api/apps")).find((t) => t.id === tab.id)?.icon;
+    const openPicker = async () => {
+      await page!.eval(`(() => {
+        const li = document.querySelector('${li}');
+        const r = li.getBoundingClientRect();
+        li.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 20, clientY: r.top + 10 }));
+        return true;
+      })()`);
+      await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "menu" });
+      await click("[data-context-menu] button", "Change icon");
+      await page!.waitFor(`!!document.querySelector("[data-icon-picker]")`, { label: "icon picker" });
+    };
+
+    await openPicker();
+    await page!.eval(`(() => {
+      const input = document.querySelector("[data-icon-picker] input");
+      input.value = "rocket";
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return true;
+    })()`);
+    await page!.waitFor(`!!document.querySelector('[data-icon-picker] [data-icon="rocket"]')`, { label: "search result" });
+    await shot("icon-picker.png");
+    await click('[data-icon-picker] [data-icon="rocket"]');
+    await page!.waitFor(`!document.querySelector("[data-icon-picker]")`, { label: "picker closes" });
+    if ((await waitForValue(async () => ((await iconOf()) === "rocket" ? "rocket" : undefined))) !== "rocket") throw new Error("not saved");
+    await page!.waitFor(`!!document.querySelector('${li} svg.lucide-rocket, ${li} svg[class*="rocket"]')`, { label: "rocket in the sidebar" });
+
+    // An uploaded image is scaled to a 64px PNG.
+    await openPicker();
+    await page!.eval(`(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 200; canvas.height = 100;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#e11d48"; ctx.fillRect(0, 0, 200, 100);
+      const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg"));
+      const dt = new DataTransfer();
+      dt.items.add(new File([blob], "logo.jpg", { type: "image/jpeg" }));
+      const input = document.querySelector("[data-icon-file]");
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    })()`);
+    const image = await waitForValue(async () => {
+      const icon = await iconOf();
+      return icon?.startsWith("data:image/png;base64,") ? icon : undefined;
+    });
+    const size = await page!.eval<string>(`new Promise((resolve) => { const img = new Image(); img.onload = () => resolve(img.naturalWidth + "x" + img.naturalHeight); img.src = ${JSON.stringify(image)}; })`);
+    if (size !== "64x64") throw new Error(`uploaded icon is ${size}`);
+    await page!.waitFor(`!!document.querySelector('${li} img[data-tab-icon-image]')`, { label: "image in the sidebar" });
+    await shot("tab-icon-image.png");
+
+    await openPicker();
+    await click("[data-icon-picker] [data-icon-reset]");
+    if ((await waitForValue(async () => ((await iconOf()) === null ? "reset" : undefined))) !== "reset") throw new Error("not reset");
+    await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    return `rocket, uploaded image (${size}), reset; ${Math.round(image.length / 1024)} kB`;
   });
 
   await check("web tab: browse, pick an element, site customization applies", async () => {

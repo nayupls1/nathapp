@@ -322,6 +322,11 @@ export async function renameApp(id: string, name: string) {
   upsertApp(await api.renameApp(id, name));
 }
 
+/** The tab's own icon (Lucide name, emoji or image data URL), or null for the default. */
+export async function setTabIcon(id: string, icon: string | null) {
+  upsertApp(await api.setTabIcon(id, icon));
+}
+
 export async function duplicateApp(id: string) {
   const copy = await api.duplicateApp(id);
   upsertApp(copy); // it goes last

@@ -204,7 +204,7 @@ export interface AppSummary {
   /** "app": a project built by the agent; "web": a browser tab. */
   kind: TabKind;
   name: string;
-  /** Lucide icon name chosen by the agent. */
+  /** Its own icon (see TabIcon): a Lucide icon name, an emoji or an image (data URL). Null: the default (web tabs: the site's favicon). */
   icon: string | null;
   /** Web tabs: current URL and favicon. */
   url: string | null;
@@ -214,6 +214,14 @@ export interface AppSummary {
   createdAt: string;
   updatedAt: string;
 }
+
+/** A tab's own icon as an image: a base64 data URL. */
+export const isImageIcon = (icon: string | null | undefined): icon is string => !!icon && icon.startsWith("data:image/");
+/** Image icons are small (the UI scales uploads to 64px); this bounds what the API takes. */
+export const IMAGE_ICON_MAX = 150_000;
+export const IMAGE_ICON_PATTERN = /^data:image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/;
+/** An emoji (or a few), shown as text. */
+export const isEmojiIcon = (icon: string) => icon.length <= 16 && /\p{Extended_Pictographic}/u.test(icon) && !/[\s<>]/.test(icon);
 
 export interface AppDetail extends AppSummary {
   messages: ChatMessage[];

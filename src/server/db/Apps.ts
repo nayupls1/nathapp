@@ -12,6 +12,7 @@ interface AppRow {
   name: string;
   name_locked: number;
   icon: string | null;
+  icon_locked: number;
   url: string | null;
   favicon: string | null;
   provider: string | null;
@@ -107,16 +108,22 @@ export const make = Effect.gen(function* () {
         Effect.andThen(summary(id)),
       ),
 
-    /** Name and icon chosen by the agent. */
+    /** Name and icon chosen by the agent (not over the user's). */
     setInfo: (id: string, info: { name?: string; icon?: string | null }) =>
       Effect.gen(function* () {
         const r = yield* row(id);
         if (!r) return null;
         const name = info.name && !r.name_locked ? info.name.slice(0, 80) : r.name;
-        const icon = info.icon !== undefined ? info.icon : r.icon;
+        const icon = info.icon !== undefined && !r.icon_locked ? info.icon : r.icon;
         yield* sql`UPDATE apps SET name = ${name}, icon = ${icon}, updated_at = ${sql.literal(now)} WHERE id = ${id}`;
         return yield* summary(id);
       }),
+
+    /** An icon the user chose (the agent leaves it alone from now on), or null for the default again. */
+    setIcon: (id: string, icon: string | null) =>
+      sql`UPDATE apps SET icon = ${icon}, icon_locked = ${icon === null ? 0 : 1}, updated_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(
+        Effect.andThen(summary(id)),
+      ),
 
     setAgent: (id: string, agent: AgentChoice) =>
       sql`UPDATE apps SET provider = ${agent.provider}, model = ${agent.model}, effort = ${agent.effort} WHERE id = ${id}`.pipe(Effect.asVoid),
@@ -155,8 +162,8 @@ export const make = Effect.gen(function* () {
         const r = yield* row(id);
         if (!r) return null;
         const copyId = crypto.randomUUID();
-        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, icon, url, favicon, provider, model, effort, mode, position)
-          VALUES (${copyId}, ${r.workspace_id}, ${r.kind}, ${`${r.name} copy`}, ${r.icon}, ${r.url}, ${r.favicon}, ${r.provider}, ${r.model}, ${r.effort}, ${r.mode}, ${lastPosition(r.workspace_id)})`;
+        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, icon, icon_locked, url, favicon, provider, model, effort, mode, position)
+          VALUES (${copyId}, ${r.workspace_id}, ${r.kind}, ${`${r.name} copy`}, ${r.icon}, ${r.icon_locked}, ${r.url}, ${r.favicon}, ${r.provider}, ${r.model}, ${r.effort}, ${r.mode}, ${lastPosition(r.workspace_id)})`;
         return (yield* summary(copyId))!;
       }),
 

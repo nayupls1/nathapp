@@ -207,6 +207,8 @@ const migrate = Effect.gen(function* () {
     ["workspace_id", `TEXT NOT NULL DEFAULT '${DEFAULT_WORKSPACE}'`],
     // The tab's place in its workspace's list (ties: creation order).
     ["position", "INTEGER NOT NULL DEFAULT 0"],
+    // Set when the user picks the icon, so the agent leaves it alone.
+    ["icon_locked", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [name, type] of added) {
     if (!columns.has(name)) yield* sql.unsafe(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);

@@ -4,6 +4,10 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import {
   appOfTarget,
   appTarget,
+  IMAGE_ICON_MAX,
+  IMAGE_ICON_PATTERN,
+  isEmojiIcon,
+  isImageIcon,
   providerIds,
   workspaceOfScope,
   workspaceScope,
@@ -31,6 +35,7 @@ import { Permissions, WEBSITE_AGENT } from "./security/Permissions";
 import { Secrets } from "./security/Secrets";
 import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
+import { isIcon } from "./icons";
 import { Network } from "./db/Network";
 import { Settings } from "./db/Settings";
 import { PageChanges, pageChangeError } from "./db/PageChanges";
@@ -347,6 +352,25 @@ const appRoutes = HttpRouter.addAll([
       yield* removeApp(yield* param("id"));
       return noContent;
     }),
+  ),
+
+  // The tab's own icon (a Lucide name, an emoji or a small image), or null for the default.
+  HttpRouter.route(
+    "PUT",
+    "/api/apps/:id/icon",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const { icon } = yield* decodeBody(Schema.Struct({ icon: Schema.NullOr(str(IMAGE_ICON_MAX)) }));
+        if (icon !== null && !(isImageIcon(icon) ? IMAGE_ICON_PATTERN.test(icon) : isIcon(icon) || isEmojiIcon(icon))) {
+          return yield* fail(400, "icon must be a Lucide icon name, an emoji or a base64 image data URL");
+        }
+        const app = yield* apps.setIcon(yield* param("id"), icon);
+        if (!app) return yield* fail(404, "Not found");
+        yield* publishApp(app);
+        return json(app);
+      }),
+    ),
   ),
 
   // Moving a tab to another workspace: it gets that workspace's secrets and permissions.

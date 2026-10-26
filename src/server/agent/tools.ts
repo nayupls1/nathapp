@@ -2,6 +2,8 @@
 // a tab — a website, or an app's preview — through the NathApp window (RPC over
 // the hub). App tools run and inspect the app's project; site tools save
 // customizations for websites.
+import { readFile, realpath, stat } from "node:fs/promises";
+import { extname, isAbsolute, relative, resolve } from "node:path";
 import { Effect, Schema } from "effect";
 import { hostOf, inspectedStyles, pageKey, scopeMatches } from "../../shared/web";
 import { Apps } from "../db/Apps";
@@ -20,9 +22,39 @@ import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
 import { topics } from "../../shared/hub";
-import { isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type Schedule, type ScheduleSpec, type ScheduleTask, type ScheduleTrigger, type LogLine, type RuntimeStatus } from "../../shared/api";
+import { isImageIcon, isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type Schedule, type ScheduleSpec, type ScheduleTask, type ScheduleTrigger, type LogLine, type RuntimeStatus } from "../../shared/api";
 
 const transpiler = new Bun.Transpiler({ loader: "js" });
+
+const ICON_FILE_MAX = 100_000;
+const iconTypes: Record<string, { mime: string; magic?: (b: Uint8Array) => boolean }> = {
+  png: { mime: "image/png", magic: (b) => b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 },
+  jpg: { mime: "image/jpeg", magic: (b) => b[0] === 0xff && b[1] === 0xd8 },
+  jpeg: { mime: "image/jpeg", magic: (b) => b[0] === 0xff && b[1] === 0xd8 },
+  gif: { mime: "image/gif", magic: (b) => b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 },
+  webp: { mime: "image/webp", magic: (b) => new TextDecoder().decode(b.subarray(8, 12)) === "WEBP" },
+  ico: { mime: "image/x-icon", magic: (b) => b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0 },
+  svg: { mime: "image/svg+xml", magic: (b) => /<svg[\s>]/i.test(new TextDecoder().decode(b)) },
+};
+
+/** An image in the project as a data URL for the tab's icon. Only files inside the project (after symlinks). */
+export async function readIconFile(projectDir: string, path: string): Promise<string | { error: string }> {
+  const type = iconTypes[extname(path).slice(1).toLowerCase()];
+  if (!type) return { error: `${path}: use a PNG, SVG, ICO, JPEG, GIF or WebP file.` };
+  let file: string;
+  try {
+    const root = await realpath(projectDir);
+    file = await realpath(resolve(root, path));
+    const rel = relative(root, file);
+    if (rel.startsWith("..") || isAbsolute(rel)) return { error: `${path} isn't inside the project.` };
+    if ((await stat(file)).size > ICON_FILE_MAX) return { error: `${path} is too big for an icon (at most 100 kB).` };
+  } catch {
+    return { error: `${path} doesn't exist in the project.` };
+  }
+  const bytes = new Uint8Array(await readFile(file));
+  if (type.magic && !type.magic(bytes)) return { error: `${path} isn't a valid ${extname(path).slice(1).toUpperCase()} image.` };
+  return `data:${type.mime};base64,${Buffer.from(bytes).toString("base64")}`;
+}
 
 /** Throws with the parser's message if the JavaScript doesn't parse. */
 export function checkSyntax(js: string) {
@@ -627,14 +659,31 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "set_app_info",
-      "Set the app's name (short, shown in NathApp's sidebar) and icon (a Lucide icon name; find one with search_icons).",
-      Schema.Struct({ name: Schema.optionalKey(Schema.String), icon: Schema.optionalKey(Schema.String) }),
-      ({ name, icon }) =>
+      "Set the app's name (short, shown in NathApp's sidebar) and icon: a Lucide icon name (find one with search_icons), or icon_file, an image in the project (PNG, SVG, ICO, JPEG, GIF or WebP, at most 100 kB, square works best), e.g. a logo or favicon you made for it.",
+      Schema.Struct({
+        name: Schema.optionalKey(Schema.String),
+        icon: Schema.optionalKey(Schema.String),
+        icon_file: Schema.optionalKey(Schema.String.annotate({ description: "Path of an image, relative to the project folder" })),
+      }),
+      ({ name, icon, icon_file }) =>
         Effect.gen(function* () {
           if (icon && !isIcon(icon)) return text(`Unknown icon "${icon}". Use search_icons to find one.`, true);
-          const summary = yield* apps.setInfo(appId, { name: name?.trim() || undefined, icon });
-          if (summary) yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
-          return summary ? `Saved: ${summary.name}${summary.icon ? ` (${summary.icon})` : ""}.` : "The app no longer exists.";
+          let image: string | undefined;
+          if (icon_file) {
+            const project = yield* workspace.info(appId);
+            if (!project) return text("The app has no project yet.", true);
+            const result = yield* Effect.promise(() => readIconFile(project.dir, icon_file));
+            if (typeof result !== "string") return text(result.error, true);
+            image = result;
+          }
+          const wanted = image ?? icon;
+          const summary = yield* apps.setInfo(appId, { name: name?.trim() || undefined, icon: wanted });
+          if (!summary) return "The app no longer exists.";
+          yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
+          // The user's own choice of icon stays.
+          const kept = wanted !== undefined && summary.icon !== wanted;
+          const shown = image && !kept ? ` (icon from ${icon_file})` : summary.icon && !isImageIcon(summary.icon) ? ` (${summary.icon})` : "";
+          return `Saved: ${summary.name}${shown}.${kept ? " The user chose the tab's icon themselves, so it stays." : ""}`;
         }),
     ),
 
