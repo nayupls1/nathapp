@@ -595,6 +595,41 @@ try {
     return `${Math.round(collapsed)}px collapsed, ${Math.round(before)} → ${Math.round(after)}px`;
   });
 
+  await check("agent sidebar: resized by its edge, remembered, reset by double-click", async () => {
+    const panel = "[data-agent-sidebar]";
+    if (!(await page!.eval<boolean>(`!!document.querySelector('${panel}')`))) {
+      await click(`[data-app-tab="${appId}"] [data-agent-show]`);
+      await page!.waitFor(`!!document.querySelector('${panel}')`, { label: "agent sidebar" });
+    }
+    const width = () => page!.eval<number>(`Math.round(document.querySelector('${panel}').getBoundingClientRect().width)`);
+    const before = await width();
+    const drag = (dx: number) =>
+      page!.eval(`(() => {
+        const h = document.querySelector("[data-agent-resizer]");
+        const r = h.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + 100;
+        h.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: x, clientY: y }));
+        window.dispatchEvent(new PointerEvent("pointermove", { clientX: x + ${dx}, clientY: y }));
+        window.dispatchEvent(new PointerEvent("pointerup", { clientX: x + ${dx}, clientY: y }));
+        return true;
+      })()`);
+    await drag(-120);
+    const wider = await width();
+    if (wider !== before + 120) throw new Error(`${before} → ${wider}, expected +120`);
+    const saved = await page!.eval<string>(`localStorage.getItem("nathapp.agentSidebar")`);
+    if (!saved.includes(String(wider))) throw new Error(`not remembered: ${saved}`);
+    // Dragged far to the right: it closes (and comes back at its width).
+    await drag(5000);
+    await page!.waitFor(`!document.querySelector('${panel}')`, { label: "closed by dragging" });
+    await click(`[data-app-tab="${appId}"] [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${panel}')`, { label: "shown again" });
+    if ((await width()) !== wider) throw new Error(`came back at ${await width()}px`);
+    await page!.eval(`document.querySelector("[data-agent-resizer]").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })), true`);
+    const reset = await width();
+    if (reset !== 380) throw new Error(`double-click: ${reset}px`);
+    return `${before} → ${wider} → reset ${reset}px`;
+  });
+
   await check("sidebar: tabs are reordered by dragging", async () => {
     const ids = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li[data-app-id]")].map((li) => li.dataset.appId)`);
     const first = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/second` } });

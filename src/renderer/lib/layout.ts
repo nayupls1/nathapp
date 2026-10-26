@@ -1,4 +1,5 @@
-// The main sidebar's width and whether it's collapsed to icons. Remembered across restarts.
+// The tab sidebar's width and whether it's collapsed to icons, and the agent
+// sidebar's width. Remembered across restarts.
 import { createSignal } from "solid-js";
 
 export const SIDEBAR_MIN = 180;
@@ -44,3 +45,32 @@ export const [draggedTab, setDraggedTab] = createSignal<string | null>(null);
 export const TAB_DRAG_TYPE = "application/x-nathapp-tab";
 /** A split view being dragged from the sidebar (all its tabs move together). */
 export const [draggedSplit, setDraggedSplit] = createSignal<string | null>(null);
+
+// --- The agent sidebar's width (components/AgentSidebar.tsx), the same in every tab ---------
+
+export const AGENT_MIN = 280;
+export const AGENT_MAX = 760;
+export const AGENT_DEFAULT = 380;
+
+const AGENT_KEY = "nathapp.agentSidebar";
+const clampAgent = (value: number) => Math.round(Math.min(AGENT_MAX, Math.max(AGENT_MIN, value)));
+const [agentWidth, setAgentWidthSignal] = createSignal(
+  clampAgent(
+    (() => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(AGENT_KEY) ?? "{}") as { width?: number };
+        return typeof saved.width === "number" ? saved.width : AGENT_DEFAULT;
+      } catch {
+        return AGENT_DEFAULT;
+      }
+    })(),
+  ),
+);
+
+export { agentWidth };
+
+/** While dragging, `persist` is false so only the end of the drag is written. */
+export function setAgentWidth(value: number, persist = true) {
+  setAgentWidthSignal(clampAgent(value));
+  if (persist) localStorage.setItem(AGENT_KEY, JSON.stringify({ width: agentWidth() }));
+}
