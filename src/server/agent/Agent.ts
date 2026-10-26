@@ -28,7 +28,8 @@ import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { browseTools } from "./browseTools";
-import { networkTools } from "./networkTools";
+import { devtoolsTools } from "./devtoolsTools";
+import { networkReadTools, networkTools } from "./networkTools";
 import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
 import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools, type ToolEnv } from "./tools";
 
@@ -142,6 +143,7 @@ export const make = Effect.gen(function* () {
       const tools = web
         ? [
             ...(yield* Effect.provide(pageTools(env, { site: true }), context)),
+            ...(yield* Effect.provide(devtoolsTools(env, { site: true }), context)),
             ...(yield* Effect.provide(browseTools(env), context)),
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
@@ -151,6 +153,8 @@ export const make = Effect.gen(function* () {
         : [
             ...(yield* Effect.provide(appTools(env), context)),
             ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
+            ...(yield* Effect.provide(devtoolsTools(env, { site: false }), context)),
+            ...(yield* Effect.provide(networkReadTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
             ...(yield* Effect.provide(scheduleTools(env), context)),
             ...(yield* Effect.provide(tabTools(env), context)),

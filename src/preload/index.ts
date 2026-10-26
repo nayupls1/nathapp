@@ -36,6 +36,7 @@ const bridge: NathAppBridge = {
     onShortcut: listen("nathapp:shortcut"),
     capture: (webContentsId) => ipcRenderer.invoke("nathapp:capture", webContentsId),
     openExternal: (url) => ipcRenderer.send("nathapp:open-external", url),
+    devtools: (webContentsId, command, params) => ipcRenderer.invoke("nathapp:devtools", webContentsId, command, params),
     network: {
       list: (webContentsId, filter) => ipcRenderer.invoke("nathapp:network-list", webContentsId, filter),
       get: (webContentsId, id, reveal) => ipcRenderer.invoke("nathapp:network-get", webContentsId, id, reveal),

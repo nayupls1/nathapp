@@ -110,7 +110,7 @@ export const make = Effect.gen(function* () {
         if (project) yield* runtime.setMode(appId, "dev");
         const note = project
           ? `Imported from ${from}. NathApp runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
-          : `Imported from ${from}. NathApp couldn't tell how to run it (no nathapp.json, and package.json has no dev or start script), so the agent sets it up.`;
+          : `Imported from ${from}. NathApp couldn't tell how to run it (no nathapp.json, and package.json has no dev or start script): ask the agent to set it up.`;
         const message = yield* apps.addMessage(appId, "tool", note);
         yield* hub.publish({ type: "chat", topic: topics.app(appId), appId, event: { type: "message", message } });
         return project;

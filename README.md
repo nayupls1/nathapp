@@ -149,9 +149,17 @@ version and models). The picker in the composer chooses provider, model and
 effort per tab. Every provider gets the same instructions and NathApp's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
 `restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, the schedule tools, `set_app_info`, `search_icons`, the
-tab tools (`list_tabs`, `read_tab`) and the
+tab tools (`list_tabs`, `read_tab`), the
 page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
-that work on the preview or the web page. File editing is the provider's own.
+that work on the preview or the web page, and DevTools (below). File editing is the provider's own.
+
+**DevTools.** Both agents get most of Chrome DevTools on their tab's page, the app's preview or the website (`agent/devtoolsTools.ts`; the work happens in Electron's main process over the DevTools protocol, `main/devtools.ts`), so they can test pages and find causes on their own:
+- `console_logs`: console messages, uncaught errors with their stack, and the browser's own messages (failed requests, CSP, deprecations). App previews are captured from the start; websites once an agent asks, since pages can notice it.
+- `network_requests` / `network_request`: app previews' traffic too, for app builders.
+- `page_metrics` and `performance_trace`: web vitals, load timing, DOM and heap size; a trace (of a reload, or of an interaction the agent runs in the page) analyzed like the Performance panel (`shared/trace.ts`): long tasks and what ran in them, main-thread time by kind, the hottest functions with file:line, forced reflows, layout shifts, slow, large, render-blocking and failed requests. The trace is saved in `<data>/traces/` (the last 20) for Chrome DevTools' Performance panel, and the chat says where.
+- `accessibility_tree`, `element_styles` (the CSS rules that apply, winning first, with their file:line, the box model and computed values), `page_storage` (cookies, local and session storage, IndexedDB with record counts, caches, service workers) and `code_coverage` (unused JavaScript and CSS per file).
+- `emulate`: devices (iPhone, Pixel, iPad, laptop), sizes, offline and slow networks, slower CPUs, dark mode and reduced motion. It's undone when the agent's turn ends.
+- On websites, cookie values and credential-like storage values never leave the main process, and tokens in console text and URLs are redacted. Every call is in Activity like any tool call.
 
 Auth is always the provider's own login: no API keys (NathApp strips
 `ANTHROPIC_API_KEY` from Claude's environment on purpose).

@@ -151,9 +151,8 @@ function Workbench(props: { appId: string; active: boolean }) {
     applyOverride: async () => ({ applied: false }),
     overrideChanged: () => {},
     send,
-    webContentsId: () => {
-      throw new Error("Network traffic is only recorded in web tabs");
-    },
+    // Its traffic and console, for the agent's DevTools (main/devtools.ts).
+    webContentsId: () => requireReady().getWebContentsId(),
     pick,
     unpick,
     // Bounded: an app that isn't running has no page to load.

@@ -3,7 +3,8 @@
 // workspace has its own cookies and logins); every app preview gets a session
 // of its own (apps all run on 127.0.0.1, and cookies don't separate
 // ports). Popups become new tabs, browser shortcuts are forwarded to the NathApp
-// window, and the renderer can screenshot them for the agents. Web tab sessions
+// window, and the renderer can screenshot them and use DevTools on them for
+// the agents. Web tab sessions
 // run the installed Chrome extensions (see extensions/).
 import {
   app,
@@ -21,6 +22,7 @@ import {
 } from "electron";
 import { APP_PARTITION_PATTERN, DEFAULT_WORKSPACE, WEB_PARTITION, WEB_PARTITION_PATTERN, webPartition, type WebShortcut } from "../shared/api";
 import { setupExtensions } from "./extensions";
+import { setupDevtools } from "./devtools";
 import { setupNetwork } from "./network";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
@@ -67,6 +69,8 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     applyRules: (rules) => extensions.setNetworkRules(rules),
   });
 
+  const devtools = setupDevtools({ getWindow, isWebTab: (contents) => webSessions.has(contents.session) });
+
   app.on("web-contents-created", (_event, contents) => {
     contents.on("will-attach-webview", (event, prefs, params) => {
       delete prefs.preload;
@@ -92,10 +96,10 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
 
   function setupGuest(contents: WebContents) {
     const isPreview = () => !webSessions.has(contents.session);
-    if (!isPreview()) {
-      network.watch(contents);
-      extensions.trackGuest(contents);
-    }
+    // Traffic and console of app previews too: their agents debug with them (main/devtools.ts).
+    network.watch(contents);
+    devtools.track(contents);
+    if (!isPreview()) extensions.trackGuest(contents);
     contents.setWindowOpenHandler(({ url }) => {
       openTab(contents.session, url);
       return { action: "deny" };

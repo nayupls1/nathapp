@@ -8,7 +8,7 @@
 //   bun run e2e --only <text>   only the checks whose name contains it (and the boot check)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -89,6 +89,19 @@ const site = Bun.serve({
         ? `<title>Searched</title><h1>Results for ${url.searchParams.get("q")}</h1>`
         : path === "/form"
         ? `<title>Form page</title><h1>Form</h1><div style="height:2400px"></div><input id="note" value=""><textarea id="long"></textarea><input id="pw" type="password">`
+        : path === "/devtools"
+        ? `<title>DevTools page</title><style>.box { color: rgb(1, 2, 3); padding: 4px; } #target.box { margin: 7px; }</style>
+           <h1>DevTools</h1><button id="target" class="box" aria-label="Save the draft">Save</button>
+           <script>
+             document.cookie = "session=devtools-cookie-secret; path=/";
+             localStorage.setItem("authToken", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJlLXNlY3JldA");
+             localStorage.setItem("theme", "dark");
+             console.log("hello from devtools", { answer: 42 });
+             console.warn("careful with eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJlLXNlY3JldA");
+             function slowWork() { const end = performance.now() + 150; while (performance.now() < end) {} }
+             document.getElementById("target").addEventListener("click", slowWork);
+             setTimeout(() => { throw new Error("boom from the page"); }, 0);
+           </script>`
         : path === "/second"
         ? `<title>Second page</title><h1>Second</h1>`
         : path === "/blocked-by-extension"
@@ -1806,6 +1819,90 @@ try {
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
     return `${nav.length} categories; ${rows.join(", ")}; shells ${shells.join(", ")}; background ${await rootBg()} after reset`;
+  });
+
+  await check("devtools: console, metrics, traces, accessibility, styles, storage, coverage and emulation for agents", async () => {
+    await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
+    const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/devtools` } });
+    await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${tab.id}"]')`, { label: "web tab in the sidebar" });
+    await click(`nav li[data-app-id="${tab.id}"]`);
+    const rpcOn = <T>(tabId: string, method: string, params: object = {}) =>
+      page!.eval<T>(`window.__nathappRpc(${JSON.stringify(method)}, ${JSON.stringify({ tabId, ...params })})`);
+    const dt = <T>(command: string, params: object = {}) => rpcOn<T>(tab.id, "devtools", { command, params });
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${tab.id}"]')?.innerText.includes("DevTools page")`, { timeoutMs: 20_000, label: "devtools page" });
+
+    // A website's console is captured once an agent asks; a reload shows what the page does.
+    type Console = { startedNow: boolean; entries: { level: string; text: string }[] };
+    const first = await dt<Console>("console");
+    if (!first.startedNow) throw new Error("the web tab's console was captured before an agent asked");
+    await rpcOn(tab.id, "page.reload");
+    const logged = await waitForValue(async () => {
+      const c = await dt<Console>("console");
+      return c.entries.some((e) => e.level === "exception") ? c : undefined;
+    }, 15_000);
+    const text = logged.entries.map((e) => `${e.level}: ${e.text}`).join("\n");
+    for (const expected of ["log: hello from devtools {answer: 42}", "warn: careful with", "exception: Error: boom from the page"]) {
+      if (!text.includes(expected)) throw new Error(`console: ${text}`);
+    }
+    if (text.includes("c2lnbmF0dXJlLXNlY3JldA")) throw new Error("a token reached the console log");
+
+    // (Offscreen rendering reports no first paint, but the largest one.)
+    const metrics = await dt<{ lcp: number | null; load: number | null; runtime: Record<string, unknown> }>("metrics");
+    if (typeof metrics.lcp !== "number" || typeof metrics.load !== "number" || !metrics.runtime.Nodes) throw new Error(`metrics: ${JSON.stringify(metrics)}`);
+
+    // A trace of an interaction finds the slow function behind it, and is saved for Chrome DevTools.
+    type Trace = { analysis: { hotFunctions: { name: string; selfMs: number }[]; longTasks: unknown[]; vitals: Record<string, number | null> }; file: string; events: number };
+    const traced = await dt<Trace>("trace", { interaction: `document.getElementById("target").click()`, seconds: 1 });
+    const hot = traced.analysis.hotFunctions.find((f) => f.name === "slowWork");
+    if (!hot || hot.selfMs < 40) throw new Error(`hot functions: ${JSON.stringify(traced.analysis.hotFunctions.slice(0, 5))}`);
+    if (!existsSync(traced.file) || !JSON.parse(readFileSync(traced.file, "utf8")).traceEvents.length) throw new Error(`no trace file at ${traced.file}`);
+    const loaded = await dt<Trace>("trace", { reload: true, seconds: 1 });
+    if (typeof loaded.analysis.vitals.loadMs !== "number" || typeof loaded.analysis.vitals.lcpMs !== "number") throw new Error(`load trace vitals: ${JSON.stringify(loaded.analysis.vitals)}`);
+
+    const ax = await dt<{ lines: string[] }>("accessibility");
+    if (!ax.lines.some((l) => l.includes('button "Save the draft"'))) throw new Error(`accessibility: ${ax.lines.slice(0, 10).join(" | ")}`);
+    const styles = await dt<{ rules: { selector: string; props: string[] }[]; computed: Record<string, string> }>("styles", { selector: "#target" });
+    if (styles.rules[0]?.selector !== "#target.box" || styles.computed.color !== "rgb(1, 2, 3)") throw new Error(`styles: ${JSON.stringify(styles).slice(0, 400)}`);
+
+    // Storage: cookie values and credential-like values stay hidden on websites.
+    const storage = await dt<{ cookies: { name: string; value: string }[]; localStorage: { key: string; value: string }[] }>("storage");
+    const cookie = storage.cookies.find((c) => c.name === "session");
+    const token = storage.localStorage.find((e) => e.key === "authToken");
+    const theme = storage.localStorage.find((e) => e.key === "theme");
+    if (cookie?.value !== "[redacted]" || token?.value !== "[redacted]" || theme?.value !== "dark") throw new Error(`storage: ${JSON.stringify(storage).slice(0, 400)}`);
+
+    const coverage = await dt<{ files: { url: string; type: string }[] }>("coverage", { seconds: 0 });
+    if (!coverage.files.some((f) => f.type === "css") || !coverage.files.some((f) => f.type === "js")) throw new Error(`coverage: ${JSON.stringify(coverage)}`);
+
+    // Emulating a phone changes the page's viewport, until it's reset.
+    // (The page has no viewport meta tag, so like on a real phone its layout is 980px wide: the screen is the device's.)
+    const device = () =>
+      page!.eval<string>(`document.querySelector('[data-web-tab="${tab.id}"] webview').executeJavaScript("screen.width + ' ' + matchMedia('(prefers-color-scheme: dark)').matches + ' ' + navigator.maxTouchPoints")`);
+    const normal = await device();
+    await dt("emulate", { device: "iphone-15", colorScheme: "dark" });
+    if ((await device()) !== "393 true 5") throw new Error(`emulated: ${await device()}`);
+    await shot("devtools-emulate.png");
+    await dt("emulate", { reset: true });
+    if ((await device()) !== normal) throw new Error(`emulation wasn't reset: ${await device()} (was ${normal})`);
+
+    // App previews: their console from the start, and their traffic.
+    const app = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "app" } });
+    await apiCall(`/api/apps/${app.id}/project`, { method: "POST", body: { preset: "vanilla" } });
+    await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${app.id}"]')`, { label: "app in the sidebar" });
+    await click(`nav li[data-app-id="${app.id}"]`);
+    await page!.waitFor(`!!document.querySelector('[data-app-tab="${app.id}"] [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: "app running" });
+    const appId = app.id;
+    await waitForValue(() => rpcOn<boolean>(appId, "page.eval", { code: `(console.error("from the preview"), true)` }), 20_000);
+    const preview = await rpcOn<Console>(appId, "devtools", { command: "console", params: {} });
+    if (preview.startedNow || !preview.entries.some((e) => e.text.includes("from the preview"))) throw new Error(`preview console: ${JSON.stringify(preview)}`);
+    await rpcOn(appId, "page.reload");
+    const traffic = await waitForValue(async () => {
+      const list = await rpcOn<{ url: string }[]>(appId, "network.list", { filter: { kind: "all" } });
+      return list.length ? list : undefined;
+    }, 15_000);
+    await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    await apiCall(`/api/apps/${app.id}`, { method: "DELETE" });
+    return `console (${logged.entries.length}), slowWork ${hot.selfMs} ms in a ${traced.events}-event trace, a11y, styles, storage hidden, ${coverage.files.length} coverage files, emulation; preview: console, ${traffic.length} requests`;
   });
 
   await check("no uncaught errors in the renderer", async () => {

@@ -13,6 +13,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { ipcMain, webContents, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
 import type { NetworkFilter, NetworkRule, ReplayOverrides, ReplayResult, ReplayTarget, RequestDraft } from "../shared/api";
 import { BodyBudget, isSensitiveName, isStructured, redactBody, redactHeaders, redactUrl, REDACTED, TrafficLog, urlMatcher, type Captured } from "../shared/network";
+import * as cdp from "./cdp";
 import { loadSecretsKey } from "./secretsKey";
 
 const MAX_REQUEST_BODY = 64 * 1024;
@@ -70,12 +71,7 @@ export function setupNetwork(options: NetworkOptions) {
   function watch(contents: WebContents) {
     if (!recording || logs.has(contents.id) || contents.isDestroyed()) return;
     const dbg = contents.debugger;
-    try {
-      if (!dbg.isAttached()) dbg.attach("1.3");
-    } catch (err) {
-      console.warn("Can't record the traffic of a web tab:", err);
-      return;
-    }
+    if (!cdp.acquire(contents, "network")) return;
     const id = contents.id;
     const log = new TrafficLog(budget);
     logs.set(id, log);
@@ -205,11 +201,9 @@ export function setupNetwork(options: NetworkOptions) {
     };
     detachers.set(id, () => {
       stop();
-      try {
-        dbg.detach();
-      } catch {
-        // already gone
-      }
+      // The agents' DevTools may still use the connection.
+      void send("Network.disable", {}).catch(() => {});
+      cdp.release(contents, "network");
     });
     dbg.once("detach", stop);
     contents.once("destroyed", stop);
@@ -227,7 +221,7 @@ export function setupNetwork(options: NetworkOptions) {
       return;
     }
     for (const contents of webContents.getAllWebContents()) {
-      if (contents.getType() === "webview" && options.workspaceOf(contents.session) !== undefined) watch(contents);
+      if (contents.getType() === "webview") watch(contents);
     }
   }
 

@@ -2,7 +2,7 @@
 // server), browser shortcuts and site customization updates can reach them.
 import { createStore } from "solid-js/store";
 import { createEffect, createRoot, createSignal } from "solid-js";
-import type { NetworkFilter, PageChange, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
+import type { DevtoolsCommand, NetworkFilter, PageChange, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { hostOf } from "../../shared/web";
 import { api } from "./api";
@@ -49,7 +49,7 @@ export interface PageHandle {
   pick: () => Promise<void>;
   /** Takes back a picked element (and its mark in the page). */
   unpick: (selector: string) => void;
-  /** The page's webContents (web tabs only: their traffic is recorded). */
+  /** The page's webContents (its traffic is recorded; the agents' DevTools work on it). */
   webContentsId: () => number;
   /** Resolves once the page has loaded (right away if it has). */
   whenLoaded: () => Promise<void>;
@@ -166,6 +166,8 @@ handleRpc("page.applyOverride", async ({ tabId }) => {
 // What the website agent gets is always redacted (reveal: false).
 
 const network = window.nathapp.web.network;
+// DevTools for the agents (main/devtools.ts), on web tabs and app previews.
+handleRpc("devtools", async ({ tabId, command, params }) => window.nathapp.web.devtools((await page(tabId)).webContentsId(), command as DevtoolsCommand, params ?? {}));
 handleRpc("network.list", async ({ tabId, filter }) => network.list((await page(tabId)).webContentsId(), (filter ?? {}) as NetworkFilter));
 handleRpc("network.get", async ({ tabId, id }) => network.get((await page(tabId)).webContentsId(), String(id), false));
 handleRpc("network.draft", async ({ tabId, id }) => network.draft((await page(tabId)).webContentsId(), String(id)));

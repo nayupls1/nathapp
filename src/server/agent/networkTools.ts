@@ -55,32 +55,10 @@ const describeResult = (r: ReplayResult) =>
     r.body === null ? "(no text body)" : `${clip(r.body)}${r.truncated ? "\n(truncated at 512 kB)" : ""}`,
   ].join("\n");
 
-export const networkTools = Effect.fn(function* (env: ToolEnv) {
+/** Reading the page's traffic (also for app builders, on their app's preview). */
+export const networkReadTools = Effect.fn(function* (env: ToolEnv) {
   const hub = yield* Hub;
-  const network = yield* Network;
-  const apps = yield* Apps;
-  const permissions = yield* Permissions;
   const call = <T>(method: string, params: object = {}, timeoutMs?: number) => hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
-  const workspaceId = apps.get(env.tabId).pipe(Effect.map((app) => app?.workspaceId ?? null));
-
-  /** Sending requests with the user's session needs their OK, once per site (or remembered). */
-  const mayContact = (url: string) =>
-    Effect.gen(function* () {
-      const host = hostOf(url);
-      if (!host) return { host, allowed: false };
-      const allowed = yield* permissions.ask({
-        agentTab: env.tabId,
-        subject: WEBSITE_AGENT,
-        action: "agent.network",
-        resource: host,
-        title: `Let the website agent send requests to ${host}?`,
-        detail: `It wants to send requests to ${host} with your session: your cookies and logins are used, but never shown to it. Requests can change things on the site (post, buy, delete).`,
-        timeoutMs: 120_000,
-      });
-      return { host, allowed };
-    });
-  const refused = (host: string) => text(`The user didn't allow sending requests to ${host || "that address"}. Nothing was sent.`, true);
-
   return [
     tool(
       "network_requests",
@@ -120,6 +98,37 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
           ),
         ),
     ),
+  ];
+});
+
+export const networkTools = Effect.fn(function* (env: ToolEnv) {
+  const hub = yield* Hub;
+  const network = yield* Network;
+  const apps = yield* Apps;
+  const permissions = yield* Permissions;
+  const call = <T>(method: string, params: object = {}, timeoutMs?: number) => hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
+  const workspaceId = apps.get(env.tabId).pipe(Effect.map((app) => app?.workspaceId ?? null));
+
+  /** Sending requests with the user's session needs their OK, once per site (or remembered). */
+  const mayContact = (url: string) =>
+    Effect.gen(function* () {
+      const host = hostOf(url);
+      if (!host) return { host, allowed: false };
+      const allowed = yield* permissions.ask({
+        agentTab: env.tabId,
+        subject: WEBSITE_AGENT,
+        action: "agent.network",
+        resource: host,
+        title: `Let the website agent send requests to ${host}?`,
+        detail: `It wants to send requests to ${host} with your session: your cookies and logins are used, but never shown to it. Requests can change things on the site (post, buy, delete).`,
+        timeoutMs: 120_000,
+      });
+      return { host, allowed };
+    });
+  const refused = (host: string) => text(`The user didn't allow sending requests to ${host || "that address"}. Nothing was sent.`, true);
+
+  return [
+    ...(yield* networkReadTools(env)),
 
     tool(
       "replay_request",

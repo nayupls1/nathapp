@@ -60,7 +60,9 @@ export interface NathAppBridge {
     capture: (webContentsId: number) => Promise<string>;
     /** Opens a URL in the system browser. */
     openExternal: (url: string) => void;
-    /** The traffic of web tabs (see main/network.ts). Agents only ever get it with reveal off. */
+    /** DevTools for the agents on a page (web tab or app preview): see main/devtools.ts. */
+    devtools: (webContentsId: number, command: DevtoolsCommand, params?: object) => Promise<unknown>;
+    /** The traffic of web tabs and app previews (see main/network.ts). Agents only ever get it with reveal off. */
     network: {
       list: (webContentsId: number, filter?: NetworkFilter) => Promise<NetworkEntrySummary[]>;
       /** reveal: with credentials (only for the user's own eyes). */
@@ -450,6 +452,9 @@ export interface RuntimeStatus {
 }
 
 export type SandboxKind = "bwrap" | "none";
+
+/** What the agents' DevTools can do on a page (main/devtools.ts). */
+export type DevtoolsCommand = "console" | "metrics" | "trace" | "accessibility" | "styles" | "storage" | "coverage" | "emulate";
 
 /** A shell app commands can run in (Settings → Apps). path: null for Bun's built-in shell. */
 export interface ShellInfo {
