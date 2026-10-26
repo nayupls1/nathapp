@@ -377,7 +377,7 @@ function WorkspaceSection() {
           <Section title={`Workspace: ${current().name}`} icon="layers" anchor="workspace">
             <p {...stylex.attrs(styles.muted, styles.note)}>
               Workspaces keep projects apart: each has its own tabs, agent defaults and instructions, secrets for its apps, and
-              its own web logins (cookies). Switch between them at the top of the sidebar.
+              its own web logins (cookies). Switch between them with the icons at the bottom of the sidebar (or Ctrl+Alt+1…9).
             </p>
             <Row label="Name">
               <input
