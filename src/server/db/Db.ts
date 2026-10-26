@@ -219,6 +219,18 @@ const migrate = Effect.gen(function* () {
   for (const [name, type] of added) {
     if (!columns.has(name)) yield* sql.unsafe(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);
   }
+  // The mod a page change came with (mods/Mods.ts), removed with it.
+  if (!(yield* columnsOf("page_changes")).has("mod_id")) yield* sql.unsafe("ALTER TABLE page_changes ADD COLUMN mod_id TEXT");
+  // Installed mods: the mod itself, and what installing it did (to take it back).
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS mods (
+      id           TEXT PRIMARY KEY,
+      mod          TEXT NOT NULL,
+      enabled      INTEGER NOT NULL DEFAULT 1,
+      source       TEXT NOT NULL,
+      state        TEXT NOT NULL DEFAULT '{}',
+      installed_at TEXT NOT NULL DEFAULT (${now})
+    )`);
   if (!(yield* columnsOf("audit")).has("workspace_id")) {
     yield* sql.unsafe("ALTER TABLE audit ADD COLUMN workspace_id TEXT");
     yield* sql.unsafe("UPDATE audit SET workspace_id = (SELECT workspace_id FROM apps WHERE apps.id = audit.tab_id) WHERE tab_id IS NOT NULL");

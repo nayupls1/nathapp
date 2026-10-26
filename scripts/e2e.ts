@@ -1106,6 +1106,79 @@ try {
     return "clicked (trusted), typed and submitted with Enter, filled a select and a checkbox";
   });
 
+  await check("mods: gallery, make one from a page change, share code, review, install, turn off, remove", async () => {
+    type Change = { id: string; title: string; enabled: boolean; modId?: string | null };
+    const mine = await apiCall<Change>("/api/page-changes", {
+      method: "POST",
+      body: { title: "E2E mod change", scope: { type: "site", value: "127.0.0.1" }, action: "css", value: "body { outline: 1px solid red }" },
+    });
+    await click("nav button", "Mods");
+    await page!.waitFor(`!!document.querySelector("[data-mods]")`, { label: "mods page" });
+
+    await click(`[data-mods-tab="gallery"]`);
+    await page!.waitFor(`document.querySelectorAll("[data-gallery-mod]").length >= 3`, { label: "gallery" });
+    await shot("mods-gallery.png");
+
+    // Made from the page change: a share code comes out.
+    await click(`[data-mods-tab="create"]`);
+    await page!.waitFor(`!!document.querySelector('[data-mod-change="${mine.id}"]')`, { label: "own page changes listed" });
+    await page!.eval(`(() => {
+      const name = document.querySelector("[data-mod-name]");
+      name.value = "E2E mod";
+      name.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      document.querySelector('[data-mod-change="${mine.id}"]').click();
+      return true;
+    })()`);
+    await click("[data-mod-make]");
+    const code = await page!.waitFor<string>(`document.querySelector("[data-mod-code]")?.value`, { label: "share code" });
+    if (!code.startsWith("NATHAPP-MOD:")) throw new Error(`code: ${code.slice(0, 40)}`);
+    await shot("mods-made.png");
+
+    // Installed from the code (as someone else would), after the review.
+    await apiCall(`/api/page-changes/${mine.id}`, { method: "DELETE" });
+    await page!.eval(`(() => {
+      const input = document.querySelector("[data-mod-input]");
+      input.value = ${JSON.stringify(code)};
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return true;
+    })()`);
+    await click("[data-mod-review]");
+    await page!.waitFor(`!!document.querySelector("[data-mod-review-dialog]")`, { label: "review dialog" });
+    const permissions = await page!.eval<string[]>(`[...document.querySelectorAll("[data-mod-permission]")].map((p) => p.dataset.modPermission + ": " + p.innerText)`);
+    if (!permissions.some((p) => p.startsWith("info:") && p.includes("127.0.0.1"))) throw new Error(`review: ${permissions.join(" | ")}`);
+    await shot("mods-review.png");
+    await click("[data-mod-install]");
+    await page!.waitFor(`!document.querySelector("[data-mod-review-dialog]") && !!document.querySelector("[data-mod]")`, { label: "installed" });
+    const modId = await page!.eval<string>(`document.querySelector("[data-mod]").dataset.mod`);
+    const installed = (await apiCall<Change[]>("/api/page-changes")).filter((c) => c.modId === modId);
+    if (installed.length !== 1 || installed[0]!.title !== "E2E mod change") throw new Error(`installed changes: ${JSON.stringify(installed)}`);
+
+    // Off: its change is off; removed: it's gone.
+    await click(`[data-mod="${modId}"] [data-mod-toggle]`);
+    await waitForValue(async () => ((await apiCall<Change[]>("/api/page-changes")).find((c) => c.modId === modId)?.enabled === false ? true : undefined));
+    await click(`[data-mod="${modId}"] [data-mod-remove]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm remove" });
+    await click("[data-confirm-dialog] [data-confirm]");
+    await page!.waitFor(`!document.querySelector('[data-mod="${modId}"]')`, { label: "removed" });
+    if ((await apiCall<Change[]>("/api/page-changes")).some((c) => c.modId === modId)) throw new Error("the mod's change is still there");
+
+    // A mod with a script is flagged before anything is installed.
+    const scripty = { format: "nathapp-mod", version: 1, id: "e2e-scripty", name: "Scripty", author: "Someone", pageChanges: [{ title: "Watch", scope: { type: "pattern", value: "*" }, action: "script", value: "console.log(location.href)" }] };
+    await page!.eval(`(() => {
+      const input = document.querySelector("[data-mod-input]");
+      input.value = ${JSON.stringify(JSON.stringify(scripty))};
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      return true;
+    })()`);
+    await click("[data-mod-review]");
+    await page!.waitFor(`document.querySelector('[data-mod-permission="danger"]')?.innerText.includes("every site")`, { label: "script warning" });
+    await shot("mods-review-script.png");
+    await click("[data-mod-cancel]");
+    await page!.waitFor(`!document.querySelector("[data-mod-review-dialog]")`, { label: "review closed" });
+    if ((await apiCall<unknown[]>("/api/mods")).length) throw new Error("cancelling installed it anyway");
+    return "made, shared as a code, reviewed, installed, turned off, removed; a script mod flagged";
+  });
+
   await check("network: requests with their data, credentials hidden, sent again, saved, blocked", async () => {
     if (!webTabId) throw new Error("needs the web tab");
     const tab = `[data-web-tab="${webTabId}"]`;

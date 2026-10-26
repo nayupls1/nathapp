@@ -29,6 +29,7 @@ interface ChangeRow {
   spec: string;
   enabled: number;
   created_by: "agent" | "user";
+  mod_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -38,6 +39,7 @@ const toChange = (r: ChangeRow): PageChange => ({
   id: r.id,
   enabled: r.enabled === 1,
   createdBy: r.created_by,
+  modId: r.mod_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -50,9 +52,9 @@ export const make = Effect.gen(function* () {
     get,
     list: () => sql<ChangeRow>`SELECT * FROM page_changes ORDER BY created_at, id`.pipe(Effect.map((rows) => rows.map(toChange))),
     /** The spec is expected to be valid (pageChangeProblem). */
-    create: (spec: PageChangeSpec, createdBy: "agent" | "user", id: string = crypto.randomUUID().slice(0, 8)) =>
+    create: (spec: PageChangeSpec, createdBy: "agent" | "user", id: string = crypto.randomUUID().slice(0, 8), modId: string | null = null) =>
       Effect.gen(function* () {
-        yield* sql`INSERT INTO page_changes (id, spec, created_by) VALUES (${id}, ${JSON.stringify(pageChangeSpec(spec))}, ${createdBy})`;
+        yield* sql`INSERT INTO page_changes (id, spec, created_by, mod_id) VALUES (${id}, ${JSON.stringify(pageChangeSpec(spec))}, ${createdBy}, ${modId})`;
         return (yield* get(id))!;
       }),
     update: (id: string, fields: { spec?: PageChangeSpec; enabled?: boolean }) =>
@@ -65,12 +67,17 @@ export const make = Effect.gen(function* () {
         return yield* get(id);
       }),
     remove: (id: string) => sql`DELETE FROM page_changes WHERE id = ${id}`.pipe(Effect.asVoid),
+    /** The changes a mod brought. */
+    ofMod: (modId: string) => sql<ChangeRow>`SELECT * FROM page_changes WHERE mod_id = ${modId} ORDER BY created_at, id`.pipe(Effect.map((rows) => rows.map(toChange))),
+    removeMod: (modId: string) => sql`DELETE FROM page_changes WHERE mod_id = ${modId}`.pipe(Effect.asVoid),
+    setModEnabled: (modId: string, enabled: boolean) =>
+      sql`UPDATE page_changes SET enabled = ${enabled ? 1 : 0}, updated_at = ${sql.literal(now)} WHERE mod_id = ${modId}`.pipe(Effect.asVoid),
     /** Puts a change back as it was (restoring a snapshot). */
     put: (change: PageChange) =>
-      sql`INSERT INTO page_changes (id, spec, enabled, created_by, created_at, updated_at)
-        VALUES (${change.id}, ${JSON.stringify(pageChangeSpec(change))}, ${change.enabled ? 1 : 0}, ${change.createdBy}, ${change.createdAt}, ${change.updatedAt})
+      sql`INSERT INTO page_changes (id, spec, enabled, created_by, mod_id, created_at, updated_at)
+        VALUES (${change.id}, ${JSON.stringify(pageChangeSpec(change))}, ${change.enabled ? 1 : 0}, ${change.createdBy}, ${change.modId ?? null}, ${change.createdAt}, ${change.updatedAt})
         ON CONFLICT (id) DO UPDATE SET spec = excluded.spec, enabled = excluded.enabled, created_by = excluded.created_by,
-          created_at = excluded.created_at, updated_at = excluded.updated_at`.pipe(Effect.asVoid),
+          mod_id = excluded.mod_id, created_at = excluded.created_at, updated_at = excluded.updated_at`.pipe(Effect.asVoid),
   };
 });
 

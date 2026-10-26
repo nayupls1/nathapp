@@ -343,6 +343,17 @@ Web tab logins are cookies, which are encrypted with a key from the same keychai
 
 Web tabs say they're plain Chrome, because some sites turn away other browsers. Google's sign-in can tell that NathApp isn't Chrome, though, and refuses a browser that claims to be ("This browser or app may not be secure"). It accepts Electron when the user agent names it. So requests to `accounts.google.com` get Electron's own user agent, through the built-in extension that applies the network rules (`signInRule` in `src/shared/extensions.ts`).
 
+### Mods
+
+Customizations packaged to share with others (sidebar → Mods). A mod is one JSON document (`shared/mods.ts`, format `nathapp-mod`, version 1):
+- **What's in it:** page changes (how sites look and work), NathApp's theme, and Chrome Web Store extensions (by id: they're installed from the store, not their settings).
+- **Making one:** "Make a mod" picks your own page changes, your theme and your store extensions, and gives a share code (`NATHAPP-MOD:` and the compressed JSON), copied right away, or a file.
+- **Installing:** paste a share code or an https link into "Install a mod" (or the command bar), or open a file. A review comes first: what it changes, where it runs its own JavaScript (scripts, buttons, HTML with handlers: flagged as able to read everything there, with your logins), which extensions it installs, whether it changes the theme. A mod with the same id updates the installed one.
+- **Gallery:** NathApp's examples (`mods/gallery.ts`), plus galleries you add: https links to JSON files listing mods (`{ "mods": [...] }`). There's no central gallery service: a gallery is any file someone publishes.
+- **Undo:** an installed mod can be turned off or removed. Its page changes are marked with it (`mod_id`) and go with it; the theme it replaced comes back (unless you changed the theme since); the extensions it installed are disabled or removed, ones you had before stay.
+- **Recorded:** installs, updates, switches and removals are snapshots (site customizations, settings) and in Activity. `/api/mods`, `/api/mods/review`, `/api/mods/package`, `/api/mods/gallery`.
+- **Limits:** extensions' own permissions are only known once they're installed (Settings → Extensions shows them). Restoring an older site-customizations snapshot can bring back or drop a mod's page changes without changing the mod's entry.
+
 ### Network
 
 Every web tab's traffic is recorded in Electron's main process over the DevTools protocol (`src/main/network.ts`). The network button in the toolbar opens the Network panel: requests with their headers and the data they returned, filterable, data (fetch/XHR, JSON, XML, forms) by default.

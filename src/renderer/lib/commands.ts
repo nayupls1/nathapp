@@ -19,6 +19,7 @@ import {
   duplicateApp,
   HISTORY_VIEW,
   isAgentCollapsed,
+  MODS_VIEW,
   isTab,
   moveApp,
   newApp,
@@ -41,6 +42,8 @@ import { removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs 
 import { pageOf } from "./webtabs";
 import { unloadOtherTabs } from "./unload";
 import { sendWithShares } from "./sharing";
+import { reviewMod } from "./mods";
+import { isShareCode } from "../../shared/mods";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { toast } from "../components/Toast";
 
@@ -343,6 +346,7 @@ function nathappCommands(): Command[] {
     },
     { id: "open.history", title: "Open History", icon: "history", group: "NathApp", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
     { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "NathApp", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
+    { id: "open.mods", title: "Open Mods", icon: "puzzle", group: "NathApp", keywords: "install share gallery themes customizations extensions", run: () => selectApp(MODS_VIEW) },
     { id: "open.activity", title: "Open Activity", icon: "activity", group: "NathApp", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },
     { id: "open.settings", title: "Open Settings", icon: "settings", group: "NathApp", keywords: "preferences", run: () => selectApp(SETTINGS_VIEW) },
     {
@@ -390,6 +394,20 @@ function routed(query: string, best: number): Command[] {
   const text = query.trim();
   if (!text) return [];
   const list: Command[] = [];
+  // A mod's share code: review it, then install (one step from a paste).
+  if (isShareCode(text)) {
+    return [
+      {
+        id: "route.mod",
+        title: "Install this mod…",
+        subtitle: "Review what it changes first",
+        icon: "puzzle",
+        group: "Mods",
+        rank: 1000,
+        run: () => reviewMod({ code: text }).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" })),
+      },
+    ];
+  }
   const url = asUrl(text);
   const id = selectedId();
   const tab = isTab(id) ? apps.find((a) => a.id === id) : undefined;

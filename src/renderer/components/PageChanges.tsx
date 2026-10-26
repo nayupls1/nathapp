@@ -7,6 +7,7 @@ import { Portal } from "solid-js/web";
 import type { PageChange, PageChangeAction } from "../../shared/api";
 import { hostOf, scopeLabel, scopeMatches } from "../../shared/web";
 import { api } from "../lib/api";
+import { modName } from "../lib/mods";
 import { cachedOverride, pageChanges } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
@@ -58,7 +59,7 @@ function ChangeRow(props: { change: PageChange; url?: string; error?: string }) 
         <span {...stylex.attrs(styles.rowTitle)}>{props.change.title}</span>
         <span {...stylex.attrs(styles.rowMeta)} title={detail()}>
           {scopeLabel(props.change.scope, props.url)} · {detail()}
-          {props.change.createdBy === "agent" ? " · by the agent" : ""}
+          {props.change.modId ? ` · from the mod ${modName(props.change.modId) ?? props.change.modId}` : props.change.createdBy === "agent" ? " · by the agent" : ""}
         </span>
         <Show when={props.error}>
           <span {...stylex.attrs(styles.rowError)} data-page-change-error>

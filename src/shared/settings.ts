@@ -81,6 +81,10 @@ export const Settings = Schema.Struct({
     /** Tabs not used for this many minutes are unloaded (their page closes, its state is kept); 0 = never. */
     unloadAfterMinutes: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 24 * 60 })).pipe(withDefault(30)),
   }).pipe(withDefault({})),
+  mods: Schema.Struct({
+    /** Galleries to browse mods from: URLs of JSON files listing mods ({ "mods": [...] } or an array). */
+    galleries: Schema.Array(Schema.String.check(Schema.isMaxLength(2000))).check(Schema.isMaxLength(20)).pipe(withDefault([])),
+  }).pipe(withDefault({})),
   apps: Schema.Struct({
     /** How app processes are isolated. auto: bubblewrap when it's installed. */
     sandbox: Schema.Literals(["auto", "bwrap", "none"]).pipe(withDefault("auto")),

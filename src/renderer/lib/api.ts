@@ -1,6 +1,7 @@
 // The NathApp server's HTTP API. Every request carries the token Electron gave
 // this window; agent output and app status arrive on the hub (realtime.ts).
 import type { Settings } from "../../shared/settings";
+import type { GalleryResult, InstalledMod, Mod, ModExtension, ModReview } from "../../shared/mods";
 import type {
   TabSplit,
   AppActionInfo,
@@ -190,8 +191,22 @@ export const api = {
   deleteSchedule: (id: string) => request<void>(`/api/schedules/${encodeURIComponent(id)}`, { method: "DELETE" }),
   runSchedule: (id: string) => post<ScheduleRun>(`/api/schedules/${encodeURIComponent(id)}/run`, {}),
   pageChanges: () => request<PageChange[]>("/api/page-changes"),
+
+  mods: () => request<InstalledMod[]>("/api/mods"),
+  modGallery: () => request<GalleryResult>("/api/mods/gallery"),
+  /** What installing a mod (JSON, a share code or a link) does, before deciding. */
+  reviewMod: (input: ModSource) => post<{ mod: Mod; review: ModReview; installed: InstalledMod | null; source: string }>("/api/mods/review", input),
+  installMod: (input: ModSource & { source?: string }) => post<InstalledMod>("/api/mods", input),
+  setModEnabled: (id: string, enabled: boolean) => request<InstalledMod>(`/api/mods/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  removeMod: (id: string) => request<InstalledMod>(`/api/mods/${id}`, { method: "DELETE" }),
+  recordModExtensions: (id: string, installed: string[]) => post<InstalledMod>(`/api/mods/${id}/extensions`, { installed }),
+  packageMod: (input: { name: string; description: string; author: string; pageChangeIds: string[]; theme: boolean; extensions: ModExtension[] }) =>
+    post<Mod>("/api/mods/package", input),
   addPageChange: (spec: PageChangeSpec) => post<PageChange>("/api/page-changes", spec),
   updatePageChange: (id: string, fields: { enabled?: boolean; change?: PageChangeSpec }) =>
     request<PageChange>(`/api/page-changes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(fields) }),
   deletePageChange: (id: string) => request<void>(`/api/page-changes/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
+
+/** A mod to review or install: its JSON, a share code or a link. */
+export type ModSource = { mod: unknown } | { code: string } | { url: string };

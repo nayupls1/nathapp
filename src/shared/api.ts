@@ -575,6 +575,8 @@ export interface PageChange extends PageChangeSpec {
   id: string;
   enabled: boolean;
   createdBy: "agent" | "user";
+  /** The mod it came with (removed with it). */
+  modId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

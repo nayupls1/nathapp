@@ -7,6 +7,7 @@ import { ConfirmHost } from "./components/ConfirmDialog";
 import { ExtensionImportHost } from "./components/ExtensionImport";
 import { HistoryPage } from "./components/History";
 import { PermissionHost } from "./components/PermissionHost";
+import { ModReviewHost, ModsPage } from "./components/ModsPage";
 import { SchedulesPage } from "./components/SchedulesPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { paneStyle, SplitChrome, SplitDropZones } from "./components/SplitView";
@@ -19,7 +20,7 @@ import "./lib/schedules";
 import { startUnloading } from "./lib/unload";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
-import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, SCHEDULES_VIEW, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
+import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, MODS_VIEW, SCHEDULES_VIEW, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
 import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
@@ -52,6 +53,7 @@ export default function App() {
       <ConfirmHost />
       <ExtensionImportHost />
       <PermissionHost />
+      <ModReviewHost />
       <CommandBar />
       <ToastHost />
       <div {...stylex.attrs(styles.column)}>
@@ -94,6 +96,9 @@ export default function App() {
             </Match>
             <Match when={selectedId() === SCHEDULES_VIEW}>
               <SchedulesPage />
+            </Match>
+            <Match when={selectedId() === MODS_VIEW}>
+              <ModsPage />
             </Match>
             <Match when={openTabs().some((t) => t.id === selectedId())}>{null}</Match>
           </Switch>

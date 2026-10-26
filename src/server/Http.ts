@@ -42,6 +42,8 @@ import { Settings } from "./db/Settings";
 import { PageChanges, pageChangeError } from "./db/PageChanges";
 import { ScheduleError, Scheduler } from "./scheduler/Scheduler";
 import { Sites } from "./db/Sites";
+import { ModError, Mods } from "./mods/Mods";
+import { decodeShareCode } from "../shared/mods";
 import { Workspaces } from "./db/Workspaces";
 import { History, type By } from "./history/History";
 import { Hub } from "./Hub";
@@ -675,6 +677,117 @@ const pageChangeRoutes = HttpRouter.addAll([
         yield* snapshot("sites", `Removed the page change “${change.title}”`);
         return noContent;
       }),
+    ),
+  ),
+]);
+
+// --- Mods (mods/Mods.ts) -------------------------------------------------------------------
+
+const modError = (e: ModError) => fail(e.status, e.message);
+
+/** A mod given as JSON, a share code or a link. */
+const ModInput = Schema.Struct({
+  mod: Schema.optionalKey(Schema.Unknown),
+  code: Schema.optionalKey(str(2_000_000)),
+  url: Schema.optionalKey(str(2000)),
+});
+
+const modJson = (input: typeof ModInput.Type) =>
+  Effect.gen(function* () {
+    if (input.mod !== undefined) return { json: input.mod, source: "file" };
+    if (input.code) {
+      const code = input.code;
+      const json = yield* Effect.tryPromise({ try: () => decodeShareCode(code), catch: (e) => new ModError({ status: 400, message: e instanceof Error ? e.message : String(e) }) });
+      return { json, source: "code" };
+    }
+    if (input.url) return { json: yield* (yield* Mods).fetchJson(input.url), source: input.url };
+    return yield* new ModError({ status: 400, message: "Give a mod, a share code or a link." });
+  });
+
+const modRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/mods",
+    Effect.gen(function* () {
+      return json(yield* (yield* Mods).list);
+    }),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/mods/gallery",
+    Effect.gen(function* () {
+      return json(yield* (yield* Mods).gallery);
+    }),
+  ),
+  // What installing a mod would do, before the user decides.
+  HttpRouter.route(
+    "POST",
+    "/api/mods/review",
+    handle(
+      Effect.gen(function* () {
+        const { json: mod, source } = yield* modJson(yield* decodeBody(ModInput));
+        return json({ ...(yield* (yield* Mods).review(mod)), source });
+      }).pipe(Effect.catchTag("ModError", modError)),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/mods",
+    handle(
+      Effect.gen(function* () {
+        const input = yield* decodeBody(Schema.Struct({ ...ModInput.fields, source: Schema.optionalKey(str(500)) }));
+        const { json: mod, source } = yield* modJson(input);
+        return json(yield* (yield* Mods).install(mod, input.source ?? source), 201);
+      }).pipe(Effect.catchTag("ModError", modError)),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/mods/package",
+    handle(
+      Effect.gen(function* () {
+        const input = yield* decodeBody(
+          Schema.Struct({
+            name: str(80).check(Schema.isPattern(/\S/, { message: "name is required" })),
+            description: str(1000),
+            author: str(80),
+            pageChangeIds: Schema.Array(str(100)).check(Schema.isMaxLength(200)),
+            theme: Schema.Boolean,
+            extensions: Schema.Array(Schema.Struct({ id: str(32), name: str(80) })).check(Schema.isMaxLength(20)),
+          }),
+        );
+        return json(yield* (yield* Mods).package(input));
+      }).pipe(Effect.catchTag("ModError", modError)),
+    ),
+  ),
+  HttpRouter.route(
+    "PATCH",
+    "/api/mods/:id",
+    handle(
+      Effect.gen(function* () {
+        const { enabled } = yield* decodeBody(Schema.Struct({ enabled: Schema.Boolean }));
+        return json(yield* (yield* Mods).setEnabled(yield* param("id"), enabled));
+      }).pipe(Effect.catchTag("ModError", modError)),
+    ),
+  ),
+  // Returns the removed mod: the renderer removes the extensions it installed.
+  HttpRouter.route(
+    "DELETE",
+    "/api/mods/:id",
+    handle(
+      Effect.gen(function* () {
+        return json(yield* (yield* Mods).remove(yield* param("id")));
+      }).pipe(Effect.catchTag("ModError", modError)),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/mods/:id/extensions",
+    handle(
+      Effect.gen(function* () {
+        const { installed } = yield* decodeBody(Schema.Struct({ installed: Schema.Array(str(32)).check(Schema.isMaxLength(20)) }));
+        return json(yield* (yield* Mods).recordExtensions(yield* param("id"), installed));
+      }).pipe(Effect.catchTag("ModError", modError)),
     ),
   ),
 ]);
@@ -1727,7 +1840,7 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

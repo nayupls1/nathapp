@@ -22,6 +22,7 @@ import {
   ACTIVITY_VIEW,
   SCHEDULES_VIEW,
   HISTORY_VIEW,
+  MODS_VIEW,
   showWorkspace,
   states,
   updateWorkspace,
@@ -108,6 +109,7 @@ export function Sidebar() {
         </Show>
         <PageLink id={HISTORY_VIEW} icon="file-clock" label="History" />
         <PageLink id={SCHEDULES_VIEW} icon="calendar-clock" label="Schedules" />
+        <PageLink id={MODS_VIEW} icon="puzzle" label="Mods" />
         <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
