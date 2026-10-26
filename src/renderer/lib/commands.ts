@@ -12,7 +12,7 @@ import {
   ACTIVITY_VIEW,
   SCHEDULES_VIEW,
   apps,
-  clearChat,
+  newChat,
   createWorkspace,
   currentWorkspace,
   deleteApp,
@@ -283,16 +283,15 @@ function currentTabCommands(id: string): Command[] {
       },
     );
   }
-  if (state?.messages.length) {
+  if (state?.messages.length && !state.running) {
     list.push({
-      id: "tab.clear",
-      title: "Clear chat",
+      id: "tab.newChat",
+      title: "New chat",
       subtitle: app.name,
-      icon: "message-square-x",
+      icon: "message-square-plus",
       group: "Tab",
-      run: async () => {
-        if (await confirmDialog(`Clear the chat for ${name}? The agent starts a fresh conversation.`, { confirmLabel: "Clear chat" })) await clearChat(id);
-      },
+      keywords: "clear fresh conversation reset agent",
+      run: () => newChat(id),
     });
   }
   for (const w of workspaces) {

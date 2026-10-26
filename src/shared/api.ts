@@ -516,6 +516,16 @@ export interface PageContext {
   selection: ElementInfo[];
 }
 
+/** An earlier chat of a tab, kept when a new one was started. */
+export interface ChatSummary {
+  id: number;
+  /** Its first message, shortened. */
+  title: string;
+  messages: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatMessage {
   id: number;
   /**

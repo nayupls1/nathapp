@@ -362,9 +362,16 @@ export async function duplicateApp(id: string) {
   await selectApp(copy.id);
 }
 
-export async function clearChat(id: string) {
-  await api.clearChat(id);
-  setStates(id, { messages: [], draft: "" });
+/** Starts a new chat in the tab; the current one is kept and can be opened again (ChatHistory). */
+export async function newChat(id: string) {
+  const { messages } = await api.newChat(id);
+  setStates(id, { messages, draft: "" });
+}
+
+/** Makes an earlier chat the current one (the current one is kept). */
+export async function openChat(id: string, chatId: number) {
+  const { messages } = await api.openChat(id, chatId);
+  setStates(id, { messages, draft: "" });
 }
 
 export async function deleteApp(id: string) {

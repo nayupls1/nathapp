@@ -1,11 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
+import { createEffect, createResource, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
+import { Portal } from "solid-js/web";
 import type { ChatMessage } from "../../shared/api";
 import { markdownToHtml } from "../../shared/markdown";
 import { isPicking, picksOf } from "../lib/picks";
 import { settings } from "../lib/settings";
 import { handOver, refusal, sendWithShares } from "../lib/sharing";
-import { appById, apps, setAgentCollapsed, states, stopAgent } from "../lib/store";
+import { api } from "../lib/api";
+import { appById, apps, newChat, openChat, setAgentCollapsed, states, stopAgent } from "../lib/store";
+import { confirmDialog } from "./ConfirmDialog";
 import { pageOf, pagesVersion } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
@@ -24,6 +27,7 @@ export function Chat(props: { appId: string }) {
   const state = () => states[props.appId]!;
   const tab = () => appById(props.appId);
   const web = () => tab()?.kind === "web";
+  const [history, setHistory] = createSignal<MenuPosition>();
   // The tab's page (a web page or an app's preview), once it's registered.
   const page = () => (pagesVersion(), pageOf(props.appId));
   let scroller!: HTMLDivElement;
@@ -43,6 +47,29 @@ export function Chat(props: { appId: string }) {
         <span {...stylex.attrs(styles.headerTab)} title="The tab the agent works on" data-agent-tab-name>
           {tab()?.name ?? ""}
         </span>
+        <button
+          type="button"
+          title="New chat (this one is kept in the chat history)"
+          disabled={state().running || !state().messages.length}
+          onClick={() => void newChat(props.appId).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }))}
+          {...stylex.attrs(styles.headerButton)}
+          data-new-chat
+        >
+          <Icon name="message-square-plus" size={16} />
+        </button>
+        <button
+          type="button"
+          title="Earlier chats"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setHistory(history() ? undefined : { x: r.right - 320, y: r.bottom + 4 });
+          }}
+          {...stylex.attrs(styles.headerButton)}
+          data-chat-history-button
+        >
+          <Icon name="history" size={16} />
+        </button>
+        <Show when={history()}>{(at) => <ChatHistory appId={props.appId} position={at()} onClose={() => setHistory()} />}</Show>
         <button
           type="button"
           title={editsApp(props.appId) ? "Done: hide the agent and run the finished app (Ctrl+J)" : "Hide agent (Ctrl+J)"}
@@ -282,6 +309,45 @@ const styles = stylex.create({
   headerTitle: { flexShrink: 0, fontSize: font.sm, fontWeight: 600 },
   headerTab: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.muted, fontSize: font.sm },
   chips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
+  history: {
+    position: "fixed",
+    zIndex: 1000,
+    width: 320,
+    maxHeight: 420,
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    padding: 4,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    boxShadow: "0 8px 24px rgb(0 0 0 / 0.14)",
+    fontFamily: font.sans,
+    color: colors.text,
+  },
+  historyTitle: { paddingBlock: 6, paddingInline: space.sm, color: colors.muted, fontSize: font.xs, fontWeight: 600 },
+  historyEmpty: { margin: 0, padding: space.sm, color: colors.muted, fontSize: font.sm, lineHeight: 1.45 },
+  historyRow: { display: "flex", alignItems: "center", gap: 2 },
+  historyOpen: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 2,
+    flex: 1,
+    minWidth: 0,
+    paddingBlock: 6,
+    paddingInline: space.sm,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: colors.text,
+    textAlign: "left",
+    cursor: { default: "pointer", ":disabled": "default" },
+  },
+  historyName: { width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm, fontWeight: 500 },
+  historyMeta: { color: colors.muted, fontSize: font.xs },
   pick: {
     display: "grid",
     placeItems: "center",
@@ -413,6 +479,80 @@ const styles = stylex.create({
     animationIterationCount: "infinite",
   },
 });
+
+/** The tab's earlier chats: open one again (the current one is kept) or delete it. */
+function ChatHistory(props: { appId: string; position: MenuPosition; onClose: () => void }) {
+  const [chats, { refetch }] = createResource(() => api.chats(props.appId));
+  const running = () => !!states[props.appId]?.running;
+  let root!: HTMLDivElement;
+  onMount(() => {
+    const away = (e: PointerEvent) => !root.contains(e.target as Node) && props.onClose();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
+    document.addEventListener("pointerdown", away, true);
+    document.addEventListener("keydown", key, true);
+    onCleanup(() => {
+      document.removeEventListener("pointerdown", away, true);
+      document.removeEventListener("keydown", key, true);
+    });
+  });
+  const act = async (fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+    } catch (err) {
+      toast({ message: err instanceof Error ? err.message : String(err), kind: "error" });
+    }
+  };
+  const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return (
+    <Portal>
+      <div
+        ref={root}
+        role="dialog"
+        aria-label="Earlier chats"
+        {...stylex.attrs(styles.history)}
+        style={{ left: `${Math.max(8, props.position.x)}px`, top: `${props.position.y}px` }}
+        data-chat-history
+      >
+        <div {...stylex.attrs(styles.historyTitle)}>Earlier chats</div>
+        <For each={chats() ?? []} fallback={<p {...stylex.attrs(styles.historyEmpty)}>{chats.loading ? "Loading…" : "No earlier chats. “New chat” keeps the current one here."}</p>}>
+          {(chat) => (
+            <div {...stylex.attrs(styles.historyRow)} data-chat={chat.id}>
+              <button
+                type="button"
+                disabled={running()}
+                title={running() ? "Stop the agent first" : "Continue this chat (the current one is kept)"}
+                onClick={() => void act(async () => (await openChat(props.appId, chat.id), props.onClose()))}
+                {...stylex.attrs(styles.historyOpen)}
+                data-open-chat
+              >
+                <span {...stylex.attrs(styles.historyName)}>{chat.title}</span>
+                <span {...stylex.attrs(styles.historyMeta)}>
+                  {when(chat.updatedAt)} · {chat.messages} message{chat.messages === 1 ? "" : "s"}
+                </span>
+              </button>
+              <button
+                type="button"
+                title="Delete this chat"
+                onClick={() =>
+                  void act(async () => {
+                    if (await confirmDialog(`Delete the chat “${chat.title}”?`, { confirmLabel: "Delete", danger: true })) {
+                      await api.deleteChat(props.appId, chat.id);
+                      await refetch();
+                    }
+                  })
+                }
+                {...stylex.attrs(styles.headerButton)}
+                data-delete-chat
+              >
+                <Icon name="trash" size={14} />
+              </button>
+            </div>
+          )}
+        </For>
+      </div>
+    </Portal>
+  );
+}
 
 /** Whether the agent panel stands for editing an app (its mode follows the panel). */
 const editsApp = (id: string) => appById(id)?.kind === "app" && !!states[id]?.project;

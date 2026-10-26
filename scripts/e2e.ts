@@ -632,6 +632,20 @@ try {
     return `${before} → ${wider} → reset ${reset}px`;
   });
 
+  await check("chats: new chat button and the earlier chats list in the agent sidebar", async () => {
+    const panel = `[data-agent-for="${appId}"]`;
+    if (!(await page!.eval<boolean>(`!!document.querySelector('${panel}')`))) await click(`[data-app-tab="${appId}"] [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${panel} [data-chat-history-button]')`, { label: "chat buttons" });
+    const disabled = await page!.eval<boolean>(`document.querySelector('${panel} [data-new-chat]').disabled`);
+    if (!disabled) throw new Error("New chat is offered for an empty chat");
+    await click(`${panel} [data-chat-history-button]`);
+    await page!.waitFor(`document.querySelector("[data-chat-history]")?.innerText.includes("No earlier chats")`, { label: "history popover" });
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    await page!.waitFor(`!document.querySelector("[data-chat-history]")`, { label: "closed" });
+    const chats = await apiCall<unknown[]>(`/api/apps/${appId}/chats`);
+    if (chats.length) throw new Error("unexpected chats");
+  });
+
   await check("sidebar: tabs are reordered by dragging", async () => {
     const ids = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li[data-app-id]")].map((li) => li.dataset.appId)`);
     const first = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/second` } });

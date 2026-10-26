@@ -219,6 +219,20 @@ const migrate = Effect.gen(function* () {
   for (const [name, type] of added) {
     if (!columns.has(name)) yield* sql.unsafe(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);
   }
+  // Earlier chats of a tab (its current one is the messages without a chat_id): kept when the
+  // user starts a new chat, with the provider session to pick them up again.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS chats (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      app_id           TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      title            TEXT NOT NULL,
+      session_id       TEXT,
+      session_provider TEXT,
+      created_at       TEXT NOT NULL,
+      updated_at       TEXT NOT NULL
+    )`);
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS chats_app ON chats (app_id, id)");
+  if (!(yield* columnsOf("messages")).has("chat_id")) yield* sql.unsafe("ALTER TABLE messages ADD COLUMN chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE");
   // The mod a page change came with (mods/Mods.ts), removed with it.
   if (!(yield* columnsOf("page_changes")).has("mod_id")) yield* sql.unsafe("ALTER TABLE page_changes ADD COLUMN mod_id TEXT");
   // Installed mods: the mod itself, and what installing it did (to take it back).

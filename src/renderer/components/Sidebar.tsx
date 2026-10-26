@@ -3,7 +3,7 @@ import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import type { AppSummary, WorkspaceInfo } from "../../shared/api";
 import {
   appById,
-  clearChat,
+  newChat,
   createWorkspace,
   currentWorkspace,
   deleteApp,
@@ -40,6 +40,7 @@ import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { IconPicker, TabIcon } from "./TabIcon";
+import { toast } from "./Toast";
 import { Button } from "./ui";
 
 /**
@@ -579,16 +580,10 @@ function Item(props: { app: AppSummary }) {
       .filter((w) => w.id !== props.app.workspaceId)
       .map((w) => ({ label: `Move to ${w.name}`, icon: "folder-input", onSelect: () => void moveApp(props.app.id, w.id) })),
     {
-      label: "Clear chat",
-      icon: "message-square-x",
-      disabled: running() || states[props.app.id]?.messages.length === 0,
-      onSelect: async () => {
-        const ok = await confirmDialog(
-          `Clear the chat for “${props.app.name}”? The app and its data stay; the agent starts a fresh conversation.`,
-          { confirmLabel: "Clear chat" },
-        );
-        if (ok) clearChat(props.app.id);
-      },
+      label: "New chat",
+      icon: "message-square-plus",
+      disabled: running() || !states[props.app.id]?.messages.length,
+      onSelect: () => void newChat(props.app.id).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" })),
     },
     "separator",
     {

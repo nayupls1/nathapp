@@ -444,6 +444,62 @@ const appRoutes = HttpRouter.addAll([
     ),
   ),
 
+  // Chats of a tab: "new chat" keeps the current one as an earlier chat, which can be opened again or deleted.
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/chats",
+    Effect.gen(function* () {
+      return json(yield* (yield* Apps).chats(yield* param("id")));
+    }),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/chats/:chatId",
+    Effect.gen(function* () {
+      return json(yield* (yield* Apps).chatMessages(yield* param("id"), Number(yield* param("chatId"))));
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/chats",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const id = yield* param("id");
+        if (!(yield* apps.get(id))) return yield* fail(404, "Not found");
+        if (yield* (yield* Agent).isRunning(id)) return yield* fail(409, "Stop the agent before starting a new chat");
+        yield* apps.newChat(id);
+        return json({ messages: [], chats: yield* apps.chats(id) }, 201);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/chats/:chatId/open",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const id = yield* param("id");
+        if (yield* (yield* Agent).isRunning(id)) return yield* fail(409, "Stop the agent before switching chats");
+        if (!(yield* apps.openChat(id, Number(yield* param("chatId"))))) return yield* fail(404, "No such chat");
+        return json({ messages: yield* apps.messages(id), chats: yield* apps.chats(id) });
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/apps/:id/chats/:chatId",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const id = yield* param("id");
+        if (!(yield* apps.deleteChat(id, Number(yield* param("chatId"))))) return yield* fail(404, "No such chat");
+        yield* youDid(id, "chat.delete", null);
+        return noContent;
+      }),
+    ),
+  ),
+
   HttpRouter.route(
     "POST",
     "/api/apps/:id/chat",
