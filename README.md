@@ -194,6 +194,8 @@ Each entry shows who made the change (which agent, you, NathApp) and its files w
 - **Undo this change** reverts only that step. It refuses if those files were changed again since.
 - **Restore this version** puts everything back the way it was then.
 
+- **Restore everything to here** (on the History page) puts NathApp back to that moment in one step: its settings, the site customizations and every app of the workspace (or of all of them, with "All workspaces"), each as its own restore that can be undone. Apps made since are left as they are.
+
 Both keep the app's current data unless you tick "also its data". Restoring or undoing first saves the current state, so it can be undone too. When an app crashes, its tab offers to undo the agent's last change.
 
 If something breaks NathApp's own UI, **safe mode** starts it without the theme and site customizations. Start it with `--safe-mode` or press Ctrl+Alt+Shift+S, undo the change in History, then restart normally.

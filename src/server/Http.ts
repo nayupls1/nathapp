@@ -1369,6 +1369,28 @@ const historyRoutes = HttpRouter.addAll([
       }),
     ),
   ),
+  // Everything back to one moment: settings, site customizations and the workspace's apps.
+  HttpRouter.route(
+    "POST",
+    "/api/history/:id/restore-all",
+    handle(
+      Effect.gen(function* () {
+        const history = yield* History;
+        const { data, workspaceId } = yield* decodeBody(Schema.Struct({ data: Schema.optionalKey(Schema.Boolean), workspaceId: Schema.optionalKey(str(100)) }));
+        const entry = yield* history.entry(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        const apps = yield* Apps;
+        const agent = yield* Agent;
+        for (const app of yield* apps.list()) {
+          if ((!workspaceId || app.workspaceId === workspaceId) && (yield* agent.isRunning(app.id))) return yield* fail(409, `Stop the agent in “${app.name}” first`);
+        }
+        const result = yield* history
+          .restoreAll(entry.id, { data: data ?? false, ...(workspaceId ? { workspaceId } : {}) })
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        yield* youDid(workspaceId ? workspaceScope(workspaceId) : null, "history.restoreAll", entry.at, `${result.restored.length} restored: ${result.restored.join(", ")}${data ? " · with data" : ""}`);
+        return json(result);
+      }),
+    ),
+  ),
   HttpRouter.route(
     "POST",
     "/api/history/:id/restore",

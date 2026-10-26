@@ -328,6 +328,9 @@ try {
     // The History page has everything in the workspace.
     await click("nav button", "History");
     await page!.waitFor(`document.querySelectorAll("[data-history-page] [data-snapshot]").length >= 3`, { label: "history page" });
+    // An entry opened on the page offers putting everything back to that moment.
+    await click("[data-history-page] [data-snapshot] button");
+    await page!.waitFor(`!!document.querySelector("[data-history-page] [data-restore-all]")`, { label: "restore everything" });
     await shot("history-page.png");
     const entries = await page!.eval<number>(`document.querySelectorAll("[data-history-page] [data-snapshot]").length`);
     await click(`nav li[data-app-id="${appId}"]`);

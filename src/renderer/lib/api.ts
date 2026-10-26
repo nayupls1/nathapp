@@ -159,6 +159,7 @@ export const api = {
   saveSnapshot: (target: string) => post<HistoryEntry | undefined>("/api/history", { target }),
   /** data: also put the app's data back (else its current data is kept). */
   restoreSnapshot: (id: number, data: boolean) => post<void>(`/api/history/${id}/restore`, { data }),
+  restoreAll: (id: number, data: boolean, workspaceId?: string) => post<{ restored: string[] }>(`/api/history/${id}/restore-all`, { data, workspaceId }),
   undoSnapshot: (id: number, data = false) => post<{ note: string | null }>(`/api/history/${id}/undo`, { data }),
 
   /** Every app's command bar actions. */

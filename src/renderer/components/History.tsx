@@ -28,7 +28,14 @@ export const targetName = (target: string) => {
 };
 
 /** The snapshots of a target (or of everything in the workspace), newest first, live. */
-export function HistoryList(props: { target?: string; workspaceId?: string; showTarget?: boolean; empty?: string }) {
+export function HistoryList(props: {
+  target?: string;
+  workspaceId?: string;
+  showTarget?: boolean;
+  empty?: string;
+  /** Offer "restore everything to here" (the History page): for the workspace's apps, or all of them (""). */
+  restoreAllIn?: string;
+}) {
   const [entries, setEntries] = createSignal<HistoryEntry[]>([]);
   const [more, setMore] = createSignal(false);
   const [open, setOpen] = createSignal<number | null>(null);
@@ -55,6 +62,7 @@ export function HistoryList(props: { target?: string; workspaceId?: string; show
         {(entry) => (
           <Entry
             entry={entry}
+            restoreAllIn={props.restoreAllIn}
             showTarget={!!props.showTarget}
             open={open() === entry.id}
             onToggle={() => setOpen((id) => (id === entry.id ? null : entry.id))}
@@ -105,7 +113,7 @@ function Stats(props: { entry: HistoryEntry }) {
   );
 }
 
-function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean; onToggle: () => void }) {
+function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean; onToggle: () => void; restoreAllIn?: string }) {
   const [detail] = createResource(
     () => (props.open ? props.entry.id : undefined),
     (id) => api.historyDetail(id),
@@ -151,6 +159,19 @@ function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean;
       if (ok) await api.restoreSnapshot(props.entry.id, data);
     });
 
+  const restoreAll = () =>
+    run(async () => {
+      const data = withData();
+      const scope = props.restoreAllIn ? (workspaces.find((w) => w.id === props.restoreAllIn)?.name ?? "this workspace") : "all workspaces";
+      const ok = await confirmDialog(
+        `Put everything back to how it was on ${when(props.entry.at)}? NathApp's settings, the site customizations and the apps in ${scope} go back to that moment${data ? ", their data too (what was added since is lost)" : "; the apps' data stays as it is"}. Apps made since stay as they are. Each can be undone on its own.`,
+        { confirmLabel: "Restore everything", danger: true },
+      );
+      if (!ok) return;
+      const { restored } = await api.restoreAll(props.entry.id, data, props.restoreAllIn || undefined);
+      return restored.length ? `Restored ${restored.map(targetName).join(", ")}.` : "Everything already was the way it was then.";
+    });
+
   return (
     <div {...stylex.attrs(styles.entry)} data-snapshot={props.entry.id}>
       <button type="button" onClick={props.onToggle} aria-expanded={props.open} {...stylex.attrs(styles.head)}>
@@ -180,6 +201,12 @@ function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean;
               <Icon name="archive-restore" size={14} />
               Restore this version
             </Button>
+            <Show when={props.restoreAllIn !== undefined}>
+              <Button onClick={() => void restoreAll()} disabled={busy()} title="Settings, site customizations and every app back to this moment" data-restore-all>
+                <Icon name="history" size={14} />
+                Restore everything to here
+              </Button>
+            </Show>
             <Show when={hasData()}>
               <label {...stylex.attrs(styles.check)}>
                 <input type="checkbox" checked={withData()} onChange={(e) => setWithData(e.currentTarget.checked)} />
@@ -312,7 +339,7 @@ export function HistoryPage() {
         </select>
       </div>
       <div {...stylex.attrs(styles.card)}>
-        <HistoryList target={target() || undefined} workspaceId={workspace()} showTarget={!target()} />
+        <HistoryList target={target() || undefined} workspaceId={workspace()} showTarget={!target()} restoreAllIn={workspace() ?? ""} />
       </div>
     </div>
   );

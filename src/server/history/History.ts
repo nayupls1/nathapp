@@ -177,6 +177,12 @@ export interface HistoryShape {
    * again since (else they're kept, see note).
    */
   readonly undo: (id: number, options: { data: boolean }) => Effect.Effect<{ note: string | null }, HistoryError>;
+  /**
+   * Puts NathApp back the way it was when snapshot `at` was taken: the settings,
+   * the site customizations and every app (of the workspace, if given) that had
+   * a snapshot by then, each as one restore (undoable). Returns what changed.
+   */
+  readonly restoreAll: (at: number, options: { data: boolean; workspaceId?: string }) => Effect.Effect<{ restored: HistoryTarget[] }, HistoryError>;
   /** Deletes a target's history (its app was deleted). */
   readonly forget: (target: HistoryTarget) => Effect.Effect<void>;
 }
@@ -545,6 +551,38 @@ export const make = Effect.gen(function* () {
   // Clean up after deleted snapshots, a while after startup.
   yield* Effect.forkDetach(Effect.sleep("1 minute").pipe(Effect.andThen(collectGarbage), Effect.ignoreCause));
 
+
+  const restore = (id: number, options: { data: boolean }) =>
+    Effect.gen(function* () {
+      const row = yield* requireRow(id);
+      yield* ensureExists(row.target);
+      yield* locked(row.target)(
+        Effect.gen(function* () {
+          const current = yield* capture(row.target);
+          if (!current) return yield* fail(404, "Nothing to restore into");
+          yield* insert(row.target, current, { actor: "nathapp", actorLabel: "NathApp", summary: "Before restoring an earlier version" });
+          const target = stored(row);
+          const desired: Tree = { ...target.tree };
+          if (!options.data) {
+            // Databases stay as they are now.
+            for (const path of Object.keys(desired)) if (isData(path, target.data, current.data)) delete desired[path];
+            for (const path of Object.keys(current.tree)) if (isData(path, target.data, current.data)) desired[path] = current.tree[path]!;
+          }
+          yield* apply(row.target, desired, current.tree);
+          const after = yield* capture(row.target);
+          const when = new Date(row.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+          if (after) {
+            yield* insert(row.target, after, {
+              actor: "user",
+              actorLabel: "You",
+              summary: `Restored the version from ${when}${options.data ? "" : " (kept the current data)"}`,
+            });
+          }
+        }),
+      );
+      yield* changed(row.target);
+    });
+
   return {
     record: (target, by) =>
       record(target, by).pipe(
@@ -608,35 +646,28 @@ export const make = Effect.gen(function* () {
         return { entry, files } satisfies HistoryDetail;
       }),
 
-    restore: (id, options) =>
+    restore,
+
+    restoreAll: (at, options) =>
       Effect.gen(function* () {
-        const row = yield* requireRow(id);
-        yield* ensureExists(row.target);
-        yield* locked(row.target)(
-          Effect.gen(function* () {
-            const current = yield* capture(row.target);
-            if (!current) return yield* fail(404, "Nothing to restore into");
-            yield* insert(row.target, current, { actor: "nathapp", actorLabel: "NathApp", summary: "Before restoring an earlier version" });
-            const target = stored(row);
-            const desired: Tree = { ...target.tree };
-            if (!options.data) {
-              // Databases stay as they are now.
-              for (const path of Object.keys(desired)) if (isData(path, target.data, current.data)) delete desired[path];
-              for (const path of Object.keys(current.tree)) if (isData(path, target.data, current.data)) desired[path] = current.tree[path]!;
-            }
-            yield* apply(row.target, desired, current.tree);
-            const after = yield* capture(row.target);
-            const when = new Date(row.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
-            if (after) {
-              yield* insert(row.target, after, {
-                actor: "user",
-                actorLabel: "You",
-                summary: `Restored the version from ${when}${options.data ? "" : " (kept the current data)"}`,
-              });
-            }
-          }),
-        );
-        yield* changed(row.target);
+        const point = yield* requireRow(at);
+        const targets: HistoryTarget[] = ["settings", "sites"];
+        const appRows = yield* sql<{ id: string }>`SELECT id FROM apps WHERE kind = 'app' ${options.workspaceId ? sql`AND workspace_id = ${options.workspaceId}` : sql``} ORDER BY position`.pipe(Effect.orDie);
+        for (const app of appRows) targets.push(`app:${app.id}`);
+        const restored: HistoryTarget[] = [];
+        for (const target of targets) {
+          // Its last snapshot by then; nothing before means it didn't exist yet, and it stays.
+          const then = (yield* sql<SnapshotRow>`SELECT * FROM snapshots WHERE target = ${target} AND id <= ${point.id} ORDER BY id DESC LIMIT 1`.pipe(Effect.orDie))[0];
+          if (!then) continue;
+          const current = yield* capture(target);
+          if (!current) continue;
+          const before = stored(then);
+          const differs = (path: string) => before.tree[path] !== current.tree[path] && (options.data || !isData(path, before.data, current.data));
+          if (![...new Set([...Object.keys(before.tree), ...Object.keys(current.tree)])].some(differs)) continue;
+          yield* restore(then.id, { data: options.data });
+          restored.push(target);
+        }
+        return { restored };
       }),
 
     undo: (id, options) =>
