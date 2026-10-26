@@ -1280,6 +1280,27 @@ const workspaceRoutes = HttpRouter.addAll([
       }),
     ),
   ),
+  // The order of its tabs in the sidebar. Tabs left out (made meanwhile) go after the others.
+  HttpRouter.route(
+    "PUT",
+    "/api/workspaces/:id/order",
+    handle(
+      Effect.gen(function* () {
+        const workspaces = yield* Workspaces;
+        const apps = yield* Apps;
+        const id = yield* param("id");
+        const { ids } = yield* decodeBody(Schema.Struct({ ids: Schema.Array(str(100)) }));
+        const current = yield* workspaces.appIds(id);
+        if (!(yield* workspaces.get(id))) return yield* fail(404, "Not found");
+        const known = new Set(current);
+        const listed = [...new Set(ids)].filter((x) => known.has(x));
+        const order = [...listed, ...current.filter((x) => !listed.includes(x))];
+        const tabs = yield* apps.reorder(id, order);
+        for (const tab of tabs) yield* publishApp(tab);
+        return json(tabs);
+      }),
+    ),
+  ),
   // Deletes the workspace with its tabs (and their data), its secrets and its permissions.
   HttpRouter.route(
     "DELETE",

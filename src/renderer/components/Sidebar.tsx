@@ -8,6 +8,7 @@ import {
   deleteApp,
   duplicateApp,
   moveApp,
+  moveTab,
   newApp,
   newWebTab,
   renameApp,
@@ -23,7 +24,7 @@ import {
   workspaces,
   workspaceTabs,
 } from "../lib/store";
-import { isSidebarCollapsed, setSidebarCollapsed, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
+import { draggedTab, isSidebarCollapsed, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
@@ -279,9 +280,19 @@ function PageLink(props: { id: string; icon: string; label: string }) {
   );
 }
 
+/** Where a dragged tab would land: before or after which tab. */
+const [dropAt, setDropAt] = createSignal<{ id: string; side: "before" | "after" } | null>(null);
+
 function Item(props: { app: AppSummary }) {
   const [editing, setEditing] = createSignal(false);
   const [menu, setMenu] = createSignal<MenuPosition>();
+  const dropBefore = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "before";
+  const dropAfter = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "after";
+  const isDragged = () => draggedTab() === props.app.id;
+  const neighbour = (offset: number) => {
+    const tabs = workspaceTabs();
+    return tabs[tabs.findIndex((t) => t.id === props.app.id) + offset];
+  };
   const selected = () => selectedId() === props.app.id;
   const running = () => !!states[props.app.id]?.running;
   const menuOpen = () => menu() !== undefined;
@@ -303,6 +314,8 @@ function Item(props: { app: AppSummary }) {
   const menuItems = (): (MenuItem | "separator")[] => [
     { label: "Rename", icon: "pencil", onSelect: rename },
     { label: "Duplicate", icon: "copy", onSelect: () => duplicateApp(props.app.id) },
+    { label: "Move up", icon: "arrow-up", disabled: !neighbour(-1), onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before") },
+    { label: "Move down", icon: "arrow-down", disabled: !neighbour(1), onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after") },
     ...workspaces
       .filter((w) => w.id !== props.app.workspaceId)
       .map((w) => ({ label: `Move to ${w.name}`, icon: "folder-input", onSelect: () => void moveApp(props.app.id, w.id) })),
@@ -332,7 +345,15 @@ function Item(props: { app: AppSummary }) {
 
   return (
     <li
-      {...stylex.attrs(stylex.defaultMarker(), styles.item, highlighted() && styles.selected, isSidebarCollapsed() && styles.itemCompact)}
+      {...stylex.attrs(
+        stylex.defaultMarker(),
+        styles.item,
+        highlighted() && styles.selected,
+        isSidebarCollapsed() && styles.itemCompact,
+        isDragged() && styles.dragging,
+        dropBefore() && styles.dropBefore,
+        dropAfter() && styles.dropAfter,
+      )}
       title={isSidebarCollapsed() ? props.app.name : undefined}
       onClick={() => selectApp(props.app.id)}
       onDblClick={rename}
@@ -342,6 +363,35 @@ function Item(props: { app: AppSummary }) {
       }}
       aria-current={selected() ? "page" : undefined}
       data-app-id={props.app.id}
+      draggable={!editing()}
+      onDragStart={(e) => {
+        e.dataTransfer!.setData(TAB_DRAG_TYPE, props.app.id);
+        e.dataTransfer!.effectAllowed = "move";
+        setDraggedTab(props.app.id);
+      }}
+      onDragEnd={() => {
+        setDraggedTab(null);
+        setDropAt(null);
+      }}
+      onDragOver={(e) => {
+        if (!draggedTab()) return;
+        e.preventDefault();
+        e.dataTransfer!.dropEffect = "move";
+        const r = e.currentTarget.getBoundingClientRect();
+        setDropAt({ id: props.app.id, side: e.clientY < r.top + r.height / 2 ? "before" : "after" });
+      }}
+      onDragLeave={(e) => {
+        if (dropAt()?.id === props.app.id && !e.currentTarget.contains(e.relatedTarget as Node | null)) setDropAt(null);
+      }}
+      onDrop={(e) => {
+        const id = draggedTab();
+        const at = dropAt();
+        setDraggedTab(null);
+        setDropAt(null);
+        if (!id || !at) return;
+        e.preventDefault();
+        void moveTab(id, at.id, at.side);
+      }}
     >
       <Show
         when={props.app.kind === "web"}
@@ -458,6 +508,10 @@ const styles = stylex.create({
   newButtonCompact: { justifyContent: "center", width: "100%", paddingInline: 0 },
   itemCompact: { justifyContent: "center", paddingInline: 0, position: "relative" },
   hiddenText: { display: "none" },
+  dragging: { opacity: 0.45 },
+  // A line where the dragged tab would land (the list has a 2px gap).
+  dropBefore: { boxShadow: `0 -2px 0 0 ${colors.accent}` },
+  dropAfter: { boxShadow: `0 2px 0 0 ${colors.accent}` },
   dotCompact: { position: "absolute", top: 5, right: 5 },
   switcher: {
     display: "flex",

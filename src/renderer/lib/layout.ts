@@ -37,3 +37,8 @@ export function setSidebarCollapsed(value: boolean) {
 }
 
 export const toggleSidebar = () => setSidebarCollapsed(!collapsed());
+
+/** The tab being dragged from the sidebar, if any (drop targets light up for it). */
+export const [draggedTab, setDraggedTab] = createSignal<string | null>(null);
+/** The data type of a tab drag. */
+export const TAB_DRAG_TYPE = "application/x-nathapp-tab";

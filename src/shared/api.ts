@@ -209,6 +209,8 @@ export interface AppSummary {
   /** Web tabs: current URL and favicon. */
   url: string | null;
   favicon: string | null;
+  /** Its place in the workspace's list (ties: creation order). */
+  position: number;
   createdAt: string;
   updatedAt: string;
 }

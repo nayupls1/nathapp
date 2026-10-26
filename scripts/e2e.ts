@@ -564,6 +564,41 @@ try {
     return `${Math.round(collapsed)}px collapsed, ${Math.round(before)} → ${Math.round(after)}px`;
   });
 
+  await check("sidebar: tabs are reordered by dragging", async () => {
+    const ids = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li[data-app-id]")].map((li) => li.dataset.appId)`);
+    const first = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: "https://example.com/" } });
+    const extra = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: "https://example.com/" } });
+    await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${extra.id}"]')`, { label: "new tab in the sidebar" });
+    const before = await ids();
+    if (before.length < 2 || before.at(-1) !== extra.id) throw new Error(`unexpected order ${before.join(", ")}`);
+    // Drag the last tab onto the top half of the first one.
+    await page!.eval(`(() => {
+      const from = document.querySelector('nav li[data-app-id="${extra.id}"]');
+      const to = document.querySelector("nav li[data-app-id]");
+      const r = to.getBoundingClientRect();
+      const dataTransfer = new DataTransfer();
+      const at = { bubbles: true, cancelable: true, dataTransfer, clientX: r.left + 20, clientY: r.top + 4 };
+      from.dispatchEvent(new DragEvent("dragstart", at));
+      to.dispatchEvent(new DragEvent("dragover", at));
+      to.dispatchEvent(new DragEvent("drop", at));
+      from.dispatchEvent(new DragEvent("dragend", at));
+      return true;
+    })()`);
+    const expected = [extra.id, ...before.slice(0, -1)];
+    await page!.waitFor(`JSON.stringify([...document.querySelectorAll("nav li[data-app-id]")].map((li) => li.dataset.appId)) === ${JSON.stringify(JSON.stringify(expected))}`, {
+      label: "new order in the sidebar",
+    });
+    // Saved: the server lists them in that order.
+    const saved = await waitForValue(async () => {
+      const list = await apiCall<{ id: string; workspaceId: string }[]>("/api/apps");
+      const order = list.filter((t) => expected.includes(t.id)).map((t) => t.id);
+      return JSON.stringify(order) === JSON.stringify(expected) ? order : undefined;
+    });
+    for (const tab of [first, extra]) await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    await page!.waitFor(`!document.querySelector('nav li[data-app-id="${extra.id}"]')`, { label: "tabs removed" });
+    return `${saved.length} tabs, last one moved to the top`;
+  });
+
   await check("web tab: browse, pick an element, site customization applies", async () => {
     const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
     await newTab("New web tab");

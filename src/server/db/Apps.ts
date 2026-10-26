@@ -20,6 +20,7 @@ interface AppRow {
   session_id: string | null;
   session_provider: string | null;
   mode: string;
+  position: number;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +41,7 @@ const toSummary = (r: AppRow): AppSummary => ({
   icon: r.icon,
   url: r.url,
   favicon: r.favicon,
+  position: r.position,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -67,9 +69,11 @@ export const make = Effect.gen(function* () {
   const row = (id: string) => sql<AppRow>`SELECT * FROM apps WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
   const touch = (id: string) => sql`UPDATE apps SET updated_at = ${sql.literal(now)} WHERE id = ${id}`;
   const summary = (id: string) => row(id).pipe(Effect.map((r) => (r ? toSummary(r) : null)));
+  /** After the last tab of a workspace. */
+  const lastPosition = (workspaceId: string) => sql`(SELECT COALESCE(MAX(position), 0) + 1 FROM apps WHERE workspace_id = ${workspaceId})`;
 
   const repo = {
-    list: () => sql<AppRow>`SELECT * FROM apps ORDER BY created_at, rowid`.pipe(Effect.map((rows) => rows.map(toSummary))),
+    list: () => sql<AppRow>`SELECT * FROM apps ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map(toSummary))),
 
     get: (id: string) => row(id).pipe(Effect.map((r) => (r ? toRecord(r) : null))),
 
@@ -77,7 +81,8 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const id = crypto.randomUUID();
         const name = kind === "web" ? hostOf(url) || "New tab" : "New app";
-        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, url) VALUES (${id}, ${workspaceId}, ${kind}, ${name}, ${url})`;
+        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, url, position)
+          VALUES (${id}, ${workspaceId}, ${kind}, ${name}, ${url}, ${lastPosition(workspaceId)})`;
         return (yield* summary(id))!;
       }),
 
@@ -125,11 +130,20 @@ export const make = Effect.gen(function* () {
     move: (id: string, workspaceId: string) =>
       sql.withTransaction(
         Effect.all([
-          sql`UPDATE apps SET workspace_id = ${workspaceId}, updated_at = ${sql.literal(now)} WHERE id = ${id}`,
+          sql`UPDATE apps SET workspace_id = ${workspaceId}, position = ${lastPosition(workspaceId)}, updated_at = ${sql.literal(now)} WHERE id = ${id}`,
           // Its history goes along.
           sql`UPDATE snapshots SET workspace_id = ${workspaceId} WHERE tab_id = ${id}`,
         ]),
       ).pipe(Effect.andThen(summary(id))),
+
+    /** Puts a workspace's tabs in this order (ids of other workspaces are ignored). */
+    reorder: (workspaceId: string, ids: readonly string[]) =>
+      sql.withTransaction(
+        Effect.forEach(ids, (id, i) => sql`UPDATE apps SET position = ${i} WHERE id = ${id} AND workspace_id = ${workspaceId}`, { discard: true }),
+      ).pipe(
+        Effect.andThen(sql<AppRow>`SELECT * FROM apps WHERE workspace_id = ${workspaceId} ORDER BY position, created_at, rowid`),
+        Effect.map((rows) => rows.map(toSummary)),
+      ),
 
     setMode: (id: string, mode: AppMode) => sql`UPDATE apps SET mode = ${mode} WHERE id = ${id}`.pipe(Effect.asVoid),
 
@@ -141,8 +155,8 @@ export const make = Effect.gen(function* () {
         const r = yield* row(id);
         if (!r) return null;
         const copyId = crypto.randomUUID();
-        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, icon, url, favicon, provider, model, effort, mode)
-          VALUES (${copyId}, ${r.workspace_id}, ${r.kind}, ${`${r.name} copy`}, ${r.icon}, ${r.url}, ${r.favicon}, ${r.provider}, ${r.model}, ${r.effort}, ${r.mode})`;
+        yield* sql`INSERT INTO apps (id, workspace_id, kind, name, icon, url, favicon, provider, model, effort, mode, position)
+          VALUES (${copyId}, ${r.workspace_id}, ${r.kind}, ${`${r.name} copy`}, ${r.icon}, ${r.url}, ${r.favicon}, ${r.provider}, ${r.model}, ${r.effort}, ${r.mode}, ${lastPosition(r.workspace_id)})`;
         return (yield* summary(copyId))!;
       }),
 

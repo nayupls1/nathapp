@@ -205,6 +205,8 @@ const migrate = Effect.gen(function* () {
     // dev (being edited: dev server) or live (done: built and started).
     ["mode", "TEXT NOT NULL DEFAULT 'dev'"],
     ["workspace_id", `TEXT NOT NULL DEFAULT '${DEFAULT_WORKSPACE}'`],
+    // The tab's place in its workspace's list (ties: creation order).
+    ["position", "INTEGER NOT NULL DEFAULT 0"],
   ];
   for (const [name, type] of added) {
     if (!columns.has(name)) yield* sql.unsafe(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);

@@ -77,6 +77,8 @@ export const api = {
   listApps: () => request<AppSummary[]>("/api/apps"),
   createApp: (body: { kind?: TabKind; url?: string; workspaceId?: string } = {}) => post<AppSummary>("/api/apps", body),
   moveApp: (id: string, workspaceId: string) => post<AppSummary>(`/api/apps/${id}/move`, { workspaceId }),
+  reorderTabs: (workspaceId: string, ids: string[]) =>
+    request<AppSummary[]>(`/api/workspaces/${workspaceId}/order`, { method: "PUT", body: JSON.stringify({ ids }) }),
 
   workspaces: () => request<WorkspaceInfo[]>("/api/workspaces"),
   createWorkspace: (name: string) => post<WorkspaceInfo>("/api/workspaces", { name }),

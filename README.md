@@ -188,6 +188,8 @@ Contents are stored once (content-addressed, gzipped) under `<data dir>/history/
 
 The sidebar collapses to a column of icons (the button next to the workspace, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
 
+Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in their menu). The order is saved per workspace (`PUT /api/workspaces/:id/order`); new tabs, copies and tabs moved in from another workspace go last.
+
 ### Command bar
 
 Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, NathApp's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.

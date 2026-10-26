@@ -44,8 +44,9 @@ export const appById = (id: string | null) => (id ? apps.find((a) => a.id === id
 export const workspaceById = (id: string | null) => (id ? workspaces.find((w) => w.id === id) : undefined);
 /** The workspace shown in the sidebar. */
 export const currentWorkspace = () => workspaceById(workspaceId()) ?? workspaces[0];
-/** The tabs of the current workspace. */
-export const workspaceTabs = () => apps.filter((a) => a.workspaceId === currentWorkspace()?.id);
+const byPosition = (a: AppSummary, b: AppSummary) => a.position - b.position || a.createdAt.localeCompare(b.createdAt);
+/** The tabs of the current workspace, in the user's order. */
+export const workspaceTabs = () => apps.filter((a) => a.workspaceId === currentWorkspace()?.id).sort(byPosition);
 export const isWebTab = (id: string | null) => appById(id)?.kind === "web";
 /** Tabs (app or web) as opposed to the Settings page. */
 export const isTab = (id: string | null): id is string => !!id && id !== SETTINGS_VIEW && id !== ACTIVITY_VIEW && id !== HISTORY_VIEW && id !== SCHEDULES_VIEW;
@@ -302,7 +303,7 @@ export async function renameApp(id: string, name: string) {
 
 export async function duplicateApp(id: string) {
   const copy = await api.duplicateApp(id);
-  upsertApp(copy); // the list is ordered by creation, so it goes last
+  upsertApp(copy); // it goes last
   await selectApp(copy.id);
 }
 
@@ -314,6 +315,38 @@ export async function clearChat(id: string) {
 export async function deleteApp(id: string) {
   await api.deleteApp(id);
   forgetApp(id);
+}
+
+/** Puts the current workspace's tabs in this order: shown right away, then saved. */
+export async function reorderTabs(ids: string[]) {
+  const workspace = currentWorkspace();
+  if (!workspace) return;
+  setApps(
+    produce((list) => {
+      for (const tab of list) {
+        const i = ids.indexOf(tab.id);
+        if (i !== -1) tab.position = i;
+      }
+    }),
+  );
+  try {
+    for (const tab of await api.reorderTabs(workspace.id, ids)) upsertApp(tab);
+  } catch (err) {
+    console.error("Saving the tab order failed:", err);
+    setApps(reconcile(await api.listApps()));
+  }
+}
+
+/** Moves a tab before or after another one of its workspace. */
+export function moveTab(id: string, targetId: string, side: "before" | "after") {
+  if (id === targetId) return;
+  const ids = workspaceTabs()
+    .map((t) => t.id)
+    .filter((x) => x !== id);
+  const at = ids.indexOf(targetId);
+  if (at === -1) return;
+  ids.splice(side === "before" ? at : at + 1, 0, id);
+  return reorderTabs(ids);
 }
 
 /** Moves a tab to another workspace. It closes here; web tabs reopen with that workspace's session. */

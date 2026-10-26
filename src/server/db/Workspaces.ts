@@ -73,8 +73,8 @@ export const make = Effect.gen(function* () {
         return yield* get(id);
       }),
 
-    /** The ids of its tabs. */
-    appIds: (id: string) => sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id}`.pipe(Effect.map((rows) => rows.map((r) => r.id))),
+    /** The ids of its tabs, in their order. */
+    appIds: (id: string) => sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id} ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map((r) => r.id))),
 
     count: () => sql<{ n: number }>`SELECT COUNT(*) AS n FROM workspaces`.pipe(Effect.map((rows) => rows[0]!.n)),
 
