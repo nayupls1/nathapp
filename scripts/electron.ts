@@ -56,7 +56,9 @@ export async function launchElectron(env: Record<string, string | undefined> = {
   // if inherited, Electron would boot as plain Node and the app would crash.
   delete childEnv.ELECTRON_RUN_AS_NODE;
 
-  return Bun.spawn([electronBinary as unknown as string, ".", ...args], {
+  // Chromium refuses to run as root (containers, CI) with its sandbox on.
+  const rootArgs = process.getuid?.() === 0 ? ["--no-sandbox"] : [];
+  return Bun.spawn([electronBinary as unknown as string, ".", ...rootArgs, ...args], {
     stdio: ["inherit", "inherit", "inherit"],
     env: childEnv,
   });
