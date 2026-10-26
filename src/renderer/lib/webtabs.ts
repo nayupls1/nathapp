@@ -43,8 +43,12 @@ export interface PageHandle {
   applyOverride: () => Promise<ApplyResult>;
   /** Called when the customization of `host` changed somewhere. */
   overrideChanged: (host: string) => void;
-  /** Sends a prompt to the tab's agent, with the page and picked elements, like its chat does. */
+  /** Sends a prompt to the tab's agent, with the page and the picked elements (lib/picks.ts). */
   send: (prompt: string) => void;
+  /** Starts picking an element in the page for the agent (or cancels picking). */
+  pick: () => Promise<void>;
+  /** Takes back a picked element (and its mark in the page). */
+  unpick: (selector: string) => void;
   /** The page's webContents (web tabs only: their traffic is recorded). */
   webContentsId: () => number;
   /** Resolves once the page has loaded (right away if it has). */

@@ -1,10 +1,12 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, createSignal, For, Match, on, Show, Switch, type JSX } from "solid-js";
+import { createEffect, createSignal, For, Match, on, Show, Switch } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
 import { markdownToHtml } from "../../shared/markdown";
+import { isPicking, picksOf } from "../lib/picks";
 import { settings } from "../lib/settings";
 import { handOver, refusal, sendWithShares } from "../lib/sharing";
 import { appById, apps, setAgentCollapsed, states, stopAgent } from "../lib/store";
+import { pageOf, pagesVersion } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
 import { SecretRequestCard } from "./Secrets";
@@ -12,14 +14,18 @@ import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
 
-export function Chat(props: {
-  appId: string;
-  /** Web tabs: the website agent. */
-  web?: boolean;
-  /** Picked elements above the composer, the picker button next to it, and how to send (with the page). */
-  page?: { top: JSX.Element; tools: JSX.Element; onSend: (prompt: string) => void };
-}) {
+/**
+ * The agent of a tab: its conversation and composer, in the agent sidebar
+ * (AgentSidebar). Works the same for every kind of tab: the elements picked
+ * in the tab's page (lib/picks.ts) come with the message, and the tab's page
+ * handle sends it with the page.
+ */
+export function Chat(props: { appId: string }) {
   const state = () => states[props.appId]!;
+  const tab = () => appById(props.appId);
+  const web = () => tab()?.kind === "web";
+  // The tab's page (a web page or an app's preview), once it's registered.
+  const page = () => (pagesVersion(), pageOf(props.appId));
   let scroller!: HTMLDivElement;
 
   // Keep the newest message in view while the agent is talking.
@@ -33,7 +39,10 @@ export function Chat(props: {
     <aside {...stylex.attrs(styles.root)} data-agent-panel>
       <header {...stylex.attrs(styles.header)} data-titlebar>
         <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
-        <span {...stylex.attrs(styles.headerTitle)}>{props.web ? "Website agent" : "Agent"}</span>
+        <span {...stylex.attrs(styles.headerTitle)}>Agent</span>
+        <span {...stylex.attrs(styles.headerTab)} title="The tab the agent works on" data-agent-tab-name>
+          {tab()?.name ?? ""}
+        </span>
         <button
           type="button"
           title={editsApp(props.appId) ? "Done: hide the agent and run the finished app (Ctrl+J)" : "Hide agent (Ctrl+J)"}
@@ -45,7 +54,7 @@ export function Chat(props: {
         </button>
       </header>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
-        <Show when={props.web && !state().messages.length && !state().running}>
+        <Show when={web() && !state().messages.length && !state().running}>
           <p {...stylex.attrs(styles.hint)}>
             Ask about this page, or pick elements with the crosshair and say how they should look or work. Changes are saved
             as customizations for the site.
@@ -64,10 +73,40 @@ export function Chat(props: {
         <Composer
           appId={props.appId}
           running={state().running}
-          placeholder={props.web ? "Ask about or change this page…" : undefined}
-          top={props.page?.top}
-          tools={props.page?.tools}
-          onSend={(prompt) => (props.page ? props.page.onSend(prompt) : sendWithShares(props.appId, prompt))}
+          placeholder={web() ? "Ask about or change this page…" : state().project ? undefined : "Describe the app you want…"}
+          top={
+            <Show when={picksOf(props.appId).length}>
+              <div {...stylex.attrs(styles.chips)}>
+                <For each={picksOf(props.appId)}>
+                  {(el) => (
+                    <Chip
+                      label={el.text ? `${el.tag} “${el.text.slice(0, 24)}${el.text.length > 24 ? "…" : ""}”` : el.selector}
+                      title={el.selector}
+                      onRemove={() => page()?.unpick(el.selector)}
+                    />
+                  )}
+                </For>
+              </div>
+            </Show>
+          }
+          tools={
+            <Show when={page()}>
+              <button
+                type="button"
+                title={isPicking(props.appId) ? "Cancel picking (Esc)" : web() ? "Pick elements on the page for the agent" : "Pick elements in the app for the agent"}
+                onClick={() => void page()?.pick()}
+                {...stylex.attrs(styles.pick, isPicking(props.appId) && styles.pickOn)}
+                data-pick-element
+              >
+                <Icon name="crosshair" size={15} />
+              </button>
+            </Show>
+          }
+          onSend={(prompt) => {
+            const handle = page();
+            if (handle) handle.send(prompt);
+            else void sendWithShares(props.appId, prompt);
+          }}
           onStop={() => stopAgent(props.appId)}
         />
       </div>
@@ -226,18 +265,8 @@ const bubble = {
 } as const;
 
 const styles = stylex.create({
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    // Narrower in a narrow tab (a pane of a split view), so the page keeps room.
-    width: "clamp(260px, 42%, 380px)",
-    flexShrink: 0,
-    borderLeftWidth: 1,
-    borderLeftStyle: "solid",
-    borderLeftColor: colors.border,
-    backgroundColor: colors.bg,
-    minHeight: 0,
-  },
+  // The agent sidebar sizes it.
+  root: { display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0, backgroundColor: colors.bg },
   header: {
     display: "flex",
     alignItems: "center",
@@ -250,7 +279,23 @@ const styles = stylex.create({
     borderBottomColor: colors.border,
   },
   headerIcon: { color: colors.accent },
-  headerTitle: { flex: 1, fontSize: font.sm, fontWeight: 600 },
+  headerTitle: { flexShrink: 0, fontSize: font.sm, fontWeight: 600 },
+  headerTab: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.muted, fontSize: font.sm },
+  chips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
+  pick: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: 28,
+    height: 28,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.text },
+    cursor: "pointer",
+  },
+  pickOn: { backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft }, color: { default: colors.accent, ":hover": colors.accent } },
   headerButton: {
     display: "grid",
     placeItems: "center",

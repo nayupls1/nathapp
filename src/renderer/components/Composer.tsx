@@ -9,6 +9,9 @@ import { TabIcon } from "./TabIcon";
 import { toast } from "./Toast";
 import { Button } from "./ui";
 
+/** Unsent text per tab. */
+const drafts = new Map<string, string>();
+
 export function Composer(props: {
   appId: string;
   running: boolean;
@@ -22,7 +25,13 @@ export function Composer(props: {
   onSend: (prompt: string) => void;
   onStop: () => void;
 }) {
-  const [value, setValue] = createSignal("");
+  // What's typed is kept per tab (the agent sidebar shows one tab's composer at a time).
+  const [value, setDraftValue] = createSignal(drafts.get(props.appId) ?? "");
+  const setValue = (text: string) => {
+    setDraftValue(text);
+    if (text) drafts.set(props.appId, text);
+    else drafts.delete(props.appId);
+  };
   let textarea!: HTMLTextAreaElement;
 
   // @name shares another tab of the workspace with the message (lib/sharing.ts).

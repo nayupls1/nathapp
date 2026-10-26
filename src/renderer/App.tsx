@@ -1,6 +1,7 @@
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, For, Match, on, onMount, Show, Switch } from "solid-js";
 import { ActivityPage } from "./components/ActivityPage";
+import { AgentSidebar } from "./components/AgentSidebar";
 import { AppTab } from "./components/AppTab";
 import { CommandBar } from "./components/CommandBar";
 import { ConfirmHost } from "./components/ConfirmDialog";
@@ -134,6 +135,7 @@ export default function App() {
           <SplitDropZones />
         </div>
       </div>
+      <AgentSidebar />
     </div>
   );
 }

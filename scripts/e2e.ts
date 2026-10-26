@@ -184,9 +184,11 @@ const sendPrompt = (root: string, prompt: string) =>
     return true;
   })()`);
 
-/** Waits until the agent in `root` started and finished. */
-async function agentDone(root: string) {
-  const panel = `${root} [data-agent-panel]`;
+/** The agent sidebar while it shows a tab's agent. */
+const agentOf = (tabId: string) => `[data-agent-for="${tabId}"]`;
+
+/** Waits until the agent in the agent sidebar `panel` started and finished. */
+async function agentDone(panel: string) {
   await page!.waitFor(`!!document.querySelector(${JSON.stringify(panel)})`, { label: "chat to open", timeoutMs: 15_000 });
   await page!.waitFor(
     `[...document.querySelectorAll(${JSON.stringify(`${panel} button`)})].some((b) => b.textContent === "Send") && !document.querySelector(${JSON.stringify(panel)}).innerText.includes("Working…")`,
@@ -278,12 +280,12 @@ try {
     await click(`${appTab()} [data-pick-element]`);
     await waitForValue(async () => ((await inView<boolean>(appTab(), `!!window.__nathappPicker`)) ? true : undefined));
     await inView(appTab(), `document.querySelector("h1").click(), true`);
-    await page!.waitFor(`!!document.querySelector('${appTab()} [data-picked-chip]')`, { label: "picked chip" });
+    await page!.waitFor(`!!document.querySelector('${agentOf(appId)} [data-picked-chip]')`, { label: "picked chip" });
   });
 
   await check("done: hiding the agent builds the app and serves it with its start command", async () => {
-    await click(`${appTab()} [data-agent-hide]`);
-    await page!.waitFor(`!document.querySelector('${appTab()} [data-agent-panel]')`, { label: "agent hidden" });
+    await click(`${agentOf(appId)} [data-agent-hide]`);
+    await page!.waitFor(`!document.querySelector('${agentOf(appId)}')`, { label: "agent hidden" });
     await page!.waitFor(`!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { label: "restart", timeoutMs: 10_000 }).catch(() => {});
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 120_000, label: "live app running" });
     const status = await apiCall<{ status: { mode: string; state: string } }>(`/api/apps/${appId}/runtime`);
@@ -295,7 +297,7 @@ try {
     await click(`${appTab()} [data-logs]`);
     // Showing the agent again goes back to editing: the dev server.
     await click(`${appTab()} [data-agent-show]`);
-    await page!.waitFor(`!!document.querySelector('${appTab()} [data-agent-panel]')`, { label: "agent shown" });
+    await page!.waitFor(`!!document.querySelector('${agentOf(appId)}')`, { label: "agent shown" });
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"][data-mode="dev"]')`, { timeoutMs: 120_000, label: "dev server running" });
     const back = await apiCall<{ status: { mode: string } }>(`/api/apps/${appId}/runtime`);
     if (back.status.mode !== "dev") throw new Error(`mode is ${back.status.mode} after showing the agent`);
@@ -464,12 +466,12 @@ try {
   });
 
   await check("agent panel collapses and comes back", async () => {
-    await click(`${appTab()} [data-agent-hide]`);
-    await page!.waitFor(`!document.querySelector('${appTab()} [data-agent-panel]') && !!document.querySelector('${appTab()} [data-agent-show]')`, {
+    await click(`${agentOf(appId)} [data-agent-hide]`);
+    await page!.waitFor(`!document.querySelector('${agentOf(appId)}') && !!document.querySelector('${appTab()} [data-agent-show]')`, {
       label: "agent panel hidden",
     });
     await click(`${appTab()} [data-agent-show]`);
-    await page!.waitFor(`!!document.querySelector('${appTab()} [data-agent-panel]')`, { label: "agent panel shown" });
+    await page!.waitFor(`!!document.querySelector('${agentOf(appId)}')`, { label: "agent panel shown" });
   });
 
   if (agentPrompt) {
@@ -481,9 +483,9 @@ try {
       );
       const root = `[data-app-tab="${id}"]`;
       // Fastest model keeps this cheap; any model exercises the same path.
-      await chooseAgent(root, "claude", "haiku", "Low");
-      await sendPrompt(root, agentPrompt);
-      const chat = await agentDone(root);
+      await chooseAgent(agentOf(id), "claude", "haiku", "Low");
+      await sendPrompt(agentOf(id), agentPrompt);
+      const chat = await agentDone(agentOf(id));
       await page!.waitFor(`!!document.querySelector('${root} [data-runtime-state="running"]')`, { timeoutMs: 60_000, label: `app running:\n${chat.slice(-600)}` });
       const text = await waitForValue(async () => (await inView<string>(root, `document.body.innerText`)) || undefined, 20_000);
       await shot("agent-app.png");
@@ -830,7 +832,7 @@ try {
     await click(`${tab} [data-pick-element]`);
     await waitForValue(async () => ((await inPage<boolean>(`!!window.__nathappPicker`)) ? true : undefined));
     await inPage(`document.querySelector(".cta").click(), true`);
-    await page!.waitFor(`document.querySelector('${tab} [data-picked-chip]')?.innerText.includes("Buy now")`, {
+    await page!.waitFor(`document.querySelector('${agentOf(tabId)} [data-picked-chip]')?.innerText.includes("Buy now")`, {
       label: "picked element chip",
     });
     const outlined = await inPage<boolean>(`document.querySelector(".cta").hasAttribute("data-nathapp-picked")`);
@@ -1033,9 +1035,9 @@ try {
     const second = tabs.find((t) => t.name === "Second page");
     const app = tabs.find((t) => t.name === "E2E renamed");
     if (!second || !app) throw new Error(`tabs: ${tabs.map((t) => t.name).join(", ")}`);
-    const type = (root: string, text: string) =>
+    const type = (panel: string, text: string) =>
       page!.eval(`(() => {
-        const t = document.querySelector(${JSON.stringify(`${root} [data-agent-panel] textarea`)});
+        const t = document.querySelector(${JSON.stringify(`${panel} textarea`)});
         t.focus();
         t.value = ${JSON.stringify(text)};
         t.setSelectionRange(t.value.length, t.value.length);
@@ -1046,35 +1048,37 @@ try {
     // In the web tab: "@Sec" offers the other page; Enter shares it.
     await click(`nav li[data-app-id="${webTabId}"]`);
     const web = `[data-web-tab="${webTabId}"]`;
-    if (!(await page!.eval<boolean>(`!!document.querySelector('${web} [data-agent-panel]')`))) await click(`${web} [data-agent-show]`);
-    await page!.waitFor(`!!document.querySelector('${web} [data-agent-panel] textarea')`, { label: "website agent's composer" });
-    await type(web, "Compare with @Sec");
-    await page!.waitFor(`!!document.querySelector('${web} [data-mentions] [data-mention="${second.id}"]')`, { label: "mention list" });
+    const webAgent = agentOf(webTabId);
+    if (!(await page!.eval<boolean>(`!!document.querySelector('${webAgent}')`))) await click(`${web} [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${webAgent} textarea')`, { label: "website agent's composer" });
+    await type(webAgent, "Compare with @Sec");
+    await page!.waitFor(`!!document.querySelector('${webAgent} [data-mentions] [data-mention="${second.id}"]')`, { label: "mention list" });
     await shot("share-mention.png");
-    await page!.eval(`document.querySelector('${web} [data-agent-panel] textarea').dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), true`);
-    await page!.waitFor(`!!document.querySelector('${web} [data-share-chip="${second.id}"]')`, { label: "share chip" });
-    const left = await page!.eval<string>(`document.querySelector('${web} [data-agent-panel] textarea').value`);
+    await page!.eval(`document.querySelector('${webAgent} textarea').dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), true`);
+    await page!.waitFor(`!!document.querySelector('${webAgent} [data-share-chip="${second.id}"]')`, { label: "share chip" });
+    const left = await page!.eval<string>(`document.querySelector('${webAgent} textarea').value`);
     if (left.trim() !== "Compare with") throw new Error(`the mention stayed in the text: ${JSON.stringify(left)}`);
     // Removing the chip unshares it.
-    await click(`${web} [data-share-chip="${second.id}"] button`);
-    await page!.waitFor(`!document.querySelector('${web} [data-share-chip]')`, { label: "chip removed" });
-    await type(web, "");
+    await click(`${webAgent} [data-share-chip="${second.id}"] button`);
+    await page!.waitFor(`!document.querySelector('${webAgent} [data-share-chip]')`, { label: "chip removed" });
+    await type(webAgent, "");
 
     // In an app tab, web pages are offered but can't be picked: the app builder has tools.
     await click(`nav li[data-app-id="${app.id}"]`);
     const appTab = `[data-app-tab="${app.id}"]`;
-    const wasHidden = !(await page!.eval<boolean>(`!!document.querySelector('${appTab} [data-agent-panel]')`));
+    const appAgent = agentOf(app.id);
+    const wasHidden = !(await page!.eval<boolean>(`!!document.querySelector('${appAgent}')`));
     if (wasHidden) await click(`${appTab} [data-agent-show]`);
-    await page!.waitFor(`!!document.querySelector('${appTab} [data-agent-panel] textarea')`, { label: "app builder's composer" });
-    await type(appTab, "@");
-    await page!.waitFor(`!!document.querySelector('${appTab} [data-mentions] [data-mention="${webTabId}"]')`, { label: "mention list in the app" });
-    const disabled = await page!.eval<string | null>(`document.querySelector('${appTab} [data-mention="${webTabId}"]').getAttribute("aria-disabled")`);
+    await page!.waitFor(`!!document.querySelector('${appAgent} textarea')`, { label: "app builder's composer" });
+    await type(appAgent, "@");
+    await page!.waitFor(`!!document.querySelector('${appAgent} [data-mentions] [data-mention="${webTabId}"]')`, { label: "mention list in the app" });
+    const disabled = await page!.eval<string | null>(`document.querySelector('${appAgent} [data-mention="${webTabId}"]').getAttribute("aria-disabled")`);
     if (disabled !== "true") throw new Error("a web page could be shared with the app builder");
-    await click(`${appTab} [data-mention="${webTabId}"]`);
+    await click(`${appAgent} [data-mention="${webTabId}"]`);
     await Bun.sleep(200);
-    if (await page!.eval<boolean>(`!!document.querySelector('${appTab} [data-share-chip]')`)) throw new Error("the web page was shared anyway");
-    await type(appTab, "");
-    if (wasHidden) await click(`${appTab} [data-agent-hide]`);
+    if (await page!.eval<boolean>(`!!document.querySelector('${appAgent} [data-share-chip]')`)) throw new Error("the web page was shared anyway");
+    await type(appAgent, "");
+    if (wasHidden) await click(`${appAgent} [data-agent-hide]`);
     return "mentioned, shared, unshared; web page refused for the app builder";
   });
 
@@ -1296,10 +1300,10 @@ try {
       await click(`${tab} [data-pick-element]`);
       await waitForValue(async () => ((await inPage<boolean>(`!!window.__nathappPicker`)) ? true : undefined));
       await inPage(`document.querySelector("#headline").click(), true`);
-      await page!.waitFor(`!!document.querySelector('${tab} [data-picked-chip]')`, { label: "picked heading" });
-      await chooseAgent(`${tab} [data-agent-panel]`, "claude", "haiku", "Low");
-      await sendPrompt(`${tab} [data-agent-panel]`, "Make this heading green (#16a34a) and give it a dashed border underneath.");
-      const chat = await agentDone(tab);
+      await page!.waitFor(`!!document.querySelector('${agentOf(webTabId!)} [data-picked-chip]')`, { label: "picked heading" });
+      await chooseAgent(agentOf(webTabId!), "claude", "haiku", "Low");
+      await sendPrompt(agentOf(webTabId!), "Make this heading green (#16a34a) and give it a dashed border underneath.");
+      const chat = await agentDone(agentOf(webTabId!));
       const color = await waitForValue(async () => {
         const c = await inPage<string>(`getComputedStyle(document.querySelector("#headline")).color`);
         return c === "rgb(22, 163, 74)" ? c : undefined;
@@ -1308,7 +1312,7 @@ try {
       if (!color) throw new Error(`heading isn't green:\n${chat.slice(-800)}`);
       const saved = await apiCall<{ css: string; js: string } | null>("/api/sites/127.0.0.1");
       if (!saved?.css.includes("16a34a")) throw new Error("customization wasn't saved");
-      const reply = await page!.eval<string>(`[...document.querySelectorAll('${tab} [data-agent-panel] .nathapp-markdown')].at(-1)?.innerText ?? ""`);
+      const reply = await page!.eval<string>(`[...document.querySelectorAll('${agentOf(webTabId!)} .nathapp-markdown')].at(-1)?.innerText ?? ""`);
       return reply.slice(0, 140);
     });
   }

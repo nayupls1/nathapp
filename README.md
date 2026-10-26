@@ -96,7 +96,7 @@ theme. It can also write any other stack itself. NathApp gives every app:
 - `NATHAPP_API_URL` / `NATHAPP_API_TOKEN` for NathApp's app API (other apps' data)
 - `NODE_ENV` / `NATHAPP_MODE`: development while editing, production when done
 
-Editing follows the agent panel. While it's open the app is being **edited**: NathApp
+Editing follows the agent sidebar. While it's open the app is being **edited**: NathApp
 runs the `dev` command (Bun `--hot` with HMR), so the agent's changes show up in the
 preview right away. Closing it (Ctrl+J) means **done**: NathApp runs `build` and then
 `start` and shows the finished app; "Edit" brings the agent back and the dev server
@@ -202,7 +202,11 @@ Contents are stored once (content-addressed, gzipped) under `<data dir>/history/
 
 ### Window
 
-The window has no title bar, like Chrome. On Linux and Windows it's frameless and NathApp draws minimize, maximize and close in the top right (`components/WindowControls.tsx`); macOS keeps its traffic lights, top left. The top bars (the sidebar's header, a tab's toolbar, the agent panel's header) are where the window is dragged, and double-clicking one maximizes it. A bar running under the window's buttons is padded so nothing hides behind them (`lib/windowChrome.ts`).
+The window has no title bar, like Chrome. On Linux and Windows it's frameless and NathApp draws minimize, maximize and close in the top right (`components/WindowControls.tsx`); macOS keeps its traffic lights, top left. The top bars (the tab sidebar's header, a tab's toolbar, the agent sidebar's header) are where the window is dragged, and double-clicking one maximizes it. A bar running under the window's buttons is padded so nothing hides behind them (`lib/windowChrome.ts`).
+
+### Agent sidebar
+
+The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J opens or closes it for the tab.
 
 ### Sidebar
 

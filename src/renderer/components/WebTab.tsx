@@ -12,13 +12,13 @@ import { hostOf, normalizeUrl, overrideScript, pageChangeHandlerScript, pageChan
 import { fillScript, focusScript, keyCodeOf, scrollScript } from "../lib/browse";
 import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
+import { addPick, clearPicks, isPicking, picksOf, removePick, setPickingIn } from "../lib/picks";
 import { settings } from "../lib/settings";
 import { sendWithShares } from "../lib/sharing";
 import { appById, isAgentCollapsed, setAgentCollapsed, states, stopAgent, updatePage } from "../lib/store";
 import { showExtensionSettings } from "../lib/extensions";
 import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type BrowseAction, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
-import { Chat, Chip } from "./Chat";
 import type { MenuPosition } from "./ContextMenu";
 import { openExtensionImport } from "./ExtensionImport";
 import { ExtensionsBar } from "./ExtensionsBar";
@@ -39,9 +39,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const [currentUrl, setCurrentUrl] = createSignal(initialUrl);
   const [loading, setLoading] = createSignal(false);
   const [history, setHistory] = createSignal({ back: false, forward: false });
-  const [picking, setPicking] = createSignal(false);
   const [networkOpen, setNetworkOpen] = createSignal(false);
-  const [picked, setPicked] = createSignal<ElementInfo[]>([]);
   const [loadError, setLoadError] = createSignal<string>();
   const [menu, setMenu] = createSignal<MenuPosition>();
   const [contentsId, setContentsId] = createSignal<number | null>(null);
@@ -106,7 +104,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     if (!editing) setAddress(url);
     updatePage(props.appId, { url });
     updateHistory();
-    if (!inPage) setPicked([]); // the picked elements are gone with the old page
+    if (!inPage) clearPicks(props.appId); // the picked elements are gone with the old page
     // Single-page apps: another page, maybe other page changes.
     else void applyChanges();
   }
@@ -248,36 +246,38 @@ export function WebTab(props: { appId: string; active: boolean }) {
 
   // --- Element picker ----------------------------------------------------------------
 
+  const picking = () => isPicking(props.appId);
+
   async function pick() {
     if (!webview || !ready) return;
     if (picking()) {
       void webview.executeJavaScript(cancelPickScript).catch(() => {});
       return;
     }
-    setPicking(true);
+    setPickingIn(props.appId, true);
     webview.focus();
     try {
       const element = (await webview.executeJavaScript(pickScript, true)) as ElementInfo | null;
       if (element) {
-        setPicked((list) => (list.some((p) => p.selector === element.selector) ? list : [...list, element]));
+        addPick(props.appId, element);
         setAgentCollapsed(props.appId, false);
-        queueMicrotask(() => document.querySelector<HTMLTextAreaElement>(`[data-web-tab="${props.appId}"] [data-agent-panel] textarea`)?.focus());
+        queueMicrotask(() => document.querySelector<HTMLTextAreaElement>("[data-agent-panel] textarea")?.focus());
       }
     } catch {
       // the page navigated away mid-pick
     } finally {
-      setPicking(false);
+      setPickingIn(props.appId, false);
     }
   }
 
-  function unpick(element: ElementInfo) {
-    setPicked((list) => list.filter((p) => p !== element));
-    if (webview && ready) void webview.executeJavaScript(unmarkScript(element.selector)).catch(() => {});
+  function unpick(selector: string) {
+    removePick(props.appId, selector);
+    if (webview && ready) void webview.executeJavaScript(unmarkScript(selector)).catch(() => {});
   }
 
   function send(prompt: string) {
-    const page: PageContext | undefined = webview && ready ? { url: webview.getURL(), title: webview.getTitle(), selection: picked() } : undefined;
-    setPicked([]);
+    const page: PageContext | undefined = webview && ready ? { url: webview.getURL(), title: webview.getTitle(), selection: [...picksOf(props.appId)] } : undefined;
+    clearPicks(props.appId);
     if (webview && ready) void webview.executeJavaScript(unmarkScript()).catch(() => {});
     void sendWithShares(props.appId, prompt, page);
   }
@@ -389,6 +389,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
       if (changed === host()) void applyOverride();
     },
     send,
+    pick,
+    unpick,
     webContentsId: () => requireReady().getWebContentsId(),
     // Nothing to wait for without an address.
     whenLoaded: () => (src() ? Promise.race([firstLoad.then(() => loadApplied), new Promise<void>((r) => setTimeout(r, 15_000))]) : Promise.resolve()),
@@ -631,31 +633,6 @@ export function WebTab(props: { appId: string; active: boolean }) {
           />
         </Show>
       </div>
-      <Show when={!collapsed() && state()?.loaded}>
-        <Chat
-          appId={props.appId}
-          web
-          page={{
-            onSend: send,
-            tools: pickButton(15),
-            top: (
-              <Show when={picked().length}>
-                <div {...stylex.attrs(styles.chips)}>
-                  <For each={picked()}>
-                    {(el) => (
-                      <Chip
-                        label={el.text ? `${el.tag} “${el.text.slice(0, 24)}${el.text.length > 24 ? "…" : ""}”` : el.selector}
-                        title={el.selector}
-                        onRemove={() => unpick(el)}
-                      />
-                    )}
-                  </For>
-                </div>
-              </Show>
-            ),
-          }}
-        />
-      </Show>
       <Show when={menu()}>
         {(position) => <PageChangesPopover url={currentUrl()} errors={changeErrors()} position={position()} onClose={() => setMenu()} />}
       </Show>
@@ -902,5 +879,4 @@ const styles = stylex.create({
     fontSize: font.sm,
     cursor: "pointer",
   },
-  chips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
 });

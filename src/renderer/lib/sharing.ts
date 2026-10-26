@@ -51,7 +51,7 @@ export async function handOver(fromTabId: string, messageId: number, toTabId: st
   if (why) return why;
   await selectApp(toTabId);
   setAgentCollapsed(toTabId, false);
-  queueMicrotask(() => document.querySelector<HTMLTextAreaElement>(`[data-tab-layer="${toTabId}"] [data-agent-panel] textarea, [data-tab-layer="${toTabId}"] textarea`)?.focus());
+  queueMicrotask(() => document.querySelector<HTMLTextAreaElement>(`[data-agent-for="${toTabId}"] textarea`)?.focus());
   return null;
 }
 

@@ -4,19 +4,20 @@
 // means done: the app is built and the preview shows the finished version.
 import * as stylex from "@stylexjs/stylex";
 import type { DidFailLoadEvent, WebviewTag } from "electron";
-import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, untrack } from "solid-js";
+import { createEffect, createResource, createSignal, For, Match, on, onCleanup, onMount, Show, Switch, untrack } from "solid-js";
 import { appPartition, type ElementInfo, type LogLine, type PageContext, type RuntimeStatus } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { api } from "../lib/api";
 import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
+import { addPick, clearPicks, isPicking, picksOf, removePick, setPickingIn } from "../lib/picks";
 import { watchTopic } from "../lib/realtime";
 import { sendWithShares } from "../lib/sharing";
-import { appMode, isAgentCollapsed, setAgentCollapsed, setRuntime, states, stopAgent } from "../lib/store";
+import { appMode, isAgentCollapsed, setAgentCollapsed, setRuntime, states } from "../lib/store";
 import { registerPage, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
-import { Chat, Chip, ShowAgentButton } from "./Chat";
-import { Composer } from "./Composer";
+import { ShowAgentButton } from "./Chat";
+import { Button } from "./ui";
 import { Icon } from "./Icon";
 import { DataPanel } from "./DataPanel";
 import { HistoryPanel } from "./History";
@@ -44,6 +45,8 @@ export function AppTab(props: { appId: string; active: boolean }) {
 
 function NewApp(props: { appId: string }) {
   const send = (prompt: string) => sendWithShares(props.appId, prompt);
+  // Ready to type: the agent sidebar's composer.
+  onMount(() => queueMicrotask(() => document.querySelector<HTMLTextAreaElement>(`[data-agent-for="${props.appId}"] textarea`)?.focus()));
   const [presets] = createResource(() => api.presets().catch(() => []));
   const [starting, setStarting] = createSignal<string>();
 
@@ -61,17 +64,23 @@ function NewApp(props: { appId: string }) {
       <div {...stylex.attrs(styles.newInner)}>
         <h1 {...stylex.attrs(styles.title)}>What do you want to build?</h1>
         <p {...stylex.attrs(styles.subtitle)}>
-          Describe an app and the agent builds it: a real project with its own server and database, running right here.
+          Describe an app to the agent and it builds it: a real project with its own server and database, running right here.
         </p>
-        <Composer
-          appId={props.appId}
-          large
-          autofocus
-          running={!!states[props.appId]?.running}
-          placeholder="e.g. A simple CRM for tracking leads and follow-ups"
-          onSend={send}
-          onStop={() => stopAgent(props.appId)}
-        />
+        <Show
+          when={isAgentCollapsed(props.appId)}
+          fallback={
+            <p {...stylex.attrs(styles.describeHint)}>
+              Describe it in the agent panel
+              <Icon name="arrow-right" size={16} />
+            </p>
+          }
+        >
+          <Button variant="primary" onClick={() => setAgentCollapsed(props.appId, false)} data-agent-show>
+            <Icon name="bot" size={16} />
+            Describe it to the agent
+          </Button>
+        </Show>
+        <span {...stylex.attrs(styles.presetsLabel)}>Or pick an idea</span>
         <div {...stylex.attrs(styles.chips)}>
           <For each={examples}>
             {(example) => (
@@ -131,8 +140,7 @@ function Workbench(props: { appId: string; active: boolean }) {
   const [historyOpen, setHistoryOpen] = createSignal(false);
   const [dataOpen, setDataOpen] = createSignal(false);
   const [toolsOpen, setToolsOpen] = createSignal(false);
-  const [picking, setPicking] = createSignal(false);
-  const [picked, setPicked] = createSignal<ElementInfo[]>([]);
+  const picking = () => isPicking(props.appId);
   const [loadError, setLoadError] = createSignal<string>();
 
   let webview: WebviewTag | undefined;
@@ -193,7 +201,7 @@ function Workbench(props: { appId: string; active: boolean }) {
       if (e.isMainFrame && e.errorCode !== -3) setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
       loaded();
     });
-    view.addEventListener("did-navigate", () => (first ? (first = false) : setPicked([])));
+    view.addEventListener("did-navigate", () => (first ? (first = false) : clearPicks(props.appId)));
     view.addEventListener("dom-ready", () => (ready = true));
   }
 
@@ -225,6 +233,8 @@ function Workbench(props: { appId: string; active: boolean }) {
     webContentsId: () => {
       throw new Error("Network traffic is only recorded in web tabs");
     },
+    pick,
+    unpick,
     // Bounded: an app that isn't running has no page to load.
     whenLoaded: () => Promise.race([firstLoad, new Promise<void>((r) => setTimeout(r, 15_000))]),
     saveState: async () => {
@@ -249,32 +259,32 @@ function Workbench(props: { appId: string; active: boolean }) {
   async function pick() {
     if (!webview || !ready) return;
     if (picking()) return void webview.executeJavaScript(cancelPickScript).catch(() => {});
-    setPicking(true);
+    setPickingIn(props.appId, true);
     webview.focus();
     try {
       const element = (await webview.executeJavaScript(pickScript, true)) as ElementInfo | null;
       if (element) {
-        setPicked((list) => (list.some((p) => p.selector === element.selector) ? list : [...list, element]));
+        addPick(props.appId, element);
         setAgentCollapsed(props.appId, false);
-        queueMicrotask(() => document.querySelector<HTMLTextAreaElement>(`[data-app-tab="${props.appId}"] [data-agent-panel] textarea`)?.focus());
+        queueMicrotask(() => document.querySelector<HTMLTextAreaElement>("[data-agent-panel] textarea")?.focus());
       }
     } catch {
       // the page reloaded mid-pick
     } finally {
-      setPicking(false);
+      setPickingIn(props.appId, false);
     }
   }
 
-  function unpick(element: ElementInfo) {
-    setPicked((list) => list.filter((p) => p !== element));
-    if (webview && ready) void webview.executeJavaScript(unmarkScript(element.selector)).catch(() => {});
+  function unpick(selector: string) {
+    removePick(props.appId, selector);
+    if (webview && ready) void webview.executeJavaScript(unmarkScript(selector)).catch(() => {});
   }
 
   function send(prompt: string) {
-    const selection = picked();
+    const selection = [...picksOf(props.appId)];
     const page: PageContext | undefined =
       webview && ready && selection.length ? { url: webview.getURL(), title: webview.getTitle(), selection } : undefined;
-    setPicked([]);
+    clearPicks(props.appId);
     if (webview && ready) void webview.executeJavaScript(unmarkScript()).catch(() => {});
     void sendWithShares(props.appId, prompt, page);
   }
@@ -431,30 +441,6 @@ function Workbench(props: { appId: string; active: boolean }) {
           <ToolsPanel appId={props.appId} onClose={() => setToolsOpen(false)} />
         </Show>
       </div>
-      <Show when={!collapsed()}>
-        <Chat
-          appId={props.appId}
-          page={{
-            onSend: send,
-            tools: pickButton(15),
-            top: (
-              <Show when={picked().length}>
-                <div {...stylex.attrs(styles.pickedChips)}>
-                  <For each={picked()}>
-                    {(el) => (
-                      <Chip
-                        label={el.text ? `${el.tag} “${el.text.slice(0, 24)}${el.text.length > 24 ? "…" : ""}”` : el.selector}
-                        title={el.selector}
-                        onRemove={() => unpick(el)}
-                      />
-                    )}
-                  </For>
-                </div>
-              </Show>
-            ),
-          }}
-        />
-      </Show>
     </div>
   );
 }
@@ -733,7 +719,6 @@ const styles = stylex.create({
   logLine: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" },
   logErr: { color: colors.danger },
   logSystem: { color: colors.muted },
-  pickedChips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
   newRoot: {
     display: "flex",
     flexDirection: "column",
@@ -746,6 +731,7 @@ const styles = stylex.create({
   newInner: { width: "100%", maxWidth: 640, display: "flex", flexDirection: "column", gap: space.lg },
   title: { margin: 0, fontSize: 28, fontWeight: 650, letterSpacing: "-0.02em" },
   subtitle: { margin: 0, marginTop: -8, color: colors.muted, fontSize: font.md, lineHeight: 1.5 },
+  describeHint: { display: "flex", alignItems: "center", gap: space.sm, margin: 0, color: colors.accent, fontSize: font.md, fontWeight: 600 },
   chips: { display: "flex", flexWrap: "wrap", gap: space.sm },
   example: {
     paddingBlock: 6,
