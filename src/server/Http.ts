@@ -48,6 +48,7 @@ import { Providers } from "./providers/Providers";
 import { presetInfo, presets } from "./workspace/presets";
 import { AppData, type RowQuery } from "./workspace/AppData";
 import { AppTools, type ToolCaller } from "./workspace/AppTools";
+import { Projects } from "./workspace/Projects";
 import { Runtime } from "./workspace/Runtime";
 import { Workspace } from "./workspace/Workspace";
 
@@ -242,8 +243,7 @@ const detail = (id: string) =>
 
 const publishApp = (summary: AppSummary | null) =>
   Effect.gen(function* () {
-    const hub = yield* Hub;
-    if (summary) yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
+    yield* (yield* Projects).publish(summary);
   });
 
 /** A snapshot of something the user changed in the UI (folded together while they keep changing it). */
@@ -254,38 +254,11 @@ const snapshot = (target: "settings" | "sites" | `app:${string}`, summary: strin
     yield* history.record(target, by);
   });
 
-/** Drops tabs that left a workspace (deleted, moved) from its splits. */
-const pruneSplits = (workspaceId: string) =>
-  Effect.gen(function* () {
-    const workspaces = yield* Workspaces;
-    const space = yield* workspaces.get(workspaceId);
-    if (!space?.splits.length) return;
-    const updated = yield* workspaces.setSplits(workspaceId, space.splits);
-    if (JSON.stringify(updated?.splits) !== JSON.stringify(space.splits)) yield* publishWorkspace(workspaceId);
-  });
-
-/** Deletes a tab with everything that belongs to it: chat, project folder, secrets, permissions, history. */
+/** Deletes a tab with everything that belongs to it (Projects.remove), its agent stopped first. */
 const removeApp = (id: string) =>
   Effect.gen(function* () {
-    const apps = yield* Apps;
-    const tab = yield* apps.get(id);
-    const agent = yield* Agent;
-    const runtime = yield* Runtime;
-    const workspace = yield* Workspace;
-    const secrets = yield* Secrets;
-    const permissions = yield* Permissions;
-    const hub = yield* Hub;
-    yield* agent.stop(id);
-    yield* runtime.forget(id);
-    yield* apps.remove(id);
-    yield* workspace.remove(id);
-    yield* (yield* AppData).remove(id);
-    yield* secrets.removeScope(id);
-    yield* permissions.forget(id);
-    yield* (yield* History).forget(appTarget(id));
-    yield* (yield* Scheduler).forgetApp(id);
-    if (tab) yield* pruneSplits(tab.workspaceId);
-    yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId: id });
+    yield* (yield* Agent).stop(id);
+    yield* (yield* Projects).remove(id);
   });
 
 const appRoutes = HttpRouter.addAll([
@@ -330,12 +303,8 @@ const appRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const id = yield* param("id");
         const result = yield* detail(id);
-        const settings = yield* Settings;
         // Opening an app starts it (in its mode).
-        if (result.kind === "app" && result.project && (yield* settings.get()).apps.autoStart) {
-          const runtime = yield* Runtime;
-          yield* Effect.forkDetach(runtime.ensure(id));
-        }
+        yield* (yield* Projects).opened(id);
         return json(result);
       }),
     ),
@@ -409,7 +378,6 @@ const appRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const apps = yield* Apps;
         const workspaces = yield* Workspaces;
-        const runtime = yield* Runtime;
         const id = yield* param("id");
         const { workspaceId } = yield* decodeBody(Schema.Struct({ workspaceId: str(100) }));
         const target = yield* workspaces.get(workspaceId);
@@ -417,14 +385,8 @@ const appRoutes = HttpRouter.addAll([
         const app = yield* apps.get(id);
         if (!app) return yield* fail(404, "Not found");
         if (app.workspaceId === workspaceId) return json(app);
-        const moved = yield* apps.move(id, workspaceId);
+        const moved = yield* (yield* Projects).move(id, workspaceId);
         yield* youDid(id, "tab.move", target.name);
-        yield* publishApp(moved);
-        yield* pruneSplits(app.workspaceId);
-        if (app.kind === "app") {
-          const status = yield* runtime.status(id);
-          if (status.state !== "stopped" && status.state !== "crashed") yield* Effect.forkDetach(runtime.restart(id));
-        }
         return json(moved);
       }),
     ),
@@ -456,13 +418,8 @@ const appRoutes = HttpRouter.addAll([
     "/api/apps/:id/duplicate",
     handle(
       Effect.gen(function* () {
-        const apps = yield* Apps;
-        const workspace = yield* Workspace;
-        const id = yield* param("id");
-        const copy = yield* apps.duplicate(id);
+        const copy = yield* (yield* Projects).copy(yield* param("id"));
         if (!copy) return yield* fail(404, "Not found");
-        if (copy.kind === "app") yield* workspace.duplicate(id, copy.id);
-        yield* publishApp(copy);
         return json(copy, 201);
       }),
     ),
@@ -580,17 +537,14 @@ const runtimeRoutes = HttpRouter.addAll([
     "/api/apps/:id/project",
     handle(
       Effect.gen(function* () {
-        const workspace = yield* Workspace;
-        const runtime = yield* Runtime;
         const apps = yield* Apps;
         const id = yield* param("id");
         const { preset, name } = yield* decodeBody(Schema.Struct({ preset: str(50), name: Schema.optionalKey(str(80)) }));
         const app = yield* apps.get(id);
         if (!app || app.kind !== "app") return yield* fail(404, "Not found");
-        const project = yield* workspace.scaffold(id, preset, name ?? app.name).pipe(Effect.catchTag("WorkspaceError", (e) => fail(400, e.message)));
-        if (name) yield* publishApp(yield* apps.setInfo(id, { name }));
-        yield* snapshot(appTarget(id), `Started from the ${preset} template`);
-        yield* runtime.setMode(id, "dev");
+        const project = yield* (yield* Projects)
+          .create(id, preset, { name, by: { actor: "user", actorLabel: "You" } })
+          .pipe(Effect.catchTag("WorkspaceError", (e) => fail(400, e.message)));
         return json(project, 201);
       }),
     ),
@@ -1444,10 +1398,7 @@ const restartUsers = (scope: string, name: string) =>
         if (app.kind === "app" && (yield* permissions.decision(app.id, "app.secret", name)) === "allow") appIds.push(app.id);
       }
     } else appIds = space ? yield* workspaces.appIds(space) : [scope];
-    for (const id of appIds) {
-      const status = yield* runtime.status(id);
-      if (status.state !== "stopped" && status.state !== "crashed") yield* Effect.forkDetach(runtime.restart(id));
-    }
+    for (const id of appIds) yield* runtime.refresh(id);
   });
 
 const secretRoutes = HttpRouter.addAll([

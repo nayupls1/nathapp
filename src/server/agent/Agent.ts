@@ -21,7 +21,8 @@ import { AppData } from "../workspace/AppData";
 import { AppTools } from "../workspace/AppTools";
 import { PageChanges } from "../db/PageChanges";
 import { Scheduler } from "../scheduler/Scheduler";
-import { Runtime } from "../workspace/Runtime";
+import { Projects } from "../workspace/Projects";
+import type { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
 import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
@@ -66,12 +67,12 @@ export const make = Effect.gen(function* () {
   const workspace = yield* Workspace;
   const workspaces = yield* Workspaces;
   const history = yield* History;
-  const runtime = yield* Runtime;
+  const projects = yield* Projects;
   const sandbox = yield* Sandbox;
   const audit = yield* Audit;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
@@ -157,8 +158,7 @@ export const make = Effect.gen(function* () {
         cwd = yield* workspace.ensureDir(appId);
         const project = yield* workspace.info(appId);
         instructions = buildAppPrompt({ instructions: combine(s.agent.instructions, space?.instructions), dir: cwd, hasProject: !!project });
-        // The agent works against the dev server (live updates in the preview).
-        if (project) yield* Effect.forkDetach(app.mode === "live" ? runtime.setMode(appId, "dev") : runtime.ensure(appId));
+        yield* projects.editing(appId);
       }
 
       const driver = providers.driver(choice.provider);
@@ -205,7 +205,7 @@ export const make = Effect.gen(function* () {
         Effect.ensuring(snapshotAfter),
       );
 
-      if (!web && s.apps.autoPublish && (yield* workspace.info(appId))) yield* Effect.forkDetach(runtime.setMode(appId, "live"));
+      if (!web) yield* projects.edited(appId);
     }).pipe(
       Effect.scoped,
       Effect.onInterrupt(() => Effect.asVoid(message(app.id, "error", "Stopped."))),

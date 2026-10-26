@@ -58,7 +58,7 @@ src/
     providers/       Claude, Codex, OpenCode drivers behind one event stream
     agent/           Agent turns, prompts, NathApp's MCP tools
     history/         Snapshots: content store, diffs, undo and restore
-    workspace/       Projects, presets (templates/), sandbox, runtime
+    workspace/       Projects: an app's lifecycle (Projects.ts), its files and presets (Workspace.ts, templates/), sandbox, runtime
   shared/            Types and helpers shared by server and renderer
 scripts/             Bun scripts for dev / build / start / e2e
 tests/               bun:test tests
@@ -102,6 +102,8 @@ preview right away. Closing it (Ctrl+J) means **done**: NathApp runs `build` and
 `start` and shows the finished app; "Edit" brings the agent back and the dev server
 with it. An agent turn always edits, so it reopens the panel. Dependencies are installed when `package.json` or the
 lockfile change.
+
+**One lifecycle.** However an app came to be (the agent's `create_project` or a `nathapp.json` it wrote itself, a template you picked, a copy of another app), it goes through the same steps in `workspace/Projects.ts`: setting up, opening, editing and publishing, copying, moving and deleting. Building (the project's files: `Workspace.ts`, its data: `AppData.ts`), running (`Runtime.ts`) and displaying (the renderer, which only sees `AppDetail` and the hub's messages) stay separate. A copy brings the project along as its first snapshot, but not its data, chat or secrets.
 
 **Sandbox.** With bubblewrap every app process (installs, dev server, the
 agent's `run_command`) sees the system read-only, its own project and data folder

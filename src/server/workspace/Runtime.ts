@@ -32,6 +32,11 @@ export interface RuntimeShape {
   /** (Re)starts the app: installs dependencies if they changed, builds in live mode. */
   readonly restart: (appId: string) => Effect.Effect<RuntimeStatus>;
   readonly stop: (appId: string) => Effect.Effect<void>;
+  /**
+   * Restarts the app in the background if it's running or on its way (its
+   * environment or files changed); `crashed` restarts a crashed one too.
+   */
+  readonly refresh: (appId: string, options?: { crashed?: boolean }) => Effect.Effect<void>;
   /** Switches between dev (being edited) and live (done), restarting the app. */
   readonly setMode: (appId: string, mode: AppMode) => Effect.Effect<RuntimeStatus>;
   /** Waits until the app is running, crashed or stopped (or the timeout passes). */
@@ -333,6 +338,13 @@ export const make = Effect.gen(function* () {
     restart: (appId) => Effect.flatMap(modeOf(appId), (mode) => start(appId, mode)),
 
     stop: (appId) => stateOf(appId).lock.withPermits(1)(FiberMap.remove(sessions, appId)),
+
+    refresh: (appId, options) =>
+      Effect.gen(function* () {
+        const { state } = stateOf(appId).status;
+        if (state === "stopped" || (state === "crashed" && !options?.crashed)) return;
+        yield* Effect.forkDetach(Effect.flatMap(modeOf(appId), (mode) => start(appId, mode)));
+      }),
 
     setMode: (appId, mode) => apps.setMode(appId, mode).pipe(Effect.andThen(start(appId, mode))),
 

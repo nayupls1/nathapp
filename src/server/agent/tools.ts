@@ -16,6 +16,7 @@ import { AppData } from "../workspace/AppData";
 import { AppTools } from "../workspace/AppTools";
 import { Scheduler } from "../scheduler/Scheduler";
 import { DEFAULT_TIMEOUT_SEC, describeTrigger, scheduleProblem } from "../../shared/schedule";
+import { Projects } from "../workspace/Projects";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
@@ -555,6 +556,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
   const workspace = yield* Workspace;
   const runtime = yield* Runtime;
   const appData = yield* AppData;
+  const projects = yield* Projects;
   const hub = yield* Hub;
   const appId = env.tabId;
 
@@ -574,15 +576,8 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
       }),
       ({ preset, name }) =>
         Effect.gen(function* () {
-          const app = yield* apps.get(appId);
-          const appName = name ?? (app && app.name !== "New app" ? app.name : "My app");
-          const project = yield* workspace.scaffold(appId, preset, appName);
-          if (name) {
-            const summary = yield* apps.setInfo(appId, { name });
-            if (summary) yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
-          }
+          const project = yield* projects.create(appId, preset, { name, by: { actor: "agent", actorLabel: env.label } });
           yield* env.log(`Created the project (${preset})`);
-          yield* runtime.setMode(appId, "dev");
           const files = Object.keys(presets.find((p) => p.id === preset)!.files).sort();
           return `Created in ${project.dir}:\n${files.join("\n")}\nnathapp.json, src/tokens.css\n\n${yield* statusText(20)}`;
         }),
