@@ -385,6 +385,22 @@ const appRoutes = HttpRouter.addAll([
     ),
   ),
 
+  // Pinned tabs stay loaded (the renderer unloads idle tabs, see lib/unload.ts).
+  HttpRouter.route(
+    "PUT",
+    "/api/apps/:id/pinned",
+    handle(
+      Effect.gen(function* () {
+        const apps = yield* Apps;
+        const { pinned } = yield* decodeBody(Schema.Struct({ pinned: Schema.Boolean }));
+        const app = yield* apps.setPinned(yield* param("id"), pinned);
+        if (!app) return yield* fail(404, "Not found");
+        yield* publishApp(app);
+        return json(app);
+      }),
+    ),
+  ),
+
   // Moving a tab to another workspace: it gets that workspace's secrets and permissions.
   HttpRouter.route(
     "POST",

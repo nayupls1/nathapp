@@ -29,6 +29,7 @@ import {
   sendPrompt,
   setAgentCollapsed,
   setRuntime,
+  setTabPinned,
   SETTINGS_VIEW,
   showWorkspace,
   states,
@@ -39,6 +40,7 @@ import {
 import { isSidebarCollapsed, toggleSidebar } from "./layout";
 import { removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "./splits";
 import { pageOf } from "./webtabs";
+import { unloadOtherTabs } from "./unload";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { toast } from "../components/Toast";
 
@@ -246,6 +248,11 @@ function currentTabCommands(id: string): Command[] {
           run: () => setAgentCollapsed(id, !isAgentCollapsed(id)),
         },
   ];
+  list.push(
+    app.pinned
+      ? { id: "tab.pin", title: "Allow unloading this tab", subtitle: app.name, icon: "pin-off", group: "Tab", keywords: "unpin memory idle", run: () => setTabPinned(id, false) }
+      : { id: "tab.pin", title: "Keep this tab loaded", subtitle: app.name, icon: "pin", group: "Tab", keywords: "pin memory idle unload", run: () => setTabPinned(id, true) },
+  );
   if (state?.running) list.push({ id: "tab.stop", title: "Stop the agent", subtitle: app.name, icon: "square", group: "Tab", run: () => stopAgent(id) });
   if (app.kind === "web") {
     list.push({ id: "tab.reload", title: "Reload page", subtitle: "Ctrl+R", icon: "rotate-cw", group: "Tab", run: () => pageOf(id)?.reload() });
@@ -313,6 +320,17 @@ function nathappCommands(): Command[] {
   return [
     { id: "new.app", title: "New app", icon: "plus", group: "NathApp", keywords: "create build", run: () => newApp() },
     { id: "new.web", title: "New web tab", subtitle: "Ctrl+T", icon: "globe", group: "NathApp", keywords: "browser", run: () => newWebTab() },
+    {
+      id: "tabs.unload",
+      title: "Unload other tabs",
+      icon: "moon",
+      group: "NathApp",
+      keywords: "memory free discard sleep background",
+      run: async () => {
+        const count = await unloadOtherTabs();
+        toast({ message: count ? `Unloaded ${count} tab${count === 1 ? "" : "s"}` : "No other tabs are loaded", kind: "info" });
+      },
+    },
     { id: "new.workspace", title: "New workspace", icon: "layers", group: "NathApp", input: "Name", run: (name) => name?.trim() && createWorkspace(name.trim()) },
     {
       id: "sidebar.toggle",

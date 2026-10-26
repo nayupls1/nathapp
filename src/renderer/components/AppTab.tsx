@@ -4,10 +4,11 @@
 // means done: the app is built and the preview shows the finished version.
 import * as stylex from "@stylexjs/stylex";
 import type { DidFailLoadEvent, WebviewTag } from "electron";
-import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
+import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, untrack } from "solid-js";
 import { appPartition, type ElementInfo, type LogLine, type PageContext, type RuntimeStatus } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { api } from "../lib/api";
+import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { watchTopic } from "../lib/realtime";
 import { appMode, isAgentCollapsed, sendPrompt, setAgentCollapsed, setRuntime, states, stopAgent } from "../lib/store";
@@ -135,6 +136,20 @@ function Workbench(props: { appId: string; active: boolean }) {
 
   let webview: WebviewTag | undefined;
   let ready = false;
+  // An app tab that was unloaded comes back on the page it was on, as it was (lib/unload.ts).
+  let restoring = takeSavedPage(props.appId);
+  const sameOrigin = (a: string, b: string) => {
+    try {
+      return new URL(a).origin === new URL(b).origin;
+    } catch {
+      return false;
+    }
+  };
+  /** Where a new preview starts: the app's home, or the page it was on before it was unloaded. */
+  const previewSrc = () => {
+    const url = runtime()!.url!;
+    return restoring && sameOrigin(restoring.url, url) ? restoring.url : url;
+  };
 
   // --- Runtime control ---------------------------------------------------------------
 
@@ -143,7 +158,10 @@ function Workbench(props: { appId: string; active: boolean }) {
   // --- The preview page --------------------------------------------------------------
 
   let loadWaiters: (() => void)[] = [];
+  let firstLoaded!: () => void;
+  const firstLoad = new Promise<void>((resolve) => (firstLoaded = resolve));
   const loaded = () => {
+    firstLoaded();
     for (const fn of loadWaiters.splice(0)) fn();
   };
   const waitForLoad = (timeoutMs = 30_000) =>
@@ -164,7 +182,12 @@ function Workbench(props: { appId: string; active: boolean }) {
     // A new preview (mode switch, restart) keeps what was picked; navigating within it doesn't.
     let first = true;
     view.addEventListener("did-start-loading", () => setLoadError());
-    view.addEventListener("did-stop-loading", loaded);
+    view.addEventListener("did-stop-loading", () => {
+      const saved = restoring;
+      restoring = undefined;
+      if (saved && sameOrigin(view.getURL(), saved.url)) void view.executeJavaScript(restoreScript(saved)).catch(() => {});
+      loaded();
+    });
     view.addEventListener("did-fail-load", (e: DidFailLoadEvent) => {
       if (e.isMainFrame && e.errorCode !== -3) setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
       loaded();
@@ -200,6 +223,19 @@ function Workbench(props: { appId: string; active: boolean }) {
     send,
     webContentsId: () => {
       throw new Error("Network traffic is only recorded in web tabs");
+    },
+    // Bounded: an app that isn't running has no page to load.
+    whenLoaded: () => Promise.race([firstLoad, new Promise<void>((r) => setTimeout(r, 15_000))]),
+    saveState: async () => {
+      if (!webview || !ready) return null;
+      return (await webview.executeJavaScript(captureScript).catch(() => null)) as SavedPage | null;
+    },
+    busy: () => {
+      try {
+        return !!webview && ready && webview.isCurrentlyAudible();
+      } catch {
+        return false;
+      }
     },
   });
   onCleanup(unregister);
@@ -357,9 +393,11 @@ function Workbench(props: { appId: string; active: boolean }) {
               <Placeholder appId={props.appId} onStart={() => void control("start")} onLogs={() => setLogsOpen(true)} onHistory={() => setHistoryOpen(true)} />
             }
           >
-            {(_) => (
-              <webview ref={attach} src={runtime()!.url!} partition={appPartition(props.appId)} {...stylex.attrs(styles.webview)} />
-            )}
+            {(_) => {
+              // Set once: the page navigates on its own from there.
+              const src = untrack(previewSrc);
+              return <webview ref={attach} src={src} partition={appPartition(props.appId)} {...stylex.attrs(styles.webview)} />;
+            }}
           </Show>
           <Show when={picking()}>
             <div {...stylex.attrs(styles.banner)}>Click an element to pick it · Esc to cancel</div>

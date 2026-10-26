@@ -77,6 +77,10 @@ export const Settings = Schema.Struct({
     /** Keep web tabs' recent network traffic (in memory, bounded) for the Network panel and the website agent. */
     recordNetwork: Schema.Boolean.pipe(withDefault(true)),
   }).pipe(withDefault({})),
+  tabs: Schema.Struct({
+    /** Tabs not used for this many minutes are unloaded (their page closes, its state is kept); 0 = never. */
+    unloadAfterMinutes: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 24 * 60 })).pipe(withDefault(30)),
+  }).pipe(withDefault({})),
   apps: Schema.Struct({
     /** How app processes are isolated. auto: bubblewrap when it's installed. */
     sandbox: Schema.Literals(["auto", "bwrap", "none"]).pipe(withDefault("auto")),

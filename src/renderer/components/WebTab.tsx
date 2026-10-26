@@ -9,6 +9,7 @@ import { createEffect, createSignal, For, on, onCleanup, Show, untrack } from "s
 import { DEFAULT_WORKSPACE, webPartition, type ElementInfo, type PageContext } from "../../shared/api";
 import { isExtensionUrl } from "../../shared/extensions";
 import { hostOf, normalizeUrl, overrideScript, pageChangeHandlerScript, pageChangesCss, pageChangesScript, scopeMatches } from "../../shared/web";
+import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { settings } from "../lib/settings";
 import { appById, isAgentCollapsed, sendPrompt, setAgentCollapsed, states, updatePage } from "../lib/store";
@@ -24,7 +25,9 @@ import { NetworkPanel } from "./NetworkPanel";
 import { changesFor, PageChangesPopover } from "./PageChanges";
 
 export function WebTab(props: { appId: string; active: boolean }) {
-  const initialUrl = untrack(() => appById(props.appId)?.url ?? "");
+  // A tab that was unloaded comes back where it was (lib/unload.ts).
+  const restoring = untrack(() => takeSavedPage(props.appId));
+  const initialUrl = untrack(() => restoring?.url ?? appById(props.appId)?.url ?? "");
   // The workspace's session (cookies, logins). A tab moved to another workspace is closed and reopened with the new one.
   const workspaceId = untrack(() => appById(props.appId)?.workspaceId ?? DEFAULT_WORKSPACE);
   const partition = webPartition(workspaceId);
@@ -54,7 +57,10 @@ export function WebTab(props: { appId: string; active: boolean }) {
   // --- Loading ---------------------------------------------------------------------
 
   let loadWaiters: (() => void)[] = [];
+  let firstLoaded!: () => void;
+  const firstLoad = new Promise<void>((resolve) => (firstLoaded = resolve));
   const loaded = () => {
+    firstLoaded();
     for (const fn of loadWaiters.splice(0)) fn();
   };
   const waitForLoad = (timeoutMs = 30_000) =>
@@ -302,8 +308,30 @@ export function WebTab(props: { appId: string; active: boolean }) {
     },
     send,
     webContentsId: () => requireReady().getWebContentsId(),
+    // Nothing to wait for without an address.
+    whenLoaded: () => (src() ? Promise.race([firstLoad.then(() => loadApplied), new Promise<void>((r) => setTimeout(r, 15_000))]) : Promise.resolve()),
+    saveState: async () => {
+      if (!webview || !ready) return null;
+      return ((await webview.executeJavaScript(captureScript).catch(() => null)) as SavedPage | null) ?? { url: currentUrl(), scrollX: 0, scrollY: 0, scrollers: [], fields: [] };
+    },
+    busy: () => {
+      try {
+        return !!webview && ready && webview.isCurrentlyAudible();
+      } catch {
+        return false;
+      }
+    },
   });
   onCleanup(unregister);
+
+  // Puts back the scroll position and form input it had when it was unloaded, on the same page.
+  if (restoring) {
+    const samePage = (a: string, b: string) => a.split("#")[0] === b.split("#")[0];
+    void firstLoad.then(async () => {
+      await loadApplied;
+      if (webview && ready && samePage(webview.getURL(), restoring.url)) await webview.executeJavaScript(restoreScript(restoring)).catch(() => {});
+    });
+  }
 
   // A new tab without a page starts in the address bar.
   createEffect(() => {

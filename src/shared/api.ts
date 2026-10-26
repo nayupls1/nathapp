@@ -252,6 +252,8 @@ export interface AppSummary {
   /** Web tabs: current URL and favicon. */
   url: string | null;
   favicon: string | null;
+  /** Kept loaded: not unloaded when it hasn't been used for a while. */
+  pinned: boolean;
   /** Its place in the workspace's list (ties: creation order). */
   position: number;
   createdAt: string;

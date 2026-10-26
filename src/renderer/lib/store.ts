@@ -1,7 +1,8 @@
 // Global UI state. Lives outside components so an agent run keeps streaming
 // into its tab while you look at another one. Everything the server changes
 // (agent output, app status, the tab and workspace lists) arrives on the hub.
-// Tabs of every workspace stay loaded; the sidebar shows the current one's.
+// Opened tabs of every workspace stay loaded until they're unloaded for being
+// idle (lib/unload.ts); the sidebar shows the current workspace's.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, TabSplit, WorkspaceInfo } from "../../shared/api";
@@ -51,12 +52,23 @@ export const isWebTab = (id: string | null) => appById(id)?.kind === "web";
 /** Tabs (app or web) as opposed to the Settings page. */
 export const isTab = (id: string | null): id is string => !!id && id !== SETTINGS_VIEW && id !== ACTIVITY_VIEW && id !== HISTORY_VIEW && id !== SCHEDULES_VIEW;
 
-// Tabs stay alive (pages, previews, scroll) once opened, until deleted.
+// Tabs stay alive (pages, previews, scroll) once opened, until they're
+// unloaded (lib/unload.ts) or deleted. Their chat state stays either way.
 const [opened, setOpened] = createSignal<string[]>([]);
 export const openTabs = () => apps.filter((a) => opened().includes(a.id));
+/** When each tab was last on screen (or woken up), for unloading idle ones. */
+const lastUsed = new Map<string, number>();
+export const lastUsedAt = (id: string) => lastUsed.get(id);
+export const markUsed = (id: string, at = Date.now()) => void lastUsed.set(id, at);
 const markOpened = (id: string) => {
-  if (isTab(id) && !opened().includes(id)) setOpened([...opened(), id]);
+  if (!isTab(id)) return;
+  markUsed(id);
+  if (!opened().includes(id)) setOpened([...opened(), id]);
 };
+/** Whether a tab's page is mounted (unloaded and never opened tabs aren't). */
+export const isLoaded = (id: string) => opened().includes(id);
+/** Unmounts a tab's page (lib/unload.ts saves its state first). Opening it mounts it again. */
+export const unmountTab = (id: string) => setOpened(opened().filter((x) => x !== id));
 
 // Whether the agent panel is hidden, per tab. For apps with a project it's
 // their mode: the panel is open exactly while the app is being edited (dev
@@ -159,6 +171,7 @@ function forgetApp(id: string) {
   if (!appById(id)) return;
   setApps((list) => list.filter((a) => a.id !== id));
   setOpened(opened().filter((x) => x !== id));
+  lastUsed.delete(id);
   watchers.get(id)?.();
   watchers.delete(id);
   setStates(produce((s) => void delete s[id]));
@@ -330,6 +343,11 @@ export async function renameApp(id: string, name: string) {
 /** The tab's own icon (Lucide name, emoji or image data URL), or null for the default. */
 export async function setTabIcon(id: string, icon: string | null) {
   upsertApp(await api.setTabIcon(id, icon));
+}
+
+/** Pinned tabs are kept loaded. */
+export async function setTabPinned(id: string, pinned: boolean) {
+  upsertApp(await api.setTabPinned(id, pinned));
 }
 
 export async function duplicateApp(id: string) {

@@ -16,6 +16,7 @@ import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
 import "./lib/schedules";
+import { startUnloading } from "./lib/unload";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
 import { ACTIVITY_VIEW, currentWorkspace, HISTORY_VIEW, SCHEDULES_VIEW, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, SETTINGS_VIEW, workspaceTabs } from "./lib/store";
@@ -23,6 +24,7 @@ import { colors, font, space } from "./theme.stylex";
 
 export default function App() {
   onMount(async () => {
+    startUnloading();
     await loadSettings().catch((err) => console.error("Loading settings failed:", err));
     void loadProviders().catch((err) => console.error("Loading providers failed:", err));
     await loadApps();

@@ -180,6 +180,22 @@ export function SettingsPage() {
         </Row>
       </Section>
 
+      <Section title="Tabs" icon="layers" anchor="tabs">
+        <Row
+          label="Unload idle tabs"
+          description="Tabs you haven't looked at for a while close their page to save memory, and come back where you left them (scroll position, what you typed). Pinned tabs (Keep loaded), tabs playing sound and tabs whose agent is working stay loaded."
+        >
+          <Select
+            value={String(settings().tabs.unloadAfterMinutes)}
+            onChange={(e) => set("tabs", { unloadAfterMinutes: Number(e.currentTarget.value) })}
+            xstyle={styles.select}
+            data-unload-after
+          >
+            <For each={unloadChoices(settings().tabs.unloadAfterMinutes)}>{([minutes, label]) => <option value={minutes}>{label}</option>}</For>
+          </Select>
+        </Row>
+      </Section>
+
       <Section title="Network" icon="network" anchor="network">
         <Row
           label="Record web tabs' traffic"
@@ -836,6 +852,18 @@ function SiteRows() {
     </For>
   );
 }
+
+const unloadChoices = (current: number): [number, string][] => {
+  const choices: [number, string][] = [
+    [5, "After 5 minutes"],
+    [15, "After 15 minutes"],
+    [30, "After 30 minutes"],
+    [60, "After an hour"],
+    [240, "After 4 hours"],
+    [0, "Never"],
+  ];
+  return choices.some(([m]) => m === current) ? choices : [[current, `After ${current} minutes`], ...choices];
+};
 
 function Section(props: { title: string; icon: string; anchor?: string; children: JSX.Element }) {
   return (

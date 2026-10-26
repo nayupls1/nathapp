@@ -81,6 +81,8 @@ const site = Bun.serve({
     const body =
       path === "/feed"
         ? feedPage
+        : path === "/form"
+        ? `<title>Form page</title><h1>Form</h1><div style="height:2400px"></div><input id="note" value=""><textarea id="long"></textarea><input id="pw" type="password">`
         : path === "/second"
         ? `<title>Second page</title><h1>Second</h1>`
         : path === "/blocked-by-extension"
@@ -903,6 +905,103 @@ try {
     for (const change of await apiCall<{ id: string }[]>("/api/page-changes")) await apiCall(`/api/page-changes/${change.id}`, { method: "DELETE" });
     await until(`!document.querySelector("button.nathapp-button")`, "all removed");
     return "5 changes applied, one turned off, one removed";
+  });
+
+  await check("tab unloading: idle tabs unload unless pinned, come back as they were, wake for agents", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+    await newTab("New web tab");
+    const tabId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "web tab in the sidebar" },
+    );
+    const tab = `[data-web-tab="${tabId}"]`;
+    const other = `nav li:not([data-app-id="${tabId}"])`;
+    const li = `nav li[data-app-id="${tabId}"]`;
+    const inPage = <T>(code: string) =>
+      page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`).catch((err) => {
+        throw new Error(`${String(err).slice(0, 80)} in: ${code.slice(0, 120)}`);
+      });
+    await page!.waitFor(`!!document.querySelector('${tab} [data-address]')`, { label: "address bar" });
+    await page!.eval(`(() => {
+      const input = document.querySelector('${tab} [data-address]');
+      input.value = "${site.url.origin}/form";
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      input.form.requestSubmit();
+      return true;
+    })()`);
+    await page!.waitFor(`document.querySelector('${li}')?.innerText.includes("Form page")`, { timeoutMs: 20_000, label: "form page" });
+    await waitForValue(async () => ((await inPage<boolean>(`!!document.querySelector("#note")`)) ? true : undefined));
+    await inPage(`(() => {
+      const set = (el, v) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); };
+      set(document.querySelector("#note"), "typed before unloading");
+      set(document.querySelector("#long"), "line one\\nline two");
+      set(document.querySelector("#pw"), "hunter2");
+      window.scrollTo(0, 1500);
+      return true;
+    })()`);
+    const openMenu = async () => {
+      await page!.eval(`(() => {
+        const el = document.querySelector('${li}');
+        const r = el.getBoundingClientRect();
+        el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 20, clientY: r.top + 10 }));
+        return true;
+      })()`);
+      await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "tab menu" });
+    };
+    const choose = async (label: string) => {
+      await openMenu();
+      await click("[data-context-menu] button", label);
+      await page!.waitFor(`!document.querySelector("[data-context-menu]")`, { label: "menu to close" });
+    };
+    // On screen: never unloaded, and "Unload" is off.
+    await page!.eval(`window.__nathappTabs.sweep(4 * 3600_000)`);
+    if (!(await page!.eval<boolean>(`!!document.querySelector('${tab} webview')`))) throw new Error("the tab on screen was unloaded");
+    await openMenu();
+    const unloadDisabled = await page!.eval<boolean>(`[...document.querySelectorAll("[data-context-menu] button")].find((b) => b.textContent.includes("Unload")).disabled`);
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    if (!unloadDisabled) throw new Error("Unload is offered for the tab on screen");
+
+    // Pinned and in the background: still not unloaded.
+    await choose("Keep loaded");
+    await page!.waitFor(`document.querySelector('${li}').hasAttribute("data-pinned")`, { label: "pinned" });
+    await click(other);
+    await page!.waitFor(`document.querySelector('${li}').getAttribute("aria-current") !== "page"`, { label: "other tab selected" });
+    const swept = await page!.eval<string[]>(`window.__nathappTabs.sweep(4 * 3600_000)`);
+    if (swept.includes(tabId) || !(await page!.eval<boolean>(`!!document.querySelector('${tab} webview')`))) throw new Error("a pinned tab was unloaded");
+
+    // Not pinned: idle long enough, it's unloaded.
+    await choose("Allow unloading");
+    await page!.waitFor(`!document.querySelector('${li}').hasAttribute("data-pinned")`, { label: "unpinned" });
+    const idleNow = await page!.eval<string[]>(`window.__nathappTabs.sweep(60_000)`);
+    if (idleNow.includes(tabId)) throw new Error("unloaded after a minute");
+    await page!.eval(`window.__nathappTabs.sweep(4 * 3600_000)`);
+    await page!.waitFor(`!document.querySelector('${tab}') && !document.querySelector('${li}').hasAttribute("data-loaded")`, { label: "unloaded" });
+    await shot("tab-unloaded.png");
+
+    // Opened again: same page, scroll position and input; never the password.
+    await click(li);
+    await page!.waitFor(`!!document.querySelector('${tab} webview')`, { label: "page back" });
+    const restored = await waitForValue(async () => {
+      const r = await inPage<{ note: string; long: string; pw: string; y: number }>(
+        `({ note: document.querySelector("#note")?.value, long: document.querySelector("#long")?.value, pw: document.querySelector("#pw")?.value, y: Math.round(window.scrollY) })`,
+      );
+      return r?.note === "typed before unloading" && r.y > 1000 ? r : undefined;
+    }, 15_000);
+    if (restored.long !== "line one\nline two") throw new Error(`textarea not restored: ${JSON.stringify(restored.long)}`);
+    if (restored.pw) throw new Error("the password field was restored");
+
+    // Unloaded by hand, then woken up in the background like an agent's page tool would.
+    await click(other);
+    await page!.waitFor(`document.querySelector('${li}').getAttribute("aria-current") !== "page"`, { label: "other tab selected" });
+    await choose("Unload");
+    await page!.waitFor(`!document.querySelector('${tab}')`, { label: "unloaded by hand" });
+    const woken = await page!.eval<string>(`window.__nathappTabs.wake(${JSON.stringify(tabId)})`);
+    if (!woken.endsWith("/form")) throw new Error(`woke up on ${woken}`);
+    const background = await page!.eval<boolean>(`!!document.querySelector('${tab} webview') && document.querySelector('${li}').getAttribute("aria-current") !== "page"`);
+    if (!background) throw new Error("waking it should load it without showing it");
+    await apiCall(`/api/apps/${tabId}`, { method: "DELETE" });
+    await page!.waitFor(`!document.querySelector('${li}')`, { label: "tab deleted" });
+    return `restored scroll ${restored.y}px and 2 fields; pinned kept; woke on ${new URL(woken).pathname}`;
   });
 
   await check("network: requests with their data, credentials hidden, sent again, saved, blocked", async () => {

@@ -13,6 +13,7 @@ interface AppRow {
   name_locked: number;
   icon: string | null;
   icon_locked: number;
+  pinned: number;
   url: string | null;
   favicon: string | null;
   provider: string | null;
@@ -42,6 +43,7 @@ const toSummary = (r: AppRow): AppSummary => ({
   icon: r.icon,
   url: r.url,
   favicon: r.favicon,
+  pinned: r.pinned === 1,
   position: r.position,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -124,6 +126,10 @@ export const make = Effect.gen(function* () {
       sql`UPDATE apps SET icon = ${icon}, icon_locked = ${icon === null ? 0 : 1}, updated_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(
         Effect.andThen(summary(id)),
       ),
+
+    /** Kept loaded (the renderer doesn't unload it when it's idle). */
+    setPinned: (id: string, pinned: boolean) =>
+      sql`UPDATE apps SET pinned = ${pinned ? 1 : 0} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
 
     setAgent: (id: string, agent: AgentChoice) =>
       sql`UPDATE apps SET provider = ${agent.provider}, model = ${agent.model}, effort = ${agent.effort} WHERE id = ${id}`.pipe(Effect.asVoid),

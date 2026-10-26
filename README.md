@@ -194,6 +194,15 @@ Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in t
 
 Every tab can have its own icon ("Change icon…" in its menu): a Lucide icon (searchable), an emoji or an uploaded image (scaled to a 64px PNG). It's shown in the sidebar and the command bar; "Use the default" brings back the app icon or the site's favicon. An app's agent picks an icon with `set_app_info` (a Lucide name, or `icon_file`, an image from the project), but never replaces one you chose.
 
+### Tab unloading
+
+Tabs that haven't been on screen for a while are unloaded: their page (a web page or an app's preview) closes and frees its memory (Settings → Tabs: after 30 minutes by default, or never). They're dimmed in the sidebar and come back where you left them when opened: the same page, scroll position (the window's and scrolled containers') and what you typed, put back through the fields' own setters so frameworks notice. Passwords, hidden and file inputs and card fields aren't kept, and the rest lives only in memory (`lib/pagestate.ts`).
+
+- **Never unloaded:** tabs on screen (in a split, all of its tabs), tabs whose agent is working, pages playing sound, and pinned tabs ("Keep loaded" in a tab's menu, saved with the tab: `PUT /api/apps/:id/pinned`).
+- **By hand:** "Unload" in a tab's menu, or "Unload other tabs" in the command bar.
+- **Background work:** an agent's page tools wake an unloaded tab in the background (`wakePage` in `lib/webtabs.ts`) and it stays loaded until it's idle again. The chat keeps streaming, and an app's server keeps running for schedules, tools and other apps.
+- **Not kept:** a page's back/forward history, and anything only in its JavaScript memory. Extensions only see loaded tabs.
+
 ### Split view
 
 Tabs of a workspace can be shown side by side or stacked, any kind together (apps, web tabs, extension pages), up to four at once.

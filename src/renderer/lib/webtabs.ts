@@ -9,7 +9,8 @@ import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
-import { isTab, newWebTab, selectedId, toggleAgent } from "./store";
+import { appById, isTab, newWebTab, openTab, selectedId, toggleAgent } from "./store";
+import type { SavedPage } from "./pagestate";
 import { toggleSidebar } from "./layout";
 
 export interface PageInfo {
@@ -45,6 +46,12 @@ export interface PageHandle {
   send: (prompt: string) => void;
   /** The page's webContents (web tabs only: their traffic is recorded). */
   webContentsId: () => number;
+  /** Resolves once the page has loaded (right away if it has). */
+  whenLoaded: () => Promise<void>;
+  /** Scroll position and what was typed, before the tab is unloaded; null without a page. */
+  saveState: () => Promise<SavedPage | null>;
+  /** Something the user would notice going away is happening (sound playing). */
+  busy: () => boolean;
 }
 
 const pages = new Map<string, PageHandle>();
@@ -77,21 +84,48 @@ export function registerPage(tabId: string, handle: PageHandle) {
   };
 }
 
-function page(tabId: unknown) {
-  const handle = typeof tabId === "string" ? pages.get(tabId) : undefined;
+const registered = (tabId: string, ms: number) =>
+  new Promise<PageHandle | undefined>((resolve) => {
+    const start = Date.now();
+    const poll = () => {
+      const handle = pages.get(tabId);
+      if (handle || Date.now() - start > ms) resolve(handle);
+      else setTimeout(poll, 50);
+    };
+    poll();
+  });
+
+/**
+ * The page of a tab, for agents. A tab that isn't loaded (unloaded for being
+ * idle, or not opened since NathApp started) is woken up first, in the
+ * background, and stays loaded until it's idle again.
+ */
+export async function wakePage(tabId: string) {
+  let handle = pages.get(tabId);
+  if (!handle && appById(tabId)) {
+    await openTab(tabId);
+    handle = await registered(tabId, 5_000);
+    // Waits for its first load (bounded: an app that isn't running has no page to load).
+    await handle?.whenLoaded();
+  }
   if (!handle) throw new Error("No page is open in this tab");
   return handle;
 }
 
-handleRpc("page.info", ({ tabId }) => page(tabId).info());
-handleRpc("page.eval", ({ tabId, code }) => page(tabId).eval(String(code)));
-handleRpc("page.capture", ({ tabId }) => page(tabId).capture());
-handleRpc("page.navigate", ({ tabId, url }) => page(tabId).navigate(String(url)));
-handleRpc("page.reload", ({ tabId }) => page(tabId).reload());
+async function page(tabId: unknown) {
+  if (typeof tabId !== "string") throw new Error("No page is open in this tab");
+  return wakePage(tabId);
+}
+
+handleRpc("page.info", async ({ tabId }) => (await page(tabId)).info());
+handleRpc("page.eval", async ({ tabId, code }) => (await page(tabId)).eval(String(code)));
+handleRpc("page.capture", async ({ tabId }) => (await page(tabId)).capture());
+handleRpc("page.navigate", async ({ tabId, url }) => (await page(tabId)).navigate(String(url)));
+handleRpc("page.reload", async ({ tabId }) => (await page(tabId)).reload());
 // The agent just saved the site's customization: apply the fresh version (the
 // realtime notification may not have arrived yet).
 handleRpc("page.applyOverride", async ({ tabId }) => {
-  const handle = page(tabId);
+  const handle = await page(tabId);
   const host = hostOf(handle.info().url);
   if (host) setOverrides(host, await api.getSite(host));
   await loadPageChanges();
@@ -102,12 +136,12 @@ handleRpc("page.applyOverride", async ({ tabId }) => {
 // What the website agent gets is always redacted (reveal: false).
 
 const network = window.nathapp.web.network;
-handleRpc("network.list", ({ tabId, filter }) => network.list(page(tabId).webContentsId(), (filter ?? {}) as NetworkFilter));
-handleRpc("network.get", ({ tabId, id }) => network.get(page(tabId).webContentsId(), String(id), false));
-handleRpc("network.draft", ({ tabId, id }) => network.draft(page(tabId).webContentsId(), String(id)));
-handleRpc("network.replay", ({ tabId, id, workspaceId, draft, overrides }) =>
+handleRpc("network.list", async ({ tabId, filter }) => network.list((await page(tabId)).webContentsId(), (filter ?? {}) as NetworkFilter));
+handleRpc("network.get", async ({ tabId, id }) => network.get((await page(tabId)).webContentsId(), String(id), false));
+handleRpc("network.draft", async ({ tabId, id }) => network.draft((await page(tabId)).webContentsId(), String(id)));
+handleRpc("network.replay", async ({ tabId, id, workspaceId, draft, overrides }) =>
   network.replay(
-    typeof workspaceId === "string" ? { workspaceId, draft: draft as RequestDraft } : { webContentsId: page(tabId).webContentsId(), id: String(id) },
+    typeof workspaceId === "string" ? { workspaceId, draft: draft as RequestDraft } : { webContentsId: (await page(tabId)).webContentsId(), id: String(id) },
     (overrides ?? {}) as ReplayOverrides,
     false,
   ),

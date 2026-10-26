@@ -8,6 +8,7 @@ import {
   currentWorkspace,
   deleteApp,
   duplicateApp,
+  isLoaded,
   moveApp,
   moveTab,
   moveTabs,
@@ -16,6 +17,7 @@ import {
   renameApp,
   selectApp,
   selectedId,
+  setTabPinned,
   SETTINGS_VIEW,
   ACTIVITY_VIEW,
   SCHEDULES_VIEW,
@@ -27,6 +29,7 @@ import {
   workspaceTabs,
 } from "../lib/store";
 import { draggedSplit, draggedTab, isSidebarCollapsed, setDraggedSplit, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
+import { canUnload, unloadTab } from "../lib/unload";
 import { evenSplit, placeInSplit, removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "../lib/splits";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
@@ -426,6 +429,8 @@ function Item(props: { app: AppSummary }) {
   const running = () => !!states[props.app.id]?.running;
   const menuOpen = () => menu() !== undefined;
   const highlighted = () => selected() || menuOpen();
+  // Its page isn't open (unloaded for being idle, or not opened yet): it loads when clicked.
+  const asleep = () => !isLoaded(props.app.id) && !selected();
 
   const commit = (value: string) => {
     if (!editing()) return; // Enter already committed; this is the blur that follows
@@ -449,6 +454,10 @@ function Item(props: { app: AppSummary }) {
       : current()
         ? [{ label: `Show beside “${current()!.name}”`, icon: "columns-2", onSelect: () => splitWith(current()!.id, props.app.id, "right") }]
         : []),
+    props.app.pinned
+      ? { label: "Allow unloading", icon: "pin-off", onSelect: () => void setTabPinned(props.app.id, false) }
+      : { label: "Keep loaded", icon: "pin", onSelect: () => void setTabPinned(props.app.id, true) },
+    { label: "Unload", icon: "moon", disabled: !canUnload(props.app.id), onSelect: () => void unloadTab(props.app.id) },
     { label: "Move up", icon: "arrow-up", disabled: !neighbour(-1), onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before") },
     { label: "Move down", icon: "arrow-down", disabled: !neighbour(1), onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after") },
     ...workspaces
@@ -490,7 +499,7 @@ function Item(props: { app: AppSummary }) {
         dropBefore() && styles.dropBefore,
         dropAfter() && styles.dropAfter,
       )}
-      title={isSidebarCollapsed() ? props.app.name : undefined}
+      title={isSidebarCollapsed() ? props.app.name : asleep() ? "Not loaded: opens where you left it" : undefined}
       onClick={() => selectApp(props.app.id)}
       onDblClick={rename}
       onContextMenu={(e) => {
@@ -499,6 +508,8 @@ function Item(props: { app: AppSummary }) {
       }}
       aria-current={selected() ? "page" : undefined}
       data-app-id={props.app.id}
+      data-loaded={isLoaded(props.app.id) ? "" : undefined}
+      data-pinned={props.app.pinned ? "" : undefined}
       draggable={!editing()}
       onDragStart={(e) => {
         e.dataTransfer!.setData(TAB_DRAG_TYPE, props.app.id);
@@ -531,7 +542,9 @@ function Item(props: { app: AppSummary }) {
         dropOn(at, id, group);
       }}
     >
-      <TabIcon tab={props.app} />
+      <span {...stylex.attrs(styles.tabIcon, asleep() && styles.asleep)}>
+        <TabIcon tab={props.app} />
+      </span>
       <Show when={editing()} fallback={<span {...stylex.attrs(styles.name, isSidebarCollapsed() && styles.hiddenText)}>{props.app.name}</span>}>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
@@ -544,6 +557,9 @@ function Item(props: { app: AppSummary }) {
           }}
           {...stylex.attrs(styles.rename)}
         />
+      </Show>
+      <Show when={props.app.pinned && !isSidebarCollapsed()}>
+        <Icon name="pin" size={12} {...stylex.attrs(styles.pin)} aria-label="Kept loaded" />
       </Show>
       <Show when={running()}>
         <span {...stylex.attrs(styles.dot, isSidebarCollapsed() && styles.dotCompact)} title="Agent is working" />
@@ -713,6 +729,10 @@ const styles = stylex.create({
     fontWeight: 500,
   },
   icon: { width: 18, textAlign: "center", flexShrink: 0, color: colors.muted },
+  tabIcon: { display: "flex", flexShrink: 0, transitionProperty: "opacity", transitionDuration: "150ms" },
+  // Not loaded: dimmed, like a sleeping tab.
+  asleep: { opacity: 0.45, filter: "grayscale(0.6)" },
+  pin: { flexShrink: 0, color: colors.muted, transform: "rotate(45deg)" },
   footer: {
     display: "flex",
     flexDirection: "column",
