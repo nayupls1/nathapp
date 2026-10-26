@@ -136,21 +136,23 @@ describe("workspaces", () => {
   });
 
   test("tabs keep the order they're put in; new and moved ones go last", async () => {
-    const web = () => server.api<AppSummary>("/api/apps", { method: "POST", json: { kind: "web", url: "https://example.com/", workspaceId: client.id } });
-    const [a, b, c] = [await web(), await web(), await web()];
-    const order = async () => (await server.api<AppSummary[]>("/api/apps")).filter((t) => t.workspaceId === client.id).map((t) => t.id);
-    expect(await order()).toEqual([inClient.id, a.id, b.id, c.id]);
+    const space = await server.api<WorkspaceInfo>("/api/workspaces", { method: "POST", json: { name: "Ordered" } });
+    const web = () => server.api<AppSummary>("/api/apps", { method: "POST", json: { kind: "web", url: "https://example.com/", workspaceId: space.id } });
+    const [a, b, c, d] = [await web(), await web(), await web(), await web()];
+    const order = async () => (await server.api<AppSummary[]>("/api/apps")).filter((t) => t.workspaceId === space.id).map((t) => t.id);
+    expect(await order()).toEqual([a.id, b.id, c.id, d.id]);
     // Tabs left out follow in their old order; other workspaces' and unknown ids are ignored.
-    const result = await server.api<AppSummary[]>(`/api/workspaces/${client.id}/order`, { method: "PUT", json: { ids: [c.id, "nope", inPersonal.id, a.id] } });
-    expect(result.map((t) => t.id)).toEqual([c.id, a.id, inClient.id, b.id]);
-    expect(await order()).toEqual([c.id, a.id, inClient.id, b.id]);
+    const result = await server.api<AppSummary[]>(`/api/workspaces/${space.id}/order`, { method: "PUT", json: { ids: [d.id, "nope", inPersonal.id, b.id] } });
+    expect(result.map((t) => t.id)).toEqual([d.id, b.id, a.id, c.id]);
+    expect(await order()).toEqual([d.id, b.id, a.id, c.id]);
     expect((await server.api<AppSummary[]>("/api/apps")).find((t) => t.id === inPersonal.id)?.workspaceId).toBe(DEFAULT_WORKSPACE);
-    const d = await web();
-    expect((await order()).at(-1)).toBe(d.id);
-    await server.api(`/api/apps/${c.id}/move`, { method: "POST", json: { workspaceId: DEFAULT_WORKSPACE } });
-    await server.api(`/api/apps/${c.id}/move`, { method: "POST", json: { workspaceId: client.id } });
-    expect(await order()).toEqual([a.id, inClient.id, b.id, d.id, c.id]);
+    const e = await web();
+    expect((await order()).at(-1)).toBe(e.id);
+    await server.api(`/api/apps/${d.id}/move`, { method: "POST", json: { workspaceId: DEFAULT_WORKSPACE } });
+    await server.api(`/api/apps/${d.id}/move`, { method: "POST", json: { workspaceId: space.id } });
+    expect(await order()).toEqual([b.id, a.id, c.id, e.id, d.id]);
     await expect(server.api(`/api/workspaces/nope/order`, { method: "PUT", json: { ids: [] } })).rejects.toThrow("404");
+    await server.api(`/api/workspaces/${space.id}`, { method: "DELETE" });
   });
 
   test("deleting a workspace deletes its tabs, data, secrets and permissions; the last one stays", async () => {
