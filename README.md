@@ -96,9 +96,11 @@ theme. It can also write any other stack itself. NathApp gives every app:
 - `NATHAPP_API_URL` / `NATHAPP_API_TOKEN` for NathApp's app API (other apps' data)
 - `NODE_ENV` / `NATHAPP_MODE`: development while editing, production when done
 
-**Editing** runs the `dev` command (Bun `--hot` with HMR), so the agent's changes
-show up in the preview right away. **Done** runs `build` and then `start` and
-shows the finished app. Dependencies are installed when `package.json` or the
+Editing follows the agent panel. While it's open the app is being **edited**: NathApp
+runs the `dev` command (Bun `--hot` with HMR), so the agent's changes show up in the
+preview right away. Closing it (Ctrl+J) means **done**: NathApp runs `build` and then
+`start` and shows the finished app; "Edit" brings the agent back and the dev server
+with it. An agent turn always edits, so it reopens the panel. Dependencies are installed when `package.json` or the
 lockfile change.
 
 **Sandbox.** With bubblewrap every app process (installs, dev server, the

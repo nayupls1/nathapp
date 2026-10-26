@@ -4,7 +4,7 @@
 // Tabs of every workspace stay loaded; the sidebar shows the current one's.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
-import type { AgentChoice, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "../../shared/api";
+import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, WorkspaceInfo } from "../../shared/api";
 import type { WorkspaceSettings } from "../../shared/settings";
 import { topics } from "../../shared/hub";
 import { normalizeUrl } from "../../shared/web";
@@ -58,7 +58,10 @@ const markOpened = (id: string) => {
   if (isTab(id) && !opened().includes(id)) setOpened([...opened(), id]);
 };
 
-// Whether the agent panel is hidden, per tab. Remembered across restarts.
+// Whether the agent panel is hidden, per tab. For apps with a project it's
+// their mode: the panel is open exactly while the app is being edited (dev
+// server), and closing it means done (built and started). Other tabs
+// remember it across restarts.
 const COLLAPSED_KEY = "nathapp.agentCollapsed";
 const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>(
   (() => {
@@ -70,9 +73,27 @@ const [collapsed, setCollapsed] = createSignal<Record<string, boolean>>(
   })(),
 );
 
-export const isAgentCollapsed = (id: string) => !!collapsed()[id];
+/** A mode switch asked for and not answered yet, shown already. */
+const [pendingModes, setPendingModes] = createStore<Record<string, AppMode>>({});
+const followsMode = (id: string) => appById(id)?.kind === "app" && !!states[id]?.project;
+/** The app's mode, including a switch on its way. */
+export const appMode = (id: string): AppMode => pendingModes[id] ?? states[id]?.runtime?.mode ?? "dev";
+
+export const isAgentCollapsed = (id: string) => (followsMode(id) ? appMode(id) === "live" : !!collapsed()[id]);
+
+/** Editing (dev server, agent open) or done (built and started, agent hidden). */
+export async function setAppMode(id: string, mode: AppMode) {
+  if (appMode(id) === mode && states[id]?.runtime?.state !== "stopped" && states[id]?.runtime?.state !== "crashed") return;
+  setPendingModes(id, mode);
+  try {
+    setRuntime(id, await api.setMode(id, mode));
+  } finally {
+    if (pendingModes[id] === mode) setPendingModes(produce((p) => void delete p[id]));
+  }
+}
 
 export function setAgentCollapsed(id: string, value: boolean) {
+  if (followsMode(id)) return void setAppMode(id, value ? "live" : "dev").catch((err) => console.error("Switching the mode failed:", err));
   const next = { ...collapsed() };
   if (value) next[id] = true;
   else delete next[id];

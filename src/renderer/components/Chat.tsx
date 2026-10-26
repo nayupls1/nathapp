@@ -3,7 +3,7 @@ import { createEffect, For, Match, on, Show, Switch, type JSX } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
 import { markdownToHtml } from "../../shared/markdown";
 import { settings } from "../lib/settings";
-import { sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
+import { appById, sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
 import { SecretRequestCard } from "./Secrets";
@@ -33,7 +33,7 @@ export function Chat(props: {
         <span {...stylex.attrs(styles.headerTitle)}>{props.web ? "Website agent" : "Agent"}</span>
         <button
           type="button"
-          title="Hide agent (Ctrl+J)"
+          title={editsApp(props.appId) ? "Done: hide the agent and run the finished app (Ctrl+J)" : "Hide agent (Ctrl+J)"}
           onClick={() => setAgentCollapsed(props.appId, true)}
           {...stylex.attrs(styles.headerButton)}
           data-agent-hide
@@ -286,19 +286,22 @@ const styles = stylex.create({
   },
 });
 
-/** Floating button that brings a hidden agent panel back. */
+/** Whether the agent panel stands for editing an app (its mode follows the panel). */
+const editsApp = (id: string) => appById(id)?.kind === "app" && !!states[id]?.project;
+
+/** Floating button that brings a hidden agent panel back (for an app: back to editing). */
 export function ShowAgentButton(props: { appId: string }) {
   const running = () => !!states[props.appId]?.running;
   return (
     <button
       type="button"
-      title="Show agent (Ctrl+J)"
+      title={editsApp(props.appId) ? "Edit: show the agent and run the dev server (Ctrl+J)" : "Show agent (Ctrl+J)"}
       onClick={() => setAgentCollapsed(props.appId, false)}
       {...stylex.attrs(styles.showButton)}
       data-agent-show
     >
-      <Icon name="bot" size={16} />
-      Agent
+      <Icon name={editsApp(props.appId) ? "pencil" : "bot"} size={16} />
+      {editsApp(props.appId) ? "Edit" : "Agent"}
       <Show when={running()}>
         <span {...stylex.attrs(styles.showDot)} />
       </Show>

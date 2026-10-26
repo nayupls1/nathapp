@@ -229,21 +229,25 @@ function currentTabCommands(id: string): Command[] {
   const list: Command[] = [
     { id: "tab.rename", title: "Rename tab", subtitle: app.name, icon: "pencil", group: "Tab", input: "New name", run: (name) => name?.trim() && renameApp(id, name.trim()) },
     { id: "tab.duplicate", title: "Duplicate tab", subtitle: app.name, icon: "copy", group: "Tab", run: () => duplicateApp(id) },
-    {
-      id: "tab.agent",
-      title: isAgentCollapsed(id) ? "Show the agent" : "Hide the agent",
-      subtitle: "Ctrl+J",
-      icon: "panel-right",
-      group: "Tab",
-      keywords: "toggle panel chat",
-      run: () => setAgentCollapsed(id, !isAgentCollapsed(id)),
-    },
+    // For an app, the agent panel is its mode: open while editing, hidden when done.
+    app.kind === "app" && state?.project
+      ? isAgentCollapsed(id)
+        ? { id: "tab.agent", title: "Edit the app", subtitle: "Ctrl+J", icon: "pencil-ruler", group: "App", keywords: "show agent panel chat dev mode editing", run: () => setAgentCollapsed(id, false) }
+        : { id: "tab.agent", title: "Done editing", subtitle: "Ctrl+J", icon: "check", group: "App", keywords: "hide agent panel chat mark as done live build publish", run: () => setAgentCollapsed(id, true) }
+      : {
+          id: "tab.agent",
+          title: isAgentCollapsed(id) ? "Show the agent" : "Hide the agent",
+          subtitle: "Ctrl+J",
+          icon: "panel-right",
+          group: "Tab",
+          keywords: "toggle panel chat",
+          run: () => setAgentCollapsed(id, !isAgentCollapsed(id)),
+        },
   ];
   if (state?.running) list.push({ id: "tab.stop", title: "Stop the agent", subtitle: app.name, icon: "square", group: "Tab", run: () => stopAgent(id) });
   if (app.kind === "web") {
     list.push({ id: "tab.reload", title: "Reload page", subtitle: "Ctrl+R", icon: "rotate-cw", group: "Tab", run: () => pageOf(id)?.reload() });
   } else if (state?.project) {
-    const mode = state.runtime?.mode;
     list.push(
       {
         id: "app.restart",
@@ -253,9 +257,6 @@ function currentTabCommands(id: string): Command[] {
         group: "App",
         run: async () => setRuntime(id, await api.controlRuntime(id, "restart")),
       },
-      mode === "live"
-        ? { id: "app.edit", title: "Switch to editing", subtitle: app.name, icon: "pencil-ruler", group: "App", keywords: "dev mode", run: async () => setRuntime(id, await api.setMode(id, "dev")) }
-        : { id: "app.done", title: "Mark as done", subtitle: app.name, icon: "check", group: "App", keywords: "live build", run: async () => setRuntime(id, await api.setMode(id, "live")) },
       {
         id: "app.snapshot",
         title: "Save a snapshot",

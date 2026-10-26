@@ -1,15 +1,16 @@
 // An app tab: a prompt for new apps, otherwise the running app in a preview
-// next to the agent. While the app is being edited the preview shows its dev
-// server (changes appear live); once it's done, the built app.
+// next to the agent. While the agent panel is open the app is being edited and
+// the preview shows its dev server (changes appear live); closing the panel
+// means done: the app is built and the preview shows the finished version.
 import * as stylex from "@stylexjs/stylex";
 import type { DidFailLoadEvent, WebviewTag } from "electron";
 import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch } from "solid-js";
-import { appPartition, type AppMode, type ElementInfo, type LogLine, type PageContext, type RuntimeStatus } from "../../shared/api";
+import { appPartition, type ElementInfo, type LogLine, type PageContext, type RuntimeStatus } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { api } from "../lib/api";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { watchTopic } from "../lib/realtime";
-import { isAgentCollapsed, sendPrompt, setAgentCollapsed, setRuntime, states, stopAgent } from "../lib/store";
+import { appMode, isAgentCollapsed, sendPrompt, setAgentCollapsed, setRuntime, states, stopAgent } from "../lib/store";
 import { registerPage, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip, ShowAgentButton } from "./Chat";
@@ -117,12 +118,10 @@ const stateLabels: Record<RuntimeStatus["state"], string> = {
 function Workbench(props: { appId: string; active: boolean }) {
   const state = () => states[props.appId]!;
   const runtime = () => state().runtime;
-  const mode = (): AppMode => runtime()?.mode ?? "dev";
   const running = () => runtime()?.state === "running" && !!runtime()?.url;
   const busy = () => ["installing", "building", "starting"].includes(runtime()?.state ?? "");
   const collapsed = () => isAgentCollapsed(props.appId);
-  const isDev = () => mode() === "dev";
-  const isLive = () => mode() === "live";
+  const isLive = () => appMode(props.appId) === "live";
   const isRunning = () => runtime()?.state === "running";
   const isCrashed = () => runtime()?.state === "crashed";
   const [logsOpen, setLogsOpen] = createSignal(false);
@@ -140,10 +139,6 @@ function Workbench(props: { appId: string; active: boolean }) {
   // --- Runtime control ---------------------------------------------------------------
 
   const control = async (action: "start" | "stop" | "restart") => setRuntime(props.appId, await api.controlRuntime(props.appId, action));
-  const switchMode = async (next: AppMode) => {
-    if (next === mode() && running()) return;
-    setRuntime(props.appId, await api.setMode(props.appId, next));
-  };
 
   // --- The preview page --------------------------------------------------------------
 
@@ -166,13 +161,15 @@ function Workbench(props: { appId: string; active: boolean }) {
   function attach(view: WebviewTag) {
     webview = view;
     ready = false;
+    // A new preview (mode switch, restart) keeps what was picked; navigating within it doesn't.
+    let first = true;
     view.addEventListener("did-start-loading", () => setLoadError());
     view.addEventListener("did-stop-loading", loaded);
     view.addEventListener("did-fail-load", (e: DidFailLoadEvent) => {
       if (e.isMainFrame && e.errorCode !== -3) setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
       loaded();
     });
-    view.addEventListener("did-navigate", () => setPicked([]));
+    view.addEventListener("did-navigate", () => (first ? (first = false) : setPicked([])));
     view.addEventListener("dom-ready", () => (ready = true));
   }
 
@@ -262,32 +259,13 @@ function Workbench(props: { appId: string; active: boolean }) {
     <div {...stylex.attrs(styles.split)} data-app-tab={props.appId}>
       <div {...stylex.attrs(styles.main)}>
         <div {...stylex.attrs(styles.toolbar)}>
-          <div {...stylex.attrs(styles.segmented)} role="group" aria-label="Mode">
-            <button
-              type="button"
-              title="Editing: the dev server, changes appear live"
-              disabled={!state().project}
-              onClick={() => void switchMode("dev")}
-              {...stylex.attrs(styles.segment, isDev() && styles.segmentOn)}
-              data-mode="dev"
-            >
-              <Icon name="pencil" size={13} />
-              Editing
-            </button>
-            <button
-              type="button"
-              title="Done: build the app and run the finished version"
-              disabled={!state().project}
-              onClick={() => void switchMode("live")}
-              {...stylex.attrs(styles.segment, isLive() && styles.segmentOn)}
-              data-mode="live"
-            >
-              <Icon name="circle-check" size={13} />
-              Done
-            </button>
-          </div>
           <Show when={state().project}>
-            <span {...stylex.attrs(styles.status)} title={runtime()?.error ?? undefined} data-runtime-state={runtime()?.state}>
+            <span
+              {...stylex.attrs(styles.status)}
+              title={runtime()?.error ?? (isLive() ? "The finished app (open the agent to edit it)" : "Being edited: the dev server, changes appear live")}
+              data-runtime-state={runtime()?.state}
+              data-mode={appMode(props.appId)}
+            >
               <span
                 {...stylex.attrs(
                   styles.dot,
@@ -296,6 +274,7 @@ function Workbench(props: { appId: string; active: boolean }) {
                   isCrashed() && styles.dotCrashed,
                 )}
               />
+              {isLive() ? "" : "Editing · "}
               {stateLabels[runtime()?.state ?? "stopped"]}
             </span>
           </Show>
@@ -576,37 +555,11 @@ const styles = stylex.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.bg,
   },
-  segmented: {
-    display: "flex",
-    padding: 2,
-    borderRadius: radius.full,
-    backgroundColor: colors.surfaceHover,
-  },
-  segment: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 5,
-    height: 26,
-    paddingInline: space.md,
-    borderWidth: 0,
-    borderRadius: radius.full,
-    backgroundColor: "transparent",
-    color: { default: colors.muted, ":hover": colors.text },
-    fontSize: font.xs,
-    fontWeight: 500,
-    cursor: { default: "pointer", ":disabled": "default" },
-    opacity: { default: 1, ":disabled": 0.5 },
-  },
-  segmentOn: {
-    backgroundColor: colors.surface,
-    color: { default: colors.text, ":hover": colors.text },
-    boxShadow: "0 1px 2px rgb(0 0 0 / 0.1)",
-  },
   status: {
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    marginLeft: space.sm,
+    marginLeft: space.xs,
     color: colors.muted,
     fontSize: font.xs,
     whiteSpace: "nowrap",

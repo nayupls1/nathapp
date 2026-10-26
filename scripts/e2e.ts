@@ -273,8 +273,9 @@ try {
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-picked-chip]')`, { label: "picked chip" });
   });
 
-  await check("done: the app is built and served by its start command", async () => {
-    await click(`${appTab()} [data-mode="live"]`);
+  await check("done: hiding the agent builds the app and serves it with its start command", async () => {
+    await click(`${appTab()} [data-agent-hide]`);
+    await page!.waitFor(`!document.querySelector('${appTab()} [data-agent-panel]')`, { label: "agent hidden" });
     await page!.waitFor(`!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { label: "restart", timeoutMs: 10_000 }).catch(() => {});
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"]')`, { timeoutMs: 120_000, label: "live app running" });
     const status = await apiCall<{ status: { mode: string; state: string } }>(`/api/apps/${appId}/runtime`);
@@ -284,7 +285,12 @@ try {
     await page!.waitFor(`document.querySelector('${appTab()} [data-logs-panel]')?.innerText.includes("bun run start")`, { label: "logs" });
     await shot("app-live.png");
     await click(`${appTab()} [data-logs]`);
-    await click(`${appTab()} [data-mode="dev"]`);
+    // Showing the agent again goes back to editing: the dev server.
+    await click(`${appTab()} [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-agent-panel]')`, { label: "agent shown" });
+    await page!.waitFor(`!!document.querySelector('${appTab()} [data-runtime-state="running"][data-mode="dev"]')`, { timeoutMs: 120_000, label: "dev server running" });
+    const back = await apiCall<{ status: { mode: string } }>(`/api/apps/${appId}/runtime`);
+    if (back.status.mode !== "dev") throw new Error(`mode is ${back.status.mode} after showing the agent`);
   });
 
   await check("history: a snapshot shows the change, and undoing it reverts the app", async () => {

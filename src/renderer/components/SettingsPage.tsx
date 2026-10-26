@@ -207,7 +207,7 @@ export function SettingsPage() {
         <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
           <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
         </Row>
-        <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn.">
+        <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn (this hides the agent; opening it goes back to editing).">
           <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
         </Row>
       </Section>
