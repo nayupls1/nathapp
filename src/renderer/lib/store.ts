@@ -5,7 +5,7 @@
 // idle (lib/unload.ts); the sidebar shows the current workspace's.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
-import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, TabSplit, WorkspaceInfo } from "../../shared/api";
+import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, SharedTab, TabSplit, WorkspaceInfo } from "../../shared/api";
 import type { WorkspaceSettings } from "../../shared/settings";
 import { topics } from "../../shared/hub";
 import { normalizeUrl } from "../../shared/web";
@@ -505,10 +505,12 @@ export async function deleteWorkspace(id: string) {
 
 // --- Agent -------------------------------------------------------------------------------
 
-export async function sendPrompt(id: string, prompt: string, page?: PageContext) {
+/** Sends a message to the tab's agent; false if it couldn't start (the error is shown in the chat). */
+export async function sendPrompt(id: string, prompt: string, page?: PageContext, shared?: SharedTab[]) {
   setStates(id, { running: true, draft: "" });
   try {
-    await api.chat(id, { prompt, agent: states[id]!.agent, page });
+    await api.chat(id, { prompt, agent: states[id]!.agent, page, ...(shared?.length ? { shared } : {}) });
+    return true;
   } catch (err) {
     const message: ChatMessage = {
       id: -Date.now(),
@@ -518,6 +520,7 @@ export async function sendPrompt(id: string, prompt: string, page?: PageContext)
     };
     setStates(id, { running: false, draft: "" });
     setStates(id, "messages", (m) => [...m, message]);
+    return false;
   }
 }
 

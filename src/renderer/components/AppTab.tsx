@@ -11,7 +11,8 @@ import { api } from "../lib/api";
 import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { watchTopic } from "../lib/realtime";
-import { appMode, isAgentCollapsed, sendPrompt, setAgentCollapsed, setRuntime, states, stopAgent } from "../lib/store";
+import { sendWithShares } from "../lib/sharing";
+import { appMode, isAgentCollapsed, setAgentCollapsed, setRuntime, states, stopAgent } from "../lib/store";
 import { registerPage, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Chat, Chip, ShowAgentButton } from "./Chat";
@@ -42,7 +43,7 @@ export function AppTab(props: { appId: string; active: boolean }) {
 }
 
 function NewApp(props: { appId: string }) {
-  const send = (prompt: string) => sendPrompt(props.appId, prompt);
+  const send = (prompt: string) => sendWithShares(props.appId, prompt);
   const [presets] = createResource(() => api.presets().catch(() => []));
   const [starting, setStarting] = createSignal<string>();
 
@@ -275,7 +276,7 @@ function Workbench(props: { appId: string; active: boolean }) {
       webview && ready && selection.length ? { url: webview.getURL(), title: webview.getTitle(), selection } : undefined;
     setPicked([]);
     if (webview && ready) void webview.executeJavaScript(unmarkScript()).catch(() => {});
-    void sendPrompt(props.appId, prompt, page);
+    void sendWithShares(props.appId, prompt, page);
   }
 
   const pickButton = (size: number) => (

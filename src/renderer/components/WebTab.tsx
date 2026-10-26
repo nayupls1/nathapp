@@ -12,7 +12,8 @@ import { hostOf, normalizeUrl, overrideScript, pageChangeHandlerScript, pageChan
 import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
 import { settings } from "../lib/settings";
-import { appById, isAgentCollapsed, sendPrompt, setAgentCollapsed, states, updatePage } from "../lib/store";
+import { sendWithShares } from "../lib/sharing";
+import { appById, isAgentCollapsed, setAgentCollapsed, states, updatePage } from "../lib/store";
 import { showExtensionSettings } from "../lib/extensions";
 import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type PageInfo } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -272,7 +273,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     const page: PageContext | undefined = webview && ready ? { url: webview.getURL(), title: webview.getTitle(), selection: picked() } : undefined;
     setPicked([]);
     if (webview && ready) void webview.executeJavaScript(unmarkScript()).catch(() => {});
-    void sendPrompt(props.appId, prompt, page);
+    void sendWithShares(props.appId, prompt, page);
   }
 
   // --- The page handle (agent RPC, shortcuts) --------------------------------------

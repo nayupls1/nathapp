@@ -113,3 +113,11 @@ export const restoreScript = (page: SavedPage) => `(async () => {
   if (!tall) window.scrollTo(page.scrollX, page.scrollY);
   return pending.size;
 })()`;
+
+/** Runs in a page: what it shows, as text (the main content if it has one), for shared tab context (lib/sharing.ts). */
+export const readPageScript = `(() => {
+  const main = document.querySelector("main, article, [role=main]") || document.body;
+  const text = (main ? main.innerText : "").replace(/[ \\t]+\\n/g, "\\n").replace(/\\n{3,}/g, "\\n\\n").trim();
+  const selection = String(window.getSelection() || "").trim();
+  return { url: location.href, title: document.title, text: text.slice(0, ${30_000}), selection: selection.slice(0, 5000) };
+})()`;

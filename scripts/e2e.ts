@@ -1004,6 +1004,59 @@ try {
     return `restored scroll ${restored.y}px and 2 fields; pinned kept; woke on ${new URL(woken).pathname}`;
   });
 
+  await check("shared tab context: @ mentions another tab, web pages stay away from app builders", async () => {
+    if (!webTabId) throw new Error("needs the web tab from the web tab check");
+    const tabs = await page!.eval<{ id: string; name: string; web: boolean }[]>(
+      `[...document.querySelectorAll("nav li[data-app-id]")].map((li) => ({ id: li.dataset.appId, name: li.innerText.split("\\n")[0].trim(), web: !!document.querySelector('[data-web-tab="' + li.dataset.appId + '"]') }))`,
+    );
+    const second = tabs.find((t) => t.name === "Second page");
+    const app = tabs.find((t) => t.name === "E2E renamed");
+    if (!second || !app) throw new Error(`tabs: ${tabs.map((t) => t.name).join(", ")}`);
+    const type = (root: string, text: string) =>
+      page!.eval(`(() => {
+        const t = document.querySelector(${JSON.stringify(`${root} [data-agent-panel] textarea`)});
+        t.focus();
+        t.value = ${JSON.stringify(text)};
+        t.setSelectionRange(t.value.length, t.value.length);
+        t.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        return true;
+      })()`);
+
+    // In the web tab: "@Sec" offers the other page; Enter shares it.
+    await click(`nav li[data-app-id="${webTabId}"]`);
+    const web = `[data-web-tab="${webTabId}"]`;
+    if (!(await page!.eval<boolean>(`!!document.querySelector('${web} [data-agent-panel]')`))) await click(`${web} [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${web} [data-agent-panel] textarea')`, { label: "website agent's composer" });
+    await type(web, "Compare with @Sec");
+    await page!.waitFor(`!!document.querySelector('${web} [data-mentions] [data-mention="${second.id}"]')`, { label: "mention list" });
+    await shot("share-mention.png");
+    await page!.eval(`document.querySelector('${web} [data-agent-panel] textarea').dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), true`);
+    await page!.waitFor(`!!document.querySelector('${web} [data-share-chip="${second.id}"]')`, { label: "share chip" });
+    const left = await page!.eval<string>(`document.querySelector('${web} [data-agent-panel] textarea').value`);
+    if (left.trim() !== "Compare with") throw new Error(`the mention stayed in the text: ${JSON.stringify(left)}`);
+    // Removing the chip unshares it.
+    await click(`${web} [data-share-chip="${second.id}"] button`);
+    await page!.waitFor(`!document.querySelector('${web} [data-share-chip]')`, { label: "chip removed" });
+    await type(web, "");
+
+    // In an app tab, web pages are offered but can't be picked: the app builder has tools.
+    await click(`nav li[data-app-id="${app.id}"]`);
+    const appTab = `[data-app-tab="${app.id}"]`;
+    const wasHidden = !(await page!.eval<boolean>(`!!document.querySelector('${appTab} [data-agent-panel]')`));
+    if (wasHidden) await click(`${appTab} [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${appTab} [data-agent-panel] textarea')`, { label: "app builder's composer" });
+    await type(appTab, "@");
+    await page!.waitFor(`!!document.querySelector('${appTab} [data-mentions] [data-mention="${webTabId}"]')`, { label: "mention list in the app" });
+    const disabled = await page!.eval<string | null>(`document.querySelector('${appTab} [data-mention="${webTabId}"]').getAttribute("aria-disabled")`);
+    if (disabled !== "true") throw new Error("a web page could be shared with the app builder");
+    await click(`${appTab} [data-mention="${webTabId}"]`);
+    await Bun.sleep(200);
+    if (await page!.eval<boolean>(`!!document.querySelector('${appTab} [data-share-chip]')`)) throw new Error("the web page was shared anyway");
+    await type(appTab, "");
+    if (wasHidden) await click(`${appTab} [data-agent-hide]`);
+    return "mentioned, shared, unshared; web page refused for the app builder";
+  });
+
   await check("network: requests with their data, credentials hidden, sent again, saved, blocked", async () => {
     if (!webTabId) throw new Error("needs the web tab");
     const tab = `[data-web-tab="${webTabId}"]`;

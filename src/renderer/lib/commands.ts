@@ -26,7 +26,6 @@ import {
   renameApp,
   selectApp,
   selectedId,
-  sendPrompt,
   setAgentCollapsed,
   setRuntime,
   setTabPinned,
@@ -41,6 +40,7 @@ import { isSidebarCollapsed, toggleSidebar } from "./layout";
 import { removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "./splits";
 import { pageOf } from "./webtabs";
 import { unloadOtherTabs } from "./unload";
+import { sendWithShares } from "./sharing";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { toast } from "../components/Toast";
 
@@ -216,7 +216,7 @@ function askAgent(id: string, prompt: string) {
   setAgentCollapsed(id, false);
   const page = pageOf(id);
   if (page) page.send(prompt);
-  else void sendPrompt(id, prompt);
+  else void sendWithShares(id, prompt);
 }
 
 function scrollToWorkspaceSettings() {

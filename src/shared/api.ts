@@ -463,6 +463,32 @@ export interface ChatRequest {
   agent?: Partial<AgentChoice>;
   /** Web tabs and app previews: the page and the elements the user picked. */
   page?: PageContext;
+  /** Other tabs shared with the message (server: agent/sharedTabs.ts). */
+  shared?: SharedTab[];
+}
+
+/** Another tab shared with a message: mentioned (@name), or one of its agent's replies handed over. */
+export interface SharedTab {
+  tabId: string;
+  /** A reply of that tab's agent. */
+  messageId?: number;
+  /** What its page shows (only sent to website agents: they have no tools of their own). */
+  page?: { url: string; title: string; text: string; selection?: string };
+}
+
+/**
+ * Why `source` can't be shared with the agent of `recipient`, or null if it can.
+ * Web pages and website agents' replies are untrusted: they only go to website
+ * agents, never to an app builder (it has file and shell tools).
+ */
+export function shareRefusal(recipient: Pick<AppSummary, "id" | "kind" | "workspaceId">, source: Pick<AppSummary, "id" | "kind" | "workspaceId" | "name"> | null | undefined) {
+  if (!source) return "That tab doesn't exist anymore.";
+  if (source.id === recipient.id) return "That's this tab itself.";
+  if (source.workspaceId !== recipient.workspaceId) return `“${source.name}” is in another workspace.`;
+  if (recipient.kind === "app" && source.kind === "web") {
+    return `“${source.name}” is a web page. Web pages (and what a website agent made of them) can't be shared with the app builder, which has file and shell tools: describe what you need from it in your own words instead.`;
+  }
+  return null;
 }
 
 /** An element picked in a page, as described by the picker script. */
@@ -759,7 +785,7 @@ export interface NetworkRule {
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule" | "agent.tab";
 
 export interface PermissionGrant {
   id: number;

@@ -138,12 +138,24 @@ Providers are detected at startup (Settings → Providers shows their status,
 version and models). The picker in the composer chooses provider, model and
 effort per tab. Every provider gets the same instructions and NathApp's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
-`restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, the schedule tools, `set_app_info`, `search_icons`, and the
+`restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, the schedule tools, `set_app_info`, `search_icons`, the
+tab tools (`list_tabs`, `read_tab`) and the
 page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
 that work on the preview or the web page. File editing is the provider's own.
 
 Auth is always the provider's own login: no API keys (NathApp strips
 `ANTHROPIC_API_KEY` from Claude's environment on purpose).
+
+### Shared tab context
+
+Agents can use what's in other tabs of the workspace, when the user shares it:
+- **Mentions:** typing `@` in a composer lists the workspace's other tabs; picking one shares it with the next message (a chip above the text, removable).
+- **Hand-off:** "Send to…" under an agent's reply passes it to another tab's agent: that tab opens with the reply attached to its next message.
+- **Agents asking:** `list_tabs` names the other tabs; `read_tab` reads one after the user allows it (permission `agent.tab`, per tab, rememberable).
+
+What the agent gets (`agent/sharedTabs.ts`, built on the server): a web page's URL, title, selected text and visible text (the main content, up to 30k characters, read by the renderer and waking an unloaded tab); for an app, its tools and how its data is laid out (tables and columns, never rows); and the handed-over reply. It's wrapped in `<shared-tab>`, marked as the tab's content rather than the user's instructions, and every share is in Activity. Only tabs of the same workspace can be shared.
+
+Web pages are untrusted, and so is what a website agent made of one: they only go to website agents, which have no tools of their own (`access: "none"`), never to an app builder (`shareRefusal`, checked by the server). An app's page isn't shared with app builders either, since it can show data from anywhere; they get its tools and data layout.
 
 ### AI in apps
 

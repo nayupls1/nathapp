@@ -18,6 +18,7 @@ const icons: Record<PermissionRequest["action"], string> = {
   "app.data": "database",
   "app.tool": "wrench",
   "agent.schedule": "calendar-clock",
+  "agent.tab": "app-window",
 };
 
 /** Mount once at the app root. */

@@ -28,7 +28,8 @@ import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { networkTools } from "./networkTools";
-import { appTools, pageTools, registryTools, scheduleTools, siteTools, type ToolEnv } from "./tools";
+import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
+import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools, type ToolEnv } from "./tools";
 
 /** Tool arguments for the audit log: short values as they are, long ones by size. */
 export function summarizeArgs(args: unknown): string | null {
@@ -46,6 +47,8 @@ export interface TurnRequest {
   readonly prompt: string;
   readonly agent?: Partial<AgentChoice>;
   readonly page?: PageContext;
+  /** Other tabs the user shared with the message (sharedTabs.ts). */
+  readonly shared?: readonly SharedTabInput[];
 }
 
 export interface AgentShape {
@@ -107,7 +110,7 @@ export const make = Effect.gen(function* () {
     };
   };
 
-  const turn = (app: AppRecord, choice: AgentChoice, request: TurnRequest) =>
+  const turn = (app: AppRecord, choice: AgentChoice, request: TurnRequest, shared: { text: string; summaries: unknown[] }) =>
     Effect.gen(function* () {
       const appId = app.id;
       const s = yield* settings.get();
@@ -116,6 +119,12 @@ export const make = Effect.gen(function* () {
       const combine = (global: string, local: string | undefined) => [global.trim(), local?.trim()].filter(Boolean).join("\n\n");
       yield* emit(appId, { type: "started" });
       if (request.page?.selection.length) yield* message(appId, "context", contextSummary(request.page));
+      if (shared.summaries.length) {
+        yield* message(appId, "context", JSON.stringify({ shared: shared.summaries }));
+        for (const s of shared.summaries as { tabId: string; name: string; what: string }[]) {
+          yield* audit.record({ actor: "user", actorLabel: "You", tabId: appId, action: "tab.share", target: s.name, detail: `${s.what} of tab ${s.tabId}` });
+        }
+      }
       yield* message(appId, "user", request.prompt);
       yield* apps.touch(appId);
 
@@ -134,12 +143,14 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
+            ...(yield* Effect.provide(tabTools(env), context)),
           ]
         : [
             ...(yield* Effect.provide(appTools(env), context)),
             ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
             ...(yield* Effect.provide(scheduleTools(env), context)),
+            ...(yield* Effect.provide(tabTools(env), context)),
           ];
       const mcpUrl = yield* mcp.register(tools.map((t) => audited(t, appId, actorLabel)));
       // Snapshots around the turn: what changed before it (the user, the app's data), and what the agent changed.
@@ -164,7 +175,7 @@ export const make = Effect.gen(function* () {
       const driver = providers.driver(choice.provider);
       const input = (resume: string | null): TurnInput => ({
         cwd,
-        prompt: withPageContext(request.prompt, request.page),
+        prompt: withSharedTabs(withPageContext(request.prompt, request.page), shared.text),
         instructions,
         model: choice.model,
         effort: choice.effort,
@@ -224,6 +235,10 @@ export const make = Effect.gen(function* () {
         if (yield* FiberMap.has(running, appId)) {
           return yield* new AgentError({ status: 409, message: "The agent is already working on this tab" });
         }
+        // Shared tabs are checked before the turn starts: one that may not be shared fails the request.
+        const shared = request.shared?.length
+          ? yield* Effect.provide(sharedContext(app, request.shared), context).pipe(Effect.mapError((message) => new AgentError({ status: 400, message })))
+          : { text: "", summaries: [] };
         const s = yield* settings.get();
         // New tabs start with the workspace's default agent, if it has one.
         const defaults = (yield* workspaces.ofApp(appId))?.settings.agent ?? s.agent;
@@ -236,7 +251,7 @@ export const make = Effect.gen(function* () {
           });
         }
         yield* apps.setAgent(appId, choice);
-        yield* FiberMap.run(running, appId, turn(app, choice, request), { onlyIfMissing: true });
+        yield* FiberMap.run(running, appId, turn(app, choice, request, shared), { onlyIfMissing: true });
       }),
   } satisfies AgentShape;
 });

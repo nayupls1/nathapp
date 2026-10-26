@@ -28,6 +28,7 @@ import { Settings as SettingsSchema, WorkspaceSettings } from "../shared/setting
 import { Agent } from "./agent/Agent";
 import { Mcp } from "./agent/Mcp";
 import { PageContextInput } from "./agent/prompts";
+import { MAX_SHARED_TABS, SharedTabInput } from "./agent/sharedTabs";
 import { Ai, type AiEvent } from "./ai/Ai";
 import { AiTokens } from "./ai/AiTokens";
 import { Audit } from "./security/Audit";
@@ -458,6 +459,7 @@ const appRoutes = HttpRouter.addAll([
               }),
             ),
             page: Schema.optionalKey(PageContextInput),
+            shared: Schema.optionalKey(Schema.Array(SharedTabInput).check(Schema.isMaxLength(MAX_SHARED_TABS))),
           }),
         );
         if (!request.prompt.trim()) return yield* fail(400, "prompt is required");
@@ -466,6 +468,7 @@ const appRoutes = HttpRouter.addAll([
             prompt: request.prompt.trim(),
             agent: request.agent as { provider?: ProviderId; model?: string | null; effort?: string | null } | undefined,
             page: request.page as never,
+            shared: request.shared,
           })
           .pipe(Effect.catchTag("AgentError", (e) => fail(e.status, e.message)));
         return json({ ok: true }, 202);
@@ -1452,7 +1455,7 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool", "agent.schedule"] as const satisfies readonly PermissionAction[];
+const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool", "agent.schedule", "agent.tab"] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(

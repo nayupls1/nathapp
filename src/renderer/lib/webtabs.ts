@@ -10,7 +10,7 @@ import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
 import { appById, isTab, newWebTab, openTab, selectedId, toggleAgent } from "./store";
-import type { SavedPage } from "./pagestate";
+import { readPageScript, type SavedPage } from "./pagestate";
 import { toggleSidebar } from "./layout";
 
 export interface PageInfo {
@@ -122,6 +122,8 @@ handleRpc("page.eval", async ({ tabId, code }) => (await page(tabId)).eval(Strin
 handleRpc("page.capture", async ({ tabId }) => (await page(tabId)).capture());
 handleRpc("page.navigate", async ({ tabId, url }) => (await page(tabId)).navigate(String(url)));
 handleRpc("page.reload", async ({ tabId }) => (await page(tabId)).reload());
+// read_tab (shared tab context): what another tab's page shows, as text.
+handleRpc("page.read", async ({ tabId }) => (await page(tabId)).eval(readPageScript));
 // The agent just saved the site's customization: apply the fresh version (the
 // realtime notification may not have arrived yet).
 handleRpc("page.applyOverride", async ({ tabId }) => {

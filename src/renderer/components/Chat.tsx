@@ -1,13 +1,16 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, For, Match, on, Show, Switch, type JSX } from "solid-js";
+import { createEffect, createSignal, For, Match, on, Show, Switch, type JSX } from "solid-js";
 import type { ChatMessage } from "../../shared/api";
 import { markdownToHtml } from "../../shared/markdown";
 import { settings } from "../lib/settings";
-import { appById, sendPrompt, setAgentCollapsed, states, stopAgent } from "../lib/store";
+import { handOver, refusal, sendWithShares } from "../lib/sharing";
+import { appById, apps, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
 import { SecretRequestCard } from "./Secrets";
+import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
+import { toast } from "./Toast";
 
 export function Chat(props: {
   appId: string;
@@ -64,7 +67,7 @@ export function Chat(props: {
           placeholder={props.web ? "Ask about or change this page…" : undefined}
           top={props.page?.top}
           tools={props.page?.tools}
-          onSend={(prompt) => (props.page ? props.page.onSend(prompt) : sendPrompt(props.appId, prompt))}
+          onSend={(prompt) => (props.page ? props.page.onSend(prompt) : sendWithShares(props.appId, prompt))}
           onStop={() => stopAgent(props.appId)}
         />
       </div>
@@ -79,7 +82,7 @@ function Message(props: { appId: string; message: ChatMessage }) {
         <p {...stylex.attrs(styles.user)}>{props.message.content}</p>
       </Match>
       <Match when={props.message.role === "assistant"}>
-        <Markdown text={props.message.content} />
+        <Reply appId={props.appId} message={props.message} />
       </Match>
       <Match when={props.message.role === "tool"}>
         <p {...stylex.attrs(styles.tool)}>✓ {props.message.content}</p>
@@ -97,6 +100,58 @@ function Message(props: { appId: string; message: ChatMessage }) {
   );
 }
 
+/** An agent's reply, with "Send to…": hands it over to another tab's agent (lib/sharing.ts). */
+function Reply(props: { appId: string; message: ChatMessage }) {
+  const [menu, setMenu] = createSignal<MenuPosition>();
+  const targets = (): MenuItem[] => {
+    const self = appById(props.appId);
+    if (!self) return [];
+    return apps
+      .filter((t) => t.workspaceId === self.workspaceId && t.id !== self.id)
+      .sort((a, b) => a.position - b.position)
+      .map((t) => {
+        // Asked the other way round: may this tab's reply go to t?
+        const why = refusal(t.id, self.id);
+        return {
+          label: why ? `${t.name} (not for app builders)` : t.name,
+          icon: t.kind === "web" ? "globe" : "app-window",
+          disabled: !!why,
+          onSelect: () =>
+            void handOver(self.id, props.message.id, t.id).then((err) => err && toast({ message: err, kind: "error" })),
+        };
+      });
+  };
+  return (
+    <div {...stylex.attrs(stylex.defaultMarker(), styles.reply)} data-reply={props.message.id}>
+      <Markdown text={props.message.content} />
+      <Show when={props.message.id > 0}>
+        <button
+          type="button"
+          title="Send this reply to another tab's agent"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setMenu(menu() ? undefined : { x: r.left, y: r.bottom + 4 });
+          }}
+          {...stylex.attrs(styles.handOver)}
+          data-hand-over
+        >
+          <Icon name="forward" size={13} />
+          Send to…
+        </button>
+      </Show>
+      <Show when={menu()}>
+        {(position) => (
+          <ContextMenu
+            items={targets().length ? targets() : [{ label: "No other tabs here", disabled: true, onSelect: () => {} }]}
+            position={position()}
+            onClose={() => setMenu()}
+          />
+        )}
+      </Show>
+    </div>
+  );
+}
+
 /** Assistant text (Markdown; escaped, so it can't inject markup). Links open as web tabs. */
 function Markdown(props: { text: string }) {
   return (
@@ -106,17 +161,29 @@ function Markdown(props: { text: string }) {
   );
 }
 
-/** The elements the user picked with a message (stored as JSON). */
+/** What came with a message (stored as JSON): the elements the user picked, or the tabs they shared. */
 function PickedContext(props: { content: string }) {
-  const picked = () => {
+  const parsed = () => {
     try {
-      return (JSON.parse(props.content) as { selection: { selector: string; tag: string; text: string }[] }).selection;
+      return JSON.parse(props.content) as {
+        selection?: { selector: string; tag: string; text: string }[];
+        shared?: { tabId: string; name: string; kind: string; what: string }[];
+      };
     } catch {
-      return [];
+      return {};
     }
   };
+  const picked = () => parsed().selection ?? [];
   return (
     <div {...stylex.attrs(styles.context)}>
+      <For each={parsed().shared ?? []}>
+        {(tab) => (
+          <span {...stylex.attrs(styles.chip)} title={tab.what === "reply" ? "A reply of its agent" : tab.kind === "web" ? "What the page showed" : "What the app can do and how its data is laid out"} data-shared-context>
+            <Icon name={tab.what === "reply" ? "reply" : "at-sign"} size={12} />
+            {tab.name}
+          </span>
+        )}
+      </For>
       <For each={picked()}>
         {(el) => (
           <span {...stylex.attrs(styles.chip)} title={el.selector}>
@@ -249,6 +316,21 @@ const styles = stylex.create({
   tool: { ...bubble, fontSize: font.xs, color: colors.success },
   errorMsg: { ...bubble, fontSize: font.sm, color: colors.danger },
   hint: { ...bubble, fontSize: font.sm, color: colors.muted },
+  reply: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 },
+  handOver: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    height: 22,
+    paddingInline: 6,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: colors.muted,
+    fontSize: font.xs,
+    cursor: "pointer",
+    opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1, ":focus-visible": 1 },
+  },
   context: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 4, marginBottom: -8 },
   chip: {
     display: "inline-flex",

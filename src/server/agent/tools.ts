@@ -22,6 +22,7 @@ import { Workspace } from "../workspace/Workspace";
 import { Permissions, WEBSITE_AGENT } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
+import { sharedContext, shareRefusal } from "./sharedTabs";
 import { topics } from "../../shared/hub";
 import { isImageIcon, isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type Schedule, type ScheduleSpec, type ScheduleTask, type ScheduleTrigger, type LogLine, type RuntimeStatus } from "../../shared/api";
 
@@ -727,3 +728,81 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
   ];
 });
 
+// --- Other tabs (shared tab context) ---------------------------------------------------
+
+/** list_tabs and read_tab: another tab of the workspace, with the user's OK (sharedTabs.ts says what may be shared). */
+export const tabTools = Effect.fn(function* (env: ToolEnv) {
+  const apps = yield* Apps;
+  const permissions = yield* Permissions;
+  const hub = yield* Hub;
+  const context = yield* Effect.context<Apps | Runtime | AppTools | AppData>();
+  const others = Effect.gen(function* () {
+    const self = yield* apps.get(env.tabId);
+    const all = yield* apps.list();
+    return { self, tabs: self ? all.filter((t) => t.workspaceId === self.workspaceId && t.id !== self.id) : [] };
+  });
+
+  return [
+    tool(
+      "list_tabs",
+      "The user's other tabs in this workspace (apps and web pages), with ids for read_tab. Only names: read_tab gets what's in one, after the user allows it.",
+      NoArgs,
+      () =>
+        Effect.gen(function* () {
+          const { self, tabs } = yield* others;
+          if (!tabs.length) return "No other tabs in this workspace.";
+          return tabs
+            .map((t) => {
+              const refusal = self ? shareRefusal(self, t) : null;
+              return `- ${t.id}: ${t.name} (${t.kind === "web" ? "web page" : "app"})${refusal ? " — can't be shared with you" : ""}`;
+            })
+            .join("\n");
+        }),
+    ),
+
+    tool(
+      "read_tab",
+      "Read another tab of this workspace, after the user allows it: an app's tools and data layout (plus a web page's text, for the website agent), and the last reply of that tab's agent. Use it when the user refers to another tab, or a result from one would help.",
+      Schema.Struct({ tab: Schema.String.annotate({ description: "The tab's id from list_tabs, or its exact name" }) }),
+      ({ tab }) =>
+        Effect.gen(function* () {
+          const { self, tabs } = yield* others;
+          if (!self) return text("This tab no longer exists.", true);
+          const named = tabs.filter((t) => t.name.toLowerCase() === tab.trim().toLowerCase());
+          const source = tabs.find((t) => t.id === tab) ?? (named.length === 1 ? named[0] : undefined);
+          if (!source) return text(named.length > 1 ? `Several tabs are called “${tab}”: use its id from list_tabs.` : `No tab “${tab}” in this workspace (see list_tabs).`, true);
+          const refusal = shareRefusal(self, source);
+          if (refusal) return text(refusal, true);
+          const reader = self.kind === "web" ? "website agent" : "app builder";
+          const allowed = yield* permissions.ask({
+            subject: self.id,
+            action: "agent.tab",
+            resource: source.id,
+            title: `Let the ${reader} in “${self.name}” read “${source.name}”?`,
+            detail:
+              source.kind === "web"
+                ? `It wants to read what the page in “${source.name}” shows (${source.url ?? "no page"}) and the last reply of its agent.`
+                : `It wants to see what the app “${source.name}” can do (its tools), how its data is laid out (tables and columns, not their rows)${self.kind === "web" ? ", what its page shows" : ""} and the last reply of its agent.`,
+            timeoutMs: 120_000,
+          });
+          if (!allowed) return text(`The user didn't allow reading “${source.name}”.`, true);
+          // The page's text only for agents without tools of their own (sharedTabs.ts).
+          const page =
+            self.kind === "web"
+              ? yield* hub
+                  .rpc<{ url: string; title: string; text: string; selection?: string } | null>("page.read", { tabId: source.id }, 45_000)
+                  .pipe(Effect.orElseSucceed(() => null))
+              : null;
+          const reply = (yield* apps.messages(source.id)).filter((m) => m.role === "assistant").at(-1);
+          return yield* Effect.provide(
+            sharedContext(self, [{ tabId: source.id, ...(page ? { page } : {}), ...(reply ? { messageId: reply.id } : {}) }]),
+            context,
+          ).pipe(
+            Effect.tap(() => env.log(`Read “${source.name}”`)),
+            Effect.map((shared): string | ReturnType<typeof text> => shared.text),
+            Effect.catch((message: string) => Effect.succeed(text(message, true))),
+          );
+        }),
+    ),
+  ];
+});
