@@ -63,6 +63,8 @@ export const Settings = Schema.Struct({
     webInstructions: Instructions,
     /** Show tool activity ("Edited src/App.tsx") in the chat. */
     showToolMessages: Schema.Boolean.pipe(withDefault(true)),
+    /** ask: agents ask before anything beyond their tab (customizing sites, other apps, schedules, acting on sites…). full: they don't; it's still logged. */
+    permissions: Schema.Literals(["ask", "full"]).pipe(withDefault("ask")),
   }).pipe(withDefault({})),
   providers: Schema.Struct({
     claude: ProviderSettings.pipe(withDefault({})),

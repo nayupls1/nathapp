@@ -69,6 +69,7 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
       const host = hostOf(url);
       if (!host) return { host, allowed: false };
       const allowed = yield* permissions.ask({
+        agentTab: env.tabId,
         subject: WEBSITE_AGENT,
         action: "agent.network",
         resource: host,

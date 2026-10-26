@@ -192,6 +192,7 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
     const resource = spec.scope.type === "page" ? spec.scope.value.split("/")[0]! : spec.scope.value;
     const where = spec.scope.type === "pattern" ? `pages matching ${resource}` : resource;
     return permissions.ask({
+      agentTab: env.tabId,
       subject: WEBSITE_AGENT,
       action: "agent.site",
       resource,
@@ -237,6 +238,7 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
           if (js) yield* Effect.try(() => checkSyntax(js));
           // Changing what a site runs needs the user's OK (once per site, or remembered).
           const allowed = yield* permissions.ask({
+            agentTab: env.tabId,
             subject: WEBSITE_AGENT,
             action: "agent.site",
             resource: host,
@@ -436,6 +438,7 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
   const allowed = Effect.gen(function* () {
     const app = yield* apps.get(appId);
     return yield* permissions.ask({
+      agentTab: appId,
       subject: appId,
       action: "agent.schedule",
       resource: appId,
@@ -775,6 +778,7 @@ export const tabTools = Effect.fn(function* (env: ToolEnv) {
           if (refusal) return text(refusal, true);
           const reader = self.kind === "web" ? "website agent" : "app builder";
           const allowed = yield* permissions.ask({
+            agentTab: self.id,
             subject: self.id,
             action: "agent.tab",
             resource: source.id,

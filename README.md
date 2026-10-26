@@ -317,6 +317,8 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 
 NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
 
+**Full access** (Settings → Agent → Permissions, after a warning) lets agents do all of this without asking: what the website agent does on sites (customizing, acting with your logins, confirming purchases and messages, sending requests), reading other tabs, using other apps' tools and data, scheduling. Apps' own requests (AI, global secrets, other apps' data from their servers) still ask. While it's on, the agent sidebar shows a red "Full access" badge (click it to go back to asking) and working agents a red dot in the tab list. Every request allowed this way is in Activity (`permission.auto`), and History can still undo what an agent changed in apps and customizations (not what it did on websites).
+
 The **Activity** page (sidebar) is the audit log: who, what, which tab and when. It records:
 - every agent turn and tool call (arguments summarized, long text only as a size);
 - AI requests;

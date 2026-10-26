@@ -34,6 +34,7 @@ import {
 } from "../lib/store";
 import { draggedSplit, draggedTab, isSidebarCollapsed, setDraggedSplit, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
 import { canUnload, unloadTab } from "../lib/unload";
+import { fullAccess } from "../lib/access";
 import { evenSplit, placeInSplit, removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "../lib/splits";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
@@ -672,7 +673,11 @@ function Item(props: { app: AppSummary }) {
         <Icon name="pin" size={12} {...stylex.attrs(styles.pin)} aria-label="Kept loaded" />
       </Show>
       <Show when={running()}>
-        <span {...stylex.attrs(styles.dot, isSidebarCollapsed() && styles.dotCompact)} title="Agent is working" />
+        <span
+          {...stylex.attrs(styles.dot, isSidebarCollapsed() && styles.dotCompact, fullAccess() && styles.dotFull)}
+          title={fullAccess() ? "Agent is working with full access (it doesn't ask)" : "Agent is working"}
+          data-running-full={fullAccess() ? "" : undefined}
+        />
       </Show>
       <Show when={!isSidebarCollapsed()}>
         <button
@@ -785,6 +790,7 @@ const styles = stylex.create({
   dropBefore: { boxShadow: `0 -2px 0 0 ${colors.accent}` },
   dropAfter: { boxShadow: `0 2px 0 0 ${colors.accent}` },
   dotCompact: { position: "absolute", top: 5, right: 5 },
+  dotFull: { backgroundColor: colors.danger },
   switcher: {
     display: "flex",
     alignItems: "center",

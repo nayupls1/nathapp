@@ -76,6 +76,7 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
       const host = hostOf(url);
       if (!host) return "No website is open in this tab.";
       const ok = yield* permissions.ask({
+        agentTab: env.tabId,
         subject: WEBSITE_AGENT,
         action: "agent.browse",
         resource: host,
@@ -89,6 +90,7 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
   /** The user's OK for this one action. */
   const confirm = (what: string, url: string) =>
     permissions.ask({
+      agentTab: env.tabId,
       subject: WEBSITE_AGENT,
       action: "agent.confirm",
       resource: hostOf(url) || url,

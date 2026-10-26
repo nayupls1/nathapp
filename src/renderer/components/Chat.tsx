@@ -3,6 +3,7 @@ import { createEffect, createResource, createSignal, For, Match, on, onCleanup, 
 import { Portal } from "solid-js/web";
 import type { ChatMessage } from "../../shared/api";
 import { markdownToHtml } from "../../shared/markdown";
+import { FULL_ACCESS_WARNING, fullAccess, setFullAccess } from "../lib/access";
 import { isPicking, picksOf } from "../lib/picks";
 import { settings } from "../lib/settings";
 import { handOver, refusal, sendWithShares } from "../lib/sharing";
@@ -47,6 +48,18 @@ export function Chat(props: { appId: string }) {
         <span {...stylex.attrs(styles.headerTab)} title="The tab the agent works on" data-agent-tab-name>
           {tab()?.name ?? ""}
         </span>
+        <Show when={fullAccess()}>
+          <button
+            type="button"
+            title={`Full access: agents don't ask before acting. ${FULL_ACCESS_WARNING} Click to make them ask again.`}
+            onClick={() => void setFullAccess(false)}
+            {...stylex.attrs(styles.fullAccess)}
+            data-full-access
+          >
+            <Icon name="shield-off" size={12} />
+            Full access
+          </button>
+        </Show>
         <button
           type="button"
           title="New chat (this one is kept in the chat history)"
@@ -309,6 +322,21 @@ const styles = stylex.create({
   headerTitle: { flexShrink: 0, fontSize: font.sm, fontWeight: 600 },
   headerTab: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.muted, fontSize: font.sm },
   chips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
+  fullAccess: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 0,
+    height: 22,
+    paddingInline: 8,
+    borderWidth: 0,
+    borderRadius: radius.full,
+    backgroundColor: colors.danger,
+    color: "#ffffff",
+    fontSize: font.xs,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
   history: {
     position: "fixed",
     zIndex: 1000,

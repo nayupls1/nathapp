@@ -1638,6 +1638,24 @@ try {
     return `opened ${name} and its page, saved a snapshot, renamed it`;
   });
 
+  await check("full access: switched on in Settings after a warning, shown in the agent sidebar, switched off there", async () => {
+    await click("nav button", "Settings");
+    await page!.waitFor(`!!document.querySelector("[data-permission-mode]")`, { label: "permissions setting" });
+    await click("[data-permission-mode] button", "Full access");
+    await page!.waitFor(`document.querySelector("[data-confirm-dialog]")?.innerText.includes("A web page can try")`, { label: "warning" });
+    await shot("full-access-warning.png");
+    await click("[data-confirm-dialog] [data-confirm]");
+    await waitForValue(async () => ((await apiCall<{ agent: { permissions: string } }>("/api/settings")).agent.permissions === "full" ? true : undefined));
+    await click(`nav li[data-app-id="${appId}"]`);
+    const panel = `[data-agent-for="${appId}"]`;
+    if (!(await page!.eval<boolean>(`!!document.querySelector('${panel}')`))) await click(`[data-app-tab="${appId}"] [data-agent-show]`);
+    await page!.waitFor(`!!document.querySelector('${panel} [data-full-access]')`, { label: "full access badge" });
+    await click(`${panel} [data-full-access]`);
+    await page!.waitFor(`!document.querySelector("[data-full-access]")`, { label: "badge gone" });
+    await waitForValue(async () => ((await apiCall<{ agent: { permissions: string } }>("/api/settings")).agent.permissions === "ask" ? true : undefined));
+    return "on with a warning, badge shown, back to asking";
+  });
+
   await check("settings: theme presets apply and prompt additions are saved", async () => {
     await click("nav button", "Settings");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });

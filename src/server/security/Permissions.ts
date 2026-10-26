@@ -9,6 +9,7 @@ import { SqlClient } from "effect/sql";
 import { workspaceOfScope, workspaceScope, type PermissionAction, type PermissionGrant, type PermissionRequest } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { Apps } from "../db/Apps";
+import { Settings } from "../db/Settings";
 import { Hub } from "../Hub";
 import { Audit } from "./Audit";
 
@@ -43,6 +44,8 @@ export interface AskInput {
   readonly timeoutMs: number;
   /** Asked every time: the answer is never remembered (confirming one action). */
   readonly once?: boolean;
+  /** The tab whose agent asks. With full access (Settings → Agent) it's allowed without asking, and logged. */
+  readonly agentTab?: string;
 }
 
 export interface PermissionsShape {
@@ -75,6 +78,7 @@ export const make = Effect.gen(function* () {
   const hub = yield* Hub;
   const audit = yield* Audit;
   const apps = yield* Apps;
+  const settings = yield* Settings;
   const waiting = new Map<string, { request: PermissionRequest; deferred: Deferred.Deferred<boolean> }>();
 
   const toGrant = (r: GrantRow): PermissionGrant => ({
@@ -133,6 +137,17 @@ export const make = Effect.gen(function* () {
 
     ask: (input) =>
       Effect.gen(function* () {
+        if (input.agentTab && (yield* settings.get()).agent.permissions === "full") {
+          yield* audit.record({
+            actor: "nathapp",
+            actorLabel: "Full access",
+            tabId: input.agentTab,
+            action: "permission.auto",
+            target: `${input.action}${input.resource ? ` ${input.resource}` : ""}`,
+            detail: `Allowed without asking (full access): ${input.title}`,
+          });
+          return true;
+        }
         const known = input.once ? null : yield* decision(input.subject, input.action, input.resource);
         if (known) return known === "allow";
         // The same question asked twice while waiting gets the same answer.

@@ -21,6 +21,7 @@ import { PageChangeRows } from "./PageChanges";
 import { openExtensionImport } from "./ExtensionImport";
 import { Icon } from "./Icon";
 import { ProviderIcon } from "./ProviderIcon";
+import { setFullAccess } from "../lib/access";
 import { SecretForm, SecretRow } from "./Secrets";
 import { Button, Select } from "./ui";
 
@@ -148,6 +149,21 @@ export function SettingsPage() {
             onInput={(webInstructions) => set("agent", { webInstructions })}
             name="webInstructions"
           />
+        </Row>
+        <Row
+          label="Permissions"
+          description="Ask for everything: agents ask before customizing or using sites, reading other tabs, using other apps or scheduling. Full access: they don't ask (still logged in Activity)."
+        >
+          <div data-permission-mode>
+            <Segmented
+              value={settings().agent.permissions}
+              options={[
+                ["ask", "Ask for everything"],
+                ["full", "Full access"],
+              ]}
+              onChange={(mode) => void setFullAccess(mode === "full")}
+            />
+          </div>
         </Row>
         <Row label="Show tool activity" description='Lines like "Edited src/App.tsx" or "Ran bun add zod" in the chat.'>
           <Toggle checked={settings().agent.showToolMessages} onChange={(showToolMessages) => set("agent", { showToolMessages })} />

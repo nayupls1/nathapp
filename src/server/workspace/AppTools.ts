@@ -217,6 +217,7 @@ export const make = Effect.gen(function* () {
       const who = caller.kind === "agent" ? `The agent in "${from.name}"` : `"${from.name}"`;
       const allowed = tool.readOnly
         ? yield* permissions.ask({
+            ...(caller.kind === "agent" ? { agentTab: caller.tabId } : {}),
             subject: from.id,
             action: "app.data",
             resource: target.id,
@@ -225,6 +226,7 @@ export const make = Effect.gen(function* () {
             timeoutMs: 120_000,
           })
         : yield* permissions.ask({
+            ...(caller.kind === "agent" ? { agentTab: caller.tabId } : {}),
             subject: from.id,
             action: "app.tool",
             resource: `${target.id}/${tool.id}`,
