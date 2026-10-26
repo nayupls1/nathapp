@@ -220,6 +220,8 @@ It's resized like the tab sidebar: drag its left edge (or use the arrow keys on 
 
 The sidebar collapses to a column of icons (the button next to the workspace, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
 
+Its pages (History, Schedules, Mods, Activity, Settings) are a row of icon buttons at the bottom, each named by its tooltip and label (a column when the sidebar is collapsed).
+
 Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in their menu). The order is saved per workspace (`PUT /api/workspaces/:id/order`); new tabs, copies and tabs moved in from another workspace go last.
 
 Every tab can have its own icon ("Change icon…" in its menu): a Lucide icon (searchable), an emoji or an uploaded image (scaled to a 64px PNG). It's shown in the sidebar and the command bar; "Use the default" brings back the app icon or the site's favicon. An app's agent picks an icon with `set_app_info` (a Lucide name, or `icon_file`, an image from the project), but never replaces one you chose.

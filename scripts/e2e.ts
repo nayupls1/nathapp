@@ -224,7 +224,7 @@ try {
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 
   await check("app boots and shows the sidebar", async () => {
-    await page!.waitFor(`document.querySelector("nav")?.innerText.includes("Settings")`, { timeoutMs: 20_000 });
+    await page!.waitFor(`!!document.querySelector('[data-page-link="Settings"]')`, { timeoutMs: 20_000 });
   });
 
   await check("providers are detected", async () => {
@@ -326,7 +326,7 @@ try {
     await click(`${appTab()} [data-history-button]`);
 
     // The History page has everything in the workspace.
-    await click("nav button", "History");
+    await click('[data-page-link="History"]');
     await page!.waitFor(`document.querySelectorAll("[data-history-page] [data-snapshot]").length >= 3`, { label: "history page" });
     // An entry opened on the page offers putting everything back to that moment.
     await click("[data-history-page] [data-snapshot] button");
@@ -386,7 +386,7 @@ try {
         select.dispatchEvent(new Event("change", { bubbles: true }));
         return true;
       })()`);
-    await click("nav button", "Schedules");
+    await click('[data-page-link="Schedules"]');
     await page!.waitFor(`!!document.querySelector("[data-schedules]")`, { label: "schedules page" });
     await click("[data-new-schedule]");
     await page!.waitFor(`!!document.querySelector("[data-schedule-editor]")`, { label: "editor" });
@@ -460,7 +460,7 @@ try {
   });
 
   await check("activity: the audit log shows what happened", async () => {
-    await click("nav button", "Activity");
+    await click('[data-page-link="Activity"]');
     await page!.waitFor(`!!document.querySelector('[data-activity] [data-audit-action="secret.create"]') && !!document.querySelector('[data-activity] [data-audit-action="permission.deny"]')`, {
       label: "secret and permission entries",
     });
@@ -665,6 +665,38 @@ try {
     await page!.waitFor(`!document.querySelector("[data-chat-history]")`, { label: "closed" });
     const chats = await apiCall<unknown[]>(`/api/apps/${appId}/chats`);
     if (chats.length) throw new Error("unexpected chats");
+  });
+
+  await check("sidebar footer: one row of icon buttons with labels, also at the minimum width", async () => {
+    const layout = () =>
+      page!.eval<{ tops: number[]; labels: (string | null)[]; texts: string[]; inside: boolean }>(`(() => {
+        const nav = document.querySelector("nav").getBoundingClientRect();
+        const links = [...document.querySelectorAll("[data-page-link]")];
+        return {
+          tops: [...new Set(links.map((b) => Math.round(b.getBoundingClientRect().top)))],
+          labels: links.map((b) => b.getAttribute("aria-label")),
+          texts: links.map((b) => b.innerText.trim()).filter(Boolean),
+          inside: links.every((b) => b.getBoundingClientRect().right <= nav.right + 0.5),
+        };
+      })()`);
+    const wide = await layout();
+    if (wide.tops.length !== 1 || wide.texts.length || wide.labels.includes(null)) throw new Error(`footer: ${JSON.stringify(wide)}`);
+    await page!.eval(`(() => {
+      const h = document.querySelector("[data-sidebar-resizer]");
+      const r = h.getBoundingClientRect();
+      h.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: r.left, clientY: 300 }));
+      // Past the minimum width (180 px), not so far that it collapses.
+      window.dispatchEvent(new PointerEvent("pointermove", { clientX: r.left - 80, clientY: 300 }));
+      window.dispatchEvent(new PointerEvent("pointerup", { clientX: r.left - 80, clientY: 300 }));
+      return true;
+    })()`);
+    const narrow = await layout();
+    const width = await page!.eval<number>(`Math.round(document.querySelector("nav").getBoundingClientRect().width)`);
+    if (width !== 180) throw new Error(`expected the minimum width, got ${width}px`);
+    await shot("sidebar-footer-narrow.png");
+    await page!.eval(`document.querySelector("[data-sidebar-resizer]").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })), true`);
+    if (narrow.tops.length !== 1 || !narrow.inside) throw new Error(`at the minimum width: ${JSON.stringify(narrow)}`);
+    return `${wide.labels.join(", ")}`;
   });
 
   await check("sidebar: tabs are reordered by dragging", async () => {
@@ -1226,7 +1258,7 @@ try {
       method: "POST",
       body: { title: "E2E mod change", scope: { type: "site", value: "127.0.0.1" }, action: "css", value: "body { outline: 1px solid red }" },
     });
-    await click("nav button", "Mods");
+    await click('[data-page-link="Mods"]');
     await page!.waitFor(`!!document.querySelector("[data-mods]")`, { label: "mods page" });
 
     await click(`[data-mods-tab="gallery"]`);
@@ -1415,7 +1447,7 @@ try {
   await check("extensions: imported from Chrome with their settings, toolbar, popup, shortcut, blocking", async () => {
     const id = fixture.extensionId;
     // Import from the (fake) browser profile, settings included.
-    await click("nav button", "Settings");
+    await click('[data-page-link="Settings"]');
     await page!.waitFor(`!!document.querySelector('[data-section="extensions"] [data-extensions-import]')`, { label: "extensions settings" });
     await click('[data-section="extensions"] [data-extensions-import]');
     await page!.waitFor(`!!document.querySelector('[data-extension-import] [data-import-candidate="${id}"]')`, { label: "the extension offered", timeoutMs: 15_000 });
@@ -1482,7 +1514,7 @@ try {
     }
 
     // Its options page opens as a web tab; there, its storage tells what it got.
-    await click("nav button", "Settings");
+    await click('[data-page-link="Settings"]');
     await page!.waitFor(`!!document.querySelector('[data-extension="${id}"] [data-extension-options]')`, { label: "options button" });
     await click(`[data-extension="${id}"] [data-extension-options]`);
     const optionsTab = await page!.waitFor<string>(
@@ -1660,7 +1692,7 @@ try {
   });
 
   await check("full access: switched on in Settings after a warning, shown in the agent sidebar, switched off there", async () => {
-    await click("nav button", "Settings");
+    await click('[data-page-link="Settings"]');
     await page!.waitFor(`!!document.querySelector("[data-permission-mode]")`, { label: "permissions setting" });
     await click("[data-permission-mode] button", "Full access");
     await page!.waitFor(`document.querySelector("[data-confirm-dialog]")?.innerText.includes("A web page can try")`, { label: "warning" });
@@ -1678,7 +1710,7 @@ try {
   });
 
   await check("settings: theme presets apply and prompt additions are saved", async () => {
-    await click("nav button", "Settings");
+    await click('[data-page-link="Settings"]');
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
     const rootBg = () => page!.eval<string>(`getComputedStyle(document.querySelector("#root > div")).backgroundColor`);
     await click("[data-preset]", "Midnight");

@@ -108,7 +108,7 @@ export function Sidebar() {
           )}
         </For>
       </ul>
-      <div {...stylex.attrs(styles.footer)}>
+      <div {...stylex.attrs(styles.footer, compact() && styles.footerCompact)} role="toolbar" aria-label="Pages" data-sidebar-footer>
         <Show when={compact()}>
           <CollapseButton />
         </Show>
@@ -411,19 +411,20 @@ export function WorkspaceBadge(props: { workspace: WorkspaceInfo }) {
   );
 }
 
+/** One of the pages at the bottom of the sidebar: an icon button, named by its tooltip and label. */
 function PageLink(props: { id: string; icon: string; label: string }) {
   const selected = () => selectedId() === props.id;
   return (
     <button
       type="button"
-      title={isSidebarCollapsed() ? props.label : undefined}
+      title={props.label}
+      aria-label={props.label}
+      aria-current={selected() ? "page" : undefined}
       onClick={() => selectApp(props.id)}
-      {...stylex.attrs(styles.item, styles.footerItem, selected() && styles.selected, isSidebarCollapsed() && styles.itemCompact)}
+      {...stylex.attrs(styles.pageLink, selected() && styles.pageLinkOn)}
+      data-page-link={props.label}
     >
-      <Icon name={props.icon} size={16} {...stylex.attrs(styles.icon)} />
-      <Show when={!isSidebarCollapsed()}>
-        <span {...stylex.attrs(styles.name)}>{props.label}</span>
-      </Show>
+      <Icon name={props.icon} size={17} />
     </button>
   );
 }
@@ -849,9 +850,11 @@ const styles = stylex.create({
   // Not loaded: dimmed, like a sleeping tab.
   asleep: { opacity: 0.45, filter: "grayscale(0.6)" },
   pin: { flexShrink: 0, color: colors.muted, transform: "rotate(45deg)" },
+  // A row of icon buttons (a column when the sidebar is collapsed to icons).
   footer: {
     display: "flex",
-    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 2,
     marginTop: "auto",
     paddingTop: space.sm,
@@ -859,7 +862,26 @@ const styles = stylex.create({
     borderTopStyle: "solid",
     borderTopColor: colors.border,
   },
-  footerItem: { width: "100%", borderWidth: 0, color: colors.text, textAlign: "left" },
+  footerCompact: { flexDirection: "column", justifyContent: "flex-start" },
+  pageLink: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 1,
+    minWidth: 28,
+    width: 34,
+    height: 34,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.text },
+    cursor: "pointer",
+    outlineStyle: { default: "none", ":focus-visible": "solid" },
+    outlineWidth: 2,
+    outlineColor: colors.accent,
+    outlineOffset: -2,
+  },
+  pageLinkOn: { backgroundColor: { default: colors.surface, ":hover": colors.surface }, color: colors.text, boxShadow: `0 0 0 1px ${colors.border}` },
   name: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   rename: {
     flex: 1,
