@@ -108,7 +108,8 @@ const styles = stylex.create({
     backgroundColor: colors.bg,
   },
   column: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
-  content: { position: "relative", flex: 1, minWidth: 0, minHeight: 0, overflowY: "auto" },
+  // Pages scroll vertically; nothing in it should ever scroll the whole area sideways.
+  content: { position: "relative", flex: 1, minWidth: 0, minHeight: 0, overflowX: "hidden", overflowY: "auto" },
   // Plain colors on purpose: it must stay readable whatever the theme did.
   safeMode: {
     display: "flex",

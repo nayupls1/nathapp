@@ -462,7 +462,9 @@ export function WebTab(props: { appId: string; active: boolean }) {
           </Show>
         </div>
         <Show when={loading()}>
-          <div {...stylex.attrs(styles.progress)} />
+          <div {...stylex.attrs(styles.progressTrack)}>
+            <div {...stylex.attrs(styles.progress)} />
+          </div>
         </Show>
         <div {...stylex.attrs(styles.viewport)}>
           <Show when={src() && prepared()} fallback={<Show when={!src()}><StartPage onGo={go} /></Show>}>
@@ -660,13 +662,11 @@ const styles = stylex.create({
     animationDuration: "1.2s",
     animationIterationCount: "infinite",
   },
+  // The bar slides past the edges, so the track clips it (else the tab overflows and a scrollbar flickers in).
+  progressTrack: { position: "absolute", top: 43, left: 0, right: 0, zIndex: 2, height: 2, overflow: "hidden", pointerEvents: "none" },
   progress: {
-    position: "absolute",
-    top: 43,
-    left: 0,
-    zIndex: 2,
     width: "40%",
-    height: 2,
+    height: "100%",
     backgroundColor: colors.accent,
     animationName: progress,
     animationDuration: "1.1s",
