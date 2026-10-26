@@ -66,7 +66,7 @@ tests/               bun:test tests
 
 ### Workspaces
 
-Workspaces keep projects and contexts apart (switcher at the top of the sidebar). Each has:
+Workspaces keep projects and contexts apart, like Zen Browser's: each is a collection of tabs, shown as icons at the bottom of the tab sidebar. Click one to switch (or Ctrl+Alt+1…9, also from inside web pages), "+" makes a new one, dragging an icon reorders them (`PUT /api/workspaces/order`), dropping a tab on one moves the tab there, and an icon's menu renames it, changes its icon, moves it or deletes it. The current workspace's name is at the top of the sidebar. Each has:
 - its own tabs. Tabs can be moved between workspaces (tab menu → Move to);
 - its own default agent and instructions, added after the global ones (Settings → Workspace);
 - secrets every app in it gets (an app's own secret of the same name wins);

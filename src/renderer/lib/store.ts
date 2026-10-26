@@ -502,6 +502,18 @@ export async function updateWorkspace(id: string, fields: { name?: string; icon?
   upsertWorkspace(await api.updateWorkspace(id, fields));
 }
 
+/** Puts the workspaces in this order: shown right away, then saved. */
+export async function reorderWorkspaces(ids: string[]) {
+  const sorted = [...workspaces].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+  setWorkspaces(reconcile(sorted.map((w) => unwrap(w)), { key: "id" }));
+  try {
+    setWorkspaces(reconcile(await api.reorderWorkspaces(ids), { key: "id" }));
+  } catch (err) {
+    console.error("Saving the workspace order failed:", err);
+    setWorkspaces(reconcile(await api.workspaces(), { key: "id" }));
+  }
+}
+
 /** Deletes a workspace with its tabs and their data, and clears its web tabs' cookies and storage. */
 export async function deleteWorkspace(id: string) {
   await api.deleteWorkspace(id);

@@ -42,6 +42,9 @@ function shortcutFor(input: Input): WebShortcut | undefined {
     if (key === "t") return "new-tab";
   }
   if (mod && input.shift && !input.alt && key === "b") return "toggle-sidebar";
+  // Ctrl+Alt+1…9: the workspace in that place (by the key's position, whatever the layout types).
+  const digit = /^Digit([1-9])$/.exec(input.code ?? "");
+  if (mod && input.alt && !input.shift && digit) return `workspace-${Number(digit[1])}`;
   if (key === "f5" && !mod) return "reload";
   if (input.alt && !mod && key === "arrowleft") return "back";
   if (input.alt && !mod && key === "arrowright") return "forward";

@@ -1469,19 +1469,27 @@ try {
     return `content script with Chrome's data, badge ${badge}, popup on ${popupUrl}, shortcut → ${stored.command}, onInstalled: ${stored.installed.reason}`;
   });
 
-  await check("workspaces: own tabs and web logins, switching keeps state", async () => {
+  await check("workspaces: icons at the bottom, own tabs and web logins, switching keeps state, reorder, move tabs, shortcuts", async () => {
     const tabIds = () => page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.dataset.appId)`);
     const selected = () => page!.eval<string | undefined>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
-    const switcherText = () => page!.eval<string>(`document.querySelector("[data-workspace-switcher]").innerText.trim().split("\\n").pop()`);
-    const pick = async (label: string) => {
-      await click("[data-workspace-switcher]");
+    const header = () => page!.eval<string>(`document.querySelector("[data-workspace-switcher]").innerText.trim().split("\\n").pop()`);
+    const order = () => page!.eval<string[]>(`[...document.querySelectorAll("[data-workspace-bar] [data-workspace]")].map((b) => b.dataset.workspace)`);
+    const menuOn = async (id: string, label: string) => {
+      await page!.eval(`(() => {
+        const b = document.querySelector('[data-workspace="${id}"]');
+        const r = b.getBoundingClientRect();
+        b.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: r.left + 10, clientY: r.top }));
+        return true;
+      })()`);
       await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "workspace menu" });
       await click("[data-context-menu] button", label);
     };
+    const personal = (await apiCall<{ id: string }[]>("/api/workspaces"))[0]!.id;
     const personalTabs = await tabIds();
     const personalSelected = await selected();
 
-    await pick("New workspace");
+    // "+" at the bottom makes one, and its name is typed in the header.
+    await click("[data-new-workspace]");
     await page!.waitFor(`!!document.querySelector("[data-workspace-name]")`, { label: "workspace name field" });
     await page!.eval(`(() => {
       const input = document.querySelector("[data-workspace-name]");
@@ -1491,9 +1499,10 @@ try {
     })()`);
     await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`, { label: "renamed workspace" });
     if ((await tabIds()).length) throw new Error("a new workspace should have no tabs");
+    const client = (await apiCall<{ id: string; name: string }[]>("/api/workspaces")).find((w) => w.name === "Client")!;
+    if ((await order()).join() !== [personal, client.id].join()) throw new Error(`bar: ${(await order()).join()}`);
 
     // A web tab here gets its own session: cookies set in Personal's web tab aren't there.
-    const client = (await apiCall<{ id: string; name: string }[]>("/api/workspaces")).find((w) => w.name === "Client")!;
     const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/`, workspaceId: client.id } });
     await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${tab.id}"]')`, { label: "tab in the sidebar" });
     await click(`nav li[data-app-id="${tab.id}"]`);
@@ -1504,26 +1513,50 @@ try {
     const clientCookies = await inView<string>(`[data-web-tab="${tab.id}"]`, `document.cookie`);
     if (clientCookies.includes("space=personal")) throw new Error("the Client workspace sees Personal's cookies");
 
-    await click("[data-workspace-switcher]");
-    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`);
+    // An icon in the bar, and Ctrl+Alt+1 / 2.
+    await menuOn(client.id, "Change icon…");
+    await page!.waitFor(`!!document.querySelector('[data-icon-picker] [data-icon="briefcase"]')`, { label: "icon picker" });
+    await click('[data-icon-picker] [data-icon="briefcase"]');
+    await waitForValue(async () => ((await apiCall<{ id: string; icon: string | null }[]>("/api/workspaces")).find((w) => w.id === client.id)?.icon === "briefcase" ? true : undefined));
     await shot("workspaces.png");
-    await click("[data-context-menu] button", "Personal");
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "back to Personal" });
+    await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Digit1", ctrlKey: true, altKey: true, bubbles: true })), true`);
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "Ctrl+Alt+1" });
     const back = await tabIds();
     if (back.join() !== personalTabs.join()) throw new Error(`Personal's tabs changed: ${back.join()} vs ${personalTabs.join()}`);
     if ((await selected()) !== personalSelected) throw new Error("the tab selected in Personal wasn't restored");
+    await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", code: "Digit2", ctrlKey: true, altKey: true, bubbles: true })), true`);
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`, { label: "Ctrl+Alt+2" });
+    await click(`[data-workspace="${personal}"]`);
+    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "clicked Personal" });
 
-    // Deleted from its settings, with its tabs.
-    await pick("Client");
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Client")`);
-    await pick("Workspace settings");
-    await page!.waitFor(`!!document.querySelector("[data-delete-workspace]")`, { label: "workspace settings" });
-    await click("[data-delete-workspace]");
+    // Reordered from its menu (saved); a tab dropped on a workspace moves there.
+    await menuOn(client.id, "Move left");
+    await page!.waitFor(`[...document.querySelectorAll("[data-workspace-bar] [data-workspace]")][0]?.dataset.workspace === "${client.id}"`, { label: "reordered" });
+    if ((await apiCall<{ id: string }[]>("/api/workspaces"))[0]!.id !== client.id) throw new Error("the order wasn't saved");
+    const moving = personalTabs.at(-1)!;
+    await page!.eval(`(() => {
+      const from = document.querySelector('nav li[data-app-id="${moving}"]');
+      const to = document.querySelector('[data-workspace="${client.id}"]');
+      const dataTransfer = new DataTransfer();
+      const at = { bubbles: true, cancelable: true, dataTransfer };
+      from.dispatchEvent(new DragEvent("dragstart", at));
+      to.dispatchEvent(new DragEvent("dragover", at));
+      to.dispatchEvent(new DragEvent("drop", at));
+      from.dispatchEvent(new DragEvent("dragend", at));
+      return true;
+    })()`);
+    await waitForValue(async () => ((await apiCall<{ id: string; workspaceId: string }[]>("/api/apps")).find((t) => t.id === moving)?.workspaceId === client.id ? true : undefined));
+    await apiCall(`/api/apps/${moving}/move`, { method: "POST", body: { workspaceId: personal } });
+    await menuOn(client.id, "Move right");
+    await page!.waitFor(`[...document.querySelectorAll("[data-workspace-bar] [data-workspace]")][0]?.dataset.workspace === "${personal}"`, { label: "order back" });
+
+    // Deleted from its menu, with its tabs.
+    await menuOn(client.id, "Delete workspace");
     await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm dialog" });
     await click("[data-confirm-dialog] [data-confirm]");
-    await page!.waitFor(`document.querySelector("[data-workspace-switcher]")?.innerText.includes("Personal")`, { label: "deleted, back to Personal" });
+    await page!.waitFor(`!document.querySelector('[data-workspace="${client.id}"]')`, { label: "deleted" });
     if ((await apiCall<unknown[]>("/api/workspaces")).length !== 1) throw new Error("the workspace wasn't deleted");
-    return `separate cookies; ${await switcherText()} and its selected tab restored`;
+    return `separate cookies; icon, shortcuts, reorder, moved a tab by dropping it; ${await header()} restored`;
   });
 
   await check("command bar: finds tabs and commands, runs app actions, routes free text", async () => {

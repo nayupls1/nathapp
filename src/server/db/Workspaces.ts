@@ -96,6 +96,15 @@ export const make = Effect.gen(function* () {
     /** The ids of its tabs, in their order. */
     appIds: (id: string) => sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id} ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map((r) => r.id))),
 
+    /** Puts the workspaces in this order (unknown ids are ignored, missing ones follow in their old order). */
+    reorder: (ids: readonly string[]) =>
+      Effect.gen(function* () {
+        const current = (yield* sql<{ id: string }>`SELECT id FROM workspaces ORDER BY position, created_at, rowid`).map((r) => r.id);
+        const order = [...ids.filter((id) => current.includes(id)), ...current.filter((id) => !ids.includes(id))];
+        yield* sql.withTransaction(Effect.forEach(order, (id, i) => sql`UPDATE workspaces SET position = ${i} WHERE id = ${id}`, { discard: true }));
+        return order;
+      }),
+
     count: () => sql<{ n: number }>`SELECT COUNT(*) AS n FROM workspaces`.pipe(Effect.map((rows) => rows[0]!.n)),
 
     /** Only the row: its tabs, secrets and permissions are removed by the caller first. */

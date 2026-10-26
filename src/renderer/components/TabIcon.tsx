@@ -4,9 +4,9 @@
 import * as stylex from "@stylexjs/stylex";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { isEmojiIcon, isImageIcon, type AppSummary } from "../../shared/api";
+import { isEmojiIcon, isImageIcon, type AppSummary, type WorkspaceInfo } from "../../shared/api";
 import { rankIcons } from "../../shared/icons";
-import { setTabIcon } from "../lib/store";
+import { setTabIcon, updateWorkspace } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Icon, iconFor, iconTags } from "./Icon";
 import { toast } from "./Toast";
@@ -76,7 +76,8 @@ async function toIconImage(file: File): Promise<string> {
 }
 
 /** Picks a tab's icon: a Lucide icon (searchable), an emoji, an uploaded image, or the default. */
-export function IconPicker(props: { tab: AppSummary; position: { x: number; y: number }; onClose: () => void }) {
+/** Picks a tab's own icon (Lucide, emoji or an uploaded image), or a workspace's (Lucide or emoji). */
+export function IconPicker(props: { tab?: AppSummary; workspace?: WorkspaceInfo; position: { x: number; y: number }; onClose: () => void }) {
   let root!: HTMLDivElement;
   let fileInput!: HTMLInputElement;
   const [query, setQuery] = createSignal("");
@@ -90,7 +91,8 @@ export function IconPicker(props: { tab: AppSummary; position: { x: number; y: n
   const choose = async (icon: string | null) => {
     setBusy(true);
     try {
-      await setTabIcon(props.tab.id, icon);
+      if (props.tab) await setTabIcon(props.tab.id, icon);
+      else if (props.workspace) await updateWorkspace(props.workspace.id, { icon });
       props.onClose();
     } catch (err) {
       toast({ message: err instanceof Error ? err.message : String(err), kind: "error" });
@@ -130,14 +132,15 @@ export function IconPicker(props: { tab: AppSummary; position: { x: number; y: n
     });
   });
 
-  const isCurrent = (icon: string) => props.tab.icon === icon;
+  const currentIcon = () => (props.tab ? props.tab.icon : (props.workspace?.icon ?? null));
+  const isCurrent = (icon: string) => currentIcon() === icon;
 
   return (
     <Portal>
       <div
         ref={root}
         role="dialog"
-        aria-label={`Icon for ${props.tab.name}`}
+        aria-label={`Icon for ${props.tab?.name ?? props.workspace?.name ?? ""}`}
         {...stylex.attrs(styles.picker)}
         style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
         // Events from a portal reach the component that opened it (a sidebar tab, which would select or rename itself).
@@ -148,7 +151,9 @@ export function IconPicker(props: { tab: AppSummary; position: { x: number; y: n
       >
         <div {...stylex.attrs(styles.header)}>
           <span {...stylex.attrs(styles.preview)}>
-            <TabIcon tab={props.tab} size={18} />
+            <Show when={props.tab} fallback={<Icon name={currentIcon()} size={18} fallback={<span {...stylex.attrs(styles.text)}>{currentIcon() ?? props.workspace?.name.charAt(0).toUpperCase()}</span>} />}>
+              {(tab) => <TabIcon tab={tab()} size={18} />}
+            </Show>
           </span>
           <input
             value={query()}
@@ -211,14 +216,16 @@ export function IconPicker(props: { tab: AppSummary; position: { x: number; y: n
           </div>
         </Show>
         <div {...stylex.attrs(styles.footer)}>
-          <button type="button" disabled={busy()} onClick={() => fileInput.click()} {...stylex.attrs(styles.action)} data-icon-upload>
-            <Icon name="upload" size={14} />
-            Upload image…
-          </button>
-          <Show when={props.tab.icon}>
+          <Show when={props.tab}>
+            <button type="button" disabled={busy()} onClick={() => fileInput.click()} {...stylex.attrs(styles.action)} data-icon-upload>
+              <Icon name="upload" size={14} />
+              Upload image…
+            </button>
+          </Show>
+          <Show when={currentIcon()}>
             <button type="button" disabled={busy()} onClick={() => void choose(null)} {...stylex.attrs(styles.action)} data-icon-reset>
               <Icon name="rotate-ccw" size={14} />
-              {props.tab.kind === "web" ? "Use the site's icon" : "Use the default"}
+              {props.workspace ? "Use its initial" : props.tab?.kind === "web" ? "Use the site's icon" : "Use the default"}
             </button>
           </Show>
         </div>

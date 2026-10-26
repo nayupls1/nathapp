@@ -9,7 +9,7 @@ import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
-import { appById, isTab, newWebTab, openTab, selectedId, toggleAgent } from "./store";
+import { appById, isTab, newWebTab, openTab, selectedId, showWorkspace, toggleAgent, workspaces } from "./store";
 import { targetScript, waitForScript, type Locator } from "./browse";
 import { readPageScript, type SavedPage } from "./pagestate";
 import { toggleSidebar } from "./layout";
@@ -252,6 +252,11 @@ function runShortcut(name: WebShortcut) {
   if (name === "command-bar") return openCommandBar();
   if (name === "new-tab") return void newWebTab();
   if (name === "toggle-sidebar") return toggleSidebar();
+  if (name.startsWith("workspace-")) {
+    const target = workspaces[Number(name.slice("workspace-".length)) - 1];
+    if (target) void showWorkspace(target.id);
+    return;
+  }
   if (!isTab(id)) return;
   if (name === "toggle-agent") return toggleAgent(id);
   const handle = pages.get(id);
@@ -268,6 +273,11 @@ window.nathapp.web.onShortcut(runShortcut);
 window.nathapp.web.onOpenTab((url) => void newWebTab(url));
 
 window.addEventListener("keydown", (e) => {
+  const digit = /^Digit([1-9])$/.exec(e.code);
+  if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && digit) {
+    e.preventDefault();
+    return runShortcut(`workspace-${Number(digit[1])}`);
+  }
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   if (e.shiftKey) {
     if (e.key.toLowerCase() !== "b") return;

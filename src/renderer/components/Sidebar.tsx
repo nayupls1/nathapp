@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { createSignal, For, onCleanup, Show } from "solid-js";
+import { createEffect, createSignal, For, on, onCleanup, Show } from "solid-js";
 import type { AppSummary, WorkspaceInfo } from "../../shared/api";
 import {
   appById,
@@ -20,6 +20,9 @@ import {
   setTabPinned,
   SETTINGS_VIEW,
   ACTIVITY_VIEW,
+  apps,
+  deleteWorkspace,
+  reorderWorkspaces,
   SCHEDULES_VIEW,
   HISTORY_VIEW,
   MODS_VIEW,
@@ -113,6 +116,7 @@ export function Sidebar() {
         <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
+      <WorkspaceBar />
     </nav>
     <Show when={!compact()}>
       <Resizer />
@@ -184,32 +188,23 @@ function Resizer() {
   );
 }
 
-/** The current workspace; its menu switches between them and creates new ones. */
+/** The current workspace's name (double-click renames it) and its menu. Workspaces are switched in the bar at the bottom (WorkspaceBar). */
 function WorkspaceSwitcher() {
   const [menu, setMenu] = createSignal<MenuPosition>();
   const [naming, setNaming] = createSignal(false);
   const current = () => currentWorkspace();
   const menuOpen = () => menu() !== undefined;
 
+  const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
   const items = (): (MenuItem | "separator")[] => [
-    ...workspaces.map((w) => ({
-      label: w.name,
-      icon: w.icon ?? "layers",
-      checked: w.id === current()?.id,
-      onSelect: () => void showWorkspace(w.id),
-    })),
-    "separator",
-    {
-      label: "New workspace",
-      icon: "plus",
-      onSelect: async () => {
-        await createWorkspace("New workspace");
-        setNaming(true);
-      },
-    },
     { label: "Rename workspace", icon: "pencil", onSelect: () => setNaming(true) },
+    { label: "Change icon…", icon: "shapes", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
     { label: "Workspace settings", icon: "settings-2", onSelect: () => void openWorkspaceSettings() },
+    "separator",
+    { label: "New workspace", icon: "plus", onSelect: () => void newWorkspace() },
   ];
+  // A workspace just made from the bar's "+" gets its name typed here.
+  createEffect(on(namingRequest, (n) => n && setNaming(true), { defer: true }));
 
   const commit = (value: string) => {
     if (!naming()) return;
@@ -261,6 +256,124 @@ function WorkspaceSwitcher() {
         <CollapseButton />
       </Show>
       <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
+      <Show when={iconPicker() && current()}>
+        <IconPicker workspace={current()!} position={iconPicker()!} onClose={() => setIconPicker()} />
+      </Show>
+    </div>
+  );
+}
+
+const [namingRequest, setNamingRequest] = createSignal(0);
+/** Creates a workspace, switches to it and lets the user name it. */
+async function newWorkspace() {
+  await createWorkspace("New workspace");
+  setSidebarCollapsed(false);
+  setNamingRequest((n) => n + 1);
+}
+
+const WORKSPACE_DRAG_TYPE = "application/x-nathapp-workspace";
+
+/**
+ * The workspaces as icons at the bottom of the sidebar: click one to switch,
+ * drag to reorder, drop a tab on one to move it there, right-click for its menu.
+ */
+function WorkspaceBar() {
+  const [dragged, setDragged] = createSignal<string | null>(null);
+  const [over, setOver] = createSignal<string | null>(null);
+  const reorderTo = (id: string, target: string) => {
+    const ids = workspaces.map((w) => w.id).filter((x) => x !== id);
+    const at = ids.indexOf(target);
+    const from = workspaces.findIndex((w) => w.id === id);
+    const to = workspaces.findIndex((w) => w.id === target);
+    ids.splice(from < to ? at + 1 : at, 0, id);
+    void reorderWorkspaces(ids);
+  };
+  return (
+    <div {...stylex.attrs(styles.workspaceBar, isSidebarCollapsed() && styles.workspaceBarCompact)} role="tablist" aria-label="Workspaces" data-workspace-bar>
+      <For each={workspaces}>
+        {(w, i) => {
+          const [menu, setMenu] = createSignal<MenuPosition>();
+          const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
+          const current = () => currentWorkspace()?.id === w.id;
+          const isOver = () => over() === w.id;
+          const items = (): (MenuItem | "separator")[] => [
+            { label: "Rename", icon: "pencil", onSelect: () => void showWorkspace(w.id).then(() => setNamingRequest((n) => n + 1)) },
+            { label: "Change icon…", icon: "shapes", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
+            { label: "Move left", icon: "arrow-left", disabled: i() === 0, onSelect: () => reorderTo(w.id, workspaces[i() - 1]!.id) },
+            { label: "Move right", icon: "arrow-right", disabled: i() === workspaces.length - 1, onSelect: () => reorderTo(w.id, workspaces[i() + 1]!.id) },
+            { label: "Workspace settings", icon: "settings-2", onSelect: () => void showWorkspace(w.id).then(openWorkspaceSettings) },
+            "separator",
+            {
+              label: "Delete workspace",
+              icon: "trash",
+              danger: true,
+              disabled: workspaces.length <= 1,
+              onSelect: async () => {
+                const tabs = apps.filter((a) => a.workspaceId === w.id).length;
+                const ok = await confirmDialog(
+                  `Delete the workspace ${w.name}${tabs ? ` with its ${tabs} tab${tabs === 1 ? "" : "s"} and their data` : ""}? Its secrets, permissions and web logins go too.`,
+                  { confirmLabel: "Delete", danger: true },
+                );
+                if (ok) await deleteWorkspace(w.id);
+              },
+            },
+          ];
+          return (
+            <>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={current()}
+                title={`${w.name}${i() < 9 ? ` (Ctrl+Alt+${i() + 1})` : ""}`}
+                onClick={() => void showWorkspace(w.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ x: e.clientX, y: e.clientY });
+                }}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer!.setData(WORKSPACE_DRAG_TYPE, w.id);
+                  e.dataTransfer!.effectAllowed = "move";
+                  setDragged(w.id);
+                }}
+                onDragEnd={() => {
+                  setDragged(null);
+                  setOver(null);
+                }}
+                onDragOver={(e) => {
+                  // A workspace being reordered, or a tab to move here.
+                  if (!dragged() && !draggedTab()) return;
+                  e.preventDefault();
+                  e.dataTransfer!.dropEffect = "move";
+                  setOver(w.id);
+                }}
+                onDragLeave={() => over() === w.id && setOver(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setOver(null);
+                  const moving = dragged();
+                  const tab = draggedTab();
+                  setDragged(null);
+                  if (moving && moving !== w.id) reorderTo(moving, w.id);
+                  else if (tab && appById(tab)?.workspaceId !== w.id) {
+                    setDraggedTab(null);
+                    void moveApp(tab, w.id);
+                  }
+                }}
+                {...stylex.attrs(styles.workspaceIcon, current() && styles.workspaceIconOn, isOver() && styles.workspaceIconOver)}
+                data-workspace={w.id}
+              >
+                <WorkspaceBadge workspace={w} />
+              </button>
+              <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
+              <Show when={iconPicker()}>{(position) => <IconPicker workspace={w} position={position()} onClose={() => setIconPicker()} />}</Show>
+            </>
+          );
+        }}
+      </For>
+      <button type="button" title="New workspace" onClick={() => void newWorkspace()} {...stylex.attrs(styles.workspaceIcon, styles.workspaceAdd)} data-new-workspace>
+        <Icon name="plus" size={15} />
+      </button>
     </div>
   );
 }
@@ -785,4 +898,33 @@ const styles = stylex.create({
     opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1, ":focus-visible": 1 },
   },
   moreOpen: { opacity: 1 },
+  workspaceBar: {
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 4,
+    paddingTop: space.sm,
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.border,
+  },
+  workspaceBarCompact: { flexDirection: "column", flexWrap: "nowrap" },
+  workspaceIcon: {
+    display: "grid",
+    placeItems: "center",
+    width: 34,
+    height: 34,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: colors.muted,
+    cursor: "pointer",
+    opacity: { default: 0.55, ":hover": 1 },
+    transitionProperty: "opacity, background-color",
+    transitionDuration: "120ms",
+  },
+  workspaceIconOn: { opacity: 1, backgroundColor: { default: colors.surface, ":hover": colors.surface }, boxShadow: `0 0 0 1px ${colors.border}` },
+  workspaceIconOver: { boxShadow: `0 0 0 2px ${colors.accent}`, opacity: 1 },
+  workspaceAdd: { opacity: { default: 0.6, ":hover": 1 } },
 });

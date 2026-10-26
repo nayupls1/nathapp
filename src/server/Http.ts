@@ -1382,6 +1382,20 @@ const workspaceRoutes = HttpRouter.addAll([
       }),
     ),
   ),
+  // The order of the workspace icons at the bottom of the sidebar.
+  HttpRouter.route(
+    "PUT",
+    "/api/workspaces/order",
+    handle(
+      Effect.gen(function* () {
+        const workspaces = yield* Workspaces;
+        const { ids } = yield* decodeBody(Schema.Struct({ ids: Schema.Array(str(100)).check(Schema.isMaxLength(500)) }));
+        yield* workspaces.reorder(ids);
+        yield* snapshot("settings", "Reordered the workspaces", true);
+        return json(yield* workspaces.list());
+      }),
+    ),
+  ),
   HttpRouter.route(
     "PATCH",
     "/api/workspaces/:id",

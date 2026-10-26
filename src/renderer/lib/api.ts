@@ -87,6 +87,7 @@ export const api = {
     request<AppSummary[]>(`/api/workspaces/${workspaceId}/order`, { method: "PUT", body: JSON.stringify({ ids }) }),
 
   workspaces: () => request<WorkspaceInfo[]>("/api/workspaces"),
+  reorderWorkspaces: (ids: string[]) => request<WorkspaceInfo[]>("/api/workspaces/order", { method: "PUT", body: JSON.stringify({ ids }) }),
   createWorkspace: (name: string) => post<WorkspaceInfo>("/api/workspaces", { name }),
   updateWorkspace: (id: string, fields: { name?: string; icon?: string | null; settings?: WorkspaceSettings }) =>
     request<WorkspaceInfo>(`/api/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(fields) }),
