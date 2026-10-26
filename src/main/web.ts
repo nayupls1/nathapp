@@ -41,6 +41,7 @@ function shortcutFor(input: Input): WebShortcut | undefined {
     if (key === "r") return "reload";
     if (key === "t") return "new-tab";
   }
+  if (mod && input.shift && !input.alt && key === "b") return "toggle-sidebar";
   if (key === "f5" && !mod) return "reload";
   if (input.alt && !mod && key === "arrowleft") return "back";
   if (input.alt && !mod && key === "arrowright") return "forward";

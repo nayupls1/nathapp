@@ -36,6 +36,7 @@ import {
   workspaceById,
   workspaces,
 } from "./store";
+import { isSidebarCollapsed, toggleSidebar } from "./layout";
 import { pageOf } from "./webtabs";
 import { confirmDialog } from "../components/ConfirmDialog";
 import { toast } from "../components/Toast";
@@ -310,6 +311,15 @@ function nathappCommands(): Command[] {
     { id: "new.app", title: "New app", icon: "plus", group: "NathApp", keywords: "create build", run: () => newApp() },
     { id: "new.web", title: "New web tab", subtitle: "Ctrl+T", icon: "globe", group: "NathApp", keywords: "browser", run: () => newWebTab() },
     { id: "new.workspace", title: "New workspace", icon: "layers", group: "NathApp", input: "Name", run: (name) => name?.trim() && createWorkspace(name.trim()) },
+    {
+      id: "sidebar.toggle",
+      title: isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar",
+      subtitle: "Ctrl+Shift+B",
+      icon: "panel-left",
+      group: "NathApp",
+      keywords: "toggle hide show tabs",
+      run: toggleSidebar,
+    },
     { id: "open.history", title: "Open History", icon: "history", group: "NathApp", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
     { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "NathApp", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
     { id: "open.activity", title: "Open Activity", icon: "activity", group: "NathApp", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },

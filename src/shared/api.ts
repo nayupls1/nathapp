@@ -111,7 +111,7 @@ export const WEB_PARTITION_PATTERN = /^persist:web(-[\w-]+)?$/;
 export const appPartition = (appId: string) => `persist:app-${appId}`;
 export const APP_PARTITION_PATTERN = /^persist:app-[\w-]+$/;
 
-export type WebShortcut = "command-bar" | "toggle-agent" | "focus-address" | "reload" | "back" | "forward" | "new-tab";
+export type WebShortcut = "command-bar" | "toggle-agent" | "toggle-sidebar" | "focus-address" | "reload" | "back" | "forward" | "new-tab";
 
 // --- Providers ------------------------------------------------------------------
 

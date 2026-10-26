@@ -10,6 +10,7 @@ import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
 import { isTab, newWebTab, selectedId, toggleAgent } from "./store";
+import { toggleSidebar } from "./layout";
 
 export interface PageInfo {
   url: string;
@@ -186,6 +187,7 @@ function runShortcut(name: WebShortcut) {
   const id = selectedId();
   if (name === "command-bar") return openCommandBar();
   if (name === "new-tab") return void newWebTab();
+  if (name === "toggle-sidebar") return toggleSidebar();
   if (!isTab(id)) return;
   if (name === "toggle-agent") return toggleAgent(id);
   const handle = pages.get(id);
@@ -202,7 +204,12 @@ window.nathapp.web.onShortcut(runShortcut);
 window.nathapp.web.onOpenTab((url) => void newWebTab(url));
 
 window.addEventListener("keydown", (e) => {
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  if (e.shiftKey) {
+    if (e.key.toLowerCase() !== "b") return;
+    e.preventDefault();
+    return runShortcut("toggle-sidebar");
+  }
   const key = e.key.toLowerCase();
   const name: WebShortcut | undefined =
     key === "k"

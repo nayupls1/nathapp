@@ -533,6 +533,37 @@ try {
     if (after.length !== before.length) throw new Error(`expected ${before.length} apps, got ${after.join(", ")}`);
   });
 
+  await check("sidebar: collapses to icons, resizes, remembers both", async () => {
+    const navWidth = () => page!.eval<number>(`document.querySelector("nav").getBoundingClientRect().width`);
+    await click("[data-sidebar-toggle]");
+    await page!.waitFor(`document.querySelector("nav").dataset.sidebar === "collapsed"`, { label: "collapsed" });
+    const collapsed = await navWidth();
+    if (collapsed > 60) throw new Error(`collapsed sidebar is ${collapsed}px wide`);
+    await shot("sidebar-collapsed.png");
+    // Ctrl+Shift+B brings it back.
+    await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "B", ctrlKey: true, shiftKey: true, bubbles: true })), true`);
+    await page!.waitFor(`document.querySelector("nav").dataset.sidebar === "expanded"`, { label: "expanded by the shortcut" });
+    const before = await navWidth();
+    // Drag the edge 100px to the right.
+    await page!.eval(`(() => {
+      const handle = document.querySelector("[data-sidebar-resizer]");
+      const r = handle.getBoundingClientRect();
+      const x = r.left + r.width / 2, y = r.top + 200;
+      handle.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, clientX: x, clientY: y }));
+      window.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: x + 100, clientY: y }));
+      window.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, clientX: x + 100, clientY: y }));
+      return true;
+    })()`);
+    const after = await navWidth();
+    if (Math.abs(after - before - 100) > 2) throw new Error(`width ${before} → ${after}`);
+    const saved = await page!.eval<{ width: number; collapsed: boolean }>(`JSON.parse(localStorage.getItem("nathapp.sidebar"))`);
+    if (saved.width !== Math.round(after) || saved.collapsed) throw new Error(`saved ${JSON.stringify(saved)}`);
+    await shot("sidebar-wide.png");
+    // Back to the default width.
+    await page!.eval(`document.querySelector("[data-sidebar-resizer]").dispatchEvent(new MouseEvent("dblclick", { bubbles: true })), true`);
+    return `${Math.round(collapsed)}px collapsed, ${Math.round(before)} → ${Math.round(after)}px`;
+  });
+
   await check("web tab: browse, pick an element, site customization applies", async () => {
     const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
     await newTab("New web tab");

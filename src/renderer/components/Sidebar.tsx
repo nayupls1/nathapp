@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
 import type { AppSummary, WorkspaceInfo } from "../../shared/api";
 import {
   clearChat,
@@ -23,11 +23,15 @@ import {
   workspaces,
   workspaceTabs,
 } from "../lib/store";
+import { isSidebarCollapsed, setSidebarCollapsed, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { Button } from "./ui";
+
+/** Width of the collapsed sidebar: icons only. */
+const RAIL_WIDTH = 52;
 
 export function Sidebar() {
   const [newMenu, setNewMenu] = createSignal<MenuPosition>();
@@ -35,21 +39,30 @@ export function Sidebar() {
     { label: "New app", icon: "sparkles", onSelect: () => newApp() },
     { label: "New web tab", icon: "globe", onSelect: () => newWebTab() },
   ];
+  const compact = isSidebarCollapsed;
   return (
-    <nav {...stylex.attrs(styles.root)}>
+    <>
+    <nav
+      {...stylex.attrs(styles.root, compact() && styles.rootCompact)}
+      style={{ width: `${compact() ? RAIL_WIDTH : sidebarWidth()}px` }}
+      data-sidebar={compact() ? "collapsed" : "expanded"}
+    >
       <WorkspaceSwitcher />
       <Button
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           setNewMenu({ x: r.left, y: r.bottom + 4 });
         }}
-        xstyle={styles.newButton}
+        xstyle={compact() ? styles.newButtonCompact : styles.newButton}
+        title={compact() ? "New tab" : undefined}
         aria-haspopup="menu"
         data-new-tab
       >
         <Icon name="plus" size={15} />
-        New tab
-        <Icon name="chevron-down" size={14} {...stylex.attrs(styles.chevron)} />
+        <Show when={!compact()}>
+          New tab
+          <Icon name="chevron-down" size={14} {...stylex.attrs(styles.chevron)} />
+        </Show>
       </Button>
       <Show when={newMenu()}>
         {(position) => <ContextMenu items={newItems} position={position()} onClose={() => setNewMenu()} />}
@@ -58,12 +71,82 @@ export function Sidebar() {
         <For each={workspaceTabs()}>{(app) => <Item app={app} />}</For>
       </ul>
       <div {...stylex.attrs(styles.footer)}>
+        <Show when={compact()}>
+          <CollapseButton />
+        </Show>
         <PageLink id={HISTORY_VIEW} icon="file-clock" label="History" />
         <PageLink id={SCHEDULES_VIEW} icon="calendar-clock" label="Schedules" />
         <PageLink id={ACTIVITY_VIEW} icon="scroll-text" label="Activity" />
         <PageLink id={SETTINGS_VIEW} icon="settings" label="Settings" />
       </div>
     </nav>
+    <Show when={!compact()}>
+      <Resizer />
+    </Show>
+    </>
+  );
+}
+
+/**
+ * The sidebar's right edge: drag to resize, double-click for the default
+ * width, arrow keys when focused. Dragging it far past the minimum collapses it.
+ */
+function Resizer() {
+  const [dragging, setDragging] = createSignal(false);
+  let stop = () => {};
+  onCleanup(() => stop());
+
+  const start = (e: PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = sidebarWidth();
+    let raw = startWidth;
+    setDragging(true);
+    const move = (ev: PointerEvent) => {
+      raw = startWidth + ev.clientX - startX;
+      setSidebarWidth(raw, false);
+    };
+    stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      setDragging(false);
+      stop = () => {};
+      if (raw < SIDEBAR_MIN - 60) {
+        setSidebarWidth(startWidth);
+        setSidebarCollapsed(true);
+      } else setSidebarWidth(raw);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+
+  return (
+    <div {...stylex.attrs(styles.resizer)}>
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize the sidebar"
+        aria-valuenow={sidebarWidth()}
+        tabIndex={0}
+        title="Drag to resize · double-click to reset"
+        onPointerDown={start}
+        onDblClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+        onKeyDown={(e) => {
+          const step = e.shiftKey ? 48 : 16;
+          if (e.key === "ArrowLeft") setSidebarWidth(sidebarWidth() - step);
+          else if (e.key === "ArrowRight") setSidebarWidth(sidebarWidth() + step);
+          else return;
+          e.preventDefault();
+        }}
+        {...stylex.attrs(styles.handle, dragging() && styles.handleActive)}
+        data-sidebar-resizer
+      />
+      {/* Over everything (web pages and previews too), so they don't swallow the drag. */}
+      <Show when={dragging()}>
+        <div {...stylex.attrs(styles.dragShield)} />
+      </Show>
+    </div>
   );
 }
 
@@ -72,6 +155,7 @@ function WorkspaceSwitcher() {
   const [menu, setMenu] = createSignal<MenuPosition>();
   const [naming, setNaming] = createSignal(false);
   const current = () => currentWorkspace();
+  const menuOpen = () => menu() !== undefined;
 
   const items = (): (MenuItem | "separator")[] => [
     ...workspaces.map((w) => ({
@@ -115,12 +199,14 @@ function WorkspaceSwitcher() {
               setMenu({ x: r.left, y: r.bottom + 4 });
             }}
             onDblClick={() => setNaming(true)}
-            {...stylex.attrs(styles.switcher, menu() !== undefined && styles.switcherOpen)}
+            {...stylex.attrs(styles.switcher, menuOpen() && styles.switcherOpen, isSidebarCollapsed() && styles.switcherCompact)}
             data-workspace-switcher
           >
             <Show when={current()}>{(w) => <WorkspaceBadge workspace={w()} />}</Show>
-            <span {...stylex.attrs(styles.workspaceName)}>{current()?.name}</span>
-            <Icon name="chevrons-up-down" size={14} {...stylex.attrs(styles.chevron)} />
+            <Show when={!isSidebarCollapsed()}>
+              <span {...stylex.attrs(styles.workspaceName)}>{current()?.name}</span>
+              <Icon name="chevrons-up-down" size={14} {...stylex.attrs(styles.chevron)} />
+            </Show>
           </button>
         }
       >
@@ -137,8 +223,27 @@ function WorkspaceSwitcher() {
           data-workspace-name
         />
       </Show>
+      <Show when={!isSidebarCollapsed()}>
+        <CollapseButton />
+      </Show>
       <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
     </div>
+  );
+}
+
+function CollapseButton() {
+  return (
+    <button
+      type="button"
+      title={isSidebarCollapsed() ? "Expand the sidebar (Ctrl+Shift+B)" : "Collapse the sidebar (Ctrl+Shift+B)"}
+      aria-label={isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar"}
+      aria-expanded={!isSidebarCollapsed()}
+      onClick={toggleSidebar}
+      {...stylex.attrs(styles.collapse)}
+      data-sidebar-toggle
+    >
+      <Icon name={isSidebarCollapsed() ? "panel-left-open" : "panel-left-close"} size={16} />
+    </button>
   );
 }
 
@@ -162,11 +267,14 @@ function PageLink(props: { id: string; icon: string; label: string }) {
   return (
     <button
       type="button"
+      title={isSidebarCollapsed() ? props.label : undefined}
       onClick={() => selectApp(props.id)}
-      {...stylex.attrs(styles.item, styles.footerItem, selected() && styles.selected)}
+      {...stylex.attrs(styles.item, styles.footerItem, selected() && styles.selected, isSidebarCollapsed() && styles.itemCompact)}
     >
       <Icon name={props.icon} size={16} {...stylex.attrs(styles.icon)} />
-      <span {...stylex.attrs(styles.name)}>{props.label}</span>
+      <Show when={!isSidebarCollapsed()}>
+        <span {...stylex.attrs(styles.name)}>{props.label}</span>
+      </Show>
     </button>
   );
 }
@@ -186,8 +294,14 @@ function Item(props: { app: AppSummary }) {
     if (name && name !== props.app.name) renameApp(props.app.id, name);
   };
 
+  // Renaming needs room: a collapsed sidebar opens first.
+  const rename = () => {
+    setSidebarCollapsed(false);
+    setEditing(true);
+  };
+
   const menuItems = (): (MenuItem | "separator")[] => [
-    { label: "Rename", icon: "pencil", onSelect: () => setEditing(true) },
+    { label: "Rename", icon: "pencil", onSelect: rename },
     { label: "Duplicate", icon: "copy", onSelect: () => duplicateApp(props.app.id) },
     ...workspaces
       .filter((w) => w.id !== props.app.workspaceId)
@@ -218,9 +332,10 @@ function Item(props: { app: AppSummary }) {
 
   return (
     <li
-      {...stylex.attrs(stylex.defaultMarker(), styles.item, highlighted() && styles.selected)}
+      {...stylex.attrs(stylex.defaultMarker(), styles.item, highlighted() && styles.selected, isSidebarCollapsed() && styles.itemCompact)}
+      title={isSidebarCollapsed() ? props.app.name : undefined}
       onClick={() => selectApp(props.app.id)}
-      onDblClick={() => setEditing(true)}
+      onDblClick={rename}
       onContextMenu={(e) => {
         e.preventDefault();
         setMenu({ x: e.clientX, y: e.clientY });
@@ -241,7 +356,7 @@ function Item(props: { app: AppSummary }) {
       >
         <Favicon url={props.app.favicon} />
       </Show>
-      <Show when={editing()} fallback={<span {...stylex.attrs(styles.name)}>{props.app.name}</span>}>
+      <Show when={editing()} fallback={<span {...stylex.attrs(styles.name, isSidebarCollapsed() && styles.hiddenText)}>{props.app.name}</span>}>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
           value={props.app.name}
@@ -255,21 +370,23 @@ function Item(props: { app: AppSummary }) {
         />
       </Show>
       <Show when={running()}>
-        <span {...stylex.attrs(styles.dot)} title="Agent is working" />
+        <span {...stylex.attrs(styles.dot, isSidebarCollapsed() && styles.dotCompact)} title="Agent is working" />
       </Show>
-      <button
-        type="button"
-        title="More"
-        aria-haspopup="menu"
-        onClick={(e) => {
-          e.stopPropagation();
-          const rect = e.currentTarget.getBoundingClientRect();
-          setMenu({ x: rect.left, y: rect.bottom + 4 });
-        }}
-        {...stylex.attrs(styles.more, menuOpen() && styles.moreOpen)}
-      >
-        <Icon name="ellipsis" size={15} />
-      </button>
+      <Show when={!isSidebarCollapsed()}>
+        <button
+          type="button"
+          title="More"
+          aria-haspopup="menu"
+          onClick={(e) => {
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            setMenu({ x: rect.left, y: rect.bottom + 4 });
+          }}
+          {...stylex.attrs(styles.more, menuOpen() && styles.moreOpen)}
+        >
+          <Icon name="ellipsis" size={15} />
+        </button>
+      </Show>
       <Show when={menu()}>
         {(position) => <ContextMenu items={menuItems()} position={position()} onClose={() => setMenu()} />}
       </Show>
@@ -297,16 +414,51 @@ const styles = stylex.create({
     display: "flex",
     flexDirection: "column",
     gap: space.sm,
-    width: 232,
     flexShrink: 0,
     padding: space.md,
     backgroundColor: colors.sidebar,
     borderRightWidth: 1,
     borderRightStyle: "solid",
     borderRightColor: colors.border,
+    overflowX: "hidden",
     overflowY: "auto",
   },
-  header: { display: "flex", alignItems: "center", height: 34 },
+  rootCompact: { paddingInline: 8 },
+  header: { display: "flex", alignItems: "center", gap: 2, height: 34 },
+  collapse: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: 34,
+    height: 34,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.text },
+    cursor: "pointer",
+  },
+  resizer: { position: "relative", width: 0, flexShrink: 0, zIndex: 5 },
+  handle: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: -3,
+    width: 6,
+    cursor: "col-resize",
+    backgroundColor: { default: "transparent", ":hover": colors.accent, ":focus-visible": colors.accent },
+    opacity: { default: 1, ":hover": 0.5, ":focus-visible": 0.5 },
+    outline: "none",
+    transitionProperty: "background-color",
+    transitionDuration: "120ms",
+  },
+  handleActive: { backgroundColor: colors.accent, opacity: 0.5 },
+  dragShield: { position: "fixed", inset: 0, zIndex: 1000, cursor: "col-resize" },
+  switcherCompact: { justifyContent: "center", paddingInline: 0 },
+  newButtonCompact: { justifyContent: "center", width: "100%", paddingInline: 0 },
+  itemCompact: { justifyContent: "center", paddingInline: 0, position: "relative" },
+  hiddenText: { display: "none" },
+  dotCompact: { position: "absolute", top: 5, right: 5 },
   switcher: {
     display: "flex",
     alignItems: "center",
