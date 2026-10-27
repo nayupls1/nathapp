@@ -1859,6 +1859,12 @@ try {
     const loaded = await dt<Trace>("trace", { reload: true, seconds: 1 });
     if (typeof loaded.analysis.vitals.loadMs !== "number" || typeof loaded.analysis.vitals.lcpMs !== "number") throw new Error(`load trace vitals: ${JSON.stringify(loaded.analysis.vitals)}`);
 
+    // Screenshots of one element and of the whole page, for the agent to look at.
+    type Shot = { data: string; width: number; height: number };
+    const element = await dt<Shot>("screenshot", { selector: "#target" });
+    const whole = await dt<Shot>("screenshot", { fullPage: true });
+    if (!element.data || element.width > 200 || element.height > 100 || whole.height < element.height) throw new Error(`screenshots: element ${element.width}×${element.height}, page ${whole.width}×${whole.height}`);
+    await Bun.write(join(outDir, "devtools-element.jpg"), Buffer.from(element.data, "base64"));
     const ax = await dt<{ lines: string[] }>("accessibility");
     if (!ax.lines.some((l) => l.includes('button "Save the draft"'))) throw new Error(`accessibility: ${ax.lines.slice(0, 10).join(" | ")}`);
     const styles = await dt<{ rules: { selector: string; props: string[] }[]; computed: Record<string, string> }>("styles", { selector: "#target" });
@@ -1902,7 +1908,7 @@ try {
     }, 15_000);
     await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
     await apiCall(`/api/apps/${app.id}`, { method: "DELETE" });
-    return `console (${logged.entries.length}), slowWork ${hot.selfMs} ms in a ${traced.events}-event trace, a11y, styles, storage hidden, ${coverage.files.length} coverage files, emulation; preview: console, ${traffic.length} requests`;
+    return `console (${logged.entries.length}), element screenshot ${element.width}×${element.height}, slowWork ${hot.selfMs} ms in a ${traced.events}-event trace, a11y, styles, storage hidden, ${coverage.files.length} coverage files, emulation; preview: console, ${traffic.length} requests`;
   });
 
   await check("sources: code attached to a tab for its agent, shown above the composer, removed again", async () => {

@@ -149,8 +149,24 @@ ${code}
         })()`),
     ),
 
-    tool("screenshot", `A screenshot of ${where} as the user sees it right now.`, NoArgs, () =>
-      call<string>("page.capture").pipe(Effect.map((data) => ({ content: [{ type: "image" as const, data, mimeType: "image/jpeg" }] }))),
+    tool(
+      "screenshot",
+      `See ${where}: a screenshot as the user sees it right now. With selector, just that element (and what's around it), even if it's scrolled out of view; with full_page, the whole page from top to bottom. Use it to check how things look, not only what the DOM says.`,
+      Schema.Struct({
+        selector: Schema.optionalKey(Schema.String.annotate({ description: "Only this element" })),
+        full_page: Schema.optionalKey(Schema.Boolean.annotate({ description: "The whole page, not only what's on screen" })),
+      }),
+      ({ selector, full_page }) =>
+        (selector || full_page
+          ? call<{ data: string; width: number; height: number; truncated: boolean }>("devtools", { command: "screenshot", params: { selector, fullPage: full_page } }, 45_000).pipe(
+              Effect.map((shot) => ({
+                content: [
+                  { type: "image" as const, data: shot.data, mimeType: "image/jpeg" },
+                  ...(shot.truncated ? [{ type: "text" as const, text: "The page is very long: this shows its first 12000 pixels." }] : []),
+                ],
+              })),
+            )
+          : call<string>("page.capture").pipe(Effect.map((data) => ({ content: [{ type: "image" as const, data, mimeType: "image/jpeg" }] })))),
     ),
 
     tool(

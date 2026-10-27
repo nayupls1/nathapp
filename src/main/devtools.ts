@@ -507,6 +507,41 @@ export function setupDevtools(options: DevtoolsOptions) {
       }
     },
 
+    /** An element, a part or the whole of the page as an image (also what's scrolled out of view). */
+    async screenshot(contents, params: { selector?: string; fullPage?: boolean; maxWidth?: number }) {
+      const { cssLayoutViewport, cssContentSize } = await cdp.send(contents, "Page.getLayoutMetrics");
+      let clip: { x: number; y: number; width: number; height: number };
+      if (params.selector) {
+        const rect = await evaluate<{ x: number; y: number; width: number; height: number } | null>(
+          contents,
+          `(() => {
+            const el = document.querySelector(${JSON.stringify(params.selector)});
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return { x: r.left + scrollX, y: r.top + scrollY, width: r.width, height: r.height };
+          })()`,
+        );
+        if (!rect) throw new Error(`Nothing matches ${params.selector}`);
+        if (rect.width < 1 || rect.height < 1) throw new Error(`${params.selector} isn't visible (it has no size)`);
+        // A little room around it.
+        const pad = 8;
+        clip = { x: Math.max(0, rect.x - pad), y: Math.max(0, rect.y - pad), width: rect.width + pad * 2, height: Math.min(rect.height + pad * 2, 8000) };
+      } else if (params.fullPage) {
+        clip = { x: 0, y: 0, width: cssContentSize.width, height: Math.min(cssContentSize.height, 12000) };
+      } else {
+        clip = { x: cssLayoutViewport.pageX, y: cssLayoutViewport.pageY, width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
+      }
+      // Kept to a size models read well.
+      const scale = Math.min(1, (params.maxWidth ?? 1280) / clip.width, 8000 / clip.height);
+      const { data } = await cdp.send<{ data: string }>(contents, "Page.captureScreenshot", {
+        format: "jpeg",
+        quality: 80,
+        captureBeyondViewport: true,
+        clip: { ...clip, scale },
+      });
+      return { data, width: Math.round(clip.width * scale), height: Math.round(clip.height * scale), truncated: !!params.fullPage && cssContentSize.height > 12000 };
+    },
+
     async emulate(contents, params: { reset?: boolean; device?: string; width?: number; height?: number; scale?: number; mobile?: boolean; network?: string; cpu?: number; colorScheme?: string; reducedMotion?: string }) {
       const state = { ...(emulated.get(contents.id) ?? {}) };
       if (params.reset) {

@@ -475,7 +475,7 @@ export interface ContextSource {
 }
 
 /** What the agents' DevTools can do on a page (main/devtools.ts). */
-export type DevtoolsCommand = "console" | "metrics" | "trace" | "accessibility" | "styles" | "storage" | "coverage" | "emulate";
+export type DevtoolsCommand = "console" | "metrics" | "trace" | "accessibility" | "styles" | "storage" | "coverage" | "emulate" | "screenshot";
 
 /** A shell app commands can run in (Settings → Apps). path: null for Bun's built-in shell. */
 export interface ShellInfo {
