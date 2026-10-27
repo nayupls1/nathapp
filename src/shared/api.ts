@@ -123,7 +123,18 @@ export const WEB_PARTITION_PATTERN = /^persist:web(-[\w-]+)?$/;
 export const appPartition = (appId: string) => `persist:app-${appId}`;
 export const APP_PARTITION_PATTERN = /^persist:app-[\w-]+$/;
 
-export type WebShortcut = "command-bar" | "toggle-agent" | "toggle-sidebar" | "focus-address" | "reload" | "back" | "forward" | "new-tab" | `workspace-${number}`;
+export type WebShortcut =
+  | "command-bar"
+  | "toggle-agent"
+  | "toggle-sidebar"
+  | "focus-address"
+  | "reload"
+  | "back"
+  | "forward"
+  | "new-tab"
+  | "close-tab"
+  | "reopen-tab"
+  | `workspace-${number}`;
 
 // --- Providers ------------------------------------------------------------------
 
@@ -270,6 +281,8 @@ export interface AppSummary {
   position: number;
   createdAt: string;
   updatedAt: string;
+  /** Closed apps (the library): when the tab was closed. Open tabs don't have it. */
+  closedAt?: string;
 }
 
 /** A tab's own icon as an image: a base64 data URL. */

@@ -1,19 +1,19 @@
-// The window's minimize, maximize and close buttons, top right: the window is
-// frameless (no title bar) except on macOS, which keeps its traffic lights.
-// Top bars under them are padded (lib/windowChrome.ts).
+// The window's minimize, maximize and close buttons, at the top of the sidebar
+// (a column when it's collapsed), like Zen Browser: the window is frameless
+// (no title bar) except on macOS, which keeps its traffic lights.
 import * as stylex from "@stylexjs/stylex";
 import { createSignal, onCleanup, Show } from "solid-js";
-import { CONTROLS_WIDTH, hasOwnControls } from "../lib/windowChrome";
+import { hasOwnControls } from "../lib/windowChrome";
 import { colors } from "../theme.stylex";
 import { Icon } from "./Icon";
 
-export function WindowControls() {
+export function WindowControls(props: { vertical?: boolean }) {
   const bridge = window.nathapp.window;
   const [maximized, setMaximized] = createSignal(false);
   onCleanup(bridge.onMaximized(setMaximized));
   return (
     <Show when={hasOwnControls}>
-      <div {...stylex.attrs(styles.root)} style={{ width: `${CONTROLS_WIDTH}px` }} data-window-controls>
+      <div {...stylex.attrs(styles.root, props.vertical && styles.vertical)} data-window-controls>
         <button type="button" title="Minimize" onClick={() => bridge.minimize()} {...stylex.attrs(styles.button)}>
           <Icon name="minus" size={16} />
         </button>
@@ -29,14 +29,16 @@ export function WindowControls() {
 }
 
 const styles = stylex.create({
-  // Above the tabs and their bars, below menus and dialogs.
-  root: { position: "fixed", top: 0, right: 0, zIndex: 900, display: "flex", height: 44 },
+  root: { display: "flex", alignItems: "center", gap: 2, flexShrink: 0 },
+  vertical: { flexDirection: "column" },
   button: {
     display: "grid",
     placeItems: "center",
-    flex: 1,
+    width: 28,
+    height: 28,
     padding: 0,
     borderWidth: 0,
+    borderRadius: 6,
     backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
     color: { default: colors.muted, ":hover": colors.text },
     cursor: "default",

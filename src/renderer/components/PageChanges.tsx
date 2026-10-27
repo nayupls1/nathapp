@@ -151,7 +151,7 @@ export function PageChangesPopover(props: { url: string; errors: Record<string, 
 
   return (
     <Portal>
-      <div ref={panel} {...stylex.attrs(styles.popover)} style={{ left: `${pos().x}px`, top: `${pos().y}px` }} data-page-changes>
+      <div ref={panel} {...stylex.attrs(styles.popover)} style={{ left: `${pos().x}px`, top: `${pos().y}px` }} data-page-changes data-url={props.url}>
         <div {...stylex.attrs(styles.header)}>
           <span {...stylex.attrs(styles.title)}>Changes on this page</span>
           <button type="button" title="Close" onClick={props.onClose} {...stylex.attrs(styles.iconButton)}>

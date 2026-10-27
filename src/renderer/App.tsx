@@ -14,7 +14,6 @@ import { Sidebar } from "./components/Sidebar";
 import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
-import { WindowControls } from "./components/WindowControls";
 import "./lib/schedules";
 import { startUnloading } from "./lib/unload";
 import { startWindowChrome } from "./lib/windowChrome";
@@ -120,9 +119,6 @@ export default function App() {
         </div>
       </div>
       <AgentSidebar />
-      {/* Last: the window's drag area is worked out in document order, so a top bar after the
-          buttons (the agent sidebar's header) would make them a drag area again (Windows). */}
-      <WindowControls />
     </div>
   );
 }

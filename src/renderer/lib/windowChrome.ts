@@ -15,7 +15,8 @@ export const hasOwnControls = !isMac;
 
 /** The space the window's buttons take at the left and right of the top edge. */
 function buttons() {
-  return isMac ? { left: MAC_BUTTONS, right: 0, height: 44 } : { left: 0, right: CONTROLS_WIDTH, height: 44 };
+  // Elsewhere the buttons are in the sidebar's top row (components/TopBar.tsx), not over anything.
+  return isMac ? { left: MAC_BUTTONS, right: 0, height: 44 } : { left: 0, right: 0, height: 44 };
 }
 
 /** Pads the top bars that run under the window's buttons. */

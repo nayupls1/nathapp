@@ -18,6 +18,7 @@ import { sendWithShares } from "../lib/sharing";
 import { appById, isAgentCollapsed, setAgentCollapsed, states, stopAgent, updatePage } from "../lib/store";
 import { showExtensionSettings } from "../lib/extensions";
 import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type BrowseAction, type PageInfo } from "../lib/webtabs";
+import { focusAddress, networkTab, registerChrome, setNetworkTab } from "../lib/tabChrome";
 import { colors, font, radius, space } from "../theme.stylex";
 import type { MenuPosition } from "./ContextMenu";
 import { openExtensionImport } from "./ExtensionImport";
@@ -39,7 +40,9 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const [currentUrl, setCurrentUrl] = createSignal(initialUrl);
   const [loading, setLoading] = createSignal(false);
   const [history, setHistory] = createSignal({ back: false, forward: false });
-  const [networkOpen, setNetworkOpen] = createSignal(false);
+  // Opened from the command bar ("Network requests"): it's mostly for the agent.
+  const networkOpen = () => networkTab() === props.appId;
+  const setNetworkOpen = (open: boolean) => setNetworkTab(open ? props.appId : null);
   const [loadError, setLoadError] = createSignal<string>();
   const [menu, setMenu] = createSignal<MenuPosition>();
   const [contentsId, setContentsId] = createSignal<number | null>(null);
@@ -51,7 +54,6 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const state = () => states[props.appId];
 
   let webview: WebviewTag | undefined;
-  let addressInput!: HTMLInputElement;
   let ready = false;
   let editing = false;
   /** Where to go once the webview is ready (asked for before it was). */
@@ -380,10 +382,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     },
     back: () => webview && ready && webview.goBack(),
     forward: () => webview && ready && webview.goForward(),
-    focusAddress: () => {
-      addressInput.focus();
-      addressInput.select();
-    },
+    focusAddress: () => focusAddress(),
     applyOverride,
     overrideChanged: (changed) => {
       if (changed === host()) void applyOverride();
@@ -419,10 +418,6 @@ export function WebTab(props: { appId: string; active: boolean }) {
     });
   }
 
-  // A new tab without a page starts in the address bar.
-  createEffect(() => {
-    if (props.active && !src()) queueMicrotask(() => addressInput.focus());
-  });
 
   function attach(view: WebviewTag) {
     webview = view;
@@ -432,6 +427,11 @@ export function WebTab(props: { appId: string; active: boolean }) {
     });
     view.addEventListener("did-stop-loading", () => {
       setLoading(false);
+      // Whatever got it there (history, a redirect, a page's own navigation), the page is where it says.
+      if (ready && view.getURL() && view.getURL() !== currentUrl()) {
+        setCurrentUrl(view.getURL());
+        if (!editing) setAddress(view.getURL());
+      }
       updateHistory();
       loaded();
     });
@@ -472,114 +472,43 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const changed = () => customized() || changesHere().length > 0;
   const overrideActive = () => customizing() && ((customized() && override()!.enabled) || changesHere().some((c) => c.enabled));
 
-  const pickButton = (size: number) => (
-    <button
-      type="button"
-      title={picking() ? "Cancel picking (Esc)" : "Pick elements on the page for the agent"}
-      disabled={!src()}
-      onClick={pick}
-      {...stylex.attrs(styles.iconButton, picking() && styles.iconButtonOn)}
-      data-pick-element
-    >
-      <Icon name="crosshair" size={size} />
-    </button>
+  // What the sidebar's top bar shows for this tab (components/TopBar.tsx): the address with the page's changes, and the extensions.
+  onCleanup(
+    registerChrome(props.appId, {
+      url: () => address(),
+      blank: () => !src(),
+      icon: () => (isExtensionUrl(currentUrl()) ? "puzzle" : currentUrl().startsWith("https:") ? "lock" : "globe"),
+      canBack: () => history().back,
+      canForward: () => history().forward,
+      loading,
+      back: () => webview?.goBack(),
+      forward: () => webview?.goForward(),
+      reload: () => webview?.reload(),
+      stop: () => webview?.stop(),
+      go,
+      addressExtras: () => (
+        <Show when={changed()}>
+          <button
+            type="button"
+            title={overrideActive() ? "This page is changed: see and turn off the changes" : "The changes to this page are off"}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setMenu(menu() ? undefined : { x: r.left, y: r.bottom + 6 });
+            }}
+            {...stylex.attrs(styles.customized, overrideActive() && styles.customizedOn)}
+            data-customized={overrideActive() ? "on" : "off"}
+          >
+            <Icon name="paintbrush" size={13} />
+          </button>
+        </Show>
+      ),
+      tools: () => <ExtensionsBar workspaceId={workspaceId} tabId={contentsId} active={props.active} onImport={openExtensionImport} />,
+    }),
   );
 
   return (
     <div {...stylex.attrs(styles.split)} data-web-tab={props.appId}>
       <div {...stylex.attrs(styles.main)}>
-        <div {...stylex.attrs(styles.toolbar)} data-titlebar>
-          <button type="button" title="Back (Alt+←)" disabled={!history().back} onClick={() => webview?.goBack()} {...stylex.attrs(styles.iconButton)}>
-            <Icon name="arrow-left" size={16} />
-          </button>
-          <button type="button" title="Forward (Alt+→)" disabled={!history().forward} onClick={() => webview?.goForward()} {...stylex.attrs(styles.iconButton)}>
-            <Icon name="arrow-right" size={16} />
-          </button>
-          <Show
-            when={loading()}
-            fallback={
-              <button type="button" title="Reload (Ctrl+R)" disabled={!src()} onClick={() => webview?.reload()} {...stylex.attrs(styles.iconButton)}>
-                <Icon name="rotate-cw" size={15} />
-              </button>
-            }
-          >
-            <button type="button" title="Stop" onClick={() => webview?.stop()} {...stylex.attrs(styles.iconButton)}>
-              <Icon name="x" size={16} />
-            </button>
-          </Show>
-          <form
-            {...stylex.attrs(styles.addressBar)}
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (go(address())) addressInput.blur();
-            }}
-          >
-            <Icon name={isExtensionUrl(currentUrl()) ? "puzzle" : currentUrl().startsWith("https:") ? "lock" : "globe"} size={13} {...stylex.attrs(styles.addressIcon)} />
-            <input
-              ref={addressInput}
-              value={address()}
-              placeholder="Search or enter an address"
-              spellcheck={false}
-              onFocus={(e) => {
-                editing = true;
-                e.currentTarget.select();
-              }}
-              onBlur={() => {
-                editing = false;
-                setAddress(currentUrl() || address());
-              }}
-              onInput={(e) => setAddress(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setAddress(currentUrl());
-                  e.currentTarget.blur();
-                }
-              }}
-              {...stylex.attrs(styles.addressInput)}
-              data-address
-            />
-            <Show when={changed()}>
-              <button
-                type="button"
-                title={overrideActive() ? "This page is changed: see and turn off the changes" : "The changes to this page are off"}
-                onClick={(e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  setMenu(menu() ? undefined : { x: r.right - 360, y: r.bottom + 6 });
-                }}
-                {...stylex.attrs(styles.customized, overrideActive() && styles.customizedOn)}
-                data-customized={overrideActive() ? "on" : "off"}
-              >
-                <Icon name="paintbrush" size={13} />
-              </button>
-            </Show>
-          </form>
-          {pickButton(16)}
-          <button
-            type="button"
-            title="Network: the page's requests and data"
-            onClick={() => setNetworkOpen(!networkOpen())}
-            {...stylex.attrs(styles.iconButton, networkOpen() && styles.iconButtonOn)}
-            data-network-button
-          >
-            <Icon name="network" size={16} />
-          </button>
-          <ExtensionsBar workspaceId={workspaceId} tabId={contentsId} active={props.active} onImport={openExtensionImport} />
-          <Show when={collapsed()}>
-            <button
-              type="button"
-              title="Show agent (Ctrl+J)"
-              onClick={() => setAgentCollapsed(props.appId, false)}
-              {...stylex.attrs(styles.agentButton)}
-              data-agent-show
-            >
-              <Icon name="bot" size={15} />
-              Agent
-              <Show when={state()?.running}>
-                <span {...stylex.attrs(styles.runningDot)} />
-              </Show>
-            </button>
-          </Show>
-        </div>
         <Show when={loading()}>
           <div {...stylex.attrs(styles.progressTrack)}>
             <div {...stylex.attrs(styles.progress)} />

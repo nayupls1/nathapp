@@ -451,6 +451,50 @@ const appRoutes = HttpRouter.addAll([
     }),
   ),
 
+  // Closing an app's tab keeps the app (the library); it can be opened again.
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/close",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        yield* (yield* Agent).stop(id);
+        // A new app tab with nothing in it yet has nothing to keep.
+        const tab = yield* (yield* Apps).get(id);
+        if (tab?.kind === "app" && !(yield* (yield* Workspace).info(id))) {
+          yield* removeApp(id);
+          return json({ deleted: true });
+        }
+        const closed = yield* (yield* Projects).close(id);
+        if (!closed) return yield* fail(404, "No such app");
+        yield* youDid(id, "app.close", closed.name);
+        return json(closed);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/library",
+    Effect.gen(function* () {
+      return json(yield* (yield* Apps).closed());
+    }),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/reopen",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        const { workspaceId } = yield* decodeBody(Schema.Struct({ workspaceId: str(100) }));
+        yield* ensureWorkspace(workspaceId);
+        const opened = yield* (yield* Projects).reopen(id, workspaceId);
+        if (!opened) return yield* fail(404, "No such app");
+        yield* youDid(id, "app.reopen", opened.name);
+        return json(opened);
+      }),
+    ),
+  ),
+
   // The tab's own icon (a Lucide name, an emoji or a small image), or null for the default.
   HttpRouter.route(
     "PUT",

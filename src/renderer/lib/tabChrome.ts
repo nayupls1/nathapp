@@ -1,0 +1,51 @@
+// What the sidebar's top bar shows for the tab on screen (components/TopBar.tsx):
+// its address, back, forward and reload, and its own tools. Pages get the whole
+// content area, like in Zen Browser; each tab (WebTab, AppTab) registers its
+// chrome here while it's mounted.
+import { createSignal, type JSX } from "solid-js";
+
+export interface TabChrome {
+  /** What the address field shows (an app's preview: its localhost URL). */
+  url: () => string;
+  /** No page yet (a new web tab): the address field takes the focus. */
+  blank?: () => boolean;
+  /** The address field's icon. */
+  icon: () => string;
+  canBack: () => boolean;
+  canForward: () => boolean;
+  loading: () => boolean;
+  back: () => void;
+  forward: () => void;
+  reload: () => void;
+  stop?: () => void;
+  /** Opens what was typed in this tab (a URL or a search); false if it can't. Without it, typing opens a new web tab. */
+  go?: (input: string) => boolean;
+  /** Inside the address field, at its end (a web tab's page changes). */
+  addressExtras?: () => JSX.Element;
+  /** A row of the tab's own tools under the address (extensions, an app's logs and data…). */
+  tools?: () => JSX.Element;
+}
+
+const [chromes, setChromes] = createSignal<Record<string, TabChrome>>({});
+
+export const chromeOf = (tabId: string | null) => (tabId ? chromes()[tabId] : undefined);
+
+/** Registers a tab's chrome; returns the function that takes it back. */
+export function registerChrome(tabId: string, chrome: TabChrome) {
+  setChromes((all) => ({ ...all, [tabId]: chrome }));
+  return () =>
+    setChromes((all) => {
+      if (all[tabId] !== chrome) return all;
+      const { [tabId]: _, ...rest } = all;
+      return rest;
+    });
+}
+
+/** The web tab whose Network panel is open (command bar: "Network requests"). */
+const [networkTab, setNetworkTab] = createSignal<string | null>(null);
+export { networkTab, setNetworkTab };
+
+/** Asks the top bar to focus its address field (Ctrl+L). */
+const [focusRequest, setFocusRequest] = createSignal(0);
+export { focusRequest };
+export const focusAddress = () => setFocusRequest((n) => n + 1);

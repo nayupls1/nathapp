@@ -215,6 +215,8 @@ const migrate = Effect.gen(function* () {
     ["icon_locked", "INTEGER NOT NULL DEFAULT 0"],
     // Kept loaded: never unloaded when it's idle.
     ["pinned", "INTEGER NOT NULL DEFAULT 0"],
+    // Closed app tabs are kept (the library of saved apps) until they're deleted.
+    ["closed_at", "TEXT"],
   ];
   for (const [name, type] of added) {
     if (!columns.has(name)) yield* sql.unsafe(`ALTER TABLE apps ADD COLUMN ${name} ${type}`);

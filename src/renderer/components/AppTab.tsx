@@ -15,6 +15,7 @@ import { watchTopic } from "../lib/realtime";
 import { sendWithShares } from "../lib/sharing";
 import { appMode, isAgentCollapsed, setAgentCollapsed, setRuntime, states } from "../lib/store";
 import { registerPage, type PageInfo } from "../lib/webtabs";
+import { registerChrome } from "../lib/tabChrome";
 import { colors, font, radius, space } from "../theme.stylex";
 import { ShowAgentButton } from "./Chat";
 import { NewApp } from "./NewApp";
@@ -109,6 +110,15 @@ function Workbench(props: { appId: string; active: boolean }) {
   function attach(view: WebviewTag) {
     webview = view;
     ready = false;
+    const track = () => {
+      if (!ready) return;
+      setPreviewUrl(view.getURL());
+      setNav((n) => ({ ...n, back: view.canGoBack(), forward: view.canGoForward() }));
+    };
+    view.addEventListener("did-start-loading", () => setNav((n) => ({ ...n, loading: true })));
+    view.addEventListener("did-stop-loading", () => (setNav((n) => ({ ...n, loading: false })), track()));
+    view.addEventListener("did-navigate", track);
+    view.addEventListener("did-navigate-in-page", track);
     // A new preview (mode switch, restart) keeps what was picked; navigating within it doesn't.
     let first = true;
     view.addEventListener("did-start-loading", () => setLoadError());
@@ -209,113 +219,126 @@ function Workbench(props: { appId: string; active: boolean }) {
     void sendWithShares(props.appId, prompt, page);
   }
 
-  const pickButton = (size: number) => (
-    <button
-      type="button"
-      title={picking() ? "Cancel picking (Esc)" : "Pick elements in the app for the agent"}
-      disabled={!running()}
-      onClick={pick}
-      {...stylex.attrs(styles.iconButton, picking() && styles.iconButtonOn)}
-      data-pick-element
-    >
-      <Icon name="crosshair" size={size} />
-    </button>
+  // The sidebar's top bar for this tab (components/TopBar.tsx): the preview's localhost address, and the app's tools.
+  const [previewUrl, setPreviewUrl] = createSignal("");
+  const [nav, setNav] = createSignal({ back: false, forward: false, loading: false });
+  onCleanup(
+    registerChrome(props.appId, {
+      url: () => (running() ? previewUrl() || runtime()!.url! : ""),
+      icon: () => "app-window",
+      canBack: () => nav().back,
+      canForward: () => nav().forward,
+      loading: () => nav().loading,
+      back: () => webview && ready && webview.goBack(),
+      forward: () => webview && ready && webview.goForward(),
+      reload: () => (webview && ready ? webview.reload() : void control("restart")),
+      stop: () => webview?.stop(),
+      // Paths and addresses of the app open in its preview; anything else in a new web tab.
+      go: (input) => {
+        if (!webview || !ready || !running()) return false;
+        const base = runtime()!.url!;
+        const target = input.startsWith("/") ? new URL(input, base).toString() : input;
+        if (!sameOrigin(target, base)) return false;
+        void webview.loadURL(target).catch(() => {});
+        return true;
+      },
+      tools: () => (
+        <>
+      <Show when={state().project}>
+        <span
+          {...stylex.attrs(styles.status)}
+          title={runtime()?.error ?? (isLive() ? "The finished app (open the agent to edit it)" : "Being edited: the dev server, changes appear live")}
+          data-runtime-state={runtime()?.state}
+          data-mode={appMode(props.appId)}
+        >
+          <span
+            {...stylex.attrs(
+              styles.dot,
+              isRunning() && styles.dotRunning,
+              busy() && styles.dotBusy,
+              isCrashed() && styles.dotCrashed,
+            )}
+          />
+          {isLive() ? "" : "Editing · "}
+          {stateLabels[runtime()?.state ?? "stopped"]}
+        </span>
+      </Show>
+      <button
+        type="button"
+        title="Restart the app"
+        disabled={!state().project || busy()}
+        onClick={() => void control("restart")}
+        {...stylex.attrs(styles.iconButton)}
+        data-restart
+      >
+        <Icon name="rotate-cw" size={15} />
+      </button>
+      <button
+        type="button"
+        title="Logs"
+        disabled={!state().project}
+        onClick={() => setLogsOpen((o) => !o)}
+        {...stylex.attrs(styles.iconButton, logsOpen() && styles.iconButtonOn)}
+        data-logs
+      >
+        <Icon name="terminal" size={15} />
+      </button>
+      <button
+        type="button"
+        title="Secrets (API keys, passwords) for this app"
+        onClick={() => setSecretsOpen((o) => !o)}
+        {...stylex.attrs(styles.iconButton, secretsOpen() && styles.iconButtonOn)}
+        data-secrets
+      >
+        <Icon name="key-round" size={15} />
+      </button>
+      <button
+        type="button"
+        title="History: undo changes, restore earlier versions"
+        disabled={!state().project}
+        onClick={() => setHistoryOpen((o) => !o)}
+        {...stylex.attrs(styles.iconButton, historyOpen() && styles.iconButtonOn)}
+        data-history-button
+      >
+        <Icon name="file-clock" size={15} />
+      </button>
+      <button
+        type="button"
+        title="Data: what the app has stored"
+        disabled={!state().project}
+        onClick={() => setDataOpen((o) => !o)}
+        {...stylex.attrs(styles.iconButton, dataOpen() && styles.iconButtonOn)}
+        data-data-button
+      >
+        <Icon name="database" size={15} />
+      </button>
+      <button
+        type="button"
+        title="Tools: what the app can do, for you, agents and other apps"
+        disabled={!state().project}
+        onClick={() => setToolsOpen((o) => !o)}
+        {...stylex.attrs(styles.iconButton, toolsOpen() && styles.iconButtonOn)}
+        data-tools-button
+      >
+        <Icon name="wrench" size={15} />
+      </button>
+      <button
+        type="button"
+        title="Open in your browser"
+        disabled={!running()}
+        onClick={() => window.nathapp.web.openExternal(runtime()!.url!)}
+        {...stylex.attrs(styles.iconButton)}
+      >
+        <Icon name="external-link" size={15} />
+      </button>
+        </>
+      ),
+    }),
   );
 
   return (
-    <div {...stylex.attrs(styles.split)} data-app-tab={props.appId}>
+    <div {...stylex.attrs(styles.split)} data-app-tab={props.appId} data-runtime-state={runtime()?.state} data-mode={appMode(props.appId)}>
       <div {...stylex.attrs(styles.main)}>
-        <div {...stylex.attrs(styles.toolbar)} data-titlebar>
-          <Show when={state().project}>
-            <span
-              {...stylex.attrs(styles.status)}
-              title={runtime()?.error ?? (isLive() ? "The finished app (open the agent to edit it)" : "Being edited: the dev server, changes appear live")}
-              data-runtime-state={runtime()?.state}
-              data-mode={appMode(props.appId)}
-            >
-              <span
-                {...stylex.attrs(
-                  styles.dot,
-                  isRunning() && styles.dotRunning,
-                  busy() && styles.dotBusy,
-                  isCrashed() && styles.dotCrashed,
-                )}
-              />
-              {isLive() ? "" : "Editing · "}
-              {stateLabels[runtime()?.state ?? "stopped"]}
-            </span>
-          </Show>
-          <span {...stylex.attrs(styles.url)}>{running() ? runtime()!.url!.replace(/^http:\/\//, "") : ""}</span>
-          {pickButton(16)}
-          <button
-            type="button"
-            title="Restart the app"
-            disabled={!state().project || busy()}
-            onClick={() => void control("restart")}
-            {...stylex.attrs(styles.iconButton)}
-            data-restart
-          >
-            <Icon name="rotate-cw" size={15} />
-          </button>
-          <button
-            type="button"
-            title="Logs"
-            disabled={!state().project}
-            onClick={() => setLogsOpen((o) => !o)}
-            {...stylex.attrs(styles.iconButton, logsOpen() && styles.iconButtonOn)}
-            data-logs
-          >
-            <Icon name="terminal" size={15} />
-          </button>
-          <button
-            type="button"
-            title="Secrets (API keys, passwords) for this app"
-            onClick={() => setSecretsOpen((o) => !o)}
-            {...stylex.attrs(styles.iconButton, secretsOpen() && styles.iconButtonOn)}
-            data-secrets
-          >
-            <Icon name="key-round" size={15} />
-          </button>
-          <button
-            type="button"
-            title="History: undo changes, restore earlier versions"
-            disabled={!state().project}
-            onClick={() => setHistoryOpen((o) => !o)}
-            {...stylex.attrs(styles.iconButton, historyOpen() && styles.iconButtonOn)}
-            data-history-button
-          >
-            <Icon name="file-clock" size={15} />
-          </button>
-          <button
-            type="button"
-            title="Data: what the app has stored"
-            disabled={!state().project}
-            onClick={() => setDataOpen((o) => !o)}
-            {...stylex.attrs(styles.iconButton, dataOpen() && styles.iconButtonOn)}
-            data-data-button
-          >
-            <Icon name="database" size={15} />
-          </button>
-          <button
-            type="button"
-            title="Tools: what the app can do, for you, agents and other apps"
-            disabled={!state().project}
-            onClick={() => setToolsOpen((o) => !o)}
-            {...stylex.attrs(styles.iconButton, toolsOpen() && styles.iconButtonOn)}
-            data-tools-button
-          >
-            <Icon name="wrench" size={15} />
-          </button>
-          <button
-            type="button"
-            title="Open in your browser"
-            disabled={!running()}
-            onClick={() => window.nathapp.web.openExternal(runtime()!.url!)}
-            {...stylex.attrs(styles.iconButton)}
-          >
-            <Icon name="external-link" size={15} />
-          </button>
-        </div>
         <div {...stylex.attrs(styles.viewport)}>
           <Show
             when={previewKey()}
@@ -500,14 +523,20 @@ const styles = stylex.create({
     borderBottomColor: colors.border,
     backgroundColor: colors.bg,
   },
+  // In the sidebar's top bar: a line of its own above the app's tools.
   status: {
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
     gap: 6,
-    marginLeft: space.xs,
+    flexBasis: "100%",
+    minWidth: 0,
+    paddingInline: space.xs,
+    paddingBottom: 2,
     color: colors.muted,
     fontSize: font.xs,
     whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   dot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.muted },
   dotRunning: { backgroundColor: colors.success },
@@ -525,12 +554,13 @@ const styles = stylex.create({
     fontSize: 11.5,
     textAlign: "right",
   },
+  // In the sidebar's top bar: seven of them fit its default width.
   iconButton: {
     display: "grid",
     placeItems: "center",
     flexShrink: 0,
-    width: 30,
-    height: 30,
+    width: 27,
+    height: 27,
     padding: 0,
     borderStyle: "none",
     borderRadius: radius.sm,

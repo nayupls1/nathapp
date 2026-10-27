@@ -46,23 +46,21 @@ export function Chat(props: { appId: string }) {
   return (
     <aside {...stylex.attrs(styles.root)} data-agent-panel>
       <header {...stylex.attrs(styles.header)} data-titlebar>
-        <Icon name="bot" size={16} {...stylex.attrs(styles.headerIcon)} />
-        <span {...stylex.attrs(styles.headerTitle)}>Agent</span>
-        <span {...stylex.attrs(styles.headerTab)} title="The tab the agent works on" data-agent-tab-name>
-          {tab()?.name ?? ""}
-        </span>
         <Show when={fullAccess()}>
           <button
             type="button"
             title={`Full access: agents don't ask before acting. ${FULL_ACCESS_WARNING} Click to make them ask again.`}
+            aria-label="Full access is on: click to make agents ask again"
             onClick={() => void setFullAccess(false)}
             {...stylex.attrs(styles.fullAccess)}
             data-full-access
           >
-            <Icon name="shield-off" size={12} />
-            Full access
+            <Icon name="shield-off" size={14} />
           </button>
         </Show>
+        <span {...stylex.attrs(styles.headerTab)} title="The tab the agent works on" data-agent-tab-name>
+          {tab()?.name ?? ""}
+        </span>
         <button
           type="button"
           title="New chat (this one is kept in the chat history)"
@@ -93,7 +91,7 @@ export function Chat(props: { appId: string }) {
           {...stylex.attrs(styles.headerButton)}
           data-agent-hide
         >
-          <Icon name="panel-right-close" size={16} />
+          <Icon name="x" size={16} />
         </button>
       </header>
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
@@ -362,21 +360,20 @@ const styles = stylex.create({
   },
   headerIcon: { color: colors.accent },
   headerTitle: { flexShrink: 0, fontSize: font.sm, fontWeight: 600 },
-  headerTab: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.muted, fontSize: font.sm },
+  headerTab: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm, fontWeight: 600 },
   chips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
+  // A small red shield while agents don't ask (click to make them ask again).
   fullAccess: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
+    display: "grid",
+    placeItems: "center",
     flexShrink: 0,
-    height: 22,
-    paddingInline: 8,
+    width: 24,
+    height: 24,
+    padding: 0,
     borderWidth: 0,
     borderRadius: radius.full,
-    backgroundColor: colors.danger,
-    color: "#ffffff",
-    fontSize: font.xs,
-    fontWeight: 600,
+    backgroundColor: { default: "color-mix(in oklab, transparent, #dc2626 14%)", ":hover": "color-mix(in oklab, transparent, #dc2626 24%)" },
+    color: colors.danger,
     cursor: "pointer",
   },
   history: {

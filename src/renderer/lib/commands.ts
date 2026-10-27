@@ -36,10 +36,14 @@ import {
   stopAgent,
   workspaceById,
   workspaces,
+  closeTab,
+  reopenApp,
+  reopenClosedTab,
 } from "./store";
 import { isSidebarCollapsed, toggleSidebar } from "./layout";
 import { removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "./splits";
 import { pageOf } from "./webtabs";
+import { networkTab, setNetworkTab } from "./tabChrome";
 import { unloadOtherTabs } from "./unload";
 import { sendWithShares } from "./sharing";
 import { reviewMod } from "./mods";
@@ -71,7 +75,11 @@ const [open, setOpen] = createSignal(false);
 const [appActions, setAppActions] = createSignal<AppActionInfo[]>([]);
 export { open as commandBarOpen, appActions };
 
+/** Closed apps, to open again from the bar (fetched when it opens). */
+const [library, setLibrary] = createSignal<AppSummary[]>([]);
+
 export function openCommandBar() {
+  void api.library().then(setLibrary, () => {});
   if (open()) return setOpen(false);
   setOpen(true);
   // Apps may have changed their nathapp.json since: fetched each time.
@@ -257,8 +265,25 @@ function currentTabCommands(id: string): Command[] {
       : { id: "tab.pin", title: "Keep this tab loaded", subtitle: app.name, icon: "pin", group: "Tab", keywords: "pin memory idle unload", run: () => setTabPinned(id, true) },
   );
   if (state?.running) list.push({ id: "tab.stop", title: "Stop the agent", subtitle: app.name, icon: "square", group: "Tab", run: () => stopAgent(id) });
+  list.push({
+    id: "tab.close",
+    title: app.kind === "app" ? "Close tab (the app is kept)" : "Close tab",
+    subtitle: "Ctrl+W",
+    icon: "x",
+    group: "Tab",
+    run: () => closeTab(id),
+  });
   if (app.kind === "web") {
     list.push({ id: "tab.reload", title: "Reload page", subtitle: "Ctrl+R", icon: "rotate-cw", group: "Tab", run: () => pageOf(id)?.reload() });
+    list.push({
+      id: "tab.network",
+      title: networkTab() === id ? "Hide network requests" : "Network requests",
+      subtitle: app.name,
+      icon: "network",
+      group: "Tab",
+      keywords: "traffic api requests responses devtools",
+      run: () => setNetworkTab(networkTab() === id ? null : id),
+    });
   } else if (state?.project) {
     list.push(
       {
@@ -480,6 +505,10 @@ export function commands(query: string): Command[] {
       .filter((w) => w.id !== current)
       .map((w): Command => ({ id: `workspace:${w.id}`, title: w.name, subtitle: "Switch workspace", icon: w.icon ?? "layers", group: "Workspace", run: () => showWorkspace(w.id) })),
     ...nathappCommands(),
+    { id: "tab.reopen", title: "Reopen closed tab", subtitle: "Ctrl+Shift+T", icon: "undo-2", group: "NathApp", keywords: "restore undo close", run: () => reopenClosedTab() },
+    ...library().map(
+      (app): Command => ({ id: `library:${app.id}`, title: `Open ${app.name}`, subtitle: "Saved app", icon: app.icon ?? "box", group: "Saved apps", keywords: "reopen closed library", run: () => reopenApp(app.id) }),
+    ),
   ];
   const q = query.trim().toLowerCase();
   const best = q ? Math.max(0, ...list.map((c) => scoreOf(q, c))) : 0;

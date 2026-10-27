@@ -28,12 +28,16 @@ import {
   updateWorkspace,
   workspaces,
   workspaceTabs,
+  closeTab,
+  reopenApp,
 } from "../lib/store";
 import { draggedSplit, draggedTab, isSidebarCollapsed, setDraggedSplit, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
 import { canUnload, unloadTab } from "../lib/unload";
 import { fullAccess } from "../lib/access";
 import { evenSplit, placeInSplit, removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "../lib/splits";
 import { colors, font, radius, space } from "../theme.stylex";
+import { AddressBar, NavRow, TabTools } from "./TopBar";
+import { api } from "../lib/api";
 import { confirmDialog } from "./ConfirmDialog";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
@@ -49,6 +53,7 @@ const entries = () => {
   const seen = new Set<string>();
   const list: string[] = [];
   for (const tab of workspaceTabs()) {
+    if (isTile(tab)) continue;
     const split = splitOf(tab.id);
     if (!split) list.push(tab.id);
     else if (!seen.has(split.id)) {
@@ -59,15 +64,30 @@ const entries = () => {
   return list;
 };
 
+/** Pinned tabs show as tiles above the list (not in a split view, not in the collapsed sidebar). */
+const isTile = (tab: AppSummary) => tab.pinned && !splitOf(tab.id) && !isSidebarCollapsed();
+const tiles = () => workspaceTabs().filter(isTile);
+
 /** Width of the collapsed sidebar: icons only. */
 const RAIL_WIDTH = 52;
 
 export function Sidebar() {
   const [newMenu, setNewMenu] = createSignal<MenuPosition>();
-  const newItems: MenuItem[] = [
-    { label: "New app", icon: "sparkles", onSelect: () => newApp() },
+  const [library, setLibrary] = createSignal<AppSummary[]>([]);
+  const newItems = (): (MenuItem | "separator")[] => [
     { label: "New web tab", icon: "globe", onSelect: () => newWebTab() },
+    { label: "New app", icon: "sparkles", onSelect: () => newApp() },
+    ...(library().length
+      ? [
+          "separator" as const,
+          ...library()
+            .slice(0, 12)
+            .map((app): MenuItem => ({ label: `Open ${app.name}`, icon: "archive-restore", onSelect: () => void reopenApp(app.id) })),
+        ]
+      : []),
   ];
+  // Closed apps (the library), fresh each time the menu opens.
+  createEffect(on(newMenu, (open) => open && void api.library().then(setLibrary, () => setLibrary([]))));
   const compact = isSidebarCollapsed;
   return (
     <>
@@ -76,26 +96,18 @@ export function Sidebar() {
       style={{ width: `${compact() ? RAIL_WIDTH : sidebarWidth()}px` }}
       data-sidebar={compact() ? "collapsed" : "expanded"}
     >
-      <div {...stylex.attrs(styles.top, compact() && styles.topCompact)} data-titlebar>
-        <Button
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            setNewMenu({ x: r.left, y: r.bottom + 4 });
-          }}
-          xstyle={compact() ? styles.newButtonCompact : styles.newButton}
-          title={compact() ? "New tab" : undefined}
-          aria-haspopup="menu"
-          data-new-tab
-        >
-          <Icon name="plus" size={15} />
-          <Show when={!compact()}>
-            New tab
-            <Icon name="chevron-down" size={14} {...stylex.attrs(styles.chevron)} />
-          </Show>
-        </Button>
+      {/* The tab on screen: its navigation, address and tools (components/TopBar.tsx). */}
+      <div {...stylex.attrs(styles.chrome)} data-tab-chrome={selectedId() ?? ""}>
+        <NavRow compact={compact()} />
+        <Show when={!compact()}>
+          <AddressBar />
+          <TabTools />
+        </Show>
       </div>
-      <Show when={newMenu()}>
-        {(position) => <ContextMenu items={newItems} position={position()} onClose={() => setNewMenu()} />}
+      <Show when={tiles().length}>
+        <ul {...stylex.attrs(styles.tiles)} data-pinned-tiles>
+          <For each={tiles()}>{(app) => <Item app={app} tile />}</For>
+        </ul>
       </Show>
       <ul {...stylex.attrs(styles.list)}>
         <For each={entries()}>
@@ -106,6 +118,22 @@ export function Sidebar() {
           )}
         </For>
       </ul>
+      <Button
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setNewMenu({ x: r.left, y: r.bottom + 4 });
+        }}
+        xstyle={compact() ? styles.newButtonCompact : styles.newButton}
+        title={compact() ? "New tab" : undefined}
+        aria-haspopup="menu"
+        data-new-tab
+      >
+        <Icon name="plus" size={15} />
+        <Show when={!compact()}>New tab</Show>
+      </Button>
+      <Show when={newMenu()}>
+        {(position) => <ContextMenu items={newItems()} position={position()} onClose={() => setNewMenu()} />}
+      </Show>
       <WorkspaceName />
       {/* At the very bottom: collapse, the workspaces in the middle, Settings (a column when collapsed). */}
       <div {...stylex.attrs(styles.footer, compact() && styles.footerCompact)} data-sidebar-footer>
@@ -485,7 +513,7 @@ function dropOn(at: { id: string; side: "before" | "after" }, tabId: string | nu
   void moveTab(tabId, at.id, at.side);
 }
 
-function Item(props: { app: AppSummary }) {
+function Item(props: { app: AppSummary; tile?: boolean }) {
   const [editing, setEditing] = createSignal(false);
   const [menu, setMenu] = createSignal<MenuPosition>();
   const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
@@ -505,6 +533,8 @@ function Item(props: { app: AppSummary }) {
     return tabs[tabs.findIndex((t) => t.id === props.app.id) + offset];
   };
   const selected = () => selectedId() === props.app.id;
+  /** Icon only: the collapsed sidebar, or a pinned tile. */
+  const hideName = () => isSidebarCollapsed() || !!props.tile;
   const running = () => !!states[props.app.id]?.running;
   const menuOpen = () => menu() !== undefined;
   const highlighted = () => selected() || menuOpen();
@@ -534,8 +564,8 @@ function Item(props: { app: AppSummary }) {
         ? [{ label: `Show beside “${current()!.name}”`, icon: "columns-2", onSelect: () => splitWith(current()!.id, props.app.id, "right") }]
         : []),
     props.app.pinned
-      ? { label: "Allow unloading", icon: "pin-off", onSelect: () => void setTabPinned(props.app.id, false) }
-      : { label: "Keep loaded", icon: "pin", onSelect: () => void setTabPinned(props.app.id, true) },
+      ? { label: "Unpin", icon: "pin-off", onSelect: () => void setTabPinned(props.app.id, false) }
+      : { label: "Pin (a tile above the tabs, kept loaded)", icon: "pin", onSelect: () => void setTabPinned(props.app.id, true) },
     { label: "Unload", icon: "moon", disabled: !canUnload(props.app.id), onSelect: () => void unloadTab(props.app.id) },
     { label: "Move up", icon: "arrow-up", disabled: !neighbour(-1), onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before") },
     { label: "Move down", icon: "arrow-down", disabled: !neighbour(1), onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after") },
@@ -549,22 +579,29 @@ function Item(props: { app: AppSummary }) {
       onSelect: () => void newChat(props.app.id).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" })),
     },
     "separator",
-    {
-      label: "Delete",
-      icon: "trash",
-      danger: true,
-      onSelect: async () => {
-        const ok = await confirmDialog(`Delete “${props.app.name}” and all its data?`, { confirmLabel: "Delete", danger: true });
-        if (ok) deleteApp(props.app.id);
-      },
-    },
+    { label: props.app.kind === "app" ? "Close (the app is kept)" : "Close tab", icon: "x", onSelect: () => void close() },
+    ...(props.app.kind === "app"
+      ? [
+          {
+            label: "Delete",
+            icon: "trash",
+            danger: true,
+            onSelect: async () => {
+              const ok = await confirmDialog(`Delete “${props.app.name}” and all its data?`, { confirmLabel: "Delete", danger: true });
+              if (ok) deleteApp(props.app.id);
+            },
+          },
+        ]
+      : []),
   ];
+  const close = () => closeTab(props.app.id).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }));
 
   return (
     <li
       {...stylex.attrs(
         stylex.defaultMarker(),
         styles.item,
+        props.tile && styles.tile,
         highlighted() && styles.selected,
         beside() && styles.beside,
         isSidebarCollapsed() && styles.itemCompact,
@@ -572,8 +609,14 @@ function Item(props: { app: AppSummary }) {
         dropBefore() && styles.dropBefore,
         dropAfter() && styles.dropAfter,
       )}
-      title={isSidebarCollapsed() ? props.app.name : asleep() ? "Not loaded: opens where you left it" : undefined}
+      title={isSidebarCollapsed() || props.tile ? props.app.name : asleep() ? "Not loaded: opens where you left it" : undefined}
       onClick={() => selectApp(props.app.id)}
+      onAuxClick={(e) => {
+        // Middle click closes it, like in a browser.
+        if (e.button !== 1) return;
+        e.preventDefault();
+        void close();
+      }}
       onDblClick={rename}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -618,7 +661,7 @@ function Item(props: { app: AppSummary }) {
       <span {...stylex.attrs(styles.tabIcon, asleep() && styles.asleep)}>
         <TabIcon tab={props.app} />
       </span>
-      <Show when={editing()} fallback={<span {...stylex.attrs(styles.name, isSidebarCollapsed() && styles.hiddenText)}>{props.app.name}</span>}>
+      <Show when={editing()} fallback={<span {...stylex.attrs(styles.name, hideName() && styles.hiddenText)}>{props.app.name}</span>}>
         <input
           ref={(el) => queueMicrotask(() => el.select())}
           value={props.app.name}
@@ -631,9 +674,7 @@ function Item(props: { app: AppSummary }) {
           {...stylex.attrs(styles.rename)}
         />
       </Show>
-      <Show when={props.app.pinned && !isSidebarCollapsed()}>
-        <Icon name="pin" size={12} {...stylex.attrs(styles.pin)} aria-label="Kept loaded" />
-      </Show>
+
       <Show when={running()}>
         <span
           {...stylex.attrs(styles.dot, isSidebarCollapsed() && styles.dotCompact, fullAccess() && styles.dotFull)}
@@ -641,19 +682,19 @@ function Item(props: { app: AppSummary }) {
           data-running-full={fullAccess() ? "" : undefined}
         />
       </Show>
-      <Show when={!isSidebarCollapsed()}>
+      <Show when={!hideName()}>
         <button
           type="button"
-          title="More"
-          aria-haspopup="menu"
+          title={props.app.kind === "app" ? "Close (the app is kept: New tab → Open it again)" : "Close tab (Ctrl+W)"}
+          aria-label={`Close ${props.app.name}`}
           onClick={(e) => {
             e.stopPropagation();
-            const rect = e.currentTarget.getBoundingClientRect();
-            setMenu({ x: rect.left, y: rect.bottom + 4 });
+            void close();
           }}
-          {...stylex.attrs(styles.more, menuOpen() && styles.moreOpen)}
+          {...stylex.attrs(styles.more, selected() && styles.moreOpen)}
+          data-close-tab
         >
-          <Icon name="ellipsis" size={15} />
+          <Icon name="x" size={14} />
         </button>
       </Show>
       <Show when={menu()}>
@@ -687,9 +728,6 @@ const styles = stylex.create({
     overflowY: "auto",
   },
   rootCompact: { paddingInline: 8 },
-  // The window is dragged by the strip around the New tab button (it has no title bar).
-  top: { flexShrink: 0, marginTop: `calc(-1 * ${space.md})`, marginInline: `calc(-1 * ${space.md})`, paddingTop: space.md, paddingInline: space.md },
-  topCompact: { marginInline: -8, paddingInline: 8 },
   naming: { display: "flex", alignItems: "center", gap: space.sm, flexShrink: 0 },
   collapse: {
     display: "grid",
@@ -768,7 +806,16 @@ const styles = stylex.create({
     fontSize: font.xs,
     fontWeight: 700,
   },
-  newButton: { justifyContent: "flex-start", width: "100%" },
+  newButton: { justifyContent: "flex-start", width: "100%", flexShrink: 0, backgroundColor: { default: "transparent", ":hover": colors.surfaceHover }, boxShadow: "none", color: colors.muted },
+  chrome: { display: "flex", flexDirection: "column", gap: space.sm, flexShrink: 0 },
+  tiles: { listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(44px, 1fr))", gap: 6, flexShrink: 0 },
+  tile: {
+    justifyContent: "center",
+    height: 40,
+    paddingInline: 0,
+    borderRadius: radius.md,
+    backgroundColor: { default: colors.surfaceHover, ":hover": colors.surface },
+  },
   chevron: { marginLeft: "auto", opacity: 0.6 },
   list: { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 },
   item: {

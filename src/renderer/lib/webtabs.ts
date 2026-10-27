@@ -9,10 +9,11 @@ import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
-import { appById, isTab, newWebTab, openTab, selectedId, showWorkspace, toggleAgent, workspaces } from "./store";
+import { appById, closeTab, isTab, newWebTab, openTab, reopenClosedTab, selectedId, showWorkspace, toggleAgent, workspaces } from "./store";
+import { focusAddress } from "./tabChrome";
 import { targetScript, waitForScript, type Locator } from "./browse";
 import { readPageScript, type SavedPage } from "./pagestate";
-import { toggleSidebar } from "./layout";
+import { setSidebarCollapsed, toggleSidebar } from "./layout";
 
 export interface PageInfo {
   url: string;
@@ -253,6 +254,11 @@ function runShortcut(name: WebShortcut) {
   const id = selectedId();
   if (name === "command-bar") return openCommandBar();
   if (name === "new-tab") return void newWebTab();
+  if (name === "reopen-tab") return void reopenClosedTab();
+  if (name === "focus-address") {
+    setSidebarCollapsed(false);
+    return focusAddress();
+  }
   if (name === "toggle-sidebar") return toggleSidebar();
   if (name.startsWith("workspace-")) {
     const target = workspaces[Number(name.slice("workspace-".length)) - 1];
@@ -261,10 +267,10 @@ function runShortcut(name: WebShortcut) {
   }
   if (!isTab(id)) return;
   if (name === "toggle-agent") return toggleAgent(id);
+  if (name === "close-tab") return void closeTab(id);
   const handle = pages.get(id);
   if (!handle) return;
-  if (name === "focus-address") handle.focusAddress();
-  else if (name === "reload") void handle.reload().catch(() => {});
+  if (name === "reload") void handle.reload().catch(() => {});
   else if (name === "back") handle.back();
   else if (name === "forward") handle.forward();
 }
@@ -282,9 +288,10 @@ window.addEventListener("keydown", (e) => {
   }
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   if (e.shiftKey) {
-    if (e.key.toLowerCase() !== "b") return;
+    const shifted = e.key.toLowerCase() === "b" ? "toggle-sidebar" : e.key.toLowerCase() === "t" ? "reopen-tab" : null;
+    if (!shifted) return;
     e.preventDefault();
-    return runShortcut("toggle-sidebar");
+    return runShortcut(shifted);
   }
   const key = e.key.toLowerCase();
   const name: WebShortcut | undefined =
@@ -294,9 +301,11 @@ window.addEventListener("keydown", (e) => {
         ? "toggle-agent"
         : key === "t"
           ? "new-tab"
-          : key === "l" && pages.has(selectedId() ?? "")
+          : key === "l"
             ? "focus-address"
-            : undefined;
+            : key === "w" && isTab(selectedId())
+              ? "close-tab"
+              : undefined;
   if (!name) return;
   e.preventDefault();
   runShortcut(name);

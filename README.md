@@ -230,11 +230,11 @@ Contents are stored once (content-addressed, gzipped) under `<data dir>/history/
 
 ### Window
 
-The window has no title bar, like Chrome. On Linux and Windows it's frameless and NathApp draws minimize, maximize and close in the top right (`components/WindowControls.tsx`); macOS keeps its traffic lights, top left. The top bars (the tab sidebar's header, a tab's toolbar, the agent sidebar's header) are where the window is dragged, and double-clicking one maximizes it. A bar running under the window's buttons is padded so nothing hides behind them (`lib/windowChrome.ts`).
+The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and NathApp draws minimize, maximize and close in the sidebar's top row, next to back, forward and reload (a column when the sidebar is collapsed; `components/WindowControls.tsx`); macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
 
 ### Agent sidebar
 
-The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J (or the Agent button in a tab) opens or closes it for the tab. It's open by default only where it's needed: on a new app tab, to describe the app. Web pages and other tabs start with it closed and remember being opened; an app's tab follows its mode (open while it's being edited), and apps start finished when NathApp starts.
+The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J (or the agent button at the top of the sidebar) opens or closes it for the tab. Its header is the tab's name, a red shield while agents have full access, new chat, earlier chats and close. It's open by default only where it's needed: on a new app tab, to describe the app. Web pages and other tabs start with it closed and remember being opened; an app's tab follows its mode (open while it's being edited), and apps start finished when NathApp starts.
 
 **Chats.** "New chat" (in its header, a tab's menu or the command bar) starts a fresh conversation and keeps the current one: the clock button lists a tab's earlier chats, newest first, to open one again (it continues where it left off, with its agent session; the current chat is kept in its place) or delete it (`/api/apps/:id/chats`).
 
@@ -242,7 +242,13 @@ It's resized like the tab sidebar: drag its left edge (or use the arrow keys on 
 
 ### Sidebar
 
-The sidebar is the tabs and the workspaces. At the top, "New tab" (the strip around it drags the window). At the very bottom, one row: the collapse button on the left, the workspaces' icons centered, Settings on the right.
+The sidebar is the browser's chrome, like Zen Browser's: pages get the whole content area, without a toolbar (`components/TopBar.tsx`, each tab's part in `lib/tabChrome.ts`).
+- **Top row:** back, forward, reload, the agent (Ctrl+J; a dot while it works) and the window's buttons. It drags the window.
+- **Address:** the tab on screen's address (an app's localhost URL). Typing suggests the open tabs that match (every workspace; Enter switches to the first), the address and a web search; Ctrl+L focuses it. Paths and localhost addresses open in an app's preview; anything else in a new web tab. A web tab's page changes are behind the paintbrush in it.
+- **The tab's tools:** a web tab's extensions; an app's state (editing, running…), restart, logs, secrets, history, data, tools and "open in your browser". The Network panel is in the command bar ("Network requests"); picking elements is in the agent's composer.
+- **Pinned tabs** are tiles above the list (and stay loaded).
+- **Tabs** have an × (or middle-click, Ctrl+W). Closing a web tab removes it; Ctrl+Shift+T opens the last one again. Closing an app keeps it with its project, data, chat and secrets (`POST /api/apps/:id/close`): "New tab" lists the saved apps to open again in the current workspace (`/api/library`, `POST /api/apps/:id/reopen`), as does the command bar. "Delete" in its menu deletes it for good. A new app with nothing in it yet is just removed.
+- **"New tab"** is under the tabs. At the very bottom, one row: the collapse button on the left, the workspaces' icons centered, Settings on the right.
 
 It collapses to a column of icons (the collapse button, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
 
@@ -405,7 +411,7 @@ Customizations packaged to share with others (Settings → Mods). A mod is one J
 
 ### Network
 
-Every web tab's traffic is recorded in Electron's main process over the DevTools protocol (`src/main/network.ts`). The network button in the toolbar opens the Network panel: requests with their headers and the data they returned, filterable, data (fetch/XHR, JSON, XML, forms) by default.
+Every web tab's traffic is recorded in Electron's main process over the DevTools protocol (`src/main/network.ts`). "Network requests" in the command bar opens the Network panel: requests with their headers and the data they returned, filterable, data (fetch/XHR, JSON, XML, forms) by default.
 
 - **Bounded memory:** the last 500 requests per tab. Response bodies are kept for structured data only, at most 256 kB each, 3 MB per tab and 24 MB in all; the oldest go first. Settings → Network turns recording off.
 - **Credentials stay hidden:** cookies, `Authorization` and other credential headers, token-like URL parameters and JSON or form fields (`password`, `accessToken`…), JWTs and bearer tokens show as `[redacted]`. In the panel you can show them; the website agent only ever gets them redacted.

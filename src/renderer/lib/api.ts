@@ -101,6 +101,9 @@ export const api = {
   getApp: (id: string) => request<AppDetail>(`/api/apps/${id}`),
   renameApp: (id: string, name: string) => request<AppSummary>(`/api/apps/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteApp: (id: string) => request<void>(`/api/apps/${id}`, { method: "DELETE" }),
+  closeApp: (id: string) => post<AppSummary | { deleted: true }>(`/api/apps/${id}/close`),
+  library: () => request<AppSummary[]>("/api/library"),
+  reopenApp: (id: string, workspaceId: string) => post<AppSummary>(`/api/apps/${id}/reopen`, { workspaceId }),
   duplicateApp: (id: string) => post<AppSummary>(`/api/apps/${id}/duplicate`),
   updatePage: (id: string, page: { url?: string; title?: string; favicon?: string | null }) =>
     request<AppSummary>(`/api/apps/${id}/page`, { method: "PATCH", body: JSON.stringify(page) }),

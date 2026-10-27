@@ -25,6 +25,7 @@ interface AppRow {
   position: number;
   created_at: string;
   updated_at: string;
+  closed_at: string | null;
 }
 
 export interface AppRecord extends AppSummary {
@@ -47,6 +48,7 @@ const toSummary = (r: AppRow): AppSummary => ({
   position: r.position,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
+  ...(r.closed_at ? { closedAt: r.closed_at } : {}),
 });
 
 const toRecord = (r: AppRow): AppRecord => ({
@@ -104,7 +106,19 @@ export const make = Effect.gen(function* () {
     });
 
   const repo = {
-    list: () => sql<AppRow>`SELECT * FROM apps ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map(toSummary))),
+    /** The open tabs. */
+    list: () => sql<AppRow>`SELECT * FROM apps WHERE closed_at IS NULL ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map(toSummary))),
+
+    /** Closed app tabs, kept to be opened again: the most recently closed first. */
+    closed: () => sql<AppRow>`SELECT * FROM apps WHERE closed_at IS NOT NULL ORDER BY closed_at DESC`.pipe(Effect.map((rows) => rows.map(toSummary))),
+
+    close: (id: string) => sql`UPDATE apps SET closed_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
+
+    /** Opens a closed app again, last in a workspace. */
+    reopen: (id: string, workspaceId: string) =>
+      sql`UPDATE apps SET closed_at = NULL, workspace_id = ${workspaceId}, position = ${lastPosition(workspaceId)}, updated_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(
+        Effect.andThen(summary(id)),
+      ),
 
     get: (id: string) => row(id).pipe(Effect.map((r) => (r ? toRecord(r) : null))),
 

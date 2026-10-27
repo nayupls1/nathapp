@@ -42,6 +42,10 @@ export interface ProjectsShape {
   readonly copy: (appId: string) => Effect.Effect<AppSummary | null>;
   /** Moves a tab to another workspace: it leaves its split, and a running app restarts with the new workspace's secrets. */
   readonly move: (appId: string, workspaceId: string) => Effect.Effect<AppSummary | null>;
+  /** Closes an app's tab: the app stops and goes to the library, with everything it has, to be opened again. */
+  readonly close: (appId: string) => Effect.Effect<AppSummary | null>;
+  /** Opens a closed app again in a workspace. */
+  readonly reopen: (appId: string, workspaceId: string) => Effect.Effect<AppSummary | null>;
   /** Deletes a tab with everything that belongs to it: its project, data, secrets, permissions, history and schedules. Stop its agent first. */
   readonly remove: (appId: string) => Effect.Effect<void>;
   /** The tab was opened: its app starts (in its mode) if Settings say so. */
@@ -145,6 +149,26 @@ export const make = Effect.gen(function* () {
         yield* pruneSplits(app.workspaceId);
         if (app.kind === "app") yield* runtime.refresh(appId);
         return moved;
+      }),
+
+    close: (appId) =>
+      Effect.gen(function* () {
+        const tab = yield* apps.get(appId);
+        if (!tab || tab.kind !== "app") return null;
+        yield* runtime.stop(appId);
+        const closed = yield* apps.close(appId);
+        yield* pruneSplits(tab.workspaceId);
+        yield* hub.publish({ type: "app-deleted", topic: topics.apps, appId });
+        return closed;
+      }),
+
+    reopen: (appId, workspaceId) =>
+      Effect.gen(function* () {
+        const tab = yield* apps.get(appId);
+        if (!tab?.closedAt) return tab ?? null;
+        const opened = yield* apps.reopen(appId, workspaceId);
+        yield* publish(opened);
+        return opened;
       }),
 
     remove: (appId) =>

@@ -272,7 +272,8 @@ export async function selectApp(id: string) {
   if (tab && tab.workspaceId !== currentWorkspace()?.id) setCurrentWorkspace(tab.workspaceId);
   if (tab) rememberTab(tab.workspaceId, id);
   setSelectedId(id);
-  await openTab(id);
+  // A tab deleted meanwhile (from elsewhere) has nothing to open.
+  await openTab(id).catch((err) => console.warn(`Opening tab ${id} failed:`, err));
 }
 
 /** Mounts a tab (its page or preview starts) and loads its chat, without selecting it: the other tabs of a split view. */
@@ -395,6 +396,41 @@ export async function openChat(id: string, chatId: number) {
 export async function deleteApp(id: string) {
   await api.deleteApp(id);
   forgetApp(id);
+}
+
+/** Web tabs closed lately, newest last (Ctrl+Shift+T opens the last one again). */
+const recentlyClosed: { url: string; workspaceId: string }[] = [];
+
+/**
+ * Closes a tab, like in a browser. An app is kept with everything it has
+ * (Saved apps in the New tab menu opens it again); a web tab goes, and
+ * Ctrl+Shift+T brings it back.
+ */
+export async function closeTab(id: string) {
+  const tab = appById(id);
+  if (!tab) return;
+  if (tab.kind === "app") await api.closeApp(id);
+  else {
+    if (tab.url) recentlyClosed.push({ url: tab.url, workspaceId: tab.workspaceId });
+    if (recentlyClosed.length > 25) recentlyClosed.shift();
+    await api.deleteApp(id);
+  }
+  forgetApp(id);
+}
+
+/** The web tab closed last, opened again. */
+export async function reopenClosedTab() {
+  const last = recentlyClosed.pop();
+  if (last) await newWebTab(last.url, { workspaceId: workspaces.some((w) => w.id === last.workspaceId) ? last.workspaceId : currentWorkspace()?.id });
+}
+
+/** Opens an app from the library (closed app tabs) in the current workspace. */
+export async function reopenApp(id: string) {
+  const workspace = currentWorkspace();
+  if (!workspace) return;
+  const tab = await api.reopenApp(id, workspace.id);
+  upsertApp(tab);
+  await selectApp(tab.id);
 }
 
 /** Puts the current workspace's tabs in this order: shown right away, then saved. */
