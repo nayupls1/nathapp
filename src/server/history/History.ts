@@ -170,6 +170,10 @@ export interface HistoryShape {
   /** The entry with its files and their line diffs. */
   readonly detail: (id: number) => Effect.Effect<HistoryDetail, HistoryError>;
   /** Puts the target back the way it was in the snapshot. Apps: `data: false` keeps the current data. */
+  /** The paths a snapshot holds. */
+  readonly paths: (id: number) => Effect.Effect<string[], HistoryError>;
+  /** One file of a snapshot as text (null if it isn't there or is binary). */
+  readonly fileAt: (id: number, path: string) => Effect.Effect<string | null, HistoryError>;
   readonly restore: (id: number, options: { data: boolean }) => Effect.Effect<void, HistoryError>;
   /**
    * Reverts just this snapshot's change. Fails if those files changed again
@@ -598,6 +602,16 @@ export const make = Effect.gen(function* () {
         ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 500)}`.pipe(Effect.map((rows) => rows.map(toEntry)), Effect.orDie),
 
     entry: (id) => Effect.map(requireRow(id), toEntry),
+
+    paths: (id) => Effect.map(requireRow(id), (row) => Object.keys(stored(row).tree).sort()),
+
+    fileAt: (id, path) =>
+      Effect.gen(function* () {
+        const { tree } = stored(yield* requireRow(id));
+        if (!tree[path]) return null;
+        const bytes = yield* get(tree[path]);
+        return isBinary(bytes) ? null : decoder.decode(bytes);
+      }),
 
     detail: (id) =>
       Effect.gen(function* () {

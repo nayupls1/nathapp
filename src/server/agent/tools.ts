@@ -172,6 +172,12 @@ ${code}
 
 // --- Website tools ------------------------------------------------------------------
 
+/** Where a change applies: this page, this host, or a pattern. */
+const scopeFor = (type: "site" | "pattern" | "page", url: string, pattern?: string): PageChangeSpec["scope"] => ({
+  type,
+  value: type === "page" ? pageKey(url) : type === "site" ? hostOf(url) : (pattern ?? ""),
+});
+
 export const siteTools = Effect.fn(function* (env: ToolEnv) {
   const hub = yield* Hub;
   const sites = yield* Sites;
@@ -286,11 +292,12 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
       [
         "Add one change to web pages; it's applied right away and on every load, also to content the page adds later. Prefer one change per thing the user asked for, with a short title they'll recognize. Returns its id and any error.",
         "Actions: hide (selector); style (selector, value: CSS declarations); text (selector, value: the new text); attribute (selector, name, value); insert (selector, value: HTML, position); button (selector, value: label, onClick: JavaScript run with `event` and `button`, position); css (value: a stylesheet); script (value: JavaScript run once per load; onElement(selector, fn) helps with dynamic pages).",
-        "Scope: page (this page), site (this host) or pattern (e.g. *.example.com/* or example.com/docs/*).",
+        "Scope: site (the default: every page of this host, so the change stays when the user navigates), pattern (wildcards, e.g. *.example.com/* for subdomains too, or example.com/watch* for one section), or page (this exact page only: use it only when the user asks for just this page).",
+        "Call list_page_changes first: if a change for the same thing exists, improve it with update_page_change instead of adding another.",
       ].join(" "),
       Schema.Struct({
         title: Schema.String,
-        scope: Schema.Literals(["page", "site", "pattern"]),
+        scope: Schema.optionalKey(Schema.Literals(["site", "pattern", "page"])),
         pattern: Schema.optionalKey(Schema.String.annotate({ description: "For scope pattern" })),
         action: Schema.Literals(["hide", "style", "text", "attribute", "insert", "button", "css", "script"]),
         selector: Schema.optionalKey(Schema.String),
@@ -299,13 +306,10 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
         position: Schema.optionalKey(Schema.Literals(["before", "after", "prepend", "append"])),
         onClick: Schema.optionalKey(Schema.String),
       }),
-      ({ scope, pattern, ...fields }) =>
+      ({ scope = "site", pattern, ...fields }) =>
         Effect.gen(function* () {
           const url = yield* currentUrl;
-          const spec: PageChangeSpec = {
-            ...fields,
-            scope: { type: scope, value: scope === "page" ? pageKey(url) : scope === "site" ? hostOf(url) : (pattern ?? "") },
-          };
+          const spec: PageChangeSpec = { ...fields, scope: scopeFor(scope, url, pattern) };
           const problem = pageChangeError(spec);
           if (problem) return text(problem, true);
           if (!(yield* allowChange(spec))) return text(`The user didn't allow changing ${spec.scope.value}. Nothing was saved; tell them what you would have changed.`, true);
@@ -316,10 +320,12 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "update_page_change",
-      "Change a page change (see list_page_changes): give its id and only the fields to change, or enabled to turn it on or off.",
+      "Change a page change (see list_page_changes): give its id and only the fields to change, or enabled to turn it on or off. scope (with pattern) moves it, e.g. from one page to the whole site.",
       Schema.Struct({
         id: Schema.String,
         enabled: Schema.optionalKey(Schema.Boolean),
+        scope: Schema.optionalKey(Schema.Literals(["site", "pattern", "page"])),
+        pattern: Schema.optionalKey(Schema.String.annotate({ description: "For scope pattern" })),
         title: Schema.optionalKey(Schema.String),
         selector: Schema.optionalKey(Schema.String),
         value: Schema.optionalKey(Schema.String),
@@ -327,11 +333,11 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
         position: Schema.optionalKey(Schema.Literals(["before", "after", "prepend", "append"])),
         onClick: Schema.optionalKey(Schema.String),
       }),
-      ({ id, enabled, ...fields }) =>
+      ({ id, enabled, scope, pattern, ...fields }) =>
         Effect.gen(function* () {
           const current = yield* pageChanges.get(id);
           if (!current) return text(`No page change ${id}.`, true);
-          const spec: PageChangeSpec = { ...current, ...fields };
+          const spec: PageChangeSpec = { ...current, ...fields, ...(scope ? { scope: scopeFor(scope, yield* currentUrl, pattern) } : {}) };
           const problem = pageChangeError(spec);
           if (problem) return text(problem, true);
           if (!(yield* allowChange(spec))) return text(`The user didn't allow changing ${spec.scope.value}.`, true);

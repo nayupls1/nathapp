@@ -31,6 +31,7 @@ import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { browseTools } from "./browseTools";
 import { devtoolsTools } from "./devtoolsTools";
+import { historyTools } from "./historyTools";
 import { describeSource, sourceTools } from "./sourceTools";
 import { networkReadTools, networkTools } from "./networkTools";
 import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
@@ -82,7 +83,7 @@ export const make = Effect.gen(function* () {
   const scheduler = yield* Scheduler;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler | Sources | Audit>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler | Sources | Audit | History>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
@@ -151,6 +152,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(browseTools(env), context)),
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
+            ...(yield* Effect.provide(historyTools(env, { site: true }), context)),
             ...(yield* Effect.provide(sourceTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
             ...(yield* Effect.provide(tabTools(env), context)),
@@ -160,6 +162,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
             ...(yield* Effect.provide(devtoolsTools(env, { site: false }), context)),
             ...(yield* Effect.provide(networkReadTools(env), context)),
+            ...(yield* Effect.provide(historyTools(env, { site: false }), context)),
             ...(yield* Effect.provide(sourceTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
             ...(yield* Effect.provide(scheduleTools(env), context)),

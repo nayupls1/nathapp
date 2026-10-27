@@ -4,13 +4,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { PageChange, PageChangeAction } from "../../shared/api";
-import { hostOf, scopeLabel, scopeMatches } from "../../shared/web";
+import type { PageChange, PageChangeAction, PageChangeSpec, PageScope } from "../../shared/api";
+import { hostOf, pageKey, scopeLabel, scopeMatches } from "../../shared/web";
 import { api } from "../lib/api";
 import { modName } from "../lib/mods";
 import { cachedOverride, pageChanges } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { confirmDialog } from "./ConfirmDialog";
+import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 
 const actionIcons: Record<PageChangeAction, string> = {
@@ -49,16 +50,61 @@ async function removeChange(change: PageChange) {
   }
 }
 
-/** One change: what it does, where, its switch and remove. */
+/** The host a scope is about (patterns: when they name one). */
+const hostOfScope = (scope: PageScope) =>
+  scope.type === "page" ? scope.value.split("/")[0]! : scope.type === "site" ? scope.value : (/^(?:\*\.)?([\w.-]+\.[a-z]{2,})(?:\/|$)/i.exec(scope.value)?.[1] ?? null);
+
+/** Where else a change could apply: one page, its whole site, or the site with its subdomains. */
+function scopeChoices(change: PageChange, url?: string): { label: string; scope: PageScope }[] {
+  const host = hostOfScope(change.scope);
+  if (!host) return [];
+  const page = change.scope.type === "page" ? change.scope.value : url && hostOf(url) === host ? pageKey(url) : null;
+  return [
+    ...(page ? [{ label: "Only this page", scope: { type: "page" as const, value: page } }] : []),
+    { label: `All of ${host}`, scope: { type: "site", value: host } },
+    { label: `${host} and its subdomains`, scope: { type: "pattern", value: `*.${host}/*` } },
+  ];
+}
+
+/** Moves a change to another scope. */
+const rescope = (change: PageChange, scope: PageScope) => {
+  const spec: PageChangeSpec = { title: change.title, scope, action: change.action };
+  for (const key of ["selector", "value", "name", "position", "onClick"] as const) if (change[key] !== undefined) Object.assign(spec, { [key]: change[key] });
+  return api.updatePageChange(change.id, { change: spec });
+};
+
+/** One change: what it does, where (click to change it), its switch and remove. */
 function ChangeRow(props: { change: PageChange; url?: string; error?: string }) {
   const detail = () => [props.change.action, props.change.selector].filter(Boolean).join(" ");
+  const [scopeMenu, setScopeMenu] = createSignal<MenuPosition>();
+  const choices = () =>
+    scopeChoices(props.change, props.url).map(
+      (c): MenuItem => ({
+        label: c.label,
+        checked: c.scope.type === props.change.scope.type && c.scope.value === props.change.scope.value,
+        onSelect: () => void rescope(props.change, c.scope),
+      }),
+    );
   return (
     <div {...stylex.attrs(styles.row)} data-page-change={props.change.id} data-enabled={props.change.enabled ? "on" : "off"}>
       <Icon name={actionIcons[props.change.action]} size={14} {...stylex.attrs(styles.rowIcon)} />
       <div {...stylex.attrs(styles.rowText)}>
         <span {...stylex.attrs(styles.rowTitle)}>{props.change.title}</span>
         <span {...stylex.attrs(styles.rowMeta)} title={detail()}>
-          {scopeLabel(props.change.scope, props.url)} · {detail()}
+          <button
+            type="button"
+            title="Where it applies: click to change"
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setScopeMenu({ x: r.left, y: r.bottom + 4 });
+            }}
+            {...stylex.attrs(styles.scopeButton)}
+            data-page-change-scope
+          >
+            {scopeLabel(props.change.scope, props.url)}
+            <Icon name="chevron-down" size={11} />
+          </button>{" "}
+          · {detail()}
           {props.change.modId ? ` · from the mod ${modName(props.change.modId) ?? props.change.modId}` : props.change.createdBy === "agent" ? " · by the agent" : ""}
         </span>
         <Show when={props.error}>
@@ -67,6 +113,9 @@ function ChangeRow(props: { change: PageChange; url?: string; error?: string }) 
           </span>
         </Show>
       </div>
+      <Show when={scopeMenu() && choices().length}>
+        <ContextMenu items={choices()} position={scopeMenu()!} onClose={() => setScopeMenu()} />
+      </Show>
       <Switch checked={props.change.enabled} label={`${props.change.title} on`} onChange={(enabled) => void api.updatePageChange(props.change.id, { enabled })} />
       <button type="button" title="Remove" onClick={() => void removeChange(props.change)} {...stylex.attrs(styles.iconButton)} data-remove-page-change>
         <Icon name="trash" size={14} />
@@ -180,6 +229,18 @@ const styles = stylex.create({
   rowTitle: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm },
   rowMeta: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.muted, fontSize: 11 },
   rowError: { color: colors.danger, fontSize: 11 },
+  scopeButton: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 2,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: { default: colors.muted, ":hover": colors.accent },
+    fontFamily: "inherit",
+    fontSize: "inherit",
+    cursor: "pointer",
+  },
   empty: { margin: 0, padding: space.sm, color: colors.muted, fontSize: font.xs },
   footer: {
     margin: 0,
