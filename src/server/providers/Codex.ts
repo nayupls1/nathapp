@@ -245,7 +245,11 @@ export const CodexDriver: ProviderDriver = {
 
         const turn = await server.request("turn/start", {
           threadId,
-          input: [{ type: "text", text: input.prompt, text_elements: [] }],
+          // Attached images as local images the model sees; PDFs by their path.
+          input: [
+            ...(input.files ?? []).filter((f) => f.mime.startsWith("image/")).map((f) => ({ type: "localImage", path: f.path })),
+            { type: "text", text: withPdfPaths(input), text_elements: [] },
+          ],
           ...(input.model ? { model: input.model } : {}),
           ...(input.effort ? { effort: input.effort } : {}),
         });
@@ -256,4 +260,10 @@ export const CodexDriver: ProviderDriver = {
         server.close();
       }
     }),
+};
+
+/** Codex can't take PDFs as content: it gets their paths to read. */
+const withPdfPaths = (input: { prompt: string; files?: readonly { path: string; mime: string; name: string }[] }) => {
+  const pdfs = (input.files ?? []).filter((f) => f.mime === "application/pdf");
+  return pdfs.length ? `${input.prompt}\n\nPDFs the user attached: ${pdfs.map((f) => `${f.name} (${f.path})`).join(", ")}` : input.prompt;
 };

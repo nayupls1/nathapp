@@ -35,6 +35,8 @@ export interface TurnInput {
   readonly ephemeral?: boolean;
   /** Extra environment for the agent process (PATH with bun). */
   readonly env: Record<string, string>;
+  /** Images (and PDFs) the user attached: given to the model as content it sees. */
+  readonly files?: readonly { readonly path: string; readonly mime: string; readonly name: string }[];
 }
 
 export type AgentEvent =

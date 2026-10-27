@@ -10,6 +10,7 @@ import type { WorkspaceSettings } from "../../shared/settings";
 import { topics } from "../../shared/hub";
 import { normalizeUrl } from "../../shared/web";
 import { api } from "./api";
+import { attachmentsOf, clearAttachments } from "./attachments";
 import { onConnected, watchTopic } from "./realtime";
 import { settings } from "./settings";
 
@@ -550,8 +551,11 @@ export async function deleteWorkspace(id: string) {
 /** Sends a message to the tab's agent; false if it couldn't start (the error is shown in the chat). */
 export async function sendPrompt(id: string, prompt: string, page?: PageContext, shared?: SharedTab[]) {
   setStates(id, { running: true, draft: "" });
+  // Files pasted or dropped into the composer go with it.
+  const files = attachmentsOf(id).map((a) => a.id);
   try {
-    await api.chat(id, { prompt, agent: states[id]!.agent, page, ...(shared?.length ? { shared } : {}) });
+    await api.chat(id, { prompt, agent: states[id]!.agent, page, ...(shared?.length ? { shared } : {}), ...(files.length ? { attachments: files } : {}) });
+    if (files.length) clearAttachments(id);
     return true;
   } catch (err) {
     const message: ChatMessage = {

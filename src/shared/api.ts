@@ -522,6 +522,16 @@ export interface ChatRequest {
   page?: PageContext;
   /** Other tabs shared with the message (server: agent/sharedTabs.ts). */
   shared?: SharedTab[];
+  /** Files uploaded for the message (POST /api/apps/:id/attachments), by id. */
+  attachments?: string[];
+}
+
+/** A file given to the agent with a message: a pasted screenshot, a dropped file. */
+export interface Attachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
 }
 
 /** Another tab shared with a message: mentioned (@name), or one of its agent's replies handed over. */
@@ -581,8 +591,9 @@ export interface ChatMessage {
    * tool: one line of agent activity ("Edited src/App.tsx").
    * context: what the user pointed at (picked elements) with their message.
    * secret: the agent asks the user for a secret (JSON: { name, description }).
+   * attachments: files sent with the next message (JSON: Attachment[]).
    */
-  role: "user" | "assistant" | "tool" | "error" | "context" | "secret";
+  role: "user" | "assistant" | "tool" | "error" | "context" | "secret" | "attachments";
   content: string;
   createdAt: string;
 }

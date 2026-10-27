@@ -33,6 +33,7 @@ import { browseTools } from "./browseTools";
 import { devtoolsTools } from "./devtoolsTools";
 import { historyTools } from "./historyTools";
 import { describeSource, sourceTools } from "./sourceTools";
+import { Attachments, type AttachedFile } from "./Attachments";
 import { networkReadTools, networkTools } from "./networkTools";
 import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
 import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools, type ToolEnv } from "./tools";
@@ -55,6 +56,8 @@ export interface TurnRequest {
   readonly page?: PageContext;
   /** Other tabs the user shared with the message (sharedTabs.ts). */
   readonly shared?: readonly SharedTabInput[];
+  /** Files attached to the message (Attachments.ts), by id. */
+  readonly attachments?: readonly string[];
 }
 
 export interface AgentShape {
@@ -79,6 +82,7 @@ export const make = Effect.gen(function* () {
   const projects = yield* Projects;
   const sandbox = yield* Sandbox;
   const sources = yield* Sources;
+  const attachments = yield* Attachments;
   const audit = yield* Audit;
   const scheduler = yield* Scheduler;
   const running = yield* FiberMap.make<string>();
@@ -126,6 +130,13 @@ export const make = Effect.gen(function* () {
       // The workspace's instructions come after the global ones.
       const combine = (global: string, local: string | undefined) => [global.trim(), local?.trim()].filter(Boolean).join("\n\n");
       yield* emit(appId, { type: "started" });
+      const files: AttachedFile[] = [];
+      for (const id of request.attachments ?? []) {
+        const file = yield* attachments.get(appId, id);
+        if (file) files.push(file);
+      }
+      if (files.length) yield* message(appId, "attachments", JSON.stringify(files.map(({ path: _, ...meta }) => meta)));
+      const turnInput = yield* attachments.forTurn(request.prompt, files);
       if (request.page?.selection.length) yield* message(appId, "context", contextSummary(request.page));
       if (shared.summaries.length) {
         yield* message(appId, "context", JSON.stringify({ shared: shared.summaries }));
@@ -196,7 +207,8 @@ export const make = Effect.gen(function* () {
       const driver = providers.driver(choice.provider);
       const input = (resume: string | null): TurnInput => ({
         cwd,
-        prompt: withSharedTabs(withPageContext(request.prompt, request.page), shared.text),
+        prompt: withSharedTabs(withPageContext(turnInput.prompt, request.page), shared.text),
+        files: turnInput.files,
         instructions,
         model: choice.model,
         effort: choice.effort,

@@ -1,13 +1,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, createResource, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { ChatMessage } from "../../shared/api";
+import type { Attachment, ChatMessage } from "../../shared/api";
 import { markdownToHtml } from "../../shared/markdown";
 import { FULL_ACCESS_WARNING, fullAccess, setFullAccess } from "../lib/access";
 import { isPicking, picksOf } from "../lib/picks";
 import { settings } from "../lib/settings";
 import { handOver, refusal, sendWithShares } from "../lib/sharing";
 import { api } from "../lib/api";
+import { attachmentUrl } from "../lib/attachments";
 import { appById, apps, newChat, openChat, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { confirmDialog } from "./ConfirmDialog";
 import { pageOf, pagesVersion } from "../lib/webtabs";
@@ -180,10 +181,43 @@ function Message(props: { appId: string; message: ChatMessage }) {
       <Match when={props.message.role === "context"}>
         <PickedContext content={props.message.content} />
       </Match>
+      <Match when={props.message.role === "attachments"}>
+        <SentAttachments appId={props.appId} content={props.message.content} />
+      </Match>
       <Match when={props.message.role === "secret"}>
         <SecretRequestCard appId={props.appId} content={props.message.content} />
       </Match>
     </Switch>
+  );
+}
+
+/** Files sent with the next message: images as thumbnails (click to open in a new web tab), others by name. */
+function SentAttachments(props: { appId: string; content: string }) {
+  const files = () => {
+    try {
+      return JSON.parse(props.content) as Attachment[];
+    } catch {
+      return [];
+    }
+  };
+  return (
+    <div {...stylex.attrs(styles.sentFiles)} data-sent-attachments>
+      <For each={files()}>
+        {(file) => (
+          <Show
+            when={file.mime.startsWith("image/")}
+            fallback={
+              <span {...stylex.attrs(styles.sentFile)} title={file.name}>
+                <Icon name="file-text" size={14} />
+                {file.name}
+              </span>
+            }
+          >
+            <img src={attachmentUrl(props.appId, file.id)} alt={file.name} title={file.name} {...stylex.attrs(styles.sentImage)} />
+          </Show>
+        )}
+      </For>
+    </div>
   );
 }
 
@@ -459,6 +493,18 @@ const styles = stylex.create({
     backgroundColor: colors.accentSoft,
   },
   assistant: { ...bubble },
+  sentFiles: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, alignSelf: "flex-end", maxWidth: "85%" },
+  sentImage: { display: "block", maxHeight: 140, maxWidth: 220, borderRadius: radius.md, borderWidth: 1, borderStyle: "solid", borderColor: colors.border, objectFit: "cover" },
+  sentFile: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    height: 30,
+    paddingInline: space.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    fontSize: font.xs,
+  },
   markdown: { whiteSpace: "normal" },
   tool: { ...bubble, fontSize: font.xs, color: colors.success },
   errorMsg: { ...bubble, fontSize: font.sm, color: colors.danger },

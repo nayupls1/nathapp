@@ -1937,6 +1937,32 @@ try {
     return "folder chip, repository form with its error, removed (folder untouched)";
   });
 
+  await check("attachments: an image dropped on the agent's composer shows as a thumbnail, and can be removed", async () => {
+    await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
+    const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/` } });
+    await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${tab.id}"]')`, { label: "tab in the sidebar" });
+    await click(`nav li[data-app-id="${tab.id}"]`);
+    await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true })), true`);
+    const panel = `[data-agent-for="${tab.id}"]`;
+    await page!.waitFor(`!!document.querySelector('${panel} [data-composer]')`, { label: "composer" });
+    // A 1×1 PNG and a text file, dropped like from a file manager.
+    await page!.eval(`(() => {
+      const png = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0));
+      const data = new DataTransfer();
+      data.items.add(new File([png], "shot.png", { type: "image/png" }));
+      data.items.add(new File(["# notes"], "notes.md", { type: "text/markdown" }));
+      document.querySelector('${panel} [data-composer]').dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: data }));
+      return true;
+    })()`);
+    await page!.waitFor(`document.querySelectorAll('${panel} [data-attachment]').length === 2`, { label: "two attachments", timeoutMs: 15_000 });
+    await page!.waitFor(`document.querySelector('${panel} [data-attachment] img')?.naturalWidth === 1`, { label: "thumbnail loaded" });
+    await shot("attachments.png");
+    await click(`${panel} [data-attachment] button`);
+    await page!.waitFor(`document.querySelectorAll('${panel} [data-attachment]').length === 1`, { label: "one removed" });
+    await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    return "image thumbnail and a file chip; removed one";
+  });
+
   await check("no uncaught errors in the renderer", async () => {
     // Expected noise from Electron itself isn't an app bug.
     const real = pageErrors.filter((e) => !/Electron Security Warning/.test(e));

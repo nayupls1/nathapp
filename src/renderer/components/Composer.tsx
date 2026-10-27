@@ -1,5 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { createSignal, For, Show, type JSX } from "solid-js";
+import { addAttachments, attachmentsOf, attachmentUrl, removeAttachment, uploadingCount } from "../lib/attachments";
 import { addShare, refusal, removeShare, sharesOf, type ShareRef } from "../lib/sharing";
 import { appById, apps, setAgentChoice, states } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -74,17 +75,64 @@ export function Composer(props: {
     textarea.style.height = `${Math.min(textarea.scrollHeight, 240)}px`;
   };
 
+  // Files for the agent: pasted (screenshots), dropped or picked (lib/attachments.ts).
+  const [dropping, setDropping] = createSignal(false);
+  let fileInput!: HTMLInputElement;
+  const attach = async (files: File[]) => {
+    if (!files.length) return;
+    const error = await addAttachments(props.appId, files);
+    if (error) toast({ message: error, kind: "error" });
+  };
+  const busyUploading = () => uploadingCount(props.appId) > 0;
+  const hasFiles = () => attachmentsOf(props.appId).length > 0 || busyUploading();
+
   const send = () => {
-    const prompt = value().trim();
-    if (!prompt || props.running) return;
+    const prompt = value().trim() || (attachmentsOf(props.appId).length ? "Look at the attached files." : "");
+    if (!prompt || props.running || busyUploading()) return;
     props.onSend(prompt);
     setValue("");
     queueMicrotask(resize);
   };
 
   return (
-    <div {...stylex.attrs(styles.root, props.large && styles.large)}>
+    <div
+      {...stylex.attrs(styles.root, props.large && styles.large, dropping() && styles.dropping)}
+      onDragOver={(e) => {
+        if (!e.dataTransfer?.types.includes("Files")) return;
+        e.preventDefault();
+        setDropping(true);
+      }}
+      onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropping(false)}
+      onDrop={(e) => {
+        if (!e.dataTransfer?.files.length) return;
+        e.preventDefault();
+        setDropping(false);
+        void attach([...e.dataTransfer.files]);
+      }}
+      data-composer
+    >
       {props.top}
+      <Show when={hasFiles()}>
+        <div {...stylex.attrs(styles.files)} data-attachments>
+          <For each={attachmentsOf(props.appId)}>
+            {(file) => (
+              <span {...stylex.attrs(styles.file)} title={`${file.name} · ${Math.max(1, Math.round(file.size / 1024))} kB`} data-attachment={file.id}>
+                <Show when={file.mime.startsWith("image/")} fallback={<span {...stylex.attrs(styles.fileIcon)}><Icon name="file-text" size={16} /><span {...stylex.attrs(styles.fileName)}>{file.name}</span></span>}>
+                  <img src={attachmentUrl(props.appId, file.id)} alt={file.name} {...stylex.attrs(styles.thumb)} />
+                </Show>
+                <button type="button" title="Remove" aria-label={`Remove ${file.name}`} onClick={() => removeAttachment(props.appId, file.id)} {...stylex.attrs(styles.fileRemove)}>
+                  <Icon name="x" size={11} />
+                </button>
+              </span>
+            )}
+          </For>
+          <Show when={busyUploading()}>
+            <span {...stylex.attrs(styles.file, styles.fileIcon)}>
+              <Icon name="loader-circle" size={16} />
+            </span>
+          </Show>
+        </div>
+      </Show>
       <Show when={sharesOf(props.appId).length}>
         <div {...stylex.attrs(styles.shares)}>
           <For each={sharesOf(props.appId)}>
@@ -147,6 +195,12 @@ export function Composer(props: {
           findMention();
         }}
         onBlur={() => setMention(null)}
+        onPaste={(e) => {
+          const files = [...(e.clipboardData?.files ?? [])];
+          if (!files.length) return;
+          e.preventDefault();
+          void attach(files);
+        }}
         onKeyDown={(e) => {
           const list = candidates();
           if (mention() && list.length) {
@@ -175,6 +229,19 @@ export function Composer(props: {
       />
       <div {...stylex.attrs(styles.actions)}>
         <div {...stylex.attrs(styles.options)}>
+          <button type="button" title="Attach images or files (or paste a screenshot)" onClick={() => fileInput.click()} {...stylex.attrs(styles.attachButton)} data-attach-files>
+            <Icon name="paperclip" size={15} />
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              void attach([...(e.currentTarget.files ?? [])]);
+              e.currentTarget.value = "";
+            }}
+          />
           {props.tools}
           <Show when={states[props.appId]}>
             {(state) => <AgentPicker choice={state().agent} onChange={(choice) => setAgentChoice(props.appId, choice)} />}
@@ -183,7 +250,7 @@ export function Composer(props: {
         <Show
           when={props.running}
           fallback={
-            <Button variant="primary" disabled={!value().trim()} onClick={send}>
+            <Button variant="primary" disabled={(!value().trim() && !attachmentsOf(props.appId).length) || busyUploading()} onClick={send}>
               Send
             </Button>
           }
@@ -210,6 +277,53 @@ const styles = stylex.create({
     boxShadow: "0 1px 2px rgb(0 0 0 / 0.04)",
   },
   large: { padding: space.md },
+  dropping: { borderColor: colors.accent, boxShadow: `0 0 0 3px ${colors.accentSoft}` },
+  files: { display: "flex", flexWrap: "wrap", gap: 6, paddingInline: 4, paddingTop: 2 },
+  file: {
+    position: "relative",
+    display: "grid",
+    placeItems: "center",
+    height: 56,
+    minWidth: 56,
+    maxWidth: 160,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    overflow: "hidden",
+  },
+  thumb: { display: "block", height: 56, maxWidth: 160, objectFit: "cover" },
+  fileIcon: { display: "flex", alignItems: "center", gap: 6, paddingInline: space.sm, color: colors.muted },
+  fileName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100, color: colors.text, fontSize: font.xs },
+  fileRemove: {
+    position: "absolute",
+    top: 3,
+    right: 3,
+    display: "grid",
+    placeItems: "center",
+    width: 18,
+    height: 18,
+    padding: 0,
+    borderWidth: 0,
+    borderRadius: radius.full,
+    backgroundColor: "rgb(0 0 0 / 0.55)",
+    color: "#ffffff",
+    cursor: "pointer",
+  },
+  attachButton: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: 28,
+    height: 28,
+    padding: 0,
+    borderStyle: "none",
+    borderRadius: radius.sm,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: { default: colors.muted, ":hover": colors.text },
+    cursor: "pointer",
+  },
   input: {
     width: "100%",
     minHeight: 32,

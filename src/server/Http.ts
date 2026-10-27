@@ -56,6 +56,7 @@ import { Projects } from "./workspace/Projects";
 import { Runtime } from "./workspace/Runtime";
 import { Sandbox } from "./workspace/Sandbox";
 import { SourceError, Sources } from "./workspace/Sources";
+import { Attachments, IMAGE_TYPES, MAX_ATTACHMENT } from "./agent/Attachments";
 import { cancelImport, Workspace } from "./workspace/Workspace";
 
 class HttpFail extends Data.TaggedError("HttpFail")<{ readonly status: number; readonly message: string }> {}
@@ -219,6 +220,42 @@ const settingsRoutes = HttpRouter.addAll([
           if (JSON.stringify(previous.providers[id]) !== JSON.stringify(next.providers[id])) yield* Effect.forkDetach(providers.refresh(id));
         }
         return json(next);
+      }),
+    ),
+  ),
+]);
+
+// Files given to the agent with a message (agent/Attachments.ts).
+const attachmentRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/attachments",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        if (!(yield* (yield* Apps).get(id))) return yield* fail(404, "Not found");
+        const input = yield* decodeBody(Schema.Struct({ name: str(300), mime: str(200), data: str(Math.ceil((MAX_ATTACHMENT * 4) / 3) + 8) }));
+        const data = Buffer.from(input.data, "base64");
+        const saved = yield* (yield* Attachments).save(id, { name: input.name, mime: input.mime, data }).pipe(Effect.catchTag("AttachmentError", (e) => fail(400, e.message)));
+        return json(saved, 201);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/attachments/:attachment",
+    handle(
+      Effect.gen(function* () {
+        const file = yield* (yield* Attachments).get(yield* param("id"), yield* param("attachment"));
+        if (!file) return yield* fail(404, "Not found");
+        const bytes = yield* Effect.promise(() => Bun.file(file.path).bytes());
+        // Only images are shown inline; anything else downloads, so a page can't run from here.
+        const inline = IMAGE_TYPES.has(file.mime);
+        return HttpServerResponse.uint8Array(bytes, {
+          status: 200,
+          contentType: inline ? file.mime : "application/octet-stream",
+          headers: { "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${file.name.replace(/"/g, "")}"`, "X-Content-Type-Options": "nosniff" },
+        });
       }),
     ),
   ),
@@ -594,6 +631,7 @@ const appRoutes = HttpRouter.addAll([
             ),
             page: Schema.optionalKey(PageContextInput),
             shared: Schema.optionalKey(Schema.Array(SharedTabInput).check(Schema.isMaxLength(MAX_SHARED_TABS))),
+            attachments: Schema.optionalKey(Schema.Array(str(64)).check(Schema.isMaxLength(10))),
           }),
         );
         if (!request.prompt.trim()) return yield* fail(400, "prompt is required");
@@ -603,6 +641,7 @@ const appRoutes = HttpRouter.addAll([
             agent: request.agent as { provider?: ProviderId; model?: string | null; effort?: string | null } | undefined,
             page: request.page as never,
             shared: request.shared,
+            ...(request.attachments?.length ? { attachments: request.attachments } : {}),
           })
           .pipe(Effect.catchTag("AgentError", (e) => fail(e.status, e.message)));
         return json({ ok: true }, 202);
@@ -2049,7 +2088,7 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, sandboxRoute, sourceRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, sandboxRoute, sourceRoutes, attachmentRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

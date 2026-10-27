@@ -22,6 +22,7 @@ import type {
   ChatRequest,
   ChatMessage,
   ChatSummary,
+  Attachment,
   ContextSource,
   HealthResponse,
   HistoryDetail,
@@ -119,6 +120,7 @@ export const api = {
   setMode: (id: string, mode: AppMode) => post<RuntimeStatus>(`/api/apps/${id}/mode`, { mode }),
   importApp: (id: string, source: { git: string; branch?: string } | { folder: string }) =>
     post<{ project: ProjectInfo | null }>(`/api/apps/${id}/import`, source),
+  uploadAttachment: (id: string, file: { name: string; mime: string; data: string }) => post<Attachment>(`/api/apps/${id}/attachments`, file),
   sources: (id: string) => request<ContextSource[]>(`/api/apps/${id}/sources`),
   addSource: (id: string, source: { folder: string } | { git: string; branch?: string }) => post<ContextSource>(`/api/apps/${id}/sources`, source),
   removeSource: (id: string, sourceId: string) => request<void>(`/api/apps/${id}/sources/${sourceId}`, { method: "DELETE" }),

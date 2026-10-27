@@ -3,12 +3,12 @@
 // stripped from its environment so it never bills an API account.
 import { createRequire } from "node:module";
 import { isAbsolute, relative, resolve } from "node:path";
-import { query, type CanUseTool, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type CanUseTool, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Effect } from "effect";
 import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
-import { describeTool, streamFrom, type Probe, type ProviderDriver } from "./Provider";
+import { describeTool, streamFrom, type Probe, type ProviderDriver, type TurnInput } from "./Provider";
 import { agentEnv, runCommand } from "./process";
 
 /**
@@ -60,6 +60,22 @@ const projectPolicy =
     }
     return { behavior: "allow", updatedInput: input };
   };
+
+/** The prompt, with attached images and PDFs as content blocks the model sees (one message, then the input ends). */
+function promptWithFiles(input: TurnInput): string | AsyncIterable<SDKUserMessage> {
+  const files = input.files ?? [];
+  if (!files.length) return input.prompt;
+  return (async function* () {
+    const blocks: unknown[] = [];
+    for (const file of files) {
+      const data = Buffer.from(await Bun.file(file.path).arrayBuffer()).toString("base64");
+      if (file.mime === "application/pdf") blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data }, title: file.name });
+      else blocks.push({ type: "image", source: { type: "base64", media_type: file.mime, data } });
+    }
+    blocks.push({ type: "text", text: input.prompt });
+    yield { type: "user", message: { role: "user", content: blocks }, parent_tool_use_id: null } as unknown as SDKUserMessage;
+  })();
+}
 
 const idlePrompt = async function* () {
   await new Promise(() => {});
@@ -146,7 +162,7 @@ export const ClaudeDriver: ProviderDriver = {
         sandbox: { enabled: true, autoAllowBashIfSandboxed: true, network: { allowLocalBinding: true } },
       };
 
-      for await (const msg of query({ prompt: input.prompt, options }) as AsyncIterable<SDKMessage>) {
+      for await (const msg of query({ prompt: promptWithFiles(input), options }) as AsyncIterable<SDKMessage>) {
         if (msg.type === "system" && msg.subtype === "init") {
           emit({ type: "session", id: msg.session_id });
         } else if (msg.type === "stream_event") {

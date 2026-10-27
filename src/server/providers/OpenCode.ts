@@ -259,7 +259,18 @@ export const OpenCodeDriver: ProviderDriver = {
           {
             ...(model ? { model } : {}),
             system: input.instructions,
-            parts: [{ type: "text", text: input.prompt }],
+            parts: [
+              // Attached images and PDFs as files the model sees.
+              ...(await Promise.all(
+                (input.files ?? []).map(async (f) => ({
+                  type: "file",
+                  mime: f.mime,
+                  filename: f.name,
+                  url: `data:${f.mime};base64,${Buffer.from(await Bun.file(f.path).arrayBuffer()).toString("base64")}`,
+                })),
+              )),
+              { type: "text", text: input.prompt },
+            ],
           },
           signal,
         );
