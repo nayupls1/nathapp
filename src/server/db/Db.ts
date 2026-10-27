@@ -250,6 +250,22 @@ const migrate = Effect.gen(function* () {
     yield* sql.unsafe("UPDATE audit SET workspace_id = (SELECT workspace_id FROM apps WHERE apps.id = audit.tab_id) WHERE tab_id IS NOT NULL");
   }
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_workspace ON audit (workspace_id, id)");
+  // Code attached to a tab for its agent: a folder of the user's, or a repository NathApp cloned (workspace/Sources.ts).
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS sources (
+      id         TEXT PRIMARY KEY,
+      tab_id     TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+      kind       TEXT NOT NULL,
+      name       TEXT NOT NULL,
+      path       TEXT NOT NULL,
+      url        TEXT,
+      branch     TEXT,
+      state      TEXT NOT NULL DEFAULT 'ready',
+      error      TEXT,
+      added_at   TEXT NOT NULL DEFAULT (${now}),
+      updated_at TEXT NOT NULL DEFAULT (${now})
+    )`);
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS sources_tab ON sources (tab_id, added_at)");
 });
 
 export const layer = Layer.unwrap(

@@ -13,6 +13,7 @@ import { confirmDialog } from "./ConfirmDialog";
 import { pageOf, pagesVersion } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
+import { SourcesBar, SourcesButton } from "./Sources";
 import { SecretRequestCard } from "./Secrets";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
@@ -29,6 +30,7 @@ export function Chat(props: { appId: string }) {
   const tab = () => appById(props.appId);
   const web = () => tab()?.kind === "web";
   const [history, setHistory] = createSignal<MenuPosition>();
+  const [addingRepository, setAddingRepository] = createSignal(false);
   // The tab's page (a web page or an app's preview), once it's registered.
   const page = () => (pagesVersion(), pageOf(props.appId));
   let scroller!: HTMLDivElement;
@@ -115,6 +117,8 @@ export function Chat(props: { appId: string }) {
           running={state().running}
           placeholder={web() ? "Ask about or change this page…" : state().project ? undefined : "Describe the app you want…"}
           top={
+            <>
+            <SourcesBar tabId={props.appId} adding={addingRepository()} onDone={() => setAddingRepository(false)} />
             <Show when={picksOf(props.appId).length}>
               <div {...stylex.attrs(styles.chips)}>
                 <For each={picksOf(props.appId)}>
@@ -128,8 +132,11 @@ export function Chat(props: { appId: string }) {
                 </For>
               </div>
             </Show>
+            </>
           }
           tools={
+            <>
+            <SourcesButton tabId={props.appId} onAddRepository={() => setAddingRepository(true)} />
             <Show when={page()}>
               <button
                 type="button"
@@ -141,6 +148,7 @@ export function Chat(props: { appId: string }) {
                 <Icon name="crosshair" size={15} />
               </button>
             </Show>
+            </>
           }
           onSend={(prompt) => {
             const handle = page();

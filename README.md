@@ -161,6 +161,11 @@ that work on the preview or the web page, and DevTools (below). File editing is 
 - `emulate`: devices (iPhone, Pixel, iPad, laptop), sizes, offline and slow networks, slower CPUs, dark mode and reduced motion. It's undone when the agent's turn ends.
 - On websites, cookie values and credential-like storage values never leave the main process, and tokens in console text and URLs are redacted. Every call is in Activity like any tool call.
 
+**Code for the agent.** A tab can have code attached for its agent (the folder button next to the composer; `workspace/Sources.ts`, `/api/apps/:id/sources`): folders of yours, used in place, and Git repositories (the same links as cloning an app, with your own Git credentials), cloned into `<data>/sources/` and pulled again from their chip. Both agents get `list_sources`, `list_source_files`, `read_source_file`, `search_source` and `source_git` (status, log, diff, show, blame) to find where a problem they saw in a page or a trace comes from, and `edit_source_file` / `write_source_file` to fix it:
+- **Every change asks first,** with its diff in the dialog (permission `agent.source`, rememberable per folder). Changes to your folders aren't in NathApp's History: undo them with your own Git. Changes to a cloned repository stay in NathApp's clone; nothing is pushed.
+- **Never read or written:** paths outside the source (symlinks too), files that hold credentials (`.env`, keys, `.npmrc`, `credentials.json`…; `.env.example` is fine) and `.git`'s internals. Dependencies and builds are left out of listings and searches. NathApp's own data, a whole disk or your home folder can't be attached.
+- Removing a source deletes NathApp's clone, never your folder. Every call is in Activity.
+
 Auth is always the provider's own login: no API keys (NathApp strips
 `ANTHROPIC_API_KEY` from Claude's environment on purpose).
 

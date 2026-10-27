@@ -694,6 +694,8 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
                 ? `Read the tab ${appById(g.resource)?.name ?? "(deleted)"}`
                 : g.action === "agent.browse"
                   ? `Use ${g.resource} for you (click, type, fill in forms)`
+                : g.action === "agent.source"
+                  ? `Change the code in ${g.resource}`
               : `Customize ${g.resource}`;
 
 /** "<app id>/<tool id>" as "Use add-expense in Budget". */

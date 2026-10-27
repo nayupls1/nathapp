@@ -10,7 +10,9 @@ import type { AppAction, Manifest, ProjectInfo, ToolParam } from "../../shared/a
 import { tokensCss } from "../../shared/theme";
 import { ServerConfig } from "../Config";
 import { Settings } from "../db/Settings";
-import { agentEnv } from "../providers/process";
+import { cancelGit, clone, cloneError, parseGitSource, type GitProgress } from "./git";
+
+export { parseGitProgress, parseGitSource } from "./git";
 import { findPreset, presets, render } from "./presets";
 
 export class WorkspaceError extends Data.TaggedError("WorkspaceError")<{ readonly message: string }> {}
@@ -46,7 +48,7 @@ export interface WorkspaceShape {
   readonly importFrom: (
     appId: string,
     source: ImportSource,
-    onProgress?: (progress: ImportProgress) => void,
+    onProgress?: (progress: GitProgress) => void,
   ) => Effect.Effect<{ project: ProjectInfo | null; name: string }, WorkspaceError>;
   readonly remove: (appId: string) => Effect.Effect<void>;
 }
@@ -56,61 +58,11 @@ export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("nat
 /** Where an imported app comes from. */
 export type ImportSource = { readonly kind: "git"; readonly url: string; readonly branch?: string } | { readonly kind: "folder"; readonly path: string };
 
-/**
- * What a link to a repository means: https links (GitHub's /tree/<branch>
- * pages too), SSH links (git@host:owner/repo, ssh://), host/owner/repo
- * without a scheme and GitHub's owner/repo. null when it isn't one; local
- * paths and file:// links are for "Import a folder".
- */
-export function parseGitSource(input: string, branch?: string): { url: string; branch: string | null; name: string } | null {
-  let text = input.trim();
-  let ref = branch?.trim() || null;
-  if (!text || /\s/.test(text)) return null;
-  if (/^[\w.-]+\/[\w.-]+$/.test(text) && !text.includes("..")) text = `https://github.com/${text}`;
-  else if (/^[\w-]+(\.[\w-]+)+\/[^\s]+$/.test(text) && !/^[\w-]+:/.test(text)) text = `https://${text}`;
-  const ssh = /^(?:ssh:\/\/)?[\w.-]+@[\w.-]+(?::\d+)?[:/][^\s]+$/.test(text);
-  if (!ssh && !/^https:\/\/[^\s/]+\/[^\s]+$/i.test(text)) return null;
-  if (!ssh) {
-    const url = new URL(text);
-    // A page on GitHub, GitLab or Gitea/Forgejo showing a branch: …/owner/repo/tree/<branch> (or /-/tree/, /src/branch/).
-    const page = /^(\/[^/]+\/[^/]+?)(?:\.git)?(?:\/-)?\/(?:tree|src\/branch)\/([^/]+)/.exec(url.pathname);
-    if (page) {
-      url.pathname = page[1]!;
-      ref ??= decodeURIComponent(page[2]!);
-    }
-    url.search = "";
-    url.hash = "";
-    text = url.toString();
-  }
-  text = text.replace(/\/+$/, "");
-  if (ref !== null && !/^[\w./-]{1,200}$/.test(ref)) return null;
-  const name = basename(text.replace(/\.git$/i, "").replace(/:/g, "/"));
-  if (!name || name === "." || name === "..") return null;
-  return { url: text, branch: ref, name };
-}
-
 /** How cloning or copying is going (shown in the new app tab). */
-export interface ImportProgress {
-  readonly phase: string;
-  /** 0–100 when git says. */
-  readonly percent: number | null;
-}
-
-/** git's progress lines ("Receiving objects:  45% (450/1000), 1.20 MiB | 2.00 MiB/s") as a phase and a percentage. */
-export function parseGitProgress(line: string): ImportProgress | null {
-  const match = /^(?:remote: )?([A-Z][\w ]+?):\s+(\d{1,3})%(?:\s+\(\d+\/\d+\))?(?:,\s*(.+))?$/.exec(line.trim().replace(/,? done\.?$/, ""));
-  if (!match) return null;
-  const detail = match[3]?.split("|").map((part) => part.trim()).filter(Boolean).join(" · ");
-  return { phase: detail ? `${match[1]} (${detail})` : match[1]!, percent: Math.min(100, Number(match[2])) };
-}
+export type ImportProgress = GitProgress;
 
 /** Kills the clone of an app's import (Cancel in the new app tab). */
-const cloning = new Map<string, () => void>();
-export const cancelImport = (appId: string) => {
-  const cancel = cloning.get(appId);
-  cancel?.();
-  return !!cancel;
-};
+export const cancelImport = (appId: string) => cancelGit(appId);
 
 /**
  * nathapp.json for a project that doesn't have one, from its package.json
@@ -196,19 +148,6 @@ export function parseParams(value: unknown): Record<string, ToolParam> {
 }
 
 const parseDataTools = (value: unknown): Manifest["dataTools"] => (value === "read" || value === "none" || value === "all" ? value : undefined);
-
-/** The line of git's output that says what went wrong, said plainly where it's a common case. */
-function cloneError(output: string) {
-  const lines = output.split("\n").filter((l) => /^(fatal|error|ERROR|remote: )/.test(l));
-  const text = (lines.at(-1) ?? output.split("\n").at(-1) ?? "").replace(/^(fatal|error): /, "").trim();
-  if (/could not read Username|Authentication failed|terminal prompts disabled/i.test(output)) {
-    return `${text}. If it's private, sign in to Git on this computer first (for GitHub: gh auth login) or use an SSH link.`;
-  }
-  if (/Permission denied \(publickey\)|Host key verification failed/i.test(output)) return `${text}. Your SSH key isn't set up for this host (or needs a passphrase: add it to ssh-agent).`;
-  if (/Remote branch .* not found/i.test(output)) return text;
-  if (/not found|does not exist/i.test(text)) return `${text}. Check the link (private repositories need you to be signed in to Git).`;
-  return text;
-}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -312,75 +251,7 @@ export const make = Effect.gen(function* () {
           onProgress({ phase: `Cloning ${git.url}${git.branch ? ` (${git.branch})` : ""}`, percent: null });
           yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
           yield* Effect.promise(() => mkdir(dirname(target), { recursive: true }));
-          const noHooks = join(config.cacheDir, "no-git-hooks");
-          const result = yield* Effect.callback<{ code: number | null; err: string; cancelled: boolean }>((resume) => {
-            // Your own Git setup (credential helpers, SSH keys and agent), so private repositories work,
-            // but never a prompt: NathApp has no terminal to answer it in. And no hooks.
-            const proc = Bun.spawn(
-              [
-                "git",
-                "-c",
-                `core.hooksPath=${noHooks}`,
-                "clone",
-                "--progress",
-                "--depth",
-                "1",
-                "--recurse-submodules",
-                "--shallow-submodules",
-                ...(git.branch ? ["--branch", git.branch] : []),
-                "--",
-                git.url,
-                target,
-              ],
-              {
-                env: {
-                  ...agentEnv(),
-                  GIT_TERMINAL_PROMPT: "0",
-                  GCM_INTERACTIVE: "never",
-                  GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
-                  LANG: "C",
-                  LC_ALL: "C",
-                },
-                stdin: "ignore",
-                stdout: "ignore",
-                stderr: "pipe",
-                windowsHide: true,
-              },
-            );
-            let cancelled = false;
-            const stop = () => {
-              cancelled = true;
-              proc.kill();
-            };
-            cloning.set(appId, stop);
-            const timer = setTimeout(stop, 15 * 60_000);
-            const lines: string[] = [];
-            void (async () => {
-              const decoder = new TextDecoder();
-              let buffer = "";
-              let last = 0;
-              for await (const chunk of proc.stderr) {
-                buffer += decoder.decode(chunk, { stream: true });
-                // Progress lines end in \r while they update.
-                const parts = buffer.split(/[\r\n]/);
-                buffer = parts.pop() ?? "";
-                for (const line of parts.filter((l) => l.trim())) {
-                  const progress = parseGitProgress(line);
-                  if (!progress) lines.push(line.trim());
-                  else if (Date.now() - last > 150 || progress.percent === 100) {
-                    last = Date.now();
-                    onProgress(progress);
-                  }
-                }
-              }
-              if (buffer.trim()) lines.push(buffer.trim());
-              const code = await proc.exited;
-              clearTimeout(timer);
-              cloning.delete(appId);
-              resume(Effect.succeed({ code, err: lines.slice(-20).join("\n"), cancelled }));
-            })();
-            return Effect.sync(stop);
-          });
+          const result = yield* clone({ url: git.url, branch: git.branch, target, noHooks: join(config.cacheDir, "no-git-hooks"), onProgress, cancelKey: appId });
           if (result.code !== 0) {
             yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
             if (result.cancelled) return yield* new WorkspaceError({ message: "Cloning was cancelled." });

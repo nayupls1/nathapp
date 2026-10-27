@@ -20,6 +20,7 @@ import { Permissions } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { AppData } from "./AppData";
 import { Runtime } from "./Runtime";
+import { Sources } from "./Sources";
 import { Workspace, type ImportProgress, type ImportSource, type WorkspaceError } from "./Workspace";
 
 export interface ProjectsShape {
@@ -60,6 +61,7 @@ export const make = Effect.gen(function* () {
   const settings = yield* Settings;
   const workspace = yield* Workspace;
   const runtime = yield* Runtime;
+  const sources = yield* Sources;
   const appData = yield* AppData;
   const history = yield* History;
   const secrets = yield* Secrets;
@@ -147,6 +149,7 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const tab = yield* apps.get(appId);
         yield* runtime.forget(appId);
+        yield* sources.forgetTab(appId);
         yield* apps.remove(appId);
         yield* workspace.remove(appId);
         yield* appData.remove(appId);

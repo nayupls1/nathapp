@@ -2,7 +2,7 @@
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
-import type { AppSummary, AuditEntry, ChatEvent, HistoryEntry, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, ScheduleRun, WorkspaceInfo } from "./api";
+import type { AppSummary, AuditEntry, ChatEvent, ContextSource, HistoryEntry, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, ScheduleRun, WorkspaceInfo } from "./api";
 import type { Settings } from "./settings";
 
 export const topics = {
@@ -48,6 +48,9 @@ export type ServerMessage =
   | { type: "chat"; topic: string; appId: string; event: ChatEvent }
   | { type: "runtime"; topic: string; appId: string; status: RuntimeStatus }
   | { type: "log"; topic: string; appId: string; lines: LogLine[] }
+  /** The code attached to a tab for its agent changed; progress of cloning or pulling one. */
+  | { type: "sources"; topic: string; appId: string; sources: ContextSource[] }
+  | { type: "source-progress"; topic: string; appId: string; sourceId: string; phase: string; percent: number | null }
   /** Cloning or copying a project into a new app tab: what's happening (percent when git says). */
   | { type: "import-progress"; topic: string; appId: string; phase: string; percent: number | null }
   | { type: "site"; topic: string; host: string }

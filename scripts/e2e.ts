@@ -1905,6 +1905,38 @@ try {
     return `console (${logged.entries.length}), slowWork ${hot.selfMs} ms in a ${traced.events}-event trace, a11y, styles, storage hidden, ${coverage.files.length} coverage files, emulation; preview: console, ${traffic.length} requests`;
   });
 
+  await check("sources: code attached to a tab for its agent, shown above the composer, removed again", async () => {
+    await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
+    const folder = join(mkdtempSync(join(tmpdir(), "nathapp-e2e-source-")), "shop-frontend");
+    mkdirSync(join(folder, "src"), { recursive: true });
+    writeFileSync(join(folder, "src", "cart.ts"), "export const cart = [];\n");
+    const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/` } });
+    await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${tab.id}"]')`, { label: "tab in the sidebar" });
+    await click(`nav li[data-app-id="${tab.id}"]`);
+    // The agent sidebar is closed on web tabs until it's opened (Ctrl+J).
+    await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true })), true`);
+    const panel = `[data-agent-for="${tab.id}"]`;
+    await page!.waitFor(`!!document.querySelector('${panel} [data-add-source]')`, { label: "add source button" });
+    const source = await apiCall<{ id: string }>(`/api/apps/${tab.id}/sources`, { method: "POST", body: { folder } });
+    await page!.waitFor(`document.querySelector('${panel} [data-source-chip="${source.id}"]')?.innerText.includes("shop-frontend")`, { label: "folder chip" });
+    // A repository is added from the button's menu; a link that isn't one says so.
+    await click(`${panel} [data-add-source]`);
+    await page!.waitFor(`!!document.querySelector("[data-context-menu]")`, { label: "menu" });
+    await click("[data-context-menu] button", "Add a Git repository");
+    await page!.waitFor(`!!document.querySelector('${panel} [data-source-url]')`, { label: "repository form" });
+    await type(`${panel} [data-source-url]`, "not a repository");
+    await shot("sources.png");
+    await page!.eval(`document.querySelector('${panel} [data-source-form]').requestSubmit(), true`);
+    await page!.waitFor(`!!document.querySelector("[data-toast]")?.innerText.includes("isn't a link")`, { label: "error toast" });
+    await click(`${panel} [data-source-chip="${source.id}"] [data-source-remove]`);
+    await page!.waitFor(`!document.querySelector('${panel} [data-source-chip]')`, { label: "chip removed" });
+    if ((await apiCall<unknown[]>(`/api/apps/${tab.id}/sources`)).length) throw new Error("the source wasn't removed");
+    if (!existsSync(join(folder, "src", "cart.ts"))) throw new Error("removing it touched the folder");
+    await apiCall(`/api/apps/${tab.id}`, { method: "DELETE" });
+    rmSync(dirname(folder), { recursive: true, force: true });
+    return "folder chip, repository form with its error, removed (folder untouched)";
+  });
+
   await check("no uncaught errors in the renderer", async () => {
     // Expected noise from Electron itself isn't an app bug.
     const real = pageErrors.filter((e) => !/Electron Security Warning/.test(e));

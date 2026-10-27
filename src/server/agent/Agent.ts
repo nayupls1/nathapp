@@ -1,6 +1,7 @@
 // Runs agent turns: picks the provider, gives it NathApp's instructions and tools,
 // persists the conversation and pushes everything to the renderer on the hub
 // (topic app:<id>). A turn runs in the background; stopping interrupts it.
+import { delimiter } from "node:path";
 import { Context, Data, Effect, Fiber, FiberMap, Layer, Option, Stream } from "effect";
 import { appTarget, type AgentChoice, type ChatEvent, type ChatMessage, type PageContext, type ProviderId } from "../../shared/api";
 import { topics } from "../../shared/hub";
@@ -24,11 +25,13 @@ import { Scheduler, type Outcome, type PromptRun } from "../scheduler/Scheduler"
 import { Projects } from "../workspace/Projects";
 import type { Runtime } from "../workspace/Runtime";
 import { Sandbox } from "../workspace/Sandbox";
+import { Sources } from "../workspace/Sources";
 import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { browseTools } from "./browseTools";
 import { devtoolsTools } from "./devtoolsTools";
+import { describeSource, sourceTools } from "./sourceTools";
 import { networkReadTools, networkTools } from "./networkTools";
 import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
 import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools, type ToolEnv } from "./tools";
@@ -74,11 +77,12 @@ export const make = Effect.gen(function* () {
   const history = yield* History;
   const projects = yield* Projects;
   const sandbox = yield* Sandbox;
+  const sources = yield* Sources;
   const audit = yield* Audit;
   const scheduler = yield* Scheduler;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler>();
+  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler | Sources | Audit>();
 
   const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
@@ -147,6 +151,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(browseTools(env), context)),
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
+            ...(yield* Effect.provide(sourceTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
             ...(yield* Effect.provide(tabTools(env), context)),
           ]
@@ -155,6 +160,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
             ...(yield* Effect.provide(devtoolsTools(env, { site: false }), context)),
             ...(yield* Effect.provide(networkReadTools(env), context)),
+            ...(yield* Effect.provide(sourceTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
             ...(yield* Effect.provide(scheduleTools(env), context)),
             ...(yield* Effect.provide(tabTools(env), context)),
@@ -178,6 +184,11 @@ export const make = Effect.gen(function* () {
         instructions = buildAppPrompt({ instructions: combine(s.agent.instructions, space?.instructions), dir: cwd, hasProject: !!project });
         yield* projects.editing(appId);
       }
+      // The code attached to the tab: the agent works with it through NathApp's source tools.
+      const attached = yield* sources.list(appId);
+      if (attached.length) {
+        instructions += `\n\n# Code attached to this tab\nThe user attached this code for you to work with:\n${attached.map((a) => `- ${describeSource(a)}`).join("\n")}\nUse search_source, list_source_files, read_source_file and source_git to find your way in it, for example where a slow function from a trace or a broken style comes from. Change it only with edit_source_file / write_source_file: the user approves every diff. Your own file tools don't reach it.`;
+      }
 
       const driver = providers.driver(choice.provider);
       const input = (resume: string | null): TurnInput => ({
@@ -189,7 +200,7 @@ export const make = Effect.gen(function* () {
         resume,
         mcp: { name: "nathapp", url: mcpUrl, headers: {} },
         access: web ? "none" : "workspace",
-        env: { PATH: `${process.env.PATH ?? ""}:${sandbox.binDir}` },
+        env: { PATH: `${process.env.PATH ?? ""}${delimiter}${sandbox.binDir}` },
       });
 
       let heard = false;

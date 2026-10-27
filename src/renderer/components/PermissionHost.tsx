@@ -2,7 +2,7 @@
 // global secret, customize a site). One request at a time, oldest first;
 // unanswered requests are denied by the server after a while.
 import * as stylex from "@stylexjs/stylex";
-import { createSignal, onMount, Show } from "solid-js";
+import { createSignal, For, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { PermissionRequest } from "../../shared/api";
 import { answerPermission, permissionRequests } from "../lib/security";
@@ -21,7 +21,11 @@ const icons: Record<PermissionRequest["action"], string> = {
   "agent.tab": "app-window",
   "agent.browse": "mouse-pointer-click",
   "agent.confirm": "shield-alert",
+  "agent.source": "file-code",
 };
+
+/** A diff line's kind, for its color. */
+const lineKind = (line: string) => (line.startsWith("+") && !line.startsWith("+++") ? "add" : line.startsWith("-") && !line.startsWith("---") ? "remove" : line.startsWith("@@") ? "hunk" : "same");
 
 /** Mount once at the app root. */
 export function PermissionHost() {
@@ -57,6 +61,21 @@ function Prompt(props: { request: PermissionRequest; more: number }) {
             </div>
           </div>
           <p {...stylex.attrs(styles.detail)}>{props.request.detail}</p>
+          <Show when={props.request.diff}>
+            {(diff) => (
+              <pre {...stylex.attrs(styles.diff)} data-permission-diff>
+                <For each={diff().split("\n")}>
+                  {(line) => {
+                    const kind = lineKind(line);
+                    const added = () => kind === "add";
+                    const removed = () => kind === "remove";
+                    const hunk = () => kind === "hunk";
+                    return <div {...stylex.attrs(styles.line, added() && styles.added, removed() && styles.removed, hunk() && styles.hunk)}>{line || " "}</div>;
+                  }}
+                </For>
+              </pre>
+            )}
+          </Show>
           <Show when={!props.request.once}>
             <label {...stylex.attrs(styles.remember)}>
               <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} data-remember />
@@ -101,7 +120,8 @@ const styles = stylex.create({
     animationDuration: "120ms",
   },
   dialog: {
-    width: "min(460px, 100%)",
+    width: "min(560px, 100%)",
+    maxHeight: "calc(100vh - 48px)",
     display: "flex",
     flexDirection: "column",
     gap: space.md,
@@ -134,4 +154,23 @@ const styles = stylex.create({
   indented: { marginTop: -4, paddingLeft: 22 },
   actions: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: space.sm },
   more: { marginRight: "auto", color: colors.muted, fontSize: font.xs },
+  diff: {
+    margin: 0,
+    maxHeight: 320,
+    overflow: "auto",
+    paddingBlock: space.sm,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+    fontFamily: font.mono,
+    fontSize: font.xs,
+    lineHeight: 1.5,
+    whiteSpace: "pre",
+  },
+  line: { paddingInline: space.sm, minWidth: "max-content" },
+  added: { backgroundColor: "color-mix(in oklab, transparent, #16a34a 16%)" },
+  removed: { backgroundColor: "color-mix(in oklab, transparent, #dc2626 16%)" },
+  hunk: { color: colors.muted },
 });

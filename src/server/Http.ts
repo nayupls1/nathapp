@@ -55,6 +55,7 @@ import { AppTools, type ToolCaller } from "./workspace/AppTools";
 import { Projects } from "./workspace/Projects";
 import { Runtime } from "./workspace/Runtime";
 import { Sandbox } from "./workspace/Sandbox";
+import { SourceError, Sources } from "./workspace/Sources";
 import { cancelImport, Workspace } from "./workspace/Workspace";
 
 class HttpFail extends Data.TaggedError("HttpFail")<{ readonly status: number; readonly message: string }> {}
@@ -218,6 +219,70 @@ const settingsRoutes = HttpRouter.addAll([
           if (JSON.stringify(previous.providers[id]) !== JSON.stringify(next.providers[id])) yield* Effect.forkDetach(providers.refresh(id));
         }
         return json(next);
+      }),
+    ),
+  ),
+]);
+
+// Code attached to a tab for its agent: folders of yours and Git repositories (workspace/Sources.ts).
+const sourceFail = <A, R>(effect: Effect.Effect<A, SourceError, R>) => effect.pipe(Effect.catchTag("SourceError", (e) => fail(400, e.message)));
+const sourceOf = (tabId: string, id: string) =>
+  Effect.gen(function* () {
+    const source = yield* (yield* Sources).get(id);
+    if (!source || source.tabId !== tabId) return yield* fail(404, "Not found");
+    return source;
+  });
+const sourceRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/apps/:id/sources",
+    handle(
+      Effect.gen(function* () {
+        return json(yield* (yield* Sources).list(yield* param("id")));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/sources",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        if (!(yield* (yield* Apps).get(id))) return yield* fail(404, "Not found");
+        const input = yield* decodeBody(
+          Schema.Struct({ folder: Schema.optionalKey(str(4000)), git: Schema.optionalKey(str(2000)), branch: Schema.optionalKey(str(200)) }),
+        );
+        if (!input.git === !input.folder) return yield* fail(400, "Give either git or folder");
+        const sources = yield* Sources;
+        const source = yield* sourceFail(input.git ? sources.addGit(id, input.git, input.branch) : sources.addFolder(id, input.folder!));
+        yield* youDid(id, "source.add", source.name, source.url ?? source.path);
+        return json(source, 201);
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/apps/:id/sources/:source",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        const source = yield* sourceOf(id, yield* param("source"));
+        yield* (yield* Sources).remove(source.id);
+        yield* youDid(id, "source.remove", source.name, source.url ?? source.path);
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "POST",
+    "/api/apps/:id/sources/:source/pull",
+    handle(
+      Effect.gen(function* () {
+        const id = yield* param("id");
+        const source = yield* sourceOf(id, yield* param("source"));
+        const pulled = yield* sourceFail((yield* Sources).pull(source.id));
+        yield* youDid(id, "source.pull", source.name, source.url ?? source.path);
+        return json(pulled);
       }),
     ),
   ),
@@ -1984,7 +2049,7 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, sandboxRoute, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, sandboxRoute, sourceRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

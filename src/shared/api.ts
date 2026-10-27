@@ -453,6 +453,27 @@ export interface RuntimeStatus {
 
 export type SandboxKind = "bwrap" | "none";
 
+/**
+ * Code attached to a tab for its agent: a folder of yours, used in place, or
+ * a Git repository NathApp cloned (server: workspace/Sources.ts).
+ */
+export interface ContextSource {
+  id: string;
+  tabId: string;
+  kind: "folder" | "git";
+  name: string;
+  /** Where its files are: the folder itself, or NathApp's clone. */
+  path: string;
+  /** The repository it was cloned from (git). */
+  url: string | null;
+  branch: string | null;
+  /** cloning or pulling: busy; error: the last clone or pull failed. */
+  state: "cloning" | "pulling" | "ready" | "error";
+  error: string | null;
+  addedAt: string;
+  updatedAt: string;
+}
+
 /** What the agents' DevTools can do on a page (main/devtools.ts). */
 export type DevtoolsCommand = "console" | "metrics" | "trace" | "accessibility" | "styles" | "storage" | "coverage" | "emulate";
 
@@ -841,7 +862,7 @@ export interface NetworkRule {
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule" | "agent.tab" | "agent.browse" | "agent.confirm";
+export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule" | "agent.tab" | "agent.browse" | "agent.confirm" | "agent.source";
 
 export interface PermissionGrant {
   id: number;
@@ -869,6 +890,8 @@ export interface PermissionRequest {
   detail: string;
   /** Confirms one action: there's no remembering the answer. */
   once?: boolean;
+  /** The change it wants to make, as a unified diff (an agent editing code). */
+  diff?: string;
   createdAt: string;
 }
 

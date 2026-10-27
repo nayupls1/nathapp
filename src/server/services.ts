@@ -25,6 +25,7 @@ import * as Vault from "./security/Vault";
 import * as AppData from "./workspace/AppData";
 import * as AppTools from "./workspace/AppTools";
 import * as Projects from "./workspace/Projects";
+import * as Sources from "./workspace/Sources";
 import * as Runtime from "./workspace/Runtime";
 import * as Sandbox from "./workspace/Sandbox";
 import * as Workspace from "./workspace/Workspace";
@@ -36,7 +37,7 @@ export const core = (config: ServerConfigShape) =>
     Layer.provideMerge(Layer.mergeAll(History.layer, AppTools.layer)),
     Layer.provideMerge(Runtime.layer),
     Layer.provideMerge(AppData.layer),
-    Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer)),
+    Layer.provideMerge(Layer.mergeAll(Workspace.layer, Sandbox.layer, Sources.layer)),
     Layer.provideMerge(Secrets.layer),
     Layer.provideMerge(Permissions.layer),
     Layer.provideMerge(Layer.mergeAll(Vault.layer, Audit.layer)),

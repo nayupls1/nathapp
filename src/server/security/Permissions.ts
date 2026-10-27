@@ -44,6 +44,8 @@ export interface AskInput {
   readonly timeoutMs: number;
   /** Asked every time: the answer is never remembered (confirming one action). */
   readonly once?: boolean;
+  /** The change it's about, as a unified diff (shown as code). */
+  readonly diff?: string;
   /** The tab whose agent asks. With full access (Settings → Agent) it's allowed without asking, and logged. */
   readonly agentTab?: string;
 }
@@ -165,6 +167,7 @@ export const make = Effect.gen(function* () {
             title: input.title,
             detail: input.detail,
             ...(input.once ? { once: true } : {}),
+            ...(input.diff ? { diff: input.diff } : {}),
             createdAt: new Date().toISOString(),
           };
           entry = { request, deferred: yield* Deferred.make<boolean>() };
