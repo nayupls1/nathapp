@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writ
 import { extname, join, normalize, sep } from "node:path";
 import {
   actionOf,
+  hostPermissionsOf,
   iconPath,
   isExtensionId,
   localeCandidates,
@@ -225,6 +226,14 @@ export function describe(entry: InstalledExtension, error: string | null, hasNat
     hasAction: !!actionOf(m),
     optionsUrl: options ? `chrome-extension://${entry.id}/${options.replace(/^\/+/, "")}` : null,
     unsupported: unsupportedPermissions(m),
+    permissions: permissionsOf(m).sort(),
+    // Its host permissions and where its content scripts run.
+    siteAccess: [
+      ...new Set([
+        ...hostPermissionsOf(m),
+        ...(((m as { content_scripts?: { matches?: unknown[] }[] }).content_scripts ?? []).flatMap((c) => (c.matches ?? []).filter((x): x is string => typeof x === "string"))),
+      ]),
+    ].sort(),
     nativeMessaging: permissionsOf(m).includes("nativeMessaging") && hasNativeHosts,
     updates: entry.source.kind !== "unpacked" && typeof m.update_url === "string",
     error: info ? error : `The extension's folder is gone: ${entry.path}`,

@@ -29,6 +29,9 @@ export interface ExtensionInfo {
   optionsUrl: string | null;
   /** Permissions it asks for that NathApp doesn't implement: those features may not work. */
   unsupported: string[];
+  /** What it asks for (Details on the extensions page): API permissions, and the sites it can read and change. */
+  permissions: string[];
+  siteAccess: string[];
   /** Can start programs on this computer (native messaging hosts installed for it). */
   nativeMessaging: boolean;
   /** Updates come from the Chrome Web Store (or its own update URL). */

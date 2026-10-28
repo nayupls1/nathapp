@@ -50,7 +50,7 @@ export const make = Effect.gen(function* () {
 
   return {
     get,
-    list: () => sql<ChangeRow>`SELECT * FROM page_changes ORDER BY created_at, id`.pipe(Effect.map((rows) => rows.map(toChange))),
+    list: () => sql<ChangeRow>`SELECT * FROM page_changes ORDER BY created_at, rowid`.pipe(Effect.map((rows) => rows.map(toChange))),
     /** The spec is expected to be valid (pageChangeProblem). */
     create: (spec: PageChangeSpec, createdBy: "agent" | "user", id: string = crypto.randomUUID().slice(0, 8), modId: string | null = null) =>
       Effect.gen(function* () {
@@ -68,7 +68,7 @@ export const make = Effect.gen(function* () {
       }),
     remove: (id: string) => sql`DELETE FROM page_changes WHERE id = ${id}`.pipe(Effect.asVoid),
     /** The changes a mod brought. */
-    ofMod: (modId: string) => sql<ChangeRow>`SELECT * FROM page_changes WHERE mod_id = ${modId} ORDER BY created_at, id`.pipe(Effect.map((rows) => rows.map(toChange))),
+    ofMod: (modId: string) => sql<ChangeRow>`SELECT * FROM page_changes WHERE mod_id = ${modId} ORDER BY created_at, rowid`.pipe(Effect.map((rows) => rows.map(toChange))),
     removeMod: (modId: string) => sql`DELETE FROM page_changes WHERE mod_id = ${modId}`.pipe(Effect.asVoid),
     setModEnabled: (modId: string, enabled: boolean) =>
       sql`UPDATE page_changes SET enabled = ${enabled ? 1 : 0}, updated_at = ${sql.literal(now)} WHERE mod_id = ${modId}`.pipe(Effect.asVoid),

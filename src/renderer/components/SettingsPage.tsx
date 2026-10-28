@@ -851,10 +851,17 @@ function NetworkRules() {
   );
 }
 
-/** Chrome extensions: importing them from a browser, the store or a folder, and each one's switches. */
+/**
+ * The extensions, like Chrome's extensions page: a toolbar (search, developer
+ * mode, adding them), a card per extension with its switch, and its details
+ * (permissions, site access, options) on demand.
+ */
 function ExtensionsSection() {
   const ext = window.nathapp.extensions;
   const [input, setInput] = createSignal("");
+  const [query, setQuery] = createSignal("");
+  const [developer, setDeveloper] = createSignal(localStorage.getItem("nathapp.extensions-developer") === "1");
+  const [details, setDetails] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<string>();
   const report = (r: InstallResult | null) => {
@@ -883,105 +890,216 @@ function ExtensionsSection() {
       const n = await ext.update();
       setMessage(n ? `Updated ${n === 1 ? "one extension" : `${n} extensions`}.` : "Everything is up to date.");
     });
+  const toggleDeveloper = (on: boolean) => {
+    setDeveloper(on);
+    localStorage.setItem("nathapp.extensions-developer", on ? "1" : "0");
+  };
+  const shown = () => {
+    const q = query().trim().toLowerCase();
+    return extensionList().filter((x) => !q || x.name.toLowerCase().includes(q) || x.description.toLowerCase().includes(q) || x.id.includes(q));
+  };
+  const selected = () => extensionList().find((x) => x.id === details());
 
   return (
-    <Section title="Extensions" icon="puzzle" anchor="extensions">
-      <Row label="Import from your browser" description="Bring over the extensions of Chrome, Chromium, Brave, Edge or Vivaldi, with their settings, pinned buttons and keyboard shortcuts.">
-        <Button onClick={openExtensionImport} data-extensions-import>
-          <Icon name="download" size={14} />
-          Import…
-        </Button>
-      </Row>
-      <For each={extensionList()}>{(info) => <ExtensionRow info={info} />}</For>
-      <form onSubmit={add} {...stylex.attrs(styles.ruleForm)} data-extension-add>
-        <div {...stylex.attrs(styles.ruleLine)}>
-          <input
-            value={input()}
-            onInput={(e) => setInput(e.currentTarget.value)}
-            placeholder="Chrome Web Store link or extension ID"
-            spellcheck={false}
-            {...stylex.attrs(styles.textInput, styles.ruleInput)}
-          />
-          <button type="submit" disabled={busy() || !input().trim()} {...stylex.attrs(styles.linkButton)}>
-            Add from the store
-          </button>
-          <button type="button" disabled={busy()} onClick={() => void run(async () => report(await ext.loadUnpacked()))} {...stylex.attrs(styles.linkButton)}>
-            Load unpacked…
-          </button>
-        </div>
-        <p {...stylex.attrs(styles.muted)} data-extension-message>
-          {busy() ? "Working…" : (message() ?? "Extensions run in the web tabs of every workspace; each workspace keeps its own extension data, like a browser profile.")}
-        </p>
-      </form>
-      <Row label="Update automatically" description="Check for new versions of store extensions every few hours.">
-        <button type="button" disabled={busy()} onClick={checkNow} {...stylex.attrs(styles.linkButton)}>
-          Check now
-        </button>
-        <Toggle checked={autoUpdate()} onChange={(on) => void ext.setAutoUpdate(on)} />
-      </Row>
-    </Section>
+    <section {...stylex.attrs(styles.section)} data-section="extensions">
+      <Show
+        when={selected()}
+        fallback={
+          <>
+            <div {...stylex.attrs(styles.extToolbar)}>
+              <div {...stylex.attrs(styles.extSearch)}>
+                <Icon name="search" size={15} {...stylex.attrs(styles.extSearchIcon)} />
+                <input value={query()} onInput={(e) => setQuery(e.currentTarget.value)} placeholder="Search extensions" spellcheck={false} {...stylex.attrs(styles.extSearchInput)} data-extension-search />
+              </div>
+              <label {...stylex.attrs(styles.extDeveloper)}>
+                Developer mode
+                <Toggle checked={developer()} onChange={toggleDeveloper} />
+              </label>
+            </div>
+            <div {...stylex.attrs(styles.extActions)}>
+              <Button onClick={openExtensionImport} data-extensions-import>
+                <Icon name="download" size={14} />
+                Import from your browser
+              </Button>
+              <form onSubmit={add} {...stylex.attrs(styles.extStore)} data-extension-add>
+                <input
+                  value={input()}
+                  onInput={(e) => setInput(e.currentTarget.value)}
+                  placeholder="Chrome Web Store link or ID"
+                  spellcheck={false}
+                  {...stylex.attrs(styles.textInput, styles.extStoreInput)}
+                />
+                <Button type="submit" disabled={busy() || !input().trim()}>
+                  Add
+                </Button>
+              </form>
+              <Show when={developer()}>
+                <Button disabled={busy()} onClick={() => void run(async () => report(await ext.loadUnpacked()))} data-extension-unpacked>
+                  <Icon name="folder-open" size={14} />
+                  Load unpacked
+                </Button>
+                <Button disabled={busy()} onClick={checkNow}>
+                  <Icon name="refresh-cw" size={14} />
+                  Update
+                </Button>
+              </Show>
+            </div>
+            <p {...stylex.attrs(styles.muted)} data-extension-message>
+              {busy() ? "Working…" : (message() ?? "Extensions run in the web tabs of every workspace; each workspace keeps its own extension data, like a browser profile.")}
+            </p>
+            <div {...stylex.attrs(styles.extGrid)}>
+              <For each={shown()} fallback={<p {...stylex.attrs(styles.muted)}>{query() ? "No extensions match." : "No extensions yet: import them from your browser or add one from the Chrome Web Store."}</p>}>
+                {(info) => <ExtensionCard info={info} developer={developer()} onDetails={() => setDetails(info.id)} />}
+              </For>
+            </div>
+            <div {...stylex.attrs(styles.rows)}>
+              <Row label="Update automatically" description="Check for new versions of store extensions every few hours.">
+                <Toggle checked={autoUpdate()} onChange={(on) => void ext.setAutoUpdate(on)} />
+              </Row>
+            </div>
+          </>
+        }
+      >
+        {(info) => <ExtensionDetails info={info()} onBack={() => setDetails(null)} />}
+      </Show>
+    </section>
   );
 }
 
-function ExtensionRow(props: { info: ExtensionInfo }) {
+const extensionSource = (info: ExtensionInfo) => {
+  const s = info.source;
+  if (s.kind === "browser") return `from ${s.browser} (${s.profile})`;
+  if (s.kind === "webstore") return "Chrome Web Store";
+  return "Unpacked";
+};
+
+const removeExtension = async (info: ExtensionInfo) => {
+  if (await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await window.nathapp.extensions.remove(info.id);
+};
+
+/** One extension: icon, name, version, description; Details, Remove and its switch. */
+function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetails: () => void }) {
   const ext = window.nathapp.extensions;
   const info = () => props.info;
-  const source = () => {
-    const s = info().source;
-    if (s.kind === "browser") return `from ${s.browser} (${s.profile})`;
-    if (s.kind === "webstore") return "Chrome Web Store";
-    return `unpacked: ${info().path}`;
-  };
-  const isPinned = () => info().pinned;
+  const off = () => !info().enabled;
   return (
-    <div {...stylex.attrs(styles.row)} data-extension={info().id}>
-      <div {...stylex.attrs(styles.extHead)}>
-        <Show when={info().icon} fallback={<Icon name="puzzle" size={24} {...stylex.attrs(styles.accent)} />}>
-          <img src={info().icon!} alt="" width={24} height={24} {...stylex.attrs(styles.extIcon)} />
+    <div {...stylex.attrs(styles.extCard)} data-extension={info().id}>
+      <div {...stylex.attrs(styles.extCardHead, off() && styles.extOff)}>
+        <Show when={info().icon} fallback={<Icon name="puzzle" size={40} {...stylex.attrs(styles.accent)} />}>
+          <img src={info().icon!} alt="" width={40} height={40} {...stylex.attrs(styles.extIcon)} />
         </Show>
-        <div {...stylex.attrs(styles.rowText)}>
-          <span {...stylex.attrs(styles.rowLabel)}>{info().name}</span>
-          <span {...stylex.attrs(styles.muted)}>{[info().version, source()].filter(Boolean).join(" · ")}</span>
+        <div {...stylex.attrs(styles.extCardText)}>
+          <span {...stylex.attrs(styles.extName)}>
+            {info().name} <span {...stylex.attrs(styles.extVersion)}>{info().version}</span>
+          </span>
+          <span {...stylex.attrs(styles.extDescription)}>{info().description || extensionSource(info())}</span>
+          <span {...stylex.attrs(styles.extVersion)}>{extensionSource(info())}</span>
+          <Show when={props.developer}>
+            <span {...stylex.attrs(styles.extVersion, styles.mono)}>ID: {info().id}</span>
+          </Show>
           <Show when={info().error}>
             <span {...stylex.attrs(styles.extBad)}>{info().error}</span>
           </Show>
           <Show when={info().unsupported.length}>
-            <span {...stylex.attrs(styles.extWarn)}>Not available in NathApp, so parts may not work: {info().unsupported.join(", ")}</span>
-          </Show>
-          <Show when={info().nativeMessaging}>
-            <span {...stylex.attrs(styles.muted)}>Talks to programs installed on this computer for it (native messaging).</span>
+            <span {...stylex.attrs(styles.extWarn)}>Parts may not work: {info().unsupported.join(", ")}</span>
           </Show>
         </div>
       </div>
-      <div {...stylex.attrs(styles.siteControls)}>
+      <div {...stylex.attrs(styles.extCardFoot)}>
+        <button type="button" onClick={props.onDetails} {...stylex.attrs(styles.extFootButton)} data-extension-details>
+          Details
+        </button>
+        <button type="button" onClick={() => void removeExtension(info())} {...stylex.attrs(styles.extFootButton)} data-extension-remove>
+          Remove
+        </button>
         <Show when={info().optionsUrl && info().enabled}>
-          <button type="button" title="Options" onClick={() => void newWebTab(info().optionsUrl!)} {...stylex.attrs(styles.iconButton, styles.plainButton)} data-extension-options>
-            <Icon name="sliders-horizontal" size={15} />
+          <button type="button" title="Its options page, in a web tab" onClick={() => void newWebTab(info().optionsUrl!)} {...stylex.attrs(styles.extFootButton)} data-extension-options>
+            Options
           </button>
+        </Show>
+        <span {...stylex.attrs(styles.spacer)} />
+        <Toggle checked={info().enabled} onChange={(on) => void ext.setEnabled(info().id, on)} />
+      </div>
+    </div>
+  );
+}
+
+/** An extension's details: what it is, what it can do, and its settings in NathApp. */
+function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
+  const ext = window.nathapp.extensions;
+  const info = () => props.info;
+  return (
+    <div {...stylex.attrs(styles.extDetails)} data-extension-details-page={info().id}>
+      <button type="button" onClick={props.onBack} {...stylex.attrs(styles.extBack)}>
+        <Icon name="arrow-left" size={16} />
+        All extensions
+      </button>
+      <div {...stylex.attrs(styles.extCardHead)}>
+        <Show when={info().icon} fallback={<Icon name="puzzle" size={48} {...stylex.attrs(styles.accent)} />}>
+          <img src={info().icon!} alt="" width={48} height={48} {...stylex.attrs(styles.extIcon)} />
+        </Show>
+        <div {...stylex.attrs(styles.extCardText)}>
+          <span {...stylex.attrs(styles.extName, styles.extNameLarge)}>{info().name}</span>
+          <span {...stylex.attrs(styles.extDescription)}>{info().description}</span>
+        </div>
+        <Toggle checked={info().enabled} onChange={(on) => void ext.setEnabled(info().id, on)} />
+      </div>
+      <div {...stylex.attrs(styles.rows)}>
+        <Row label="Version">
+          <span {...stylex.attrs(styles.mono)}>{info().version || "—"}</span>
+        </Row>
+        <Row label="ID">
+          <span {...stylex.attrs(styles.mono)}>{info().id}</span>
+        </Row>
+        <Row label="Source" description={info().source.kind === "unpacked" ? info().path : info().updates ? "Updated from the Chrome Web Store" : undefined}>
+          <span>{extensionSource(info())}</span>
+        </Row>
+        <Row label="Permissions" description={info().permissions.length ? undefined : "None"} wide={info().permissions.length > 0}>
+          <Show when={info().permissions.length}>
+            <div {...stylex.attrs(styles.extChips)}>
+              <For each={info().permissions}>
+                {(p) => {
+                  const missing = () => info().unsupported.includes(p);
+                  return (
+                    <span {...stylex.attrs(styles.extChip, missing() && styles.extChipWarn)} title={missing() ? "Not available in NathApp" : undefined}>
+                      {p}
+                    </span>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+        </Row>
+        <Row label="Site access" description={info().siteAccess.length ? "Where it can read and change pages." : "It doesn't read or change pages."} wide={info().siteAccess.length > 0}>
+          <Show when={info().siteAccess.length}>
+            <div {...stylex.attrs(styles.extChips)}>
+              <For each={info().siteAccess}>{(p) => <span {...stylex.attrs(styles.extChip, styles.mono)}>{p}</span>}</For>
+            </div>
+          </Show>
+        </Row>
+        <Show when={info().nativeMessaging}>
+          <Row label="Programs on this computer" description="It talks to programs installed for it (native messaging)." />
         </Show>
         <Show when={info().hasAction}>
-          <button
-            type="button"
-            title={isPinned() ? "Unpin from the toolbar" : "Pin to the toolbar"}
-            aria-pressed={isPinned()}
-            onClick={() => void ext.setPinned(info().id, !isPinned())}
-            {...stylex.attrs(styles.iconButton, styles.plainButton, isPinned() && styles.pinnedButton)}
-          >
-            <Icon name="pin" size={15} />
-          </button>
+          <Row label="Pin to the toolbar" description="Its button shows in a web tab's tools at the top of the sidebar; otherwise it's in the extensions menu.">
+            <Toggle checked={info().pinned} onChange={(on) => void ext.setPinned(info().id, on)} />
+          </Row>
         </Show>
-        <Toggle checked={info().enabled} onChange={(on) => void ext.setEnabled(info().id, on)} />
-        <button
-          type="button"
-          title="Remove"
-          onClick={async () => {
-            if (await confirmDialog(`Remove ${info().name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await ext.remove(info().id);
-          }}
-          {...stylex.attrs(styles.iconButton)}
-          data-extension-remove
-        >
-          <Icon name="trash" size={15} />
-        </button>
+        <Show when={info().optionsUrl}>
+          <Row label="Extension options">
+            <button type="button" disabled={!info().enabled} onClick={() => void newWebTab(info().optionsUrl!)} {...stylex.attrs(styles.linkButton)} data-extension-options>
+              Open
+            </button>
+          </Row>
+        </Show>
+        <Show when={info().error}>
+          <Row label="Error" description={info().error!} />
+        </Show>
+        <Row label="Remove extension" description="Its data in every workspace goes with it.">
+          <button type="button" onClick={() => void removeExtension(info()).then(() => !extensionList().some((x) => x.id === info().id) && props.onBack())} {...stylex.attrs(styles.linkButton, styles.dangerButton)}>
+            Remove…
+          </button>
+        </Row>
       </div>
     </div>
   );
@@ -1174,7 +1292,7 @@ function Section(props: { title: string; icon: string; anchor?: string; children
   );
 }
 
-function Row(props: { label: string; description?: string; wide?: boolean; children: JSX.Element }) {
+function Row(props: { label: string; description?: string; wide?: boolean; children?: JSX.Element }) {
   return (
     <div {...stylex.attrs(styles.row, props.wide && styles.rowWide)}>
       <div {...stylex.attrs(styles.rowText, props.wide && styles.rowTextWide)}>
@@ -1453,12 +1571,90 @@ const styles = stylex.create({
   controlWide: { width: "100%" },
   select: { width: 220 },
   siteControls: { display: "flex", alignItems: "center", gap: space.sm },
-  extHead: { display: "flex", alignItems: "flex-start", gap: space.md, minWidth: 200, flex: "1 1 240px" },
+  extToolbar: { display: "flex", alignItems: "center", gap: space.md, flexWrap: "wrap" },
+  extSearch: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    flex: "1 1 260px",
+    height: 38,
+    paddingInline: space.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: { default: colors.border, ":focus-within": colors.accent },
+    backgroundColor: colors.surface,
+  },
+  extSearchIcon: { color: colors.muted, flexShrink: 0 },
+  extSearchInput: { flex: 1, minWidth: 0, borderWidth: 0, outline: "none", backgroundColor: "transparent", color: colors.text, fontSize: font.sm },
+  extDeveloper: { display: "flex", alignItems: "center", gap: space.sm, color: colors.muted, fontSize: font.sm, cursor: "pointer" },
+  extActions: { display: "flex", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
+  extStore: { display: "flex", alignItems: "center", gap: space.xs, flex: "1 1 280px" },
+  extStoreInput: { flex: 1, width: "auto", minWidth: 0 },
+  extGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: space.md },
+  extCard: {
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    gap: space.md,
+    minHeight: 150,
+    padding: space.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  extCardHead: { display: "flex", alignItems: "flex-start", gap: space.md },
+  extOff: { opacity: 0.6 },
+  extCardText: { display: "flex", flexDirection: "column", gap: 3, flex: 1, minWidth: 0 },
+  extName: { fontSize: font.md, fontWeight: 600, overflowWrap: "anywhere" },
+  extNameLarge: { fontSize: font.lg },
+  extVersion: { color: colors.muted, fontSize: font.xs, fontWeight: 400 },
+  extDescription: {
+    color: colors.muted,
+    fontSize: font.sm,
+    lineHeight: 1.4,
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  extCardFoot: { display: "flex", alignItems: "center", gap: space.xs },
+  extFootButton: {
+    height: 30,
+    paddingInline: space.md,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: 500,
+    cursor: "pointer",
+  },
+  spacer: { flex: 1 },
+  extDetails: { display: "flex", flexDirection: "column", gap: space.lg },
+  extBack: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: space.sm,
+    alignSelf: "flex-start",
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: colors.accent,
+    fontSize: font.sm,
+    cursor: "pointer",
+  },
+  extChips: { display: "flex", flexWrap: "wrap", gap: 6 },
+  extChip: { paddingBlock: 2, paddingInline: 8, borderRadius: radius.full, backgroundColor: colors.surfaceHover, fontSize: font.xs },
+  extChipWarn: { color: colors.warning },
   extIcon: { flexShrink: 0, marginTop: 2, objectFit: "contain" },
   extWarn: { color: colors.warning, fontSize: font.xs },
   extBad: { color: colors.danger, fontSize: font.xs, overflowWrap: "anywhere" },
   plainButton: { color: { default: colors.muted, ":hover": colors.text } },
-  pinnedButton: { color: { default: colors.accent, ":hover": colors.accent } },
   iconButton: {
     display: "grid",
     placeItems: "center",
