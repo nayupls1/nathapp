@@ -298,13 +298,6 @@ function WebSection() {
   return (
     <>
           <Section title="Browsing" icon="globe" anchor="web">
-            <Row label="Home page" description="Opened by new web tabs.">
-              <input
-                value={settings().web.homePage}
-                onChange={(e) => set("web", { homePage: e.currentTarget.value.trim() || "about:blank" })}
-                {...stylex.attrs(styles.textInput)}
-              />
-            </Row>
             <Row label="Search engine" description="Used when the address bar input isn't a URL.">
               <Select
                 value={settings().web.searchEngine}

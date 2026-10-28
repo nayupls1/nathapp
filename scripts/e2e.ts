@@ -997,6 +997,11 @@ try {
     );
     webTabId = tabId;
     const tab = `[data-web-tab="${tabId}"]`;
+    // Like a browser's new tab: blank, with the address bar focused and empty.
+    await page!.waitFor(
+      `document.activeElement === document.querySelector('${chromeFor(tab)} [data-address]') && document.activeElement.value === "" && !document.querySelector('${tab} webview')`,
+      { label: "a blank new tab with the address bar focused" },
+    );
     // In the page: runs code inside the tab's webview.
     const inPage = <T>(code: string, gesture = false) =>
       page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)}, ${gesture})`);

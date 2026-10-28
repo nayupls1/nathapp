@@ -19,7 +19,7 @@ export const settingsSections: SettingsSection[] = [
   { id: "agent", label: "Agent", icon: "bot", group: "settings", keywords: "default model instructions full access" },
   { id: "providers", label: "Providers", icon: "plug", group: "settings", keywords: "claude codex opencode login" },
   { id: "apps", label: "Apps", icon: "box", group: "settings", keywords: "sandbox shell bubblewrap toolchains ai" },
-  { id: "web", label: "Web tabs", icon: "globe", group: "settings", keywords: "home page search engine unload customizations page changes" },
+  { id: "web", label: "Web tabs", icon: "globe", group: "settings", keywords: "search engine unload customizations page changes" },
   { id: "network", label: "Network", icon: "network", group: "settings", keywords: "rules block headers record" },
   { id: "extensions", label: "Extensions", icon: "blocks", group: "settings" },
   { id: "secrets", label: "Secrets", icon: "key-round", group: "settings" },

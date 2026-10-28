@@ -96,6 +96,8 @@ export function AddressBar() {
     if (!editing()) setText(url);
   });
   createEffect(on(focusRequest, () => focus(), { defer: true }));
+  // Another tab on screen: what was being typed for the last one goes (a new blank tab takes the focus again below).
+  createEffect(on(selectedId, () => editing() && finish(), { defer: true }));
   // A new web tab starts here.
   createEffect(on(() => [selectedId(), chrome()?.blank?.()] as const, ([, blank]) => blank && queueMicrotask(focus)));
 

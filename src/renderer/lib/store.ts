@@ -8,7 +8,6 @@ import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, SharedTab, TabSplit, WorkspaceInfo } from "../../shared/api";
 import type { WorkspaceSettings } from "../../shared/settings";
 import { topics } from "../../shared/hub";
-import { normalizeUrl } from "../../shared/web";
 import { api } from "./api";
 import { attachmentsOf, clearAttachments } from "./attachments";
 import { onConnected, watchTopic } from "./realtime";
@@ -309,15 +308,15 @@ export async function newApp() {
 }
 
 /**
- * Opens a web tab: the given URL (a website or an extension's page), or the
- * home page from Settings. In the current workspace unless another is given;
- * a background tab opens without being shown.
+ * Opens a web tab: the given URL (a website or an extension's page), or a
+ * blank one, like a browser's new tab (the address bar takes the focus, empty).
+ * In the current workspace unless another is given; a background tab opens
+ * without being shown.
  */
 export async function newWebTab(url?: string, options: { workspaceId?: string; background?: boolean } = {}) {
-  const target = url || normalizeUrl(settings().web.homePage, settings().web.searchEngine);
   const app = await api.createApp({
     kind: "web",
-    url: /^(https?:\/\/|chrome-extension:\/\/)/i.test(target) ? target : undefined,
+    url: url && /^(https?:\/\/|chrome-extension:\/\/)/i.test(url) ? url : undefined,
     workspaceId: options.workspaceId ?? currentWorkspace()?.id,
   });
   if (!options.background) showNewTab(app);

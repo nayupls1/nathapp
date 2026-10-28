@@ -72,7 +72,6 @@ export const Settings = Schema.Struct({
     opencode: ProviderSettings.pipe(withDefault({})),
   }).pipe(withDefault({})),
   web: Schema.Struct({
-    homePage: Schema.String.check(Schema.isMaxLength(4000)).pipe(withDefault("https://duckduckgo.com")),
     searchEngine: SearchEngine.pipe(withDefault("duckduckgo")),
     /** Apply site customizations (CSS/JS overrides) in web tabs. */
     overrides: Schema.Boolean.pipe(withDefault(true)),
