@@ -1,10 +1,10 @@
 /// <reference types="vite/client" />
 import type { WebviewTag } from "electron";
-import type { NathAppBridge } from "../shared/api";
+import type { RuneBridge } from "../shared/api";
 
 declare global {
   interface Window {
-    nathapp: NathAppBridge;
+    rune: RuneBridge;
   }
 }
 

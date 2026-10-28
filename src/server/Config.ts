@@ -38,7 +38,7 @@ export interface SecretsKey {
   readonly protection: "keychain" | "file";
 }
 
-export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()("nathapp/ServerConfig") {}
+export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()("rune/ServerConfig") {}
 
 const compiled = () => import.meta.path.includes("$bunfs") || import.meta.path.includes("~BUN");
 
@@ -46,7 +46,7 @@ export function readConfig(
   env: Record<string, string | undefined> = process.env,
   secretsKey: SecretsKey | "locked" | null = null,
 ): ServerConfigShape {
-  const dataDir = resolve(env.NATHAPP_DATA_DIR ?? ".data");
+  const dataDir = resolve(env.RUNE_DATA_DIR ?? ".data");
   const appsDir = join(dataDir, "apps");
   const cacheDir = join(dataDir, "cache");
   const agentDir = join(dataDir, "agent");
@@ -60,11 +60,11 @@ export function readConfig(
     agentDir,
     port,
     url: `http://127.0.0.1:${port}`,
-    allowedOrigin: env.NATHAPP_ALLOWED_ORIGIN ?? "http://localhost:5173",
-    token: env.NATHAPP_TOKEN || null,
+    allowedOrigin: env.RUNE_ALLOWED_ORIGIN ?? "http://localhost:5173",
+    token: env.RUNE_TOKEN || null,
     // The compiled server is a Bun executable itself; BUN_BE_BUN makes it act as the bun CLI.
     bunCommand: compiled() ? { path: process.execPath, env: { BUN_BE_BUN: "1" } } : { path: process.execPath, env: {} },
-    claudePath: env.NATHAPP_CLAUDE_PATH || (compiled() ? join(dirname(process.execPath), `claude${exe}`) : undefined),
+    claudePath: env.RUNE_CLAUDE_PATH || (compiled() ? join(dirname(process.execPath), `claude${exe}`) : undefined),
     secretsKey,
   };
 }

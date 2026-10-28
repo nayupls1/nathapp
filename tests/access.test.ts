@@ -12,8 +12,8 @@ import { Audit } from "../src/server/security/Audit";
 import { Permissions } from "../src/server/security/Permissions";
 import { core } from "../src/server/services";
 
-const dataDir = mkdtempSync(join(tmpdir(), "nathapp-access-"));
-const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+const dataDir = mkdtempSync(join(tmpdir(), "rune-access-"));
+const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
 afterAll(async () => {
   await runtime.dispose();
   rmSync(dataDir, { recursive: true, force: true });

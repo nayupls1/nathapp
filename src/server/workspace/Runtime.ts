@@ -1,6 +1,6 @@
-// Runs apps. While an app is being edited (dev mode) NathApp runs its dev server,
-// which reloads on every change; when it's done (live mode) NathApp builds it and
-// runs its start command. Either way the app listens on a port NathApp assigns
+// Runs apps. While an app is being edited (dev mode) Rune Browser runs its dev server,
+// which reloads on every change; when it's done (live mode) Rune Browser builds it and
+// runs its start command. Either way the app listens on a port Rune Browser assigns
 // and the renderer shows it in a preview tab. Processes run in the app's
 // sandbox and stop with the server.
 import { existsSync, statSync, writeFileSync } from "node:fs";
@@ -24,7 +24,7 @@ const MAX_LOG_LINES = 2000;
 export interface RuntimeShape {
   readonly status: (appId: string) => Effect.Effect<RuntimeStatus>;
   readonly logs: (appId: string, limit?: number) => LogLine[];
-  /** Adds a line from NathApp itself to the app's logs. */
+  /** Adds a line from Rune Browser itself to the app's logs. */
   readonly note: (appId: string, text: string) => void;
   /** Starts the app in its mode unless it's already running (or has no project). */
   readonly ensure: (appId: string) => Effect.Effect<RuntimeStatus>;
@@ -46,7 +46,7 @@ export interface RuntimeShape {
   readonly forget: (appId: string) => Effect.Effect<void>;
 }
 
-export class Runtime extends Context.Service<Runtime, RuntimeShape>()("nathapp/Runtime") {}
+export class Runtime extends Context.Service<Runtime, RuntimeShape>()("rune/Runtime") {}
 
 const freePort = (preferred?: number | null) =>
   new Promise<number>((resolve, reject) => {
@@ -148,7 +148,7 @@ export const make = Effect.gen(function* () {
         lines.push({
           at: Date.now(),
           stream: "system",
-          text: `The app seems to listen on port ${other}, but NathApp shows it on $PORT (${state.port}). Make its server use $PORT (or ask the agent to).`,
+          text: `The app seems to listen on port ${other}, but Rune Browser shows it on $PORT (${state.port}). Make its server use $PORT (or ask the agent to).`,
         });
       }
     }
@@ -157,24 +157,21 @@ export const make = Effect.gen(function* () {
     hub.publishUnsafe({ type: "log", topic: topics.logs(appId), appId, lines });
   };
 
-  /** Environment NathApp provides to the app's processes. Its data lives outside the project (AppData.ts). */
+  /** Environment Rune Browser provides to the app's processes. Its data lives outside the project (AppData.ts). */
   const appEnv = (appId: string, mode: AppMode, port: number | null) =>
     Effect.map(appData.ensure(appId), (data): Record<string, string> => ({
       ...(port ? { PORT: String(port), HOST: "127.0.0.1", APP_URL: `http://127.0.0.1:${port}` } : {}),
       DATABASE_PATH: data.database,
       DATABASE_URL: `file:${data.database}`,
-      NATHAPP_FILES_DIR: data.files,
-      NATHAPP_APP_ID: appId,
-      NATHAPP_MODE: mode,
-      // NathApp's API for apps (other apps' data, with the user's OK). Server-side only, like AI.
-      NATHAPP_API_URL: `${config.url}/app-api/v1`,
-      NATHAPP_API_TOKEN: aiTokens.tokenFor(appId),
-      // AI through NathApp (src/ai.ts in the presets). Server-side only: the token is the app's key.
-      NATHAPP_AI_URL: `${config.url}/ai/v1`,
-      NATHAPP_AI_TOKEN: aiTokens.tokenFor(appId),
-      // Apps built before the rename (gApp) read these names.
-      GAPP_AI_URL: `${config.url}/ai/v1`,
-      GAPP_AI_TOKEN: aiTokens.tokenFor(appId),
+      RUNE_FILES_DIR: data.files,
+      RUNE_APP_ID: appId,
+      RUNE_MODE: mode,
+      // Rune Browser's API for apps (other apps' data, with the user's OK). Server-side only, like AI.
+      RUNE_API_URL: `${config.url}/app-api/v1`,
+      RUNE_API_TOKEN: aiTokens.tokenFor(appId),
+      // AI through Rune Browser (src/ai.ts in the presets). Server-side only: the token is the app's key.
+      RUNE_AI_URL: `${config.url}/ai/v1`,
+      RUNE_AI_TOKEN: aiTokens.tokenFor(appId),
       NODE_ENV: mode === "live" ? "production" : "development",
     }));
 
@@ -253,7 +250,7 @@ export const make = Effect.gen(function* () {
       state.redact = Object.values(secretEnv).filter((v) => v.length >= 4).sort((a, b) => b.length - a.length);
       if (names.length) {
         log(appId, "system", `Secrets: ${names.join(", ")}`);
-        yield* audit.record({ actor: "nathapp", actorLabel: "NathApp", tabId: appId, action: "secret.inject", target: names.join(", "), detail: `Started in ${mode} mode` });
+        yield* audit.record({ actor: "rune", actorLabel: "Rune Browser", tabId: appId, action: "secret.inject", target: names.join(", "), detail: `Started in ${mode} mode` });
       }
 
       if (needsInstall(appId, manifest)) {

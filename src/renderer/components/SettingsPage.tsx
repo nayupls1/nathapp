@@ -1,6 +1,6 @@
 // Settings: a sidebar of categories (appearance, the current workspace,
 // agent defaults and providers, apps, web tabs and their network and
-// extensions, secrets and permissions) and NathApp's pages (History,
+// extensions, secrets and permissions) and Rune Browser's pages (History,
 // Schedules, Mods, Activity), with the chosen one beside it.
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
@@ -51,7 +51,7 @@ import { Button, Select } from "./ui";
 
 /**
  * Settings: a sidebar of categories on the left, the chosen one on the right.
- * NathApp's pages (History, Schedules, Mods, Activity) are categories too.
+ * Rune Browser's pages (History, Schedules, Mods, Activity) are categories too.
  */
 export function SettingsShell(props: { view: string }) {
   const current = () => settingsSections.find((s) => (s.view ? s.view === props.view : props.view === SETTINGS_VIEW && s.id === settingsSection())) ?? settingsSections[0]!;
@@ -234,7 +234,7 @@ function ProvidersSection() {
   return (
         <Section title="Coding agents" icon="plug" anchor="providers">
           <p {...stylex.attrs(styles.muted, styles.note)}>
-            The coding agents NathApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
+            The coding agents Rune Browser can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
           </p>
           <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
         </Section>
@@ -368,7 +368,7 @@ function AppsSection() {
 
           <Section title="AI in apps" icon="sparkles">
             <p {...stylex.attrs(styles.muted, styles.note)}>
-              Apps can use AI (summaries, suggestions, chat) through NathApp, on your own subscription: no API keys in your apps. Only an
+              Apps can use AI (summaries, suggestions, chat) through Rune Browser, on your own subscription: no API keys in your apps. Only an
               app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
               shows up in the app's logs.
             </p>
@@ -422,13 +422,13 @@ function PermissionsSection() {
 function AboutSection() {
   const [health] = createResource(() => api.health());
   return (
-        <Section title="NathApp" icon="info" anchor="about">
+        <Section title="Rune Browser" icon="info" anchor="about">
           <dl {...stylex.attrs(styles.about)}>
             <dt>Data folder</dt>
             <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
             <dt>Versions</dt>
             <dd {...stylex.attrs(styles.dd, styles.mono)}>
-              Electron {window.nathapp.versions.electron} · Chrome {window.nathapp.versions.chrome} · Bun {health()?.bun ?? "…"}
+              Electron {window.rune.versions.electron} · Chrome {window.rune.versions.chrome} · Bun {health()?.bun ?? "…"}
             </dd>
           </dl>
         </Section>
@@ -491,7 +491,7 @@ function ProviderRow(props: { id: ProviderId }) {
         <span {...stylex.attrs(styles.muted)}>Binary</span>
         <input
           value={config().binaryPath}
-          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with NathApp" : `${props.id} on your PATH`)}
+          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with Rune Browser" : `${props.id} on your PATH`)}
           onChange={(e) => setConfig({ binaryPath: e.currentTarget.value.trim() })}
           {...stylex.attrs(styles.textInput, styles.mono)}
         />
@@ -628,7 +628,7 @@ function GlobalSecrets() {
       ? "Encrypted, with the key in your OS keychain."
       : overview()?.protection === "file"
         ? "Encrypted, with the key protected by file permissions only (no OS keychain found)."
-        : "Locked: NathApp couldn't unlock its key from the OS keychain.";
+        : "Locked: Rune Browser couldn't unlock its key from the OS keychain.";
   return (
     <>
       <p {...stylex.attrs(styles.muted, styles.note)}>
@@ -850,10 +850,10 @@ function NetworkRules() {
  * (permissions, site access, options) on demand.
  */
 function ExtensionsSection() {
-  const ext = window.nathapp.extensions;
+  const ext = window.rune.extensions;
   const [input, setInput] = createSignal("");
   const [query, setQuery] = createSignal("");
-  const [developer, setDeveloper] = createSignal(localStorage.getItem("nathapp.extensions-developer") === "1");
+  const [developer, setDeveloper] = createSignal(localStorage.getItem("rune.extensions-developer") === "1");
   const [details, setDetails] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<string>();
@@ -885,7 +885,7 @@ function ExtensionsSection() {
     });
   const toggleDeveloper = (on: boolean) => {
     setDeveloper(on);
-    localStorage.setItem("nathapp.extensions-developer", on ? "1" : "0");
+    localStorage.setItem("rune.extensions-developer", on ? "1" : "0");
   };
   const shown = () => {
     const q = query().trim().toLowerCase();
@@ -967,12 +967,12 @@ const extensionSource = (info: ExtensionInfo) => {
 };
 
 const removeExtension = async (info: ExtensionInfo) => {
-  if (await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await window.nathapp.extensions.remove(info.id);
+  if (await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await window.rune.extensions.remove(info.id);
 };
 
 /** One extension: icon, name, version, description; Details, Remove and its switch. */
 function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetails: () => void }) {
-  const ext = window.nathapp.extensions;
+  const ext = window.rune.extensions;
   const info = () => props.info;
   const off = () => !info().enabled;
   return (
@@ -1017,9 +1017,9 @@ function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetai
   );
 }
 
-/** An extension's details: what it is, what it can do, and its settings in NathApp. */
+/** An extension's details: what it is, what it can do, and its settings in Rune Browser. */
 function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
-  const ext = window.nathapp.extensions;
+  const ext = window.rune.extensions;
   const info = () => props.info;
   return (
     <div {...stylex.attrs(styles.extDetails)} data-extension-details-page={info().id}>
@@ -1054,7 +1054,7 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
                 {(p) => {
                   const missing = () => info().unsupported.includes(p);
                   return (
-                    <span {...stylex.attrs(styles.extChip, missing() && styles.extChipWarn)} title={missing() ? "Not available in NathApp" : undefined}>
+                    <span {...stylex.attrs(styles.extChip, missing() && styles.extChipWarn)} title={missing() ? "Not available in Rune Browser" : undefined}>
                       {p}
                     </span>
                   );
@@ -1166,7 +1166,7 @@ function SandboxRows() {
     return "";
   };
   const addFolder = async () => {
-    const folder = await window.nathapp.pickFolder("A folder apps may read");
+    const folder = await window.rune.pickFolder("A folder apps may read");
     if (folder && !apps().sandboxReadOnly.includes(folder)) setApps({ sandboxReadOnly: [...apps().sandboxReadOnly, folder] });
   };
 
@@ -1232,7 +1232,7 @@ function SandboxRows() {
         >
           <Toggle checked={apps().sandboxToolchains} onChange={(sandboxToolchains) => setApps({ sandboxToolchains })} />
         </Row>
-        <Row label="More folders apps can read" description="Read-only, in every app's sandbox. NathApp's own data stays hidden even if it's inside one." wide>
+        <Row label="More folders apps can read" description="Read-only, in every app's sandbox. Rune Browser's own data stays hidden even if it's inside one." wide>
           <div {...stylex.attrs(styles.folderList)} data-sandbox-folders>
             <For each={apps().sandboxReadOnly}>
               {(folder) => (

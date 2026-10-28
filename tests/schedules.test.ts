@@ -104,10 +104,10 @@ describe("scheduler", () => {
 });`,
     );
     writeFileSync(
-      join(dir(), "nathapp.json"),
+      join(dir(), "rune.json"),
       JSON.stringify({
         install: "true",
-        dev: 'printf %s "$NATHAPP_API_TOKEN" > token.txt; exec bun action.ts',
+        dev: 'printf %s "$RUNE_API_TOKEN" > token.txt; exec bun action.ts',
         start: "bun action.ts",
         actions: [{ id: "digest", title: "Send digest", endpoint: "/api/digest" }],
       }),
@@ -129,7 +129,7 @@ describe("scheduler", () => {
   }, 90_000);
 
   test("commands run in the app's sandbox; failures and timeouts are results too", async () => {
-    const ok = await create({ name: "Hello", task: { type: "command", appId: app.id, command: "echo hello from $NATHAPP_MODE" } });
+    const ok = await create({ name: "Hello", task: { type: "command", appId: app.id, command: "echo hello from $RUNE_MODE" } });
     expect(ok.nextRunAt).not.toBeNull();
     await server.api(`/api/schedules/${ok.id}/run`, { method: "POST" });
     const [done] = await finished(ok.id);

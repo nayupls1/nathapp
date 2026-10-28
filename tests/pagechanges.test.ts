@@ -78,8 +78,8 @@ test("hide, style and css become one stylesheet; buttons get a default look", ()
   expect(css).toContain("h1 { color: red }");
   expect(css).toContain("body { margin: 0 }");
   expect(css).not.toContain("Hi");
-  expect(css).not.toContain("nathapp-button");
-  expect(pageChangesCss([change({ action: "button", selector: "h1", value: "Go", onClick: "1" })])).toContain("button.nathapp-button");
+  expect(css).not.toContain("rune-button");
+  expect(pageChangesCss([change({ action: "button", selector: "h1", value: "Go", onClick: "1" })])).toContain("button.rune-button");
 });
 
 describe("API", () => {

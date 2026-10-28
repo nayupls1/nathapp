@@ -16,7 +16,7 @@ import { Button } from "./ui";
 
 const PAGE = 50;
 
-const actorIcons: Record<HistoryEntry["actor"], string> = { agent: "bot", user: "user", app: "app-window", nathapp: "camera" };
+const actorIcons: Record<HistoryEntry["actor"], string> = { agent: "bot", user: "user", app: "app-window", rune: "camera" };
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -164,7 +164,7 @@ function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean;
       const data = withData();
       const scope = props.restoreAllIn ? (workspaces.find((w) => w.id === props.restoreAllIn)?.name ?? "this workspace") : "all workspaces";
       const ok = await confirmDialog(
-        `Put everything back to how it was on ${when(props.entry.at)}? NathApp's settings, the site customizations and the apps in ${scope} go back to that moment${data ? ", their data too (what was added since is lost)" : "; the apps' data stays as it is"}. Apps made since stay as they are. Each can be undone on its own.`,
+        `Put everything back to how it was on ${when(props.entry.at)}? Rune Browser's settings, the site customizations and the apps in ${scope} go back to that moment${data ? ", their data too (what was added since is lost)" : "; the apps' data stays as it is"}. Apps made since stay as they are. Each can be undone on its own.`,
         { confirmLabel: "Restore everything", danger: true },
       );
       if (!ok) return;

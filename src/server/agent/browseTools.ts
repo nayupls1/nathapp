@@ -1,7 +1,7 @@
 // The website agent using pages for the user: clicking, typing, filling in
 // forms and pressing keys, with real input events, in the tab the user is
 // looking at (its webview, with their logins there). Every action names its
-// element first (page.target), so NathApp can check it before anything
+// element first (page.target), so Rune Browser can check it before anything
 // happens:
 // - acting on a site with the user's session needs their OK once per site
 //   (agent.browse, rememberable);
@@ -95,7 +95,7 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
       action: "agent.confirm",
       resource: hostOf(url) || url,
       title: `Let the website agent ${what}?`,
-      detail: `On ${url.slice(0, 200)}. This can't necessarily be undone, so NathApp asks every time.`,
+      detail: `On ${url.slice(0, 200)}. This can't necessarily be undone, so Rune Browser asks every time.`,
       timeoutMs: 180_000,
       once: true,
     });
@@ -105,7 +105,7 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
     Effect.gen(function* () {
       if ("error" in target) return text(target.error, true);
       if (action === "type" && isPassword(target)) {
-        return text("NathApp doesn't let agents type passwords. Ask the user to sign in themselves, then go on.", true);
+        return text("Rune Browser doesn't let agents type passwords. Ask the user to sign in themselves, then go on.", true);
       }
       const refused = yield* allowSite(target.url);
       if (refused) return text(refused, true);
@@ -226,7 +226,7 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "confirm_action",
-      "Ask the user to confirm something with consequences before you do it (buying, booking, sending a message, deleting, changing an account setting), when NathApp might not notice on its own. Returns whether they agreed.",
+      "Ask the user to confirm something with consequences before you do it (buying, booking, sending a message, deleting, changing an account setting), when Rune Browser might not notice on its own. Returns whether they agreed.",
       Schema.Struct({ action: Schema.String.annotate({ description: "What you're about to do, e.g. “order 2 tickets for 34 €”" }) }),
       ({ action }) =>
         Effect.gen(function* () {

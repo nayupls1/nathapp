@@ -15,10 +15,10 @@ import type { Tool } from "../src/server/agent/Mcp";
 import { Permissions } from "../src/server/security/Permissions";
 import { DEFAULT_WORKSPACE } from "../src/shared/api";
 
-const dataDir = mkdtempSync(join(tmpdir(), "nathapp-sources-"));
-const folder = mkdtempSync(join(tmpdir(), "nathapp-sources-src-"));
-const outside = mkdtempSync(join(tmpdir(), "nathapp-sources-outside-"));
-const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+const dataDir = mkdtempSync(join(tmpdir(), "rune-sources-"));
+const folder = mkdtempSync(join(tmpdir(), "rune-sources-src-"));
+const outside = mkdtempSync(join(tmpdir(), "rune-sources-outside-"));
+const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
 const run = <A, E>(effect: Effect.Effect<A, E, Sources | Apps>) => runtime.runPromise(effect);
 
 afterAll(async () => {
@@ -73,7 +73,7 @@ describe("sources", () => {
     expect(result.refused[4]).toMatch(/isn't inside|doesn't exist/);
   });
 
-  test("NathApp's own data, a whole disk or home, and links that aren't repositories are refused", async () => {
+  test("Rune Browser's own data, a whole disk or home, and links that aren't repositories are refused", async () => {
     const tab = await run(Effect.flatMap(Apps, (apps) => apps.create(DEFAULT_WORKSPACE, "app", null)));
     const errors = await run(
       Effect.gen(function* () {
@@ -82,7 +82,7 @@ describe("sources", () => {
         return [yield* fail(sources.addFolder(tab.id, dataDir)), yield* fail(sources.addFolder(tab.id, "/")), yield* fail(sources.addGit(tab.id, "file:///etc"))];
       }),
     );
-    expect(errors[0]).toContain("NathApp's own data");
+    expect(errors[0]).toContain("Rune Browser's own data");
     expect(errors[1]).toContain("too much");
     expect(errors[2]).toContain("isn't a link");
   });

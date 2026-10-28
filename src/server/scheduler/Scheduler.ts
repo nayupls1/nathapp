@@ -2,13 +2,13 @@
 // schedule uses one of an app's tools (the tool registry, so permissions and
 // the audit log apply as for any call), runs a command in the app's sandbox,
 // or asks a tab's agent something (a new chat in the tab each run; the agent
-// runs it as if the user had sent it, see setPromptRunner), once at a time, on a cron expression, or on an event (NathApp started, an
+// runs it as if the user had sent it, see setPromptRunner), once at a time, on a cron expression, or on an event (Rune Browser started, an
 // app started or crashed, or an event an app sends through the app API).
 //
 // Limits: recurring schedules run at most every few minutes, two runs at a
 // time (the rest wait), a schedule never overlaps itself, every run has a
 // timeout, event runs at most every 30 seconds per schedule, and the output
-// kept is capped. A run missed while NathApp wasn't running happens once when
+// kept is capped. A run missed while Rune Browser wasn't running happens once when
 // it starts. Finished runs are published on the hub (the UI notifies) and
 // recorded in the audit log.
 import { Cause, Context, Data, Effect, Layer, Semaphore } from "effect";
@@ -66,7 +66,7 @@ export interface SchedulerShape {
   readonly setPromptRunner: (runner: (run: PromptRun) => Effect.Effect<Outcome>) => void;
 }
 
-export class Scheduler extends Context.Service<Scheduler, SchedulerShape>()("nathapp/Scheduler") {}
+export class Scheduler extends Context.Service<Scheduler, SchedulerShape>()("rune/Scheduler") {}
 
 const CONCURRENT_RUNS = 2;
 const MAX_OUTPUT = 20_000;
@@ -134,8 +134,8 @@ export const make = Effect.gen(function* () {
   const lastEventRun = new Map<string, number>();
   let promptRunner: ((run: PromptRun) => Effect.Effect<Outcome>) | null = null;
 
-  // Runs that were going when NathApp stopped.
-  yield* sql`UPDATE schedule_runs SET status = 'error', message = 'NathApp stopped during the run', finished_at = ${new Date().toISOString()}
+  // Runs that were going when Rune Browser stopped.
+  yield* sql`UPDATE schedule_runs SET status = 'error', message = 'Rune Browser stopped during the run', finished_at = ${new Date().toISOString()}
     WHERE status = 'running'`.pipe(Effect.orDie);
 
   const lastRuns = (ids: string[]) =>
@@ -272,7 +272,7 @@ export const make = Effect.gen(function* () {
           const notify = spec.notify === "always" || (spec.notify === "failure" && finished.status !== "ok");
           yield* hub.publish({ type: "schedule-run", topic: topics.schedules, run: finished, notify });
           yield* audit.record({
-            actor: "nathapp",
+            actor: "rune",
             actorLabel: "Scheduler",
             tabId: taskTab(spec.task) ?? undefined,
             action: "schedule.run",
@@ -338,7 +338,7 @@ export const make = Effect.gen(function* () {
   });
   yield* Effect.addFinalizer(() => Effect.sync(unlisten));
   // Once everything is up.
-  yield* Effect.forkScoped(Effect.andThen(Effect.sleep("2 seconds"), emit("nathapp.started")));
+  yield* Effect.forkScoped(Effect.andThen(Effect.sleep("2 seconds"), emit("rune.started")));
 
   return {
     list: (filter = {}) =>

@@ -158,7 +158,7 @@ describe("manifests", () => {
     expect(iconPath(undefined)).toBeNull();
   });
 
-  test("permissions NathApp doesn't provide", () => {
+  test("permissions Rune Browser doesn't provide", () => {
     expect(
       unsupportedPermissions({ manifest_version: 3, name: "x", version: "1", permissions: ["storage", "privacy", "userScripts", "https://*/*", "tabs"] }),
     ).toEqual(["privacy", "userScripts"]);
@@ -347,7 +347,7 @@ describe("CRX packages", () => {
   });
 
   test("unpacking stays inside the folder", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nathapp-crx-"));
+    const dir = mkdtempSync(join(tmpdir(), "rune-crx-"));
     try {
       extractZip(zip, dir);
       expect(readFileSync(join(dir, "js/background.js"), "utf8")).toStartWith("console.log");

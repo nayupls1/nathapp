@@ -1,5 +1,5 @@
 // The life of an app tab, whatever made it: the agent (create_project, or a
-// nathapp.json it wrote itself), the user (a template, or a project of their
+// rune.json it wrote itself), the user (a template, or a project of their
 // own imported from a folder or cloned from Git) or a copy of another app. Every app goes through the same steps here, and the three concerns stay
 // apart:
 //   building:   the project's files and manifest (Workspace), its data (AppData)
@@ -35,7 +35,7 @@ export interface ProjectsShape {
   /**
    * Brings in an existing project (cloned from Git or copied from a folder) as
    * the app's project: named after it, first snapshot, started for editing. If
-   * NathApp can't tell how to run it, the chat says so (the agent sets it up).
+   * Rune Browser can't tell how to run it, the chat says so (the agent sets it up).
    */
   readonly importApp: (appId: string, source: ImportSource) => Effect.Effect<ProjectInfo | null, WorkspaceError>;
   /** A copy of a tab: an app's project comes along (not its data, chat or secrets), as a first snapshot of the copy. */
@@ -58,7 +58,7 @@ export interface ProjectsShape {
   readonly pruneSplits: (workspaceId: string) => Effect.Effect<void>;
 }
 
-export class Projects extends Context.Service<Projects, ProjectsShape>()("nathapp/Projects") {}
+export class Projects extends Context.Service<Projects, ProjectsShape>()("rune/Projects") {}
 
 export const make = Effect.gen(function* () {
   const apps = yield* Apps;
@@ -117,8 +117,8 @@ export const make = Effect.gen(function* () {
         yield* history.record(appTarget(appId), { actor: "user", actorLabel: "You", summary: `Imported from ${from.slice(0, 200)}` });
         if (project) yield* runtime.setMode(appId, "dev");
         const note = project
-          ? `Imported from ${from}. NathApp runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
-          : `Imported from ${from}. NathApp couldn't tell how to run it (no nathapp.json, and package.json has no dev or start script): ask the agent to set it up.`;
+          ? `Imported from ${from}. Rune Browser runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
+          : `Imported from ${from}. Rune Browser couldn't tell how to run it (no rune.json, and package.json has no dev or start script): ask the agent to set it up.`;
         const message = yield* apps.addMessage(appId, "tool", note);
         yield* hub.publish({ type: "chat", topic: topics.app(appId), appId, event: { type: "message", message } });
         return project;

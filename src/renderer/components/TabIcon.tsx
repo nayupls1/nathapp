@@ -58,7 +58,7 @@ async function toIconImage(file: File): Promise<string> {
     const img = new Image();
     img.src = url;
     await img.decode().catch(() => {
-      throw new Error("That file isn't an image NathApp can read.");
+      throw new Error("That file isn't an image Rune Browser can read.");
     });
     const size = 64;
     const canvas = document.createElement("canvas");

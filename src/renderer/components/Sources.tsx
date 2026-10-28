@@ -76,7 +76,7 @@ export function SourcesBar(props: { tabId: string; adding: boolean; onDone: () =
                 </Show>
                 <button
                   type="button"
-                  title={source.kind === "git" ? "Remove (deletes NathApp's clone)" : "Remove (your folder stays as it is)"}
+                  title={source.kind === "git" ? "Remove (deletes Rune Browser's clone)" : "Remove (your folder stays as it is)"}
                   onClick={() => void api.removeSource(props.tabId, source.id).catch(failed)}
                   {...stylex.attrs(styles.chipButton)}
                   data-source-remove
@@ -127,7 +127,7 @@ export function SourcesButton(props: { tabId: string; onAddRepository: () => voi
       label: "Add a folder…",
       icon: "folder-code",
       onSelect: async () => {
-        const folder = await window.nathapp.pickFolder("A folder of code for the agent");
+        const folder = await window.rune.pickFolder("A folder of code for the agent");
         if (folder) await api.addSource(props.tabId, { folder }).catch(failed);
       },
     },

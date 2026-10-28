@@ -6,7 +6,7 @@ export const SIDEBAR_MIN = 180;
 export const SIDEBAR_MAX = 480;
 export const SIDEBAR_DEFAULT = 232;
 
-const KEY = "nathapp.sidebar";
+const KEY = "rune.sidebar";
 
 const saved = (() => {
   try {
@@ -42,7 +42,7 @@ export const toggleSidebar = () => setSidebarCollapsed(!collapsed());
 /** The tab being dragged from the sidebar, if any (drop targets light up for it). */
 export const [draggedTab, setDraggedTab] = createSignal<string | null>(null);
 /** The data type of a tab drag. */
-export const TAB_DRAG_TYPE = "application/x-nathapp-tab";
+export const TAB_DRAG_TYPE = "application/x-rune-tab";
 /** A split view being dragged from the sidebar (all its tabs move together). */
 export const [draggedSplit, setDraggedSplit] = createSignal<string | null>(null);
 
@@ -52,7 +52,7 @@ export const AGENT_MIN = 280;
 export const AGENT_MAX = 760;
 export const AGENT_DEFAULT = 380;
 
-const AGENT_KEY = "nathapp.agentSidebar";
+const AGENT_KEY = "rune.agentSidebar";
 const clampAgent = (value: number) => Math.round(Math.min(AGENT_MAX, Math.max(AGENT_MIN, value)));
 const [agentWidth, setAgentWidthSignal] = createSignal(
   clampAgent(

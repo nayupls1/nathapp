@@ -2,7 +2,7 @@
 // preload and no Node. The web tabs of a workspace share one session (each
 // workspace has its own cookies and logins); every app preview gets a session
 // of its own (apps all run on 127.0.0.1, and cookies don't separate
-// ports). Popups become new tabs, browser shortcuts are forwarded to the NathApp
+// ports). Popups become new tabs, browser shortcuts are forwarded to the Rune Browser
 // window, and the renderer can screenshot them and use DevTools on them for
 // the agents. Web tab sessions
 // run the installed Chrome extensions (see extensions/).
@@ -26,7 +26,7 @@ import { setupDevtools } from "./devtools";
 import { setupNetwork } from "./network";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
-/** Where NathApp serves apps (see the server's runtime). */
+/** Where Rune Browser serves apps (see the server's runtime). */
 const isAppUrl = (url: string) => /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/i.test(url);
 
 // Websites get the harmless permissions only (no camera, location, notifications…).
@@ -63,7 +63,7 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   });
   /** Websites, and the pages of the extensions running in that session. */
   const isTabUrl = (s: Electron.Session, url: string) => isWebUrl(url) || extensions.isExtensionPage(s, url);
-  const openTab = (s: Electron.Session, url: string) => isTabUrl(s, url) && send("nathapp:open-tab", url);
+  const openTab = (s: Electron.Session, url: string) => isTabUrl(s, url) && send("rune:open-tab", url);
   const network = setupNetwork({
     getWindow,
     webSession: (workspaceId) => webSession(webPartition(workspaceId)),
@@ -117,7 +117,7 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       const name = shortcutFor(input);
       if (name) {
         event.preventDefault();
-        send("nathapp:shortcut", name);
+        send("rune:shortcut", name);
       } else if (!isPreview() && extensions.handleInput(contents.session, input)) {
         event.preventDefault();
       }
@@ -189,12 +189,12 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     void extensions.attach(s);
     // A plain Chrome user agent: some sites turn away unknown browsers. Google's
     // sign-in gets Electron's instead (see signInRule).
-    s.setUserAgent(app.userAgentFallback.replace(/ (nathapp|Electron)\/\S+/gi, ""));
+    s.setUserAgent(app.userAgentFallback.replace(/ (RuneBrowser|Electron)\/\S+/gi, ""));
     return s;
   }
 
   // A deleted workspace's cookies, logins and cache go with it.
-  ipcMain.handle("nathapp:clear-workspace", async (event, workspaceId: unknown) => {
+  ipcMain.handle("rune:clear-workspace", async (event, workspaceId: unknown) => {
     if (event.sender !== getWindow()?.webContents || typeof workspaceId !== "string" || !/^[\w-]+$/.test(workspaceId)) return;
     const s = session.fromPartition(webPartition(workspaceId));
     await extensions.detach(s);
@@ -202,12 +202,12 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     await s.clearCache();
   });
 
-  ipcMain.on("nathapp:open-external", (event, url: unknown) => {
+  ipcMain.on("rune:open-external", (event, url: unknown) => {
     if (event.sender !== getWindow()?.webContents) return;
     if (typeof url === "string" && isWebUrl(url)) void shell.openExternal(url);
   });
 
-  ipcMain.handle("nathapp:capture", async (event, id: unknown) => {
+  ipcMain.handle("rune:capture", async (event, id: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;
     if (!target || target.getType() !== "webview" || target.hostWebContents !== event.sender) {
       throw new Error("Unknown page");
@@ -218,28 +218,28 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   });
 
   return {
-    /** A key pressed in the NathApp window: an extension's shortcut (for the workspace on screen) runs. */
+    /** A key pressed in the Rune Browser window: an extension's shortcut (for the workspace on screen) runs. */
     windowInput: (input: Input) => extensions.handleInput(null, input),
   };
 }
 
-/** Keeps the NathApp window on NathApp: links open as web tabs instead. */
+/** Keeps the Rune Browser window on Rune Browser: links open as web tabs instead. */
 export function guardWindow(win: BrowserWindow, rendererOrigin: string, onInput?: (input: Input) => boolean) {
   const send = (channel: string, ...args: unknown[]) => win.webContents.send(channel, ...args);
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isWebUrl(url)) send("nathapp:open-tab", url);
+    if (isWebUrl(url)) send("rune:open-tab", url);
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
     if (new URL(url).origin === rendererOrigin) return;
     event.preventDefault();
-    if (isWebUrl(url)) send("nathapp:open-tab", url);
+    if (isWebUrl(url)) send("rune:open-tab", url);
   });
-  // Ctrl+R / F5 reload the current web tab rather than NathApp itself.
+  // Ctrl+R / F5 reload the current web tab rather than Rune Browser itself.
   win.webContents.on("before-input-event", (event, input) => {
     if (shortcutFor(input) === "reload") {
       event.preventDefault();
-      send("nathapp:shortcut", "reload");
+      send("rune:shortcut", "reload");
     } else if (onInput?.(input)) {
       event.preventDefault();
     }

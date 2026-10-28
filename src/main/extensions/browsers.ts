@@ -1,6 +1,6 @@
 // Other browsers on this computer (Chrome, Chromium, Brave, Edge, Vivaldi):
 // their profiles and the extensions installed in them, and copying those over.
-// Store extensions are copied into NathApp's data; ones loaded from a folder are
+// Store extensions are copied into Rune Browser's data; ones loaded from a folder are
 // used where they are. Their chrome.storage.local data (settings, logins of the
 // extension…) can come along: it's copied aside and put into each workspace
 // before the extension first starts there.
@@ -30,9 +30,9 @@ export interface BrowserDir {
   dir: string;
 }
 
-/** Where Chromium-based browsers keep their data, per platform. NATHAPP_BROWSER_DIRS ("Name=/path;…") replaces the list (tests). */
+/** Where Chromium-based browsers keep their data, per platform. RUNE_BROWSER_DIRS ("Name=/path;…") replaces the list (tests). */
 export function browserDirs(): BrowserDir[] {
-  const override = process.env.NATHAPP_BROWSER_DIRS;
+  const override = process.env.RUNE_BROWSER_DIRS;
   if (override !== undefined) {
     return override
       .split(";")
@@ -273,5 +273,5 @@ export function importExtensions(registry: Registry, profileKey: string, ids: st
   return { installed, failed };
 }
 
-/** NathApp's own native messaging hosts folder (checked before the browsers'). */
+/** Rune Browser's own native messaging hosts folder (checked before the browsers'). */
 export const nativeHostsDir = () => join(app.getPath("userData"), "NativeMessagingHosts");

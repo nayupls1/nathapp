@@ -11,7 +11,7 @@ import { actionsVersion, extensionById, extensionList, popupRequest, setPopupReq
 import { colors, font, radius, space } from "../theme.stylex";
 import { Icon } from "./Icon";
 
-const bridge = window.nathapp.extensions;
+const bridge = window.rune.extensions;
 
 interface Popup {
   extensionId: string;

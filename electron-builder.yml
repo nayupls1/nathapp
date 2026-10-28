@@ -1,7 +1,10 @@
-appId: dev.nathapp.app
-productName: NathApp
+appId: dev.runebrowser.app
+productName: Rune Browser
+executableName: rune-browser
 directories:
   output: release
+  # icon.png (from icon.svg) for every platform
+  buildResources: build
 files:
   - package.json
   - dist/electron/**
@@ -12,7 +15,7 @@ extraResources:
   - from: dist/server
     to: server
     filter:
-      - nathapp-server*
+      - rune-server*
       - claude*
       - "!*.map"
 # Cookies (web tab logins) encrypted with the key in the OS keychain.

@@ -1,4 +1,4 @@
-// AI for apps: an app's server can ask a model through NathApp, which answers
+// AI for apps: an app's server can ask a model through Rune Browser, which answers
 // with one of the user's providers (their own subscription; no API keys in
 // the app). Apps authenticate with their token (AiTokens); requests run
 // without any tools, count against a daily limit per app and show up in the
@@ -27,7 +27,7 @@ export interface AiRequest {
   readonly messages: readonly AiMessage[];
   /** Instructions for the model (the app's system prompt). */
   readonly system?: string;
-  /** A model id from GET /models; default: the one chosen in NathApp's Settings. */
+  /** A model id from GET /models; default: the one chosen in Rune Browser's Settings. */
   readonly model?: string;
   readonly effort?: string;
   /** Ask for a single JSON value (parsed into `json` when it is one). */
@@ -52,7 +52,7 @@ export interface AiShape {
   readonly chat: (appId: string, request: AiRequest) => Effect.Effect<Stream.Stream<AiEvent, AiError>, AiError>;
 }
 
-export class Ai extends Context.Service<Ai, AiShape>()("nathapp/Ai") {}
+export class Ai extends Context.Service<Ai, AiShape>()("rune/Ai") {}
 
 const TIMEOUT_MS = 180_000;
 const CONCURRENT_PER_APP = 2;
@@ -70,7 +70,7 @@ export function promptFor(messages: readonly AiMessage[]): string {
 
 export function instructionsFor(appName: string, request: Pick<AiRequest, "system" | "json">): string {
   return [
-    `You are a language model answering a request from the server of "${appName}", an app the user built in NathApp. Your reply goes back to the app's code, not to a chat: reply with the answer only, no preamble. You have no tools.`,
+    `You are a language model answering a request from the server of "${appName}", an app the user built in Rune Browser. Your reply goes back to the app's code, not to a chat: reply with the answer only, no preamble. You have no tools.`,
     request.json ? "Reply with a single valid JSON value and nothing else: no code fences, no explanations." : "",
     request.system?.trim() ? `# Instructions from the app\n${request.system.trim()}` : "",
   ]
@@ -136,7 +136,7 @@ export const make = Effect.gen(function* () {
     chat: (appId, request) =>
       Effect.gen(function* () {
         const s = (yield* settings.get()).apps.ai;
-        if (!s.enabled) return yield* new AiError({ status: 403, message: "AI for apps is turned off in NathApp's Settings." });
+        if (!s.enabled) return yield* new AiError({ status: 403, message: "AI for apps is turned off in Rune Browser's Settings." });
         if (!request.messages.length || request.messages.at(-1)!.role !== "user") {
           return yield* new AiError({ status: 400, message: "messages must end with a user message" });
         }
@@ -165,7 +165,7 @@ export const make = Effect.gen(function* () {
         if (!allowed) {
           runtime.note(appId, "AI: not allowed by the user");
           yield* record(labelOf(known), "denied", "Not allowed");
-          return yield* new AiError({ status: 403, message: "The user didn't allow this app to use AI. It can be allowed in NathApp's Settings → Permissions." });
+          return yield* new AiError({ status: 403, message: "The user didn't allow this app to use AI. It can be allowed in Rune Browser's Settings → Permissions." });
         }
 
         const { status } = yield* choice;
@@ -182,7 +182,7 @@ export const make = Effect.gen(function* () {
         if (!(yield* take(appId, s.dailyLimit))) {
           runtime.note(appId, `AI: daily limit of ${s.dailyLimit} requests reached`);
           yield* record(label, "denied", `Daily limit of ${s.dailyLimit} reached`);
-          return yield* new AiError({ status: 429, message: `This app reached its daily AI limit (${s.dailyLimit} requests). It can be changed in NathApp's Settings.` });
+          return yield* new AiError({ status: 429, message: `This app reached its daily AI limit (${s.dailyLimit} requests). It can be changed in Rune Browser's Settings.` });
         }
         const model = request.model ?? s.model ?? defaultAppModel(status);
         const effort = request.effort ?? (request.model ? null : s.effort);

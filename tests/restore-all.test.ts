@@ -43,7 +43,7 @@ test("settings, sites and apps back to one snapshot", async () => {
   expect(await server.api<unknown[]>("/api/page-changes")).toEqual([]);
   expect((await server.api<{ css: string }>("/api/sites/example.com")).css).toBe("body { color: red }");
   // Made afterwards: left alone.
-  expect(existsSync(join(server.dataDir, "apps", later.id, "nathapp.json"))).toBe(true);
+  expect(existsSync(join(server.dataDir, "apps", later.id, "rune.json"))).toBe(true);
   // Already that way: nothing to do.
   expect((await server.api<{ restored: string[] }>(`/api/history/${point.id}/restore-all`, { method: "POST", json: {} })).restored).toEqual([]);
 });

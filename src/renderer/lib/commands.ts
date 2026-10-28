@@ -1,6 +1,6 @@
 // The command bar (Ctrl+K): what it offers and how a query ranks it. Tabs,
-// workspaces, NathApp's own commands and the actions apps declare in their
-// nathapp.json, plus routing for free text: a URL opens, a sentence goes to
+// workspaces, Rune Browser's own commands and the actions apps declare in their
+// rune.json, plus routing for free text: a URL opens, a sentence goes to
 // the agent (or a new app), anything else can be searched for.
 import { createSignal } from "solid-js";
 import { isImageIcon, type AppActionInfo, type AppSummary } from "../../shared/api";
@@ -82,7 +82,7 @@ export function openCommandBar() {
   void api.library().then(setLibrary, () => {});
   if (open()) return setOpen(false);
   setOpen(true);
-  // Apps may have changed their nathapp.json since: fetched each time.
+  // Apps may have changed their rune.json since: fetched each time.
   void api.actions().then(setAppActions, () => {});
 }
 
@@ -335,36 +335,36 @@ function currentTabCommands(id: string): Command[] {
   return list;
 }
 
-function nathappCommands(): Command[] {
+function runeCommands(): Command[] {
   const theme = (mode: "system" | "light" | "dark", title: string, icon: string): Command => ({
     id: `theme.${mode}`,
     title,
     icon,
-    group: "NathApp",
+    group: "Rune Browser",
     keywords: "theme appearance color scheme",
     run: () => updateSettings((s) => ({ ...s, theme: { ...s.theme, mode } })),
   });
   return [
-    { id: "new.app", title: "New app", icon: "plus", group: "NathApp", keywords: "create build", run: () => newApp() },
-    { id: "new.web", title: "New web tab", subtitle: "Ctrl+T", icon: "globe", group: "NathApp", keywords: "browser", run: () => newWebTab() },
+    { id: "new.app", title: "New app", icon: "plus", group: "Rune Browser", keywords: "create build", run: () => newApp() },
+    { id: "new.web", title: "New web tab", subtitle: "Ctrl+T", icon: "globe", group: "Rune Browser", keywords: "browser", run: () => newWebTab() },
     {
       id: "tabs.unload",
       title: "Unload other tabs",
       icon: "moon",
-      group: "NathApp",
+      group: "Rune Browser",
       keywords: "memory free discard sleep background",
       run: async () => {
         const count = await unloadOtherTabs();
         toast({ message: count ? `Unloaded ${count} tab${count === 1 ? "" : "s"}` : "No other tabs are loaded", kind: "info" });
       },
     },
-    { id: "new.workspace", title: "New workspace", icon: "layers", group: "NathApp", input: "Name", run: (name) => name?.trim() && createWorkspace(name.trim()) },
+    { id: "new.workspace", title: "New workspace", icon: "layers", group: "Rune Browser", input: "Name", run: (name) => name?.trim() && createWorkspace(name.trim()) },
     {
       id: "sidebar.toggle",
       title: isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar",
       subtitle: "Ctrl+Shift+B",
       icon: "panel-left",
-      group: "NathApp",
+      group: "Rune Browser",
       keywords: "toggle hide show tabs",
       run: toggleSidebar,
     },
@@ -376,31 +376,31 @@ function nathappCommands(): Command[] {
           id: `settings.${section.id}`,
           title: `Settings: ${section.label}`,
           icon: section.icon,
-          group: "NathApp",
+          group: "Rune Browser",
           keywords: `preferences ${section.keywords ?? ""}`,
           run: () => openSettings(section.id),
         }),
       ),
-    { id: "open.history", title: "Open History", icon: "history", group: "NathApp", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
-    { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "NathApp", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
-    { id: "open.mods", title: "Open Mods", icon: "puzzle", group: "NathApp", keywords: "install share gallery themes customizations extensions", run: () => selectApp(MODS_VIEW) },
-    { id: "open.activity", title: "Open Activity", icon: "activity", group: "NathApp", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },
-    { id: "open.settings", title: "Open Settings", icon: "settings", group: "NathApp", keywords: "preferences", run: () => openSettings() },
+    { id: "open.history", title: "Open History", icon: "history", group: "Rune Browser", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
+    { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "Rune Browser", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
+    { id: "open.mods", title: "Open Mods", icon: "puzzle", group: "Rune Browser", keywords: "install share gallery themes customizations extensions", run: () => selectApp(MODS_VIEW) },
+    { id: "open.activity", title: "Open Activity", icon: "activity", group: "Rune Browser", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },
+    { id: "open.settings", title: "Open Settings", icon: "settings", group: "Rune Browser", keywords: "preferences", run: () => openSettings() },
     {
       id: "open.workspace-settings",
       title: "Workspace settings",
       subtitle: currentWorkspace()?.name,
       icon: "layers",
-      group: "NathApp",
+      group: "Rune Browser",
       keywords: "secrets instructions agent",
       run: scrollToWorkspaceSettings,
     },
     theme("system", "Theme: match the system", "monitor"),
     theme("light", "Theme: light", "sun"),
     theme("dark", "Theme: dark", "moon"),
-    window.nathapp.safeMode
-      ? { id: "restart.normal", title: "Restart normally", icon: "power", group: "NathApp", keywords: "safe mode", run: () => window.nathapp.relaunch(false) }
-      : { id: "restart.safe", title: "Restart in safe mode", icon: "life-buoy", group: "NathApp", keywords: "recovery broken theme", run: () => window.nathapp.relaunch(true) },
+    window.rune.safeMode
+      ? { id: "restart.normal", title: "Restart normally", icon: "power", group: "Rune Browser", keywords: "safe mode", run: () => window.rune.relaunch(false) }
+      : { id: "restart.safe", title: "Restart in safe mode", icon: "life-buoy", group: "Rune Browser", keywords: "recovery broken theme", run: () => window.rune.relaunch(true) },
   ];
 }
 
@@ -504,8 +504,8 @@ export function commands(query: string): Command[] {
     ...workspaces
       .filter((w) => w.id !== current)
       .map((w): Command => ({ id: `workspace:${w.id}`, title: w.name, subtitle: "Switch workspace", icon: w.icon ?? "layers", group: "Workspace", run: () => showWorkspace(w.id) })),
-    ...nathappCommands(),
-    { id: "tab.reopen", title: "Reopen closed tab", subtitle: "Ctrl+Shift+T", icon: "undo-2", group: "NathApp", keywords: "restore undo close", run: () => reopenClosedTab() },
+    ...runeCommands(),
+    { id: "tab.reopen", title: "Reopen closed tab", subtitle: "Ctrl+Shift+T", icon: "undo-2", group: "Rune Browser", keywords: "restore undo close", run: () => reopenClosedTab() },
     ...library().map(
       (app): Command => ({ id: `library:${app.id}`, title: `Open ${app.name}`, subtitle: "Saved app", icon: app.icon ?? "box", group: "Saved apps", keywords: "reopen closed library", run: () => reopenApp(app.id) }),
     ),

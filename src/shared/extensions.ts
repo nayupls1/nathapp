@@ -1,6 +1,6 @@
-// Chrome extensions in web tabs: what the main process and the NathApp window
+// Chrome extensions in web tabs: what the main process and the Rune Browser window
 // exchange, and the pure helpers both sides (and the tests) use: match
-// patterns, keyboard shortcuts, manifest strings, what NathApp supports, and
+// patterns, keyboard shortcuts, manifest strings, what Rune Browser supports, and
 // network rules as declarativeNetRequest rules.
 import type { NetworkRule } from "./api";
 
@@ -21,13 +21,13 @@ export interface ExtensionInfo {
   /** Shown in the toolbar of web tabs (otherwise in the extensions menu). */
   pinned: boolean;
   source: ExtensionSource;
-  /** Unpacked extensions are used where they are; the others are copied into NathApp's data. */
+  /** Unpacked extensions are used where they are; the others are copied into Rune Browser's data. */
   path: string;
   /** Has a toolbar button. */
   hasAction: boolean;
   /** Its options page, opened in a web tab. */
   optionsUrl: string | null;
-  /** Permissions it asks for that NathApp doesn't implement: those features may not work. */
+  /** Permissions it asks for that Rune Browser doesn't implement: those features may not work. */
   unsupported: string[];
   /** What it asks for (Details on the extensions page): API permissions, and the sites it can read and change. */
   permissions: string[];
@@ -69,7 +69,7 @@ export interface ImportCandidate {
   byDefault: boolean;
   /** Loaded from a folder (developer mode or --load-extension): used where it is. */
   unpacked: boolean;
-  /** Already in NathApp. */
+  /** Already in Rune Browser. */
   installed: boolean;
   /** Has saved settings (chrome.storage.local) that can come along. */
   hasSettings: boolean;
@@ -126,7 +126,7 @@ export interface ExtensionPopupRequest {
   url: string;
 }
 
-/** NathApp's own extension in every web tab session: it applies the network rules (Settings → Network). */
+/** Rune Browser's own extension in every web tab session: it applies the network rules (Settings → Network). */
 export const BUILTIN_EXTENSION_ID = "ikphnmngfgaajbhljcknjgjlhpdmmjpg";
 
 export const EXTENSION_URL_PATTERN = /^chrome-extension:\/\/([a-p]{32})(\/|$)/;
@@ -196,7 +196,7 @@ export function iconPath(icons: string | Record<string, string> | undefined, siz
 export const actionOf = (m: Manifest) => m.action ?? m.browser_action ?? m.page_action;
 export const optionsPageOf = (m: Manifest) => m.options_ui?.page ?? m.options_page ?? null;
 
-/** Permissions NathApp provides, natively in Electron or through its own shims. */
+/** Permissions Rune Browser provides, natively in Electron or through its own shims. */
 const SUPPORTED_PERMISSIONS = new Set([
   "activeTab",
   "alarms",
@@ -226,7 +226,7 @@ const SUPPORTED_PERMISSIONS = new Set([
 
 const isHostPattern = (p: string) => p === "<all_urls>" || p.includes("://");
 
-/** Permissions (required ones) that NathApp doesn't implement. */
+/** Permissions (required ones) that Rune Browser doesn't implement. */
 export function unsupportedPermissions(m: Manifest) {
   const asked = (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
   return asked.filter((p) => !SUPPORTED_PERMISSIONS.has(p)).sort();
@@ -396,7 +396,7 @@ export function parseColor(value: unknown): [number, number, number, number] | n
 
 // --- Network rules as declarativeNetRequest rules -------------------------------------------
 //
-// NathApp's own rules (Settings → Network) are applied with declarativeNetRequest
+// Rune Browser's own rules (Settings → Network) are applied with declarativeNetRequest
 // by a small built-in extension. Session webRequest hooks would switch off every
 // installed extension's blocking (Electron gives the hooks precedence), so the
 // rules and extensions like uBlock Origin Lite can work together.

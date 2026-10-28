@@ -26,7 +26,7 @@ const picksOf = (profile: BrowserProfile | undefined) =>
   new Set((profile?.extensions ?? []).filter((e) => e.enabledThere && !e.byDefault && !e.installed).map((e) => e.id));
 
 function ImportDialog(props: { onClose: () => void }) {
-  const [profiles] = createResource(() => window.nathapp.extensions.detectBrowsers());
+  const [profiles] = createResource(() => window.rune.extensions.detectBrowsers());
   const [profileKey, setProfileKey] = createSignal<string>();
   const [picked, setPicked] = createSignal<Set<string>>(new Set());
   const [settings, setSettings] = createSignal(true);
@@ -51,7 +51,7 @@ function ImportDialog(props: { onClose: () => void }) {
     if (!p || !picked().size) return;
     setBusy(true);
     try {
-      setResult(await window.nathapp.extensions.import({ profileKey: p.key, ids: [...picked()], settings: settings() }));
+      setResult(await window.rune.extensions.import({ profileKey: p.key, ids: [...picked()], settings: settings() }));
     } catch (err) {
       setResult({ installed: [], failed: [{ id: "", name: "Import", error: err instanceof Error ? err.message : String(err) }] });
     } finally {
@@ -160,7 +160,7 @@ function CandidateRow(props: { candidate: ImportCandidate; checked: boolean; onC
   const c = () => props.candidate;
   const notes = () =>
     [
-      c().installed ? "already in NathApp" : "",
+      c().installed ? "already in Rune Browser" : "",
       !c().enabledThere ? "off there" : "",
       c().unpacked ? "from a folder" : "",
       c().unsupported.length ? `may not fully work: ${c().unsupported.join(", ")}` : "",

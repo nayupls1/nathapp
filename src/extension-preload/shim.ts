@@ -1,7 +1,7 @@
 // The chrome.* APIs Electron leaves out or only stubs, for extension pages and
 // service workers. This function runs in the extension's own world (injected
 // by the preload with contextBridge.executeInMainWorld), so it can't use
-// anything from outside itself: it gets the bridge to NathApp's main process as
+// anything from outside itself: it gets the bridge to Rune Browser's main process as
 // an argument. Calls go to main/extensions/apis.ts; events come back by name.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -13,15 +13,15 @@ export interface ShimBridge {
 export interface ShimInfo {
   id: string;
   worker: boolean;
-  /** NathApp's own network-rules extension. */
+  /** Rune Browser's own network-rules extension. */
   builtin: boolean;
 }
 
 export function shim(bridge: ShimBridge, info: ShimInfo) {
   const g: any = globalThis;
   const c: any = g.chrome;
-  if (!c?.runtime || g.__nathappShim) return;
-  g.__nathappShim = true;
+  if (!c?.runtime || g.__runeShim) return;
+  g.__runeShim = true;
 
   const call = (method: string, ...args: unknown[]): Promise<any> =>
     bridge.call(method, args).then((r) => {
@@ -164,7 +164,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
 
   void call("hello").catch(() => {});
 
-  // --- NathApp's network rules extension ------------------------------------------------
+  // --- Rune Browser's network rules extension ------------------------------------------------
 
   if (info.builtin) {
     const dnr = c.declarativeNetRequest;
@@ -177,7 +177,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
           await dnr.updateSessionRules({ removeRuleIds: existing.map((r) => r.id), addRules: rules });
           await call("rules.applied");
         } catch (err) {
-          console.error("NathApp's network rules:", err);
+          console.error("Rune Browser's network rules:", err);
         }
       });
     };

@@ -1,4 +1,4 @@
-// The app tab's tools panel: what the app offers in NathApp's tool registry
+// The app tab's tools panel: what the app offers in Rune Browser's tool registry
 // (its own actions and the basic ones from its data), each runnable by hand.
 import * as stylex from "@stylexjs/stylex";
 import { createResource, createSignal, For, Show } from "solid-js";
@@ -32,8 +32,8 @@ export function ToolsPanel(props: { appId: string; onClose: () => void }) {
       </div>
       <div {...stylex.attrs(styles.panelBody)}>
         <p {...stylex.attrs(styles.note)}>
-          What this app can do, for you, agents and other apps in this workspace (they need your OK). Actions come from its <code>nathapp.json</code>; the
-          rest NathApp derives from its data.
+          What this app can do, for you, agents and other apps in this workspace (they need your OK). Actions come from its <code>rune.json</code>; the
+          rest Rune Browser derives from its data.
         </p>
         <Show when={tools() && !tools()!.length}>
           <p {...stylex.attrs(styles.note)} data-tools-empty>

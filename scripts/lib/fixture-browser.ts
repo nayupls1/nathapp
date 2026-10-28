@@ -1,5 +1,5 @@
 // A fake Chromium profile for the e2e checks: one store-installed extension
-// (with a key, so it keeps its ID) that uses the APIs NathApp provides, and its
+// (with a key, so it keeps its ID) that uses the APIs Rune Browser provides, and its
 // chrome.storage.local data in a real LevelDB folder, written by hand (a log
 // file with one write batch, and a manifest that points at it).
 import { createHash, generateKeyPairSync } from "node:crypto";
@@ -143,7 +143,7 @@ function png(size: number, [r, g, b]: [number, number, number]) {
 }
 
 export interface FixtureBrowser {
-  /** For NATHAPP_BROWSER_DIRS. */
+  /** For RUNE_BROWSER_DIRS. */
   dirs: string;
   extensionId: string;
   name: string;
@@ -154,7 +154,7 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
   const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const der = publicKey.export({ type: "spki", format: "der" });
   const id = extensionIdFromHash(createHash("sha256").update(der).digest("hex"));
-  const name = "NathApp Fixture";
+  const name = "Rune Browser Fixture";
   const profile = join(root, "Default");
   const dir = join(profile, "Extensions", id, "1.0_0");
   mkdirSync(dir, { recursive: true });

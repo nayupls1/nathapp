@@ -6,7 +6,7 @@ import { Data, Effect, Queue, Stream } from "effect";
 import type { ProviderId, ProviderModel, ProviderStatus } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 
-/** NathApp's MCP server for this turn (agent tools: app runtime, pages, …). */
+/** Rune Browser's MCP server for this turn (agent tools: app runtime, pages, …). */
 export interface McpEndpoint {
   readonly name: string;
   readonly url: string;
@@ -16,18 +16,18 @@ export interface McpEndpoint {
 export interface TurnInput {
   readonly cwd: string;
   readonly prompt: string;
-  /** NathApp's instructions, added to the provider's own system prompt. */
+  /** Rune Browser's instructions, added to the provider's own system prompt. */
   readonly instructions: string;
   readonly model: string | null;
   readonly effort: string | null;
   /** Provider session to continue. */
   readonly resume: string | null;
-  /** NathApp's tools for the turn; null for plain completions (AI for apps). */
+  /** Rune Browser's tools for the turn; null for plain completions (AI for apps). */
   readonly mcp: McpEndpoint | null;
   /**
    * workspace: the provider's own file and shell tools, confined to `cwd`.
    * none: none of the provider's own tools (no files, shell, web, connectors),
-   * only NathApp's MCP tools if there are any. Used for untrusted input: the
+   * only Rune Browser's MCP tools if there are any. Used for untrusted input: the
    * website agent and apps' AI requests.
    */
   readonly access: "workspace" | "none";

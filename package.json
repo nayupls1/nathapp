@@ -1,6 +1,6 @@
 {
-  "name": "nathapp",
-  "productName": "NathApp",
+  "name": "rune-browser",
+  "productName": "Rune Browser",
   "version": "0.1.0",
   "description": "Electron + SolidJS desktop app with a Bun backend server",
   "private": true,

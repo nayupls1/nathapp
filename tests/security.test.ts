@@ -29,14 +29,14 @@ describe("vault", () => {
 });
 
 describe("agent processes", () => {
-  test("don't get NathApp's own variables (the API token)", () => {
-    process.env.NATHAPP_TOKEN = "renderer-token";
+  test("don't get Rune Browser's own variables (the API token)", () => {
+    process.env.RUNE_TOKEN = "renderer-token";
     try {
-      expect(Object.keys(agentEnv()).filter((k) => k.startsWith("NATHAPP_"))).toEqual([]);
-      expect(Object.keys(claudeEnv()).filter((k) => k.startsWith("NATHAPP_"))).toEqual([]);
+      expect(Object.keys(agentEnv()).filter((k) => k.startsWith("RUNE_"))).toEqual([]);
+      expect(Object.keys(claudeEnv()).filter((k) => k.startsWith("RUNE_"))).toEqual([]);
       expect(agentEnv({ EXTRA: "1" }).EXTRA).toBe("1");
     } finally {
-      delete process.env.NATHAPP_TOKEN;
+      delete process.env.RUNE_TOKEN;
     }
   });
 });
@@ -70,7 +70,7 @@ describe("secrets, permissions and the audit log", () => {
       'echo "the key is $MY_KEY"',
       "sleep 600",
     ].join("; ");
-    writeFileSync(join(dir, "nathapp.json"), JSON.stringify({ install: "true", dev, start: "sleep 600" }));
+    writeFileSync(join(dir, "rune.json"), JSON.stringify({ install: "true", dev, start: "sleep 600" }));
   };
 
   beforeAll(async () => {
@@ -91,7 +91,7 @@ describe("secrets, permissions and the audit log", () => {
     expect(overview.secrets.map((s) => s.name)).toEqual(["MY_KEY"]);
     expect(JSON.stringify(overview)).not.toContain(VALUE);
     // Not in plain text in the database (or its WAL).
-    for (const file of readdirSync(server.dataDir).filter((f) => f.startsWith("nathapp.sqlite"))) {
+    for (const file of readdirSync(server.dataDir).filter((f) => f.startsWith("rune.sqlite"))) {
       expect(readFileSync(join(server.dataDir, file)).includes(Buffer.from(VALUE))).toBe(false);
     }
   });
@@ -143,7 +143,7 @@ describe("secrets, permissions and the audit log", () => {
     await server.api("/api/settings", { method: "PUT", json: { ...settings, apps: { ...settings.apps, ai: { ...settings.apps.ai, enabled: true } } } });
     // The app's AI token (its dev process could read it; here we take it from the environment it saw).
     const env = join(dir, "token.txt");
-    writeFileSync(join(dir, "nathapp.json"), JSON.stringify({ install: "true", dev: 'printf %s "$NATHAPP_AI_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
+    writeFileSync(join(dir, "rune.json"), JSON.stringify({ install: "true", dev: 'printf %s "$RUNE_AI_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
     const token = await waitFor(() => (existsSync(env) && readFileSync(env, "utf8")) || undefined);
     const ask = () =>

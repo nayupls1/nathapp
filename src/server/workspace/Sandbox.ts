@@ -36,7 +36,7 @@ export interface SandboxShape {
   readonly info: Effect.Effect<SandboxInfo>;
 }
 
-export class Sandbox extends Context.Service<Sandbox, SandboxShape>()("nathapp/Sandbox") {}
+export class Sandbox extends Context.Service<Sandbox, SandboxShape>()("rune/Sandbox") {}
 
 /** Starts a process from a spawn spec: its own process group (POSIX), no console window (Windows). */
 export function spawnProcess(spec: SpawnSpec): ChildProcess {
@@ -76,7 +76,7 @@ export async function killTree(child: ChildProcess) {
 }
 
 /**
- * `bun`, `bunx` and `node` that always work: the Bun NathApp runs on (from
+ * `bun`, `bunx` and `node` that always work: the Bun Rune Browser runs on (from
  * source), or the compiled server acting as Bun (BUN_BE_BUN). On Windows
  * they're links to the executable (Bun acts as bunx when called that), since
  * shells there don't run scripts without an extension.
@@ -179,8 +179,8 @@ const under = (path: string, root: string) => path === root || path.startsWith(r
 
 /** Git works out of the box: an identity for commits (not yours), and no "dubious ownership" errors. */
 const gitconfig = `[user]
-\tname = NathApp
-\temail = nathapp@localhost
+\tname = Rune Browser
+\temail = rune@localhost
 [init]
 \tdefaultBranch = main
 [safe]
@@ -237,7 +237,7 @@ export const make = Effect.gen(function* () {
     const visible = ["/usr", "/bin", "/sbin", "/lib", "/lib64", ...systemFolders, ...readOnly];
     // Your PATH, where the sandbox can see it. Version managers' shims need their config from your home, so they're left out.
     const path = [binDir, ...hostPath.filter((p) => visible.some((root) => under(p, root)) && !/[\\/](mise|asdf)[\\/]shims$/.test(p))];
-    // Toolchains not on PATH (NathApp started from a launcher, without your shell's setup): mise's current versions.
+    // Toolchains not on PATH (Rune Browser started from a launcher, without your shell's setup): mise's current versions.
     const mise = join(home, ".local/share/mise/installs");
     if (found.some((t) => t.path === mise) && !path.some((p) => under(p, mise))) {
       for (const tool of readdirSync(mise)) {
@@ -251,9 +251,9 @@ export const make = Effect.gen(function* () {
     return { readOnly, extra, path: [...new Set(path)], env };
   };
 
-  /** NathApp's HOME for the app's processes (inside the project, so its tools' config stays with it). */
+  /** Rune Browser's HOME for the app's processes (inside the project, so its tools' config stays with it). */
   const prepareHome = (dir: string) => {
-    const appHome = join(dir, ".nathapp", "home");
+    const appHome = join(dir, ".rune", "home");
     mkdirSync(appHome, { recursive: true });
     const git = join(appHome, ".gitconfig");
     if (!existsSync(git)) writeFileSync(git, gitconfig);
@@ -293,7 +293,7 @@ export const make = Effect.gen(function* () {
         };
         if ((yield* kind) === "none") {
           if (windows) {
-            const tmp = join(dir, ".nathapp", "tmp");
+            const tmp = join(dir, ".rune", "tmp");
             const appData = join(appHome, "AppData");
             for (const d of [tmp, join(appData, "Roaming"), join(appData, "Local")]) mkdirSync(d, { recursive: true });
             const keep: Record<string, string> = {};
@@ -330,7 +330,7 @@ export const make = Effect.gen(function* () {
         const sandboxEnv = { ...seen.env, ...base, PATH: seen.path.join(":"), TMPDIR: "/tmp" };
         // A shell from elsewhere (a custom path) is shown too, read-only.
         const shellBind = shell.path && !["/usr", "/bin", ...systemFolders, ...seen.readOnly].some((root) => under(shell.path!, root)) ? ["--ro-bind-try", shell.path, shell.path] : [];
-        // Your additions could include NathApp's own data (other apps, secrets): it's hidden again below.
+        // Your additions could include Rune Browser's own data (other apps, secrets): it's hidden again below.
         const hidesData = seen.extra.some((p) => under(config.dataDir, p));
         const argv = [
           Bun.which("bwrap") ?? "/usr/bin/bwrap",
@@ -341,7 +341,7 @@ export const make = Effect.gen(function* () {
           "--unshare-uts",
           "--unshare-cgroup-try",
           "--hostname",
-          "nathapp",
+          "rune",
           ...systemPath("/usr"),
           ...["/bin", "/sbin", "/lib", "/lib64", "/lib32"].flatMap(systemPath),
           ...systemFolders.flatMap((p) => ["--ro-bind-try", p, p]),

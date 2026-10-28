@@ -1,7 +1,7 @@
 // The running side of extensions in web tab sessions: which extension pages
 // and service workers are alive and what events they listen to, delivering
 // events to them (starting a stopped service worker when its event comes, like
-// Chrome), and the state NathApp keeps for each extension in each workspace
+// Chrome), and the state Rune Browser keeps for each extension in each workspace
 // (toolbar button, context menu items, what it was told at install).
 import type { ServiceWorkerMain, Session, WebContents, WebFrameMain } from "electron";
 import { existsSync, rmSync } from "node:fs";
@@ -55,7 +55,7 @@ interface StoredState {
   seeded?: boolean;
 }
 
-/** What NathApp keeps for one extension in one workspace's session. */
+/** What Rune Browser keeps for one extension in one workspace's session. */
 export class ExtensionState {
   action: ActionState;
   tabActions = new Map<number, Partial<ActionState>>();
@@ -95,8 +95,11 @@ export class ExtensionState {
   }
 }
 
-/** Where a session keeps NathApp's state for an extension. */
-export const stateFile = (s: Session, id: string) => join(s.storagePath ?? "", "NathApp Extensions", `${id}.json`);
+/** The folder in a session's storage where Rune Browser keeps extensions' state. */
+export const STATE_FOLDER = "Rune Browser Extensions";
+
+/** Where a session keeps Rune Browser's state for an extension. */
+export const stateFile = (s: Session, id: string) => join(s.storagePath ?? "", STATE_FOLDER, `${id}.json`);
 
 export class Contexts {
   private all = new Map<string, Context>();

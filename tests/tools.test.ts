@@ -89,7 +89,7 @@ describe("tool registry", () => {
     const path = new URL(req.url).pathname;
     if (req.method === "POST" && path === "/api/total") {
       const { params } = await req.json();
-      return Response.json({ message: "Total for " + params.month, total: 42, caller: req.headers.get("x-nathapp-caller") });
+      return Response.json({ message: "Total for " + params.month, total: 42, caller: req.headers.get("x-rune-caller") });
     }
     if (req.method === "POST" && path === "/api/delete") return Response.json({ message: "Deleting is done by the app itself" });
     return new Response("ok");
@@ -97,7 +97,7 @@ describe("tool registry", () => {
 });`,
     );
     writeFileSync(
-      join(projectOf(budget), "nathapp.json"),
+      join(projectOf(budget), "rune.json"),
       JSON.stringify({
         install: "true",
         dev: "bun action.ts",
@@ -120,7 +120,7 @@ describe("tool registry", () => {
 
     other = await server.api<AppSummary>("/api/apps", { method: "POST" });
     await server.api(`/api/apps/${other.id}/project`, { method: "POST", json: { preset: "api" } });
-    writeFileSync(join(projectOf(other), "nathapp.json"), JSON.stringify({ install: "true", dev: 'printf %s "$NATHAPP_API_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
+    writeFileSync(join(projectOf(other), "rune.json"), JSON.stringify({ install: "true", dev: 'printf %s "$RUNE_API_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
     await server.api(`/api/apps/${other.id}/runtime`, { method: "POST", json: { action: "restart" } });
     const file = join(projectOf(other), "token.txt");
     otherToken = await waitFor(() => (existsSync(file) && readFileSync(file, "utf8")) || undefined);
@@ -190,14 +190,14 @@ describe("tool registry", () => {
     expect(calls).toContainEqual(["app", `${budget.name} · Monthly total`, "ok"]);
   });
 
-  test("dataTools in nathapp.json turns the derived ones down", async () => {
-    const manifest = JSON.parse(readFileSync(join(projectOf(budget), "nathapp.json"), "utf8"));
-    writeFileSync(join(projectOf(budget), "nathapp.json"), JSON.stringify({ ...manifest, dataTools: "read" }));
+  test("dataTools in rune.json turns the derived ones down", async () => {
+    const manifest = JSON.parse(readFileSync(join(projectOf(budget), "rune.json"), "utf8"));
+    writeFileSync(join(projectOf(budget), "rune.json"), JSON.stringify({ ...manifest, dataTools: "read" }));
     expect((await server.api<AppTool[]>(`/api/apps/${budget.id}/tools`)).filter((t) => t.source === "data").map((t) => t.id)).toEqual([
       "list-expenses",
       "get-expenses",
     ]);
-    writeFileSync(join(projectOf(budget), "nathapp.json"), JSON.stringify({ ...manifest, dataTools: "none" }));
+    writeFileSync(join(projectOf(budget), "rune.json"), JSON.stringify({ ...manifest, dataTools: "none" }));
     expect((await server.api<AppTool[]>(`/api/apps/${budget.id}/tools`)).filter((t) => t.source === "data")).toEqual([]);
   });
 });

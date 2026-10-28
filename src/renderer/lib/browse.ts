@@ -13,7 +13,7 @@ export interface Locator {
   focused?: boolean;
 }
 
-/** Runs in the page: the element for a locator, scrolled into view, described for NathApp's checks (agent/browseTools.ts: Target). */
+/** Runs in the page: the element for a locator, scrolled into view, described for Rune Browser's checks (agent/browseTools.ts: Target). */
 export const targetScript = (locator: Locator) => `(() => {
   const loc = ${JSON.stringify(locator)};
   const visible = (el) => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none"; };

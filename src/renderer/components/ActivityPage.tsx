@@ -13,7 +13,7 @@ import { Icon } from "./Icon";
 
 const PAGE = 100;
 
-const actorIcons: Record<AuditEntry["actor"], string> = { user: "user", agent: "bot", app: "app-window", nathapp: "shield" };
+const actorIcons: Record<AuditEntry["actor"], string> = { user: "user", agent: "bot", app: "app-window", rune: "shield" };
 
 const actions: Record<string, string> = {
   "agent.turn": "Started working",
@@ -105,7 +105,7 @@ export function ActivityPage() {
           <option value="agent">Agents</option>
           <option value="app">Apps</option>
           <option value="user">You</option>
-          <option value="nathapp">NathApp</option>
+          <option value="rune">Rune Browser</option>
         </select>
       </div>
       <ol {...stylex.attrs(styles.list)}>

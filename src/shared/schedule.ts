@@ -11,7 +11,7 @@ export const MAX_PROMPT = 20_000;
 /** The tab a schedule's task runs in (null: a prompt that opens one on its first run). */
 export const taskTab = (task: ScheduleTask): string | null => task.appId ?? null;
 
-const EVENT = /^(nathapp\.started|app\.(started|crashed):[\w-]+|app:[\w-]+:[\w.-]{1,64})$/;
+const EVENT = /^(rune\.started|app\.(started|crashed):[\w-]+|app:[\w-]+:[\w.-]{1,64})$/;
 
 /** What's wrong with a schedule, if anything. */
 export function scheduleProblem(spec: ScheduleSpec, now = new Date()): string | null {
@@ -27,7 +27,7 @@ export function scheduleProblem(spec: ScheduleSpec, now = new Date()): string | 
     if (typeof cron === "string") return cron;
     if (shortestGapMinutes(cron, now) < MIN_INTERVAL_MINUTES) return `Recurring schedules run at most every ${MIN_INTERVAL_MINUTES} minutes`;
   } else if (t?.type === "event") {
-    if (!EVENT.test(t.event ?? "")) return 'Events are "nathapp.started", "app.started:<app>", "app.crashed:<app>" or "app:<app>:<name>"';
+    if (!EVENT.test(t.event ?? "")) return 'Events are "rune.started", "app.started:<app>", "app.crashed:<app>" or "app:<app>:<name>"';
   } else return "trigger.type must be once, cron or event";
   const task = spec.task;
   if (task?.type === "prompt") {
@@ -52,12 +52,12 @@ export function scheduleProblem(spec: ScheduleSpec, now = new Date()): string | 
   return null;
 }
 
-/** "Every day at 08:00", "Once on …", "When NathApp starts"… */
+/** "Every day at 08:00", "Once on …", "When Rune Browser starts"… */
 export function describeTrigger(trigger: ScheduleTrigger, appName: (id: string) => string = (id) => id) {
   if (trigger.type === "cron") return describeCron(trigger.cron);
   if (trigger.type === "once") return `Once, ${new Date(trigger.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`;
   const e = trigger.event;
-  if (e === "nathapp.started") return "When NathApp starts";
+  if (e === "rune.started") return "When Rune Browser starts";
   const [kind, rest] = [e.slice(0, e.indexOf(":")), e.slice(e.indexOf(":") + 1)];
   if (kind === "app.started") return `When ${appName(rest)} starts`;
   if (kind === "app.crashed") return `When ${appName(rest)} crashes`;

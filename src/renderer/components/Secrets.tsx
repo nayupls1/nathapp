@@ -18,7 +18,7 @@ const nameProblem = (name: string) =>
     : !SECRET_NAME_PATTERN.test(name)
       ? "Capital letters, digits and _ only, e.g. STRIPE_KEY"
       : isReservedSecretName(name)
-        ? "NathApp sets this one itself"
+        ? "Rune Browser sets this one itself"
         : null;
 
 /** Name and value; the value field never shows a saved value. */
@@ -170,7 +170,7 @@ export function SecretsPanel(props: { appId: string; onClose: () => void }) {
           <Show when={own()?.protection === "file"}> They're encrypted with a key protected by file permissions (no OS keychain found).</Show>
         </p>
         <Show when={own()?.protection === "locked"}>
-          <p {...stylex.attrs(styles.error)}>Secrets are locked: NathApp couldn't unlock its key from the OS keychain.</p>
+          <p {...stylex.attrs(styles.error)}>Secrets are locked: Rune Browser couldn't unlock its key from the OS keychain.</p>
         </Show>
         <For each={own()?.secrets}>{(secret) => <SecretRow secret={secret} scopeLabel="this app" />}</For>
         <SecretForm onSave={(name, value) => api.saveSecret(props.appId, name, value)} saveLabel="Add" />

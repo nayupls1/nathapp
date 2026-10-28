@@ -16,11 +16,11 @@ export async function freePort() {
 /** `dataDir`: an existing one (e.g. an old database to migrate); removed on stop either way. */
 export async function startServer(options: { dataDir?: string } = {}) {
   const port = await freePort();
-  const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), "nathapp-server-test-"));
+  const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), "rune-server-test-"));
   const url = `http://127.0.0.1:${port}`;
   const token = crypto.randomUUID();
   const proc = Bun.spawn([process.execPath, "src/server/index.ts"], {
-    env: { ...process.env, PORT: String(port), NATHAPP_DATA_DIR: dataDir, NATHAPP_ALLOWED_ORIGIN: "app://nathapp", NATHAPP_TOKEN: token },
+    env: { ...process.env, PORT: String(port), RUNE_DATA_DIR: dataDir, RUNE_ALLOWED_ORIGIN: "app://rune", RUNE_TOKEN: token },
     stdout: "ignore",
     stderr: "inherit",
   });

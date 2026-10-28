@@ -1,8 +1,8 @@
-// App projects: one folder per app (the app's disk), with nathapp.json saying how
-// to install, develop, build and start it. NathApp keeps its runtime state in
-// .nathapp/ inside the folder (a home directory); the app's data is elsewhere
+// App projects: one folder per app (the app's disk), with rune.json saying how
+// to install, develop, build and start it. Rune Browser keeps its runtime state in
+// .rune/ inside the folder (a home directory); the app's data is elsewhere
 // (AppData.ts).
-import { existsSync, readdirSync, renameSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -25,24 +25,24 @@ const ManifestSchema = Schema.Struct({
   start: Schema.String,
 });
 
-export const MANIFEST = "nathapp.json";
+export const MANIFEST = "rune.json";
 
 export interface WorkspaceShape {
   readonly dir: (appId: string) => string;
-  /** NathApp's runtime folder inside the project (database, home). */
+  /** Rune Browser's runtime folder inside the project (database, home). */
   readonly stateDir: (appId: string) => string;
   /** Creates the project folder if needed and returns it. */
   readonly ensureDir: (appId: string) => Effect.Effect<string>;
-  /** The project's nathapp.json; null when there is none yet, an error when it's invalid. */
+  /** The project's rune.json; null when there is none yet, an error when it's invalid. */
   readonly manifest: (appId: string) => Effect.Effect<Manifest | null, WorkspaceError>;
   readonly info: (appId: string) => Effect.Effect<ProjectInfo | null>;
   /** Sets up a new project from a preset. */
   readonly scaffold: (appId: string, presetId: string, name: string) => Effect.Effect<ProjectInfo, WorkspaceError>;
-  /** Copies a project (without dependencies, builds and NathApp's runtime state). */
+  /** Copies a project (without dependencies, builds and Rune Browser's runtime state). */
   readonly duplicate: (fromId: string, toId: string) => Effect.Effect<void>;
   /**
    * Brings in an existing project: cloned from a Git repository (https) or
-   * copied from a folder. If it has no nathapp.json, one is written when
+   * copied from a folder. If it has no rune.json, one is written when
    * package.json says how to run it. Fails if the app already has a project.
    */
   readonly importFrom: (
@@ -53,7 +53,7 @@ export interface WorkspaceShape {
   readonly remove: (appId: string) => Effect.Effect<void>;
 }
 
-export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("nathapp/Workspace") {}
+export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("rune/Workspace") {}
 
 /** Where an imported app comes from. */
 export type ImportSource = { readonly kind: "git"; readonly url: string; readonly branch?: string } | { readonly kind: "folder"; readonly path: string };
@@ -65,7 +65,7 @@ export type ImportProgress = GitProgress;
 export const cancelImport = (appId: string) => cancelGit(appId);
 
 /**
- * nathapp.json for a project that doesn't have one, from its package.json
+ * rune.json for a project that doesn't have one, from its package.json
  * scripts (dev, start, build); null when they don't say how to run it. Dev
  * servers that don't read $PORT themselves (Vite and what's built on it,
  * Astro, Angular) are told the port.
@@ -76,7 +76,7 @@ export function inferManifest(packageJson: unknown): Manifest | null {
   if (!scripts || typeof scripts !== "object") return null;
   const script = (name: string) => (typeof scripts[name] === "string" ? (scripts[name] as string) : null);
   if (script("dev") === null && script("start") === null) return null;
-  /** Arguments that make the script's server listen on NathApp's port, by what it runs. */
+  /** Arguments that make the script's server listen on Rune Browser's port, by what it runs. */
   const portArgs = (command: string | null) => {
     if (!command) return "";
     if (/\b(vite|astro)\b/.test(command)) return " --port $PORT --strictPort --host 127.0.0.1";
@@ -103,7 +103,7 @@ const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
 const ACTION_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const route = (value: unknown) => (typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && value.length <= 500 ? value : undefined);
 
-/** The command bar actions in nathapp.json. Invalid ones are left out rather than failing the whole manifest. */
+/** The command bar actions in rune.json. Invalid ones are left out rather than failing the whole manifest. */
 export function parseActions(value: unknown): AppAction[] {
   if (!Array.isArray(value)) return [];
   const actions = new Map<string, AppAction>();
@@ -153,24 +153,10 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
   const settings = yield* Settings;
   const dir = (appId: string) => join(config.appsDir, appId);
-  const stateDir = (appId: string) => join(dir(appId), ".nathapp");
-
-  /** Projects from NathApp's earlier name (gApp): gapp.json and .gapp/ get the new names. */
-  const migrate = (appId: string) =>
-    Effect.sync(() => {
-      const renames: [string, string][] = [
-        ["gapp.json", MANIFEST],
-        [".gapp", ".nathapp"],
-      ];
-      for (const [from, to] of renames) {
-        const legacy = join(dir(appId), from);
-        if (existsSync(legacy) && !existsSync(join(dir(appId), to))) renameSync(legacy, join(dir(appId), to));
-      }
-    });
+  const stateDir = (appId: string) => join(dir(appId), ".rune");
 
   const manifest = (appId: string) =>
     Effect.gen(function* () {
-      yield* migrate(appId);
       const text = yield* Effect.promise(() => readFile(join(dir(appId), MANIFEST), "utf8").catch(() => null));
       if (text === null) return null;
       let json: unknown;
@@ -228,14 +214,14 @@ export const make = Effect.gen(function* () {
 
     duplicate: (fromId, toId) =>
       Effect.promise(async () => {
-        const skip = new Set(["node_modules", "dist", ".nathapp"].map((name) => join(dir(fromId), name)));
+        const skip = new Set(["node_modules", "dist", ".rune"].map((name) => join(dir(fromId), name)));
         await cp(dir(fromId), dir(toId), { recursive: true, filter: (src) => !skip.has(src) }).catch(() => {});
       }),
 
     importFrom: (appId, source, onProgress = () => {}) =>
       Effect.gen(function* () {
         const target = dir(appId);
-        if (existsSync(join(target, MANIFEST)) || (existsSync(target) && readdirSync(target).some((f) => f !== ".nathapp"))) {
+        if (existsSync(join(target, MANIFEST)) || (existsSync(target) && readdirSync(target).some((f) => f !== ".rune"))) {
           return yield* new WorkspaceError({ message: "The app already has a project." });
         }
         let name: string;
@@ -246,7 +232,7 @@ export const make = Effect.gen(function* () {
               message: "That isn't a link to a repository. Clone from an https link (like https://github.com/owner/repo), an SSH link or owner/repo.",
             });
           }
-          if (!Bun.which("git")) return yield* new WorkspaceError({ message: "Git isn't installed (or not on NathApp's PATH)." });
+          if (!Bun.which("git")) return yield* new WorkspaceError({ message: "Git isn't installed (or not on Rune Browser's PATH)." });
           name = git.name;
           onProgress({ phase: `Cloning ${git.url}${git.branch ? ` (${git.branch})` : ""}`, percent: null });
           yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
@@ -262,12 +248,12 @@ export const make = Effect.gen(function* () {
           const info = yield* Effect.promise(() => stat(from).catch(() => null));
           if (!info?.isDirectory()) return yield* new WorkspaceError({ message: `${source.path} isn't a folder.` });
           if (from === config.dataDir || from.startsWith(config.dataDir + sep) || config.dataDir.startsWith(from + sep)) {
-            return yield* new WorkspaceError({ message: "That folder is NathApp's own data." });
+            return yield* new WorkspaceError({ message: "That folder is Rune Browser's own data." });
           }
           name = basename(from);
           onProgress({ phase: `Copying ${from}`, percent: null });
-          // Not its dependencies, builds or NathApp state: they're made again here.
-          const skip = new Set(["node_modules", ".nathapp"]);
+          // Not its dependencies, builds or Rune Browser state: they're made again here.
+          const skip = new Set(["node_modules", ".rune"]);
           yield* Effect.promise(() => cp(from, target, { recursive: true, filter: (src) => !skip.has(basename(src)) || src === from }));
         }
         if (!existsSync(join(target, MANIFEST))) {

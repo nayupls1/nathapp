@@ -1,5 +1,4 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
-import { existsSync, readdirSync, renameSync } from "node:fs";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { startServer, type ServerHandle } from "./server";
@@ -16,25 +15,7 @@ if (process.platform === "linux" && !app.commandLine.hasSwitch("password-store")
 }
 
 // Lets tests run against a throwaway profile instead of the real data.
-if (process.env.NATHAPP_USER_DATA_DIR) app.setPath("userData", process.env.NATHAPP_USER_DATA_DIR);
-else moveLegacyUserData();
-
-/**
- * NathApp used to be called gApp: its data (tabs, apps, sessions, the
- * secrets key) moves over from the old folder on the first start.
- */
-function moveLegacyUserData() {
-  const legacy = join(app.getPath("appData"), "gApp");
-  const current = app.getPath("userData");
-  if (legacy === current || !existsSync(legacy) || existsSync(join(current, "data"))) return;
-  try {
-    for (const entry of readdirSync(legacy)) {
-      if (!existsSync(join(current, entry))) renameSync(join(legacy, entry), join(current, entry));
-    }
-  } catch (err) {
-    console.error("Couldn't move the data from the gApp folder:", err);
-  }
-}
+if (process.env.RUNE_USER_DATA_DIR) app.setPath("userData", process.env.RUNE_USER_DATA_DIR);
 
 // Bun inlines `__dirname` at bundle time, so resolve build output from the app
 // root instead (works both unpackaged and inside the packaged asar).
@@ -43,7 +24,7 @@ const distDir = join(app.getAppPath(), "dist");
 // In production the renderer is served from a custom privileged scheme instead
 // of file:// so it gets a real origin (needed for CORS against the Bun server).
 const APP_SCHEME = "app";
-const APP_HOST = "nathapp";
+const APP_HOST = "rune";
 const rendererOrigin = devServerUrl ? new URL(devServerUrl).origin : `${APP_SCHEME}://${APP_HOST}`;
 
 protocol.registerSchemesAsPrivileged([
@@ -56,7 +37,7 @@ let web: ReturnType<typeof setupWebTabs> | undefined;
 
 // Safe mode: the renderer leaves out the theme and site customizations, so
 // whatever broke the UI can be undone in History.
-const safeMode = process.argv.includes("--safe-mode") || process.env.NATHAPP_SAFE_MODE === "1";
+const safeMode = process.argv.includes("--safe-mode") || process.env.RUNE_SAFE_MODE === "1";
 
 function relaunch(safe: boolean) {
   const args = process.argv.slice(1).filter((a) => a !== "--safe-mode");
@@ -64,12 +45,12 @@ function relaunch(safe: boolean) {
   app.quit();
 }
 
-ipcMain.on("nathapp:relaunch", (event, safe: unknown) => {
+ipcMain.on("rune:relaunch", (event, safe: unknown) => {
   if (event.sender === mainWindow?.webContents) relaunch(safe === true);
 });
 
 // A folder of the user's (importing an existing project as an app).
-ipcMain.handle("nathapp:pick-folder", async (event, title: unknown) => {
+ipcMain.handle("rune:pick-folder", async (event, title: unknown) => {
   const win = mainWindow;
   if (!win || event.sender !== win.webContents) return null;
   const picked = await dialog.showOpenDialog(win, { title: typeof title === "string" ? title.slice(0, 200) : "Choose a folder", properties: ["openDirectory"] });
@@ -77,7 +58,7 @@ ipcMain.handle("nathapp:pick-folder", async (event, title: unknown) => {
 });
 
 // The window's buttons (drawn by the renderer when there's no frame) and double-clicking a top bar.
-ipcMain.on("nathapp:window", (event, action: unknown) => {
+ipcMain.on("rune:window", (event, action: unknown) => {
   const win = mainWindow;
   if (!win || event.sender !== win.webContents) return;
   if (action === "minimize") win.minimize();
@@ -111,7 +92,7 @@ function createWindow(server: ServerHandle) {
     ...(process.platform === "darwin" ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 16, y: 16 } } : { frame: false }),
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
-      additionalArguments: [`--nathapp-server-url=${server.url}`, `--nathapp-token=${server.token}`, ...(safeMode ? ["--nathapp-safe-mode=1"] : []), ...(process.env.NATHAPP_OFFSCREEN === "1" ? ["--nathapp-offscreen=1"] : [])],
+      additionalArguments: [`--rune-server-url=${server.url}`, `--rune-token=${server.token}`, ...(safeMode ? ["--rune-safe-mode=1"] : []), ...(process.env.RUNE_OFFSCREEN === "1" ? ["--rune-offscreen=1"] : [])],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -120,16 +101,16 @@ function createWindow(server: ServerHandle) {
       // Agent runs stream into the window while it's in the background.
       backgroundThrottling: false,
       // Tests render without a visible window (always painted, nothing pops up).
-      offscreen: process.env.NATHAPP_OFFSCREEN === "1",
+      offscreen: process.env.RUNE_OFFSCREEN === "1",
     },
   });
 
   win.once("ready-to-show", () => {
-    if (process.env.NATHAPP_OFFSCREEN !== "1") win.show();
+    if (process.env.RUNE_OFFSCREEN !== "1") win.show();
   });
 
   mainWindow = win;
-  const sendMaximized = () => win.webContents.send("nathapp:maximized", win.isMaximized());
+  const sendMaximized = () => win.webContents.send("rune:maximized", win.isMaximized());
   win.on("maximize", sendMaximized);
   win.on("unmaximize", sendMaximized);
   win.on("closed", () => {
@@ -159,7 +140,7 @@ app.whenReady().then(async () => {
   try {
     server = await startServer(rendererOrigin);
   } catch (err) {
-    dialog.showErrorBox("NathApp", `Failed to start the backend server:\n\n${err}`);
+    dialog.showErrorBox("Rune Browser", `Failed to start the backend server:\n\n${err}`);
     app.exit(1);
     return;
   }

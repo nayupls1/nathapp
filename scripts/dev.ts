@@ -20,7 +20,7 @@ async function startElectron() {
   electron = await launchElectron(
     {
       VITE_DEV_SERVER_URL: devServerUrl,
-      NATHAPP_BUN_PATH: process.execPath,
+      RUNE_BUN_PATH: process.execPath,
     },
     process.argv.slice(2),
   );

@@ -14,7 +14,7 @@ import type { ToolEnv } from "./tools";
 const SourceArg = Schema.String.annotate({ description: "The source's id or name (see list_sources)" });
 
 export const describeSource = (s: ContextSource) =>
-  `${s.id} · ${s.name} · ${s.kind === "git" ? `Git repository ${s.url}${s.branch ? ` (${s.branch})` : ""}, NathApp's clone at ${s.path}` : `your folder ${s.path}`}${
+  `${s.id} · ${s.name} · ${s.kind === "git" ? `Git repository ${s.url}${s.branch ? ` (${s.branch})` : ""}, Rune Browser's clone at ${s.path}` : `your folder ${s.path}`}${
     s.state === "ready" ? "" : ` · ${s.state}${s.error ? `: ${s.error}` : ""}`
   }`;
 
@@ -49,8 +49,8 @@ export const sourceTools = Effect.fn(function* (env: ToolEnv) {
         title: `Let the agent ${before === null ? "create" : "change"} ${rel} in ${source.name}?`,
         detail:
           source.kind === "git"
-            ? `In NathApp's copy of ${source.url}. Nothing is pushed.`
-            : `In your folder ${source.path}. NathApp's history doesn't cover it: use your own Git to undo.`,
+            ? `In Rune Browser's copy of ${source.url}. Nothing is pushed.`
+            : `In your folder ${source.path}. Rune Browser's history doesn't cover it: use your own Git to undo.`,
         diff: unifiedDiff(rel, before, after),
         timeoutMs: 300_000,
       });

@@ -1,4 +1,4 @@
-// Theme palette, shared by the renderer (NathApp's own look) and the server (the
+// Theme palette, shared by the renderer (Rune Browser's own look) and the server (the
 // design tokens every new app starts with).
 import type { GlobalTheme, Theme } from "./settings";
 
@@ -114,10 +114,10 @@ function tokenBlock(p: Palette, indent: string) {
 /**
  * The design tokens a new app starts with (tokens.css): CSS custom properties
  * from the user's theme. With the "system" mode the app follows the OS between
- * light and dark, like NathApp does.
+ * light and dark, like Rune Browser does.
  */
 export function tokensCss(theme: GlobalTheme): string {
-  const head = `/* Design tokens. NathApp generated them from your theme; change them freely. */\n`;
+  const head = `/* Design tokens. Rune Browser generated them from your theme; change them freely. */\n`;
   const shared = `\n  --space-1: 4px;\n  --space-2: 8px;\n  --space-3: 12px;\n  --space-4: 16px;\n  --space-5: 24px;\n  --space-6: 40px;\n  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);\n  --shadow-md: 0 4px 16px rgb(0 0 0 / 0.1);\n`;
   if (theme.mode !== "system") {
     return `${head}:root {\n  color-scheme: ${theme.mode};\n${tokenBlock(palette(theme, theme.mode), "  ")}${shared}}\n`;

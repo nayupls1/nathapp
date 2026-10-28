@@ -13,8 +13,8 @@ import { Workspaces } from "../src/server/db/Workspaces";
 import { core } from "../src/server/services";
 
 describe("shared tab context", () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-sharing-"));
-  const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+  const dataDir = mkdtempSync(join(tmpdir(), "rune-sharing-"));
+  const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
   afterAll(async () => {
     await runtime.dispose();
     rmSync(dataDir, { recursive: true, force: true });

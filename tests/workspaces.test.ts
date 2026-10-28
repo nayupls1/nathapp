@@ -32,7 +32,7 @@ describe("workspaces", () => {
   /** From now on, the app's dev "server" writes the secrets it got (for `step`) and stays up. */
   const report = (app: AppSummary, step: string) =>
     writeFileSync(
-      join(dirOf(app), "nathapp.json"),
+      join(dirOf(app), "rune.json"),
       JSON.stringify({ install: "true", dev: `printf %s "\${SHARED:-unset} \${GLOBAL_KEY:-unset}" > seen-${step}.txt; sleep 600`, start: "sleep 600" }),
     );
   const restart = (app: AppSummary) => server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
@@ -200,8 +200,8 @@ describe("workspaces", () => {
 
 describe("a database from before workspaces", () => {
   test("gets one workspace with all its tabs and audit entries", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "nathapp-old-db-"));
-    const db = new Database(join(dataDir, "nathapp.sqlite"));
+    const dataDir = mkdtempSync(join(tmpdir(), "rune-old-db-"));
+    const db = new Database(join(dataDir, "rune.sqlite"));
     db.run(`CREATE TABLE apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, created_at TEXT NOT NULL DEFAULT 'x', updated_at TEXT NOT NULL DEFAULT 'x')`);
     db.run(`CREATE TABLE audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL DEFAULT 'x', actor TEXT NOT NULL, actor_label TEXT NOT NULL,
       tab_id TEXT, action TEXT NOT NULL, target TEXT, detail TEXT, outcome TEXT NOT NULL DEFAULT 'ok')`);

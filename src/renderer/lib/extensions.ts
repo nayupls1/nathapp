@@ -1,4 +1,4 @@
-// Chrome extensions, as the NathApp window sees them: the installed list, their
+// Chrome extensions, as the Rune Browser window sees them: the installed list, their
 // toolbar buttons, and what they ask of the window. Extensions see the web tabs
 // of their workspace as their tabs (by webContents id), so the tab list is
 // reported whenever it changes; tabs they open, select or close go through the
@@ -9,7 +9,7 @@ import { confirmDialog } from "../components/ConfirmDialog";
 import { apps, deleteApp, lastTabOf, newWebTab, openedIds, openSettings, selectApp, selectedId, currentWorkspace, appById } from "./store";
 import { pageOf, pagesVersion, tabOfContents } from "./webtabs";
 
-const bridge = window.nathapp.extensions;
+const bridge = window.rune.extensions;
 
 const [list, setList] = createSignal<ExtensionInfo[]>([]);
 const [autoUpdate, setAutoUpdateSignal] = createSignal(true);

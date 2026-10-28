@@ -1,4 +1,4 @@
-// The installed extensions: a small JSON file in NathApp's user data, next to
+// The installed extensions: a small JSON file in Rune Browser's user data, next to
 // the extensions that were copied in (`<userData>/extensions/<id>/<version>/`).
 // Unpacked ones stay where they are. What a manifest says (localized name,
 // icons, options page…) is read from disk and cached.
@@ -26,7 +26,7 @@ export interface InstalledExtension {
   id: string;
   /** The folder Electron loads. */
   path: string;
-  /** Copied into NathApp's data (deleted with it); otherwise used where it is. */
+  /** Copied into Rune Browser's data (deleted with it); otherwise used where it is. */
   managed: boolean;
   enabled: boolean;
   pinned: boolean;
@@ -216,7 +216,7 @@ export function commandsOf(entry: InstalledExtension, info: ManifestInfo) {
   }));
 }
 
-/** How an installed extension is shown in the NathApp window. */
+/** How an installed extension is shown in the Rune Browser window. */
 export function describe(entry: InstalledExtension, error: string | null, hasNativeHosts: boolean): ExtensionInfo {
   let info: ManifestInfo | null = null;
   try {

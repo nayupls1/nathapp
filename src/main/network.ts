@@ -2,10 +2,10 @@
 // into a bounded log per tab (bodies of structured responses only, within a
 // memory budget), replayed with the workspace's session (cookies come from the
 // session, other credentials stay in this process), and changed by rules
-// (block, set headers), which NathApp's built-in extension applies as
+// (block, set headers), which Rune Browser's built-in extension applies as
 // declarativeNetRequest rules (see extensions/builtin.ts).
 //
-// The NathApp window reads it over IPC. Credentials leave this process only
+// The Rune Browser window reads it over IPC. Credentials leave this process only
 // when the user asks to see them (reveal); the website agent gets everything
 // redacted, and saved requests carry their credentials sealed with a key only
 // this process uses.
@@ -62,7 +62,7 @@ export function setupNetwork(options: NetworkOptions) {
       id,
       setTimeout(() => {
         notifyTimers.delete(id);
-        getWindow()?.webContents.send("nathapp:network-changed", id);
+        getWindow()?.webContents.send("rune:network-changed", id);
       }, 300),
     );
   };
@@ -231,7 +231,7 @@ export function setupNetwork(options: NetworkOptions) {
   const key = () => {
     if (sealKey === undefined) {
       const secrets = loadSecretsKey();
-      sealKey = secrets ? createHash("sha256").update(`nathapp-network-seal-v1:${secrets.key}`).digest() : null;
+      sealKey = secrets ? createHash("sha256").update(`rune-network-seal-v1:${secrets.key}`).digest() : null;
     }
     return sealKey;
   };
@@ -369,7 +369,7 @@ export function setupNetwork(options: NetworkOptions) {
     };
   }
 
-  // --- IPC from the NathApp window ----------------------------------------------------------
+  // --- IPC from the Rune Browser window ----------------------------------------------------------
 
   const fromWindow = (event: IpcMainInvokeEvent | Electron.IpcMainEvent) => event.sender === getWindow()?.webContents;
   /** A web tab of the window that asks. */
@@ -384,23 +384,23 @@ export function setupNetwork(options: NetworkOptions) {
     return { target, log };
   };
 
-  ipcMain.handle("nathapp:network-list", (event, id: unknown, filter: unknown) => {
+  ipcMain.handle("rune:network-list", (event, id: unknown, filter: unknown) => {
     const { log } = logOf(event, id);
     return log ? log.list((filter ?? {}) as NetworkFilter) : [];
   });
-  ipcMain.handle("nathapp:network-get", (event, id: unknown, entryId: unknown, reveal: unknown) => {
+  ipcMain.handle("rune:network-get", (event, id: unknown, entryId: unknown, reveal: unknown) => {
     const { log } = logOf(event, id);
     return log && typeof entryId === "string" ? log.detail(entryId, reveal !== true) : null;
   });
-  ipcMain.handle("nathapp:network-clear", (event, id: unknown) => {
+  ipcMain.handle("rune:network-clear", (event, id: unknown) => {
     logOf(event, id).log?.clear();
   });
-  ipcMain.handle("nathapp:network-draft", (event, id: unknown, entryId: unknown) => {
+  ipcMain.handle("rune:network-draft", (event, id: unknown, entryId: unknown) => {
     const entry = typeof entryId === "string" ? logOf(event, id).log?.get(entryId) : undefined;
     if (!entry) throw new Error("That request is no longer in the log");
     return draft(entry);
   });
-  ipcMain.handle("nathapp:network-replay", async (event, target: ReplayTarget, overrides: unknown, reveal: unknown) => {
+  ipcMain.handle("rune:network-replay", async (event, target: ReplayTarget, overrides: unknown, reveal: unknown) => {
     const changes = (overrides ?? {}) as ReplayOverrides;
     if (target && "webContentsId" in target) {
       const { target: contents, log } = logOf(event, target.webContentsId);
@@ -411,12 +411,12 @@ export function setupNetwork(options: NetworkOptions) {
     if (!fromWindow(event) || !target || typeof target.workspaceId !== "string" || !/^[\w-]+$/.test(target.workspaceId)) throw new Error("Unknown workspace");
     return replay(options.webSession(target.workspaceId), open(target.draft), changes, reveal === true);
   });
-  ipcMain.on("nathapp:network-rules", (event, list: unknown) => {
+  ipcMain.on("rune:network-rules", (event, list: unknown) => {
     if (!fromWindow(event) || !Array.isArray(list)) return;
     rules = (list as NetworkRule[]).map((rule) => ({ rule, matches: urlMatcher(rule.pattern) }));
     options.applyRules(list as NetworkRule[]);
   });
-  ipcMain.on("nathapp:network-recording", (event, enabled: unknown) => {
+  ipcMain.on("rune:network-recording", (event, enabled: unknown) => {
     if (fromWindow(event)) setRecording(enabled !== false);
   });
 

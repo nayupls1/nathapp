@@ -13,7 +13,7 @@ import { Icon } from "./Icon";
 import { toast } from "./Toast";
 import { Button } from "./ui";
 
-const network = window.nathapp.web.network;
+const network = window.rune.web.network;
 
 export function NetworkPanel(props: { webContentsId: () => number | null; workspaceId: () => string; onClose: () => void }) {
   const [view, setView] = createSignal<"requests" | "saved">("requests");

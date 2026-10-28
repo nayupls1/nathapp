@@ -52,8 +52,8 @@ describe("history", () => {
     const [first] = await list();
     expect(first).toMatchObject({ summary: "Started from the api template", actor: "user", first: true, tabId: app.id, workspaceId: "default" });
     expect(first!.added).toContain("src/server.ts");
-    expect(first!.added).toContain("nathapp.json");
-    expect(first!.added.some((p) => p.startsWith("node_modules/") || p.startsWith(".nathapp/home"))).toBe(false);
+    expect(first!.added).toContain("rune.json");
+    expect(first!.added.some((p) => p.startsWith("node_modules/") || p.startsWith(".rune/home"))).toBe(false);
     // Nothing changed: no new snapshot.
     expect(await snapshot()).toBeUndefined();
   });
@@ -146,13 +146,13 @@ describe("history", () => {
 
   test("settings changes are snapshots too, typed changes folded into one", async () => {
     const [start] = await list("settings");
-    expect(start).toMatchObject({ summary: "As it was when NathApp started", actor: "nathapp" });
+    expect(start).toMatchObject({ summary: "As it was when Rune Browser started", actor: "rune" });
     const settings = await server.api<Settings>("/api/settings");
     for (const instructions of ["A", "AB", "ABC"]) {
       await server.api("/api/settings", { method: "PUT", json: { ...settings, agent: { ...settings.agent, instructions } } });
     }
     const entries = await list("settings");
-    expect(entries.map((e) => e.summary)).toEqual(["Changed settings", "As it was when NathApp started"]);
+    expect(entries.map((e) => e.summary)).toEqual(["Changed settings", "As it was when Rune Browser started"]);
     expect(entries[0]!.modified).toEqual(["settings.json"]);
     const detail = await server.api<HistoryDetail>(`/api/history/${entries[0]!.id}`);
     expect(detail.files[0]!.hunks!.flatMap((h) => h.lines).some((l) => l.type === "+" && l.text.includes('"instructions": "ABC"'))).toBe(true);

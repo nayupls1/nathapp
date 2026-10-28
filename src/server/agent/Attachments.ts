@@ -37,7 +37,7 @@ export interface AttachmentsShape {
   readonly forgetTab: (tabId: string) => Effect.Effect<void>;
 }
 
-export class Attachments extends Context.Service<Attachments, AttachmentsShape>()("nathapp/Attachments") {}
+export class Attachments extends Context.Service<Attachments, AttachmentsShape>()("rune/Attachments") {}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;

@@ -44,7 +44,7 @@ export { systemDark };
 
 // --- Global theme ----------------------------------------------------------------------
 
-const CACHE_KEY = "nathapp.theme";
+const CACHE_KEY = "rune.theme";
 let applied: string[] = [];
 
 /** Applies the global theme to the document root. */

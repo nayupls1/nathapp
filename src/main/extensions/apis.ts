@@ -47,7 +47,7 @@ export interface ApiEnv {
   hasActiveTab: (s: Session, id: string, tabId: number) => boolean;
   /** The user invoked the extension on a tab (toolbar button, shortcut, context menu): activeTab. */
   grantActiveTab: (s: Session, id: string, tabId: number | null) => void;
-  /** Asks the NathApp window to open, select or close a tab; resolves with the tab's webContents id. */
+  /** Asks the Rune Browser window to open, select or close a tab; resolves with the tab's webContents id. */
   requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) => Promise<number | null>;
   requestPermission: (s: Session, id: string, permissions: string[], origins: string[]) => Promise<boolean>;
   openPopup: (s: Session, id: string) => boolean;
@@ -339,7 +339,7 @@ export function createApis(env: ApiEnv) {
     },
     unlisten: (ctx, name: string) => void ctx.events.delete(name),
     unsupported: (_ctx, name: string) => {
-      throw err(`${name} isn't supported in NathApp`);
+      throw err(`${name} isn't supported in Rune Browser`);
     },
 
     // chrome.action
@@ -777,7 +777,7 @@ export function createApis(env: ApiEnv) {
 
   async function handle(ctx: Context, method: string, args: unknown[]) {
     const handler = handlers[method];
-    if (!handler) return { error: `${method} isn't supported in NathApp` };
+    if (!handler) return { error: `${method} isn't supported in Rune Browser` };
     try {
       return { value: await handler(ctx, ...(Array.isArray(args) ? args : [])) };
     } catch (e) {
@@ -787,7 +787,7 @@ export function createApis(env: ApiEnv) {
 
   // --- Events from web tabs ---------------------------------------------------------------------------
 
-  /** Every extension (but NathApp's own) in a session that some context listens to `event` for. */
+  /** Every extension (but Rune Browser's own) in a session that some context listens to `event` for. */
   function* listeners(s: Session, event: string) {
     const ids = new Set<string>();
     for (const ctx of env.contexts.inSession(s)) if (ctx.events.has(event)) ids.add(ctx.extensionId);

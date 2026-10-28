@@ -1,8 +1,8 @@
-// AI for this app, through NathApp: it answers with the user's own AI
-// subscription (chosen in NathApp's Settings), so the app needs no API key.
+// AI for this app, through Rune Browser: it answers with the user's own AI
+// subscription (chosen in Rune Browser's Settings), so the app needs no API key.
 //
-// SERVER-SIDE ONLY. NATHAPP_AI_TOKEN is this app's key: never send it to the
-// browser, log it or write it to a file. NathApp rejects requests from browsers;
+// SERVER-SIDE ONLY. RUNE_AI_TOKEN is this app's key: never send it to the
+// browser, log it or write it to a file. Rune Browser rejects requests from browsers;
 // let the frontend call your own API route, and call `ai` from there.
 //
 //   const { text } = await ai.chat("Summarize: " + note);
@@ -17,7 +17,7 @@ export interface Message {
 export interface Options {
   /** Instructions for the model (how to answer, format, tone). */
   system?: string;
-  /** A model id from `ai.models()`; default: the one picked in NathApp's Settings. */
+  /** A model id from `ai.models()`; default: the one picked in Rune Browser's Settings. */
   model?: string;
   effort?: string;
 }
@@ -32,11 +32,11 @@ export class AiError extends Error {
   }
 }
 
-const url = process.env.NATHAPP_AI_URL;
-const token = process.env.NATHAPP_AI_TOKEN;
+const url = process.env.RUNE_AI_URL;
+const token = process.env.RUNE_AI_TOKEN;
 
 async function call(path: string, init?: { body: unknown }) {
-  if (!url || !token) throw new AiError("AI isn't available: the app isn't running inside NathApp", 503);
+  if (!url || !token) throw new AiError("AI isn't available: the app isn't running inside Rune Browser", 503);
   const res = await fetch(`${url}${path}`, {
     method: init ? "POST" : "GET",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

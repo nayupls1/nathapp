@@ -3,7 +3,7 @@
 // Chrome profiles. Electron runs them natively (content scripts, storage,
 // declarativeNetRequest, scripting, offscreen…); what it lacks comes from the
 // shim in their pages and service workers (src/extension-preload/), answered
-// by apis.ts. The NathApp window shows their toolbar buttons and popups, and
+// by apis.ts. The Rune Browser window shows their toolbar buttons and popups, and
 // manages them in Settings → Extensions (import from Chrome, the Chrome Web
 // Store, a folder).
 import { app, dialog, ipcMain, Menu, webContents, type BrowserWindow, type ContextMenuParams, type Input, type MenuItemConstructorOptions, type Session, type WebContents } from "electron";
@@ -33,7 +33,7 @@ import type { NetworkRule } from "../../shared/api";
 import { createApis } from "./apis";
 import { builtinExtensionDir } from "./builtin";
 import { detectBrowsers, importExtensions, platform, storageFolders } from "./browsers";
-import { Contexts, dispatch, ExtensionState, stateFile, workerStatus, type ActionState } from "./host";
+import { Contexts, dispatch, ExtensionState, STATE_FOLDER, stateFile, workerStatus, type ActionState } from "./host";
 import { hasHostsFor } from "./native";
 import { commandsOf as registryCommandsOf, describe, extensionsDir, forgetIcons, imageDataUrl, readManifest, Registry, type InstalledExtension } from "./registry";
 import { checkUpdates, downloadFromWebStore, downloadUpdate, WEB_STORE_UPDATE_URL } from "./webstore";
@@ -74,14 +74,14 @@ export function setupExtensions(options: ExtensionsOptions) {
   const sessions = () => [...attached.keys()];
   const loaded = (s: Session, id: string) => !!s.extensions.getExtension(id);
 
-  // --- Telling the NathApp window ------------------------------------------------------------------
+  // --- Telling the Rune Browser window ------------------------------------------------------------------
 
   let changedTimer: ReturnType<typeof setTimeout> | null = null;
   const listChanged = () => {
     if (changedTimer) return;
     changedTimer = setTimeout(() => {
       changedTimer = null;
-      send("nathapp:extensions-changed");
+      send("rune:extensions-changed");
     }, 50);
   };
   const actionTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -92,7 +92,7 @@ export function setupExtensions(options: ExtensionsOptions) {
       workspaceId,
       setTimeout(() => {
         actionTimers.delete(workspaceId);
-        send("nathapp:extensions-actions-changed", workspaceId);
+        send("rune:extensions-actions-changed", workspaceId);
       }, 50),
     );
   };
@@ -141,7 +141,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     active: activeOf,
     hasActiveTab: (s, id, tabId) => grants.get(grantKey(s, id))?.has(tabId) ?? false,
     grantActiveTab,
-    requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) => ask<number | null>("nathapp:extensions-tab", request, null, 15_000),
+    requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) => ask<number | null>("rune:extensions-tab", request, null, 15_000),
     requestPermission: (s, id, permissions, origins) => {
       let name = id;
       try {
@@ -149,13 +149,13 @@ export function setupExtensions(options: ExtensionsOptions) {
       } catch {
         // the ID then
       }
-      return ask<boolean>("nathapp:extensions-permission", { extensionId: id, name, permissions, origins }, false, 5 * 60_000);
+      return ask<boolean>("rune:extensions-permission", { extensionId: id, name, permissions, origins }, false, 5 * 60_000);
     },
     openPopup: (s, id) => openPopup(s, id),
     actionsChanged,
     commandsOf,
-    // Electron's own user agent, without NathApp's name.
-    rules: (s) => networkRulesToDnr(networkRules, options.workspaceOf(s) ?? "", app.userAgentFallback.replace(/ nathapp\/\S+/gi, "")),
+    // Electron's own user agent, without Rune Browser's name.
+    rules: (s) => networkRulesToDnr(networkRules, options.workspaceOf(s) ?? "", app.userAgentFallback.replace(/ RuneBrowser\/\S+/gi, "")),
     whenLoaded: (s, id) => loading.get(stateKey(s, id)) ?? Promise.resolve(),
     reload: (s, id) => {
       const entry = registry.get(id);
@@ -167,7 +167,7 @@ export function setupExtensions(options: ExtensionsOptions) {
 
   type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
 
-  ipcMain.on("nathapp:extensions-tabs", (event, value: ExtensionTabs) => {
+  ipcMain.on("rune:extensions-tabs", (event, value: ExtensionTabs) => {
     if (event.sender !== getWindow()?.webContents || !value || typeof value !== "object") return;
     const before = tabs;
     tabs = value;
@@ -182,7 +182,7 @@ export function setupExtensions(options: ExtensionsOptions) {
       }
     }
   });
-  ipcMain.on("nathapp:extensions-reply", (event, requestId: unknown, value: unknown) => {
+  ipcMain.on("rune:extensions-reply", (event, requestId: unknown, value: unknown) => {
     if (event.sender !== getWindow()?.webContents || typeof requestId !== "string") return;
     const resolve = pending.get(requestId);
     pending.delete(requestId);
@@ -354,7 +354,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     try {
       await s.extensions.loadExtension(builtinExtensionDir(), { allowFileAccess: false });
     } catch (err) {
-      console.error("Couldn't load NathApp's network rules:", err);
+      console.error("Couldn't load Rune Browser's network rules:", err);
     }
   }
 
@@ -372,8 +372,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     if (existing) return existing;
     if (!hooked.has(s)) {
       hooked.add(s);
-      s.registerPreloadScript({ id: "nathapp-extensions-worker", type: "service-worker", filePath: preload });
-      s.registerPreloadScript({ id: "nathapp-extensions-frame", type: "frame", filePath: preload });
+      s.registerPreloadScript({ id: "rune-extensions-worker", type: "service-worker", filePath: preload });
+      s.registerPreloadScript({ id: "rune-extensions-frame", type: "frame", filePath: preload });
       hookWorkers(s);
       apis.watchCookies(s);
     }
@@ -459,7 +459,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     if (!workspaceId) return false;
     const popup = state(s, id)?.actionFor(activeOf(workspaceId)).popup;
     if (!popup) return false;
-    send("nathapp:extensions-popup", { workspaceId, extensionId: id, url: popup });
+    send("rune:extensions-popup", { workspaceId, extensionId: id, url: popup });
     return true;
   }
 
@@ -520,7 +520,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     void dispatch(contexts, state(s, id), s, id, "commands.onCommand", [name, activeTabObject(s, id)]);
   }
 
-  /** An extension's shortcut pressed in a web tab of this session (or the NathApp window): runs it. */
+  /** An extension's shortcut pressed in a web tab of this session (or the Rune Browser window): runs it. */
   function handleInput(s: Session | null, input: Input) {
     if (input.type !== "keyDown" || !bindings.length) return false;
     const target = s ?? (tabs.current ? options.webSession(tabs.current) : null);
@@ -546,7 +546,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     });
   }
 
-  /** A page of an extension running in this session (not NathApp's own). */
+  /** A page of an extension running in this session (not Rune Browser's own). */
   const isExtensionPage = (s: Session, url: string) => {
     const id = extensionIdOf(url);
     return !!id && id !== BUILTIN_EXTENSION_ID && attached.has(s) && loaded(s, id);
@@ -662,7 +662,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     registry.remove(id);
     for (const dir of sessionFolders()) {
       for (const folder of storageFolders(id)) rmSync(join(dir, folder), { recursive: true, force: true });
-      rmSync(join(dir, "NathApp Extensions", `${id}.json`), { force: true });
+      rmSync(join(dir, STATE_FOLDER, `${id}.json`), { force: true });
     }
     for (const key of [...states.keys()]) if (key.endsWith(`|${id}`)) states.delete(key);
     rmSync(join(extensionsDir(), "sync", `${id}.json`), { force: true });
@@ -733,12 +733,12 @@ export function setupExtensions(options: ExtensionsOptions) {
     return updating;
   }
 
-  if (process.env.NATHAPP_EXTENSION_UPDATES !== "0") {
+  if (process.env.RUNE_EXTENSION_UPDATES !== "0") {
     setTimeout(() => registry.autoUpdate && void updateAll(), 60_000).unref?.();
     setInterval(() => registry.autoUpdate && void updateAll(), UPDATE_INTERVAL).unref?.();
   }
 
-  // --- IPC from the NathApp window ---------------------------------------------------------------------------
+  // --- IPC from the Rune Browser window ---------------------------------------------------------------------------
 
   const fromWindow = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) => event.sender === getWindow()?.webContents;
   const validWorkspace = (w: unknown): w is string => typeof w === "string" && /^[\w-]+$/.test(w);
@@ -748,30 +748,30 @@ export function setupExtensions(options: ExtensionsOptions) {
       return fn(...args);
     });
 
-  handle("nathapp:extensions-list", () => {
+  handle("rune:extensions-list", () => {
     const list = registry.list().map((e) => describe(e, errors.get(e.id) ?? null, hasHostsFor(e.id)));
     return { extensions: list, autoUpdate: registry.autoUpdate };
   });
-  handle("nathapp:extensions-prepare", (workspaceId: unknown) => (validWorkspace(workspaceId) ? prepare(workspaceId) : undefined));
-  handle("nathapp:extensions-actions", (workspaceId: unknown, tabId: unknown) => (validWorkspace(workspaceId) ? actionsFor(workspaceId, typeof tabId === "number" ? tabId : null) : []));
-  handle("nathapp:extensions-click", (workspaceId: unknown, id: unknown) => (validWorkspace(workspaceId) && isExtensionId(id) ? clickAction(workspaceId, id) : null));
-  handle("nathapp:extensions-detect", () => detectBrowsers(registry));
-  handle("nathapp:extensions-import", (request: ImportRequest) => importFrom(request));
-  handle("nathapp:extensions-install", (input: unknown) => installFromStore(String(input ?? "")));
-  handle("nathapp:extensions-load-unpacked", () => loadUnpacked());
-  handle("nathapp:extensions-set-enabled", (id: unknown, enabled: unknown) => isExtensionId(id) && setEnabled(id, enabled === true));
-  handle("nathapp:extensions-set-pinned", (id: unknown, pinned: unknown) => {
+  handle("rune:extensions-prepare", (workspaceId: unknown) => (validWorkspace(workspaceId) ? prepare(workspaceId) : undefined));
+  handle("rune:extensions-actions", (workspaceId: unknown, tabId: unknown) => (validWorkspace(workspaceId) ? actionsFor(workspaceId, typeof tabId === "number" ? tabId : null) : []));
+  handle("rune:extensions-click", (workspaceId: unknown, id: unknown) => (validWorkspace(workspaceId) && isExtensionId(id) ? clickAction(workspaceId, id) : null));
+  handle("rune:extensions-detect", () => detectBrowsers(registry));
+  handle("rune:extensions-import", (request: ImportRequest) => importFrom(request));
+  handle("rune:extensions-install", (input: unknown) => installFromStore(String(input ?? "")));
+  handle("rune:extensions-load-unpacked", () => loadUnpacked());
+  handle("rune:extensions-set-enabled", (id: unknown, enabled: unknown) => isExtensionId(id) && setEnabled(id, enabled === true));
+  handle("rune:extensions-set-pinned", (id: unknown, pinned: unknown) => {
     if (!isExtensionId(id) || !registry.update(id, { pinned: pinned === true })) return;
     listChanged();
     for (const s of sessions()) void dispatch(contexts, state(s, id), s, id, "action.onUserSettingsChanged", [{ isOnToolbar: pinned === true }]);
   });
-  handle("nathapp:extensions-remove", (id: unknown) => isExtensionId(id) && remove(id));
-  handle("nathapp:extensions-set-auto-update", (value: unknown) => {
+  handle("rune:extensions-remove", (id: unknown) => isExtensionId(id) && remove(id));
+  handle("rune:extensions-set-auto-update", (value: unknown) => {
     registry.autoUpdate = value === true;
     listChanged();
   });
-  handle("nathapp:extensions-update", () => updateAll());
-  handle("nathapp:extensions-action-menu", (workspaceId: unknown, id: unknown) => {
+  handle("rune:extensions-update", () => updateAll());
+  handle("rune:extensions-action-menu", (workspaceId: unknown, id: unknown) => {
     if (!validWorkspace(workspaceId) || !isExtensionId(id)) return;
     const s = options.webSession(workspaceId);
     const entry = registry.get(id);
@@ -785,8 +785,8 @@ export function setupExtensions(options: ExtensionsOptions) {
       { type: "separator" },
       ...(own.length ? [...own, { type: "separator" as const }] : []),
       { label: entry.pinned ? "Unpin" : "Pin to toolbar", click: () => registry.update(id, { pinned: !entry.pinned }) && listChanged() },
-      ...(info.optionsUrl ? [{ label: "Options", click: () => void ask("nathapp:extensions-tab", { action: "open", workspaceId, url: info.optionsUrl!, active: true }, null, 15_000) }] : []),
-      { label: "Manage extensions", click: () => send("nathapp:extensions-manage") },
+      ...(info.optionsUrl ? [{ label: "Options", click: () => void ask("rune:extensions-tab", { action: "open", workspaceId, url: info.optionsUrl!, active: true }, null, 15_000) }] : []),
+      { label: "Manage extensions", click: () => send("rune:extensions-manage") },
     ];
     Menu.buildFromTemplate(items).popup({ window: getWindow() });
   });

@@ -1,4 +1,6 @@
-# NathApp
+<img src="build/icon.svg" width="96" alt="Rune Browser">
+
+# Rune Browser
 
 Desktop app for building small personal apps by talking to a coding agent, and
 for browsing the web with an agent that can customize sites. Each sidebar tab
@@ -46,7 +48,7 @@ bun run dev
 ```
 src/
   main/              Electron main process: server, window, webview sessions
-  preload/           Exposes `window.nathapp` (server URL, API token, web helpers)
+  preload/           Exposes `window.rune` (server URL, API token, web helpers)
   renderer/          SolidJS UI (Vite + StyleX)
     components/      Sidebar, app tabs (preview + agent), web tabs, settings, agent picker
     lib/             Store, API client, hub connection, picker scripts
@@ -56,7 +58,7 @@ src/
     Hub.ts           WebSocket hub: pushes agent output, app status, logs; RPC to the renderer
     db/              Host database (workspaces, tabs, chat, settings, site customizations)
     providers/       Claude, Codex, OpenCode drivers behind one event stream
-    agent/           Agent turns, prompts, NathApp's MCP tools
+    agent/           Agent turns, prompts, Rune Browser's MCP tools
     history/         Snapshots: content store, diffs, undo and restore
     workspace/       Projects: an app's lifecycle (Projects.ts), its files and presets (Workspace.ts, templates/), sandbox, runtime
   shared/            Types and helpers shared by server and renderer
@@ -78,7 +80,7 @@ Switching keeps every opened tab running, and each workspace reopens on the tab 
 
 ### Apps
 
-Every app is a project folder (`<data>/apps/<id>`) with a `nathapp.json` that says
+Every app is a project folder (`<data>/apps/<id>`) with a `rune.json` that says
 how to run it:
 
 ```json
@@ -88,17 +90,17 @@ how to run it:
 The agent starts from a **preset** (React, vanilla TypeScript, API only; see
 `src/server/workspace/presets.ts`): a Bun fullstack server with a SQLite
 database, a small realtime library (server `publish`, client `subscribe` /
-`useLive`) and `src/tokens.css`, the design tokens generated from your NathApp
-theme. It can also write any other stack itself. NathApp gives every app:
+`useLive`) and `src/tokens.css`, the design tokens generated from your Rune Browser
+theme. It can also write any other stack itself. Rune Browser gives every app:
 
 - `PORT` (a stable port per app on 127.0.0.1), `APP_URL`
-- `DATABASE_PATH` / `DATABASE_URL=file:…` (its SQLite database) and `NATHAPP_FILES_DIR` (a folder for uploads and other files), both kept by NathApp outside the project (see App data)
-- `NATHAPP_API_URL` / `NATHAPP_API_TOKEN` for NathApp's app API (other apps' data)
-- `NODE_ENV` / `NATHAPP_MODE`: development while editing, production when done
+- `DATABASE_PATH` / `DATABASE_URL=file:…` (its SQLite database) and `RUNE_FILES_DIR` (a folder for uploads and other files), both kept by Rune Browser outside the project (see App data)
+- `RUNE_API_URL` / `RUNE_API_TOKEN` for Rune Browser's app API (other apps' data)
+- `NODE_ENV` / `RUNE_MODE`: development while editing, production when done
 
-Editing follows the agent sidebar. While it's open the app is being **edited**: NathApp
+Editing follows the agent sidebar. While it's open the app is being **edited**: Rune Browser
 runs the `dev` command (Bun `--hot` with HMR), so the agent's changes show up in the
-preview right away. Closing it (Ctrl+J) means **done**: NathApp runs `build` and then
+preview right away. Closing it (Ctrl+J) means **done**: Rune Browser runs `build` and then
 `start` and shows the finished app; "Edit" brings the agent back and the dev server
 with it. An agent turn always edits, so it reopens the panel. Dependencies are installed when `package.json` or the
 lockfile change.
@@ -107,26 +109,26 @@ lockfile change.
 - **Cloned from Git:** an https link, `owner/repo` (GitHub), a page showing a branch (`…/tree/<branch>`), an SSH link (`git@github.com:owner/repo.git`), with an optional branch. It's a shallow clone with submodules. The tab shows git's progress (receiving objects, resolving deltas) and can cancel it (`DELETE /api/apps/:id/import`).
 - **Private repositories** work with your own Git setup: credential helpers (`gh auth login`, Git Credential Manager) and SSH keys in ssh-agent. Git never prompts (there's no terminal to answer in), and no hooks run. Errors say what's missing.
 - **Copied from a folder** (without `node_modules`).
-- **Running it:** without a `nathapp.json`, NathApp writes one from `package.json`'s `dev`, `start`, `build` and `preview` scripts. Servers that don't read `$PORT` themselves (Vite and what's built on it, Astro, Angular) are given the port, and a Vite site's build is served with `vite preview`. If NathApp can't tell how to run the project, the agent is asked to set it up. When an app's output names another port than `$PORT`, its logs say so.
+- **Running it:** without a `rune.json`, Rune Browser writes one from `package.json`'s `dev`, `start`, `build` and `preview` scripts. Servers that don't read `$PORT` themselves (Vite and what's built on it, Astro, Angular) are given the port, and a Vite site's build is served with `vite preview`. If Rune Browser can't tell how to run the project, the agent is asked to set it up. When an app's output names another port than `$PORT`, its logs say so.
 
-**One lifecycle.** However an app came to be (the agent's `create_project` or a `nathapp.json` it wrote itself, a template you picked, a project you imported or cloned, a copy of another app), it goes through the same steps in `workspace/Projects.ts`: setting up, opening, editing and publishing, copying, moving and deleting. Building (the project's files: `Workspace.ts`, its data: `AppData.ts`), running (`Runtime.ts`) and displaying (the renderer, which only sees `AppDetail` and the hub's messages) stay separate. A copy brings the project along as its first snapshot, but not its data, chat or secrets.
+**One lifecycle.** However an app came to be (the agent's `create_project` or a `rune.json` it wrote itself, a template you picked, a project you imported or cloned, a copy of another app), it goes through the same steps in `workspace/Projects.ts`: setting up, opening, editing and publishing, copying, moving and deleting. Building (the project's files: `Workspace.ts`, its data: `AppData.ts`), running (`Runtime.ts`) and displaying (the renderer, which only sees `AppDetail` and the hub's messages) stay separate. A copy brings the project along as its first snapshot, but not its data, chat or secrets.
 
 **Sandbox.** With bubblewrap every app process (installs, dev server, the
 agent's `run_command`) sees the system read-only, its own project and data folder
 read-write, a private `/tmp`, and its own PID/IPC namespaces. Your files and other apps are
 invisible, and the environment is cleared. Settings → Apps can turn it off.
-- **Developer tools:** the system (`/usr`, `/etc`, `/opt`, `/nix`) is there read-only, so git, curl, Python, compilers and the like work. Git has an identity of its own ("NathApp", in the app's `.nathapp/home/.gitconfig`), not yours.
-- **Your toolchains:** what version managers installed in your home folder (mise, asdf, nvm, Volta, rustup, pyenv, Bun, Deno, Go…) is shown read-only and kept on PATH; their shims, which need your config, aren't. Settings → Apps can turn this off and add more read-only folders. Nothing else of your home is visible: no `~/.ssh`, `~/.gitconfig` or credentials, and NathApp's own data stays hidden even inside a folder you add.
+- **Developer tools:** the system (`/usr`, `/etc`, `/opt`, `/nix`) is there read-only, so git, curl, Python, compilers and the like work. Git has an identity of its own ("Rune Browser", in the app's `.rune/home/.gitconfig`), not yours.
+- **Your toolchains:** what version managers installed in your home folder (mise, asdf, nvm, Volta, rustup, pyenv, Bun, Deno, Go…) is shown read-only and kept on PATH; their shims, which need your config, aren't. Settings → Apps can turn this off and add more read-only folders. Nothing else of your home is visible: no `~/.ssh`, `~/.gitconfig` or credentials, and Rune Browser's own data stays hidden even inside a folder you add.
 - **Shell:** commands run in the shell chosen in Settings → Apps (`workspace/shells.ts`): `/bin/sh` by default, Bun's cross-platform shell (`bun exec`) on Windows, or bash, zsh, fish, PowerShell, cmd, Git Bash or any program that takes `-c`.
 - **Windows and macOS** have no sandbox: processes run in the project folder with a cleared environment (plus what Windows programs need), without a console window, and stopping an app ends its whole process tree (`taskkill /T`).
 
 ### App data
 
-What an app stores belongs to NathApp, not to the project: its database and
+What an app stores belongs to Rune Browser, not to the project: its database and
 files live in `<data>/appdata/<id>`, mounted into the app's sandbox. Rebuilding,
 resetting or rewriting the project leaves them alone, and the agent's file
 tools never touch them (it reads them with `app_data`). Projects from before
-this keep their old `.nathapp/data.sqlite`: it moves there on first start.
+this keep their old `.rune/data.sqlite`: it moves there on first start.
 
 - **Look at it:** the database button in an app tab lists the tables and pages through their rows, with search.
 - **Export:** a `.tar.gz` with the database, every table as JSON and the files.
@@ -135,9 +137,9 @@ this keep their old `.nathapp/data.sqlite`: it moves there on first start.
 - **Other apps' data:** an app can read (never write) another app's tables in the same workspace, after you allow it:
 
 ```
-GET $NATHAPP_API_URL/data                      Authorization: Bearer $NATHAPP_API_TOKEN
-GET $NATHAPP_API_URL/data/<app id>             → its tables (name, row count, columns)
-GET $NATHAPP_API_URL/data/<app id>/<table>?offset=&limit=&search=&order=&desc=1&where.<column>=
+GET $RUNE_API_URL/data                      Authorization: Bearer $RUNE_API_TOKEN
+GET $RUNE_API_URL/data/<app id>             → its tables (name, row count, columns)
+GET $RUNE_API_URL/data/<app id>/<table>?offset=&limit=&search=&order=&desc=1&where.<column>=
 ```
 
   Like the AI API, it only answers the app's server (no `Origin` header). Every read of another app's data is in Activity. Apps in other workspaces aren't listed and can't ask.
@@ -146,7 +148,7 @@ GET $NATHAPP_API_URL/data/<app id>/<table>?offset=&limit=&search=&order=&desc=1&
 
 Providers are detected at startup (Settings → Providers shows their status,
 version and models). The picker in the composer chooses provider, model and
-effort per tab. Every provider gets the same instructions and NathApp's tools,
+effort per tab. Every provider gets the same instructions and Rune Browser's tools,
 served over MCP at a per-turn URL: `create_project`, `app_status`,
 `restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, the schedule tools, `set_app_info`, `search_icons`, the
 tab tools (`list_tabs`, `read_tab`), the
@@ -165,11 +167,11 @@ that work on the preview or the web page, and DevTools (below). File editing is 
 **Images and files.** Paste a screenshot into the composer, drop files on it or pick them with the paperclip (`lib/attachments.ts`, `agent/Attachments.ts`, `/api/apps/:id/attachments`). They're kept per tab in `<data>/attachments/` and shown in the chat. Images (scaled to at most 2000 px) reach every provider as images the model sees, PDFs too for Claude; text files go into the prompt; anything else is given by its path. Up to 10 files of 20 MB per message. Only images are served inline; other files only download.
 
 **Code for the agent.** A tab can have code attached for its agent (the folder button next to the composer; `workspace/Sources.ts`, `/api/apps/:id/sources`): folders of yours, used in place, and Git repositories (the same links as cloning an app, with your own Git credentials), cloned into `<data>/sources/` and pulled again from their chip. Both agents get `list_sources`, `list_source_files`, `read_source_file`, `search_source` and `source_git` (status, log, diff, show, blame) to find where a problem they saw in a page or a trace comes from, and `edit_source_file` / `write_source_file` to fix it:
-- **Every change asks first,** with its diff in the dialog (permission `agent.source`, rememberable per folder). Changes to your folders aren't in NathApp's History: undo them with your own Git. Changes to a cloned repository stay in NathApp's clone; nothing is pushed.
-- **Never read or written:** paths outside the source (symlinks too), files that hold credentials (`.env`, keys, `.npmrc`, `credentials.json`…; `.env.example` is fine) and `.git`'s internals. Dependencies and builds are left out of listings and searches. NathApp's own data, a whole disk or your home folder can't be attached.
-- Removing a source deletes NathApp's clone, never your folder. Every call is in Activity.
+- **Every change asks first,** with its diff in the dialog (permission `agent.source`, rememberable per folder). Changes to your folders aren't in Rune Browser's History: undo them with your own Git. Changes to a cloned repository stay in Rune Browser's clone; nothing is pushed.
+- **Never read or written:** paths outside the source (symlinks too), files that hold credentials (`.env`, keys, `.npmrc`, `credentials.json`…; `.env.example` is fine) and `.git`'s internals. Dependencies and builds are left out of listings and searches. Rune Browser's own data, a whole disk or your home folder can't be attached.
+- Removing a source deletes Rune Browser's clone, never your folder. Every call is in Activity.
 
-Auth is always the provider's own login: no API keys (NathApp strips
+Auth is always the provider's own login: no API keys (Rune Browser strips
 `ANTHROPIC_API_KEY` from Claude's environment on purpose).
 
 ### Shared tab context
@@ -185,24 +187,24 @@ Web pages are untrusted, and so is what a website agent made of one: they only g
 
 ### AI in apps
 
-Apps can use AI through NathApp, on the user's own subscription, so apps never
+Apps can use AI through Rune Browser, on the user's own subscription, so apps never
 hold API keys. The presets ship `src/ai.ts` (`ai.chat`, `ai.json`, `ai.stream`);
 other stacks call the HTTP API directly:
 
 ```
-POST $NATHAPP_AI_URL/chat          Authorization: Bearer $NATHAPP_AI_TOKEN
+POST $RUNE_AI_URL/chat          Authorization: Bearer $RUNE_AI_TOKEN
 { "messages": [{ "role": "user", "content": "…" }], "system"?: "…", "json"?: true, "stream"?: true }
 → { "text": "…", "json"?: …, "provider": "claude", "model": "haiku" }
-GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
+GET  $RUNE_AI_URL/models        → enabled, model, models, today's usage
 ```
 
 - **Per-app keys:** every app gets its own random token in its environment (new on each server start, revoked when the app is deleted).
-  - The token only works on `/ai/`, not on the rest of NathApp's API.
+  - The token only works on `/ai/`, not on the rest of Rune Browser's API.
   - Requests carrying an `Origin` header are refused, so only the app's server can ask, never a page in a browser.
 - **No tools:** requests run with the provider's own tools switched off: no files, shell, web or connectors.
   - Claude: `tools: []`, strict MCP config, no claude.ai connectors.
   - Codex: shell, code mode, image viewing, apps and web search turned off, and the user's MCP servers disabled.
-  - OpenCode: every tool asks for permission, and NathApp refuses (its free models need the tools to be defined).
+  - OpenCode: every tool asks for permission, and Rune Browser refuses (its free models need the tools to be defined).
   - Each provider was tested by asking it to read a file. The website agent uses the same mode.
 - **Limits and visibility:** a daily request limit per app, at most two requests per app at a time, and one line per request in the app's logs (sizes and timing, not content).
 - **Settings → AI in apps** turns the feature on or off and picks the model. The default is a fast model (Haiku on Claude).
@@ -212,29 +214,29 @@ GET  $NATHAPP_AI_URL/models        → enabled, model, models, today's usage
 Every change is saved as a snapshot you can look at and take back (Settings → History; the clock button in an app tab). A snapshot covers one of:
 - an **app**: its project files (without `node_modules`, builds, `.git`) and its data (see App data). SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
 - the **site customizations** and **page changes** the website agent (or you) made;
-- NathApp's **settings**, including each workspace's.
+- Rune Browser's **settings**, including each workspace's.
 
 Snapshots are taken before and after every agent turn (so what you or the app changed in between is kept apart from what the agent did), when an app starts from a template, and when you change settings or site customizations (changes made in a row are folded together). "Save a snapshot" takes one by hand.
 
-Each entry shows who made the change (which agent, you, NathApp) and its files with line diffs. Two ways back:
+Each entry shows who made the change (which agent, you, Rune Browser) and its files with line diffs. Two ways back:
 - **Undo this change** reverts only that step. It refuses if those files were changed again since.
 - **Restore this version** puts everything back the way it was then.
 
-- **Restore everything to here** (on the History page) puts NathApp back to that moment in one step: its settings, the site customizations and every app of the workspace (or of all of them, with "All workspaces"), each as its own restore that can be undone. Apps made since are left as they are.
+- **Restore everything to here** (on the History page) puts Rune Browser back to that moment in one step: its settings, the site customizations and every app of the workspace (or of all of them, with "All workspaces"), each as its own restore that can be undone. Apps made since are left as they are.
 
 Both keep the app's current data unless you tick "also its data". Restoring or undoing first saves the current state, so it can be undone too. When an app crashes, its tab offers to undo the agent's last change.
 
-If something breaks NathApp's own UI, **safe mode** starts it without the theme and site customizations. Start it with `--safe-mode` or press Ctrl+Alt+Shift+S, undo the change in History, then restart normally.
+If something breaks Rune Browser's own UI, **safe mode** starts it without the theme and site customizations. Start it with `--safe-mode` or press Ctrl+Alt+Shift+S, undo the change in History, then restart normally.
 
 Contents are stored once (content-addressed, gzipped) under `<data dir>/history/`. The last 200 snapshots are kept per app, for site customizations and for settings.
 
 ### Window
 
-The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and NathApp draws one button, close, as a red macOS-style light first in the sidebar's top row (gray while the window isn't focused; `components/WindowControls.tsx`). There's no minimize or maximize button: drag the row to move the window, double-click it to maximize. macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
+The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and Rune Browser draws one button, close, as a red macOS-style light first in the sidebar's top row (gray while the window isn't focused; `components/WindowControls.tsx`). There's no minimize or maximize button: drag the row to move the window, double-click it to maximize. macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
 
 ### Agent sidebar
 
-The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J (or the agent button at the top of the sidebar) opens or closes it for the tab. Its header is the tab's name, a red shield while agents have full access, new chat, earlier chats and close. It's open by default only where it's needed: on a new app tab, to describe the app. Web pages and other tabs start with it closed and remember being opened; an app's tab follows its mode (open while it's being edited), and apps start finished when NathApp starts.
+The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J (or the agent button at the top of the sidebar) opens or closes it for the tab. Its header is the tab's name, a red shield while agents have full access, new chat, earlier chats and close. It's open by default only where it's needed: on a new app tab, to describe the app. Web pages and other tabs start with it closed and remember being opened; an app's tab follows its mode (open while it's being edited), and apps start finished when Rune Browser starts.
 
 **Chats.** "New chat" (in its header, a tab's menu or the command bar) starts a fresh conversation and keeps the current one: the clock button lists a tab's earlier chats, newest first, to open one again (it continues where it left off, with its agent session; the current chat is kept in its place) or delete it (`/api/apps/:id/chats`).
 
@@ -254,7 +256,7 @@ It collapses to a column of icons (the collapse button, or Ctrl+Shift+B, also fr
 
 ### Settings
 
-Settings has a sidebar of its own on the left, one category at a time on the right (`components/SettingsPage.tsx`, the list in `lib/settingsSections.ts`): Appearance, Workspace, Agent, Providers, Apps, Web tabs, Network, Extensions, Secrets, Permissions, About, and NathApp's pages: History, Schedules, Mods and Activity. Each category is also in the command bar ("Settings: Apps"), and the pages keep their own commands ("Open History").
+Settings has a sidebar of its own on the left, one category at a time on the right (`components/SettingsPage.tsx`, the list in `lib/settingsSections.ts`): Appearance, Workspace, Agent, Providers, Apps, Web tabs, Network, Extensions, Secrets, Permissions, About, and Rune Browser's pages: History, Schedules, Mods and Activity. Each category is also in the command bar ("Settings: Apps"), and the pages keep their own commands ("Open History").
 
 Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in their menu). The order is saved per workspace (`PUT /api/workspaces/:id/order`); new tabs, copies and tabs moved in from another workspace go last.
 
@@ -281,9 +283,9 @@ Tabs aren't moved in the DOM for this (a webview that moves reloads): every tab 
 
 ### Command bar
 
-Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, NathApp's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.
+Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, Rune Browser's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.
 
-Apps declare their actions in `nathapp.json`:
+Apps declare their actions in `rune.json`:
 
 ```json
 "actions": [
@@ -293,19 +295,19 @@ Apps declare their actions in `nathapp.json`:
 ```
 
 - `path` opens the app at that page.
-- `endpoint`: NathApp starts the app if needed and POSTs `{ "input": … }` to its own server. The JSON reply's `message` (or `error`) is shown as a notice, and the call is recorded in Activity.
+- `endpoint`: Rune Browser starts the app if needed and POSTs `{ "input": … }` to its own server. The JSON reply's `message` (or `error`) is shown as a notice, and the call is recorded in Activity.
 - Paths and endpoints are always on the app's own server. Invalid actions are left out rather than breaking the manifest.
 
 ### Tool registry
 
 Actions are part of a registry of what apps can do, for you, agents and other apps (`workspace/AppTools.ts`). An app's tools are:
-- its **actions** (above). `"params": { "month": { "type": "string", "required": true } }` gives agents and apps typed arguments; they arrive as `{ input, params }`, with `X-NathApp-Caller: user | agent | app:<id>`, and the whole JSON reply comes back;
+- its **actions** (above). `"params": { "month": { "type": "string", "required": true } }` gives agents and apps typed arguments; they arrive as `{ input, params }`, with `X-Rune-Caller: user | agent | app:<id>`, and the whole JSON reply comes back;
 - the **basic tools from its data**: `list-`, `get-`, `add-`, `update-` and `delete-<table>` for each table (not those starting with `_`). `"dataTools": "read"` keeps only list and get, `"none"` turns them off, and an action with the same id replaces one.
 
-Every call goes through NathApp, the hub between apps:
+Every call goes through Rune Browser, the hub between apps:
 - **You**: the Tools panel (wrench button in an app tab) lists them with a form to run each; actions are also in the command bar.
 - **Agents**: `list_app_tools` and `use_app_tool`.
-- **Apps**: `GET $NATHAPP_API_URL/tools` lists the workspace's apps and their tools; `POST $NATHAPP_API_URL/tools/<app>/<tool>` with `{ params?, input? }` runs one. Server-only, like the data API.
+- **Apps**: `GET $RUNE_API_URL/tools` lists the workspace's apps and their tools; `POST $RUNE_API_URL/tools/<app>/<tool>` with `{ params?, input? }` runs one. Server-only, like the data API.
 - **Permissions**: an app and its agent may use the app's own tools. Another app's tools are limited to the same workspace and need your OK: reading data is the app-data permission, anything else is asked per tool. Opening pages is only for you. Every call is in Activity.
 
 Data tools write the app's database directly: the app sees the change on its next read, but open windows aren't told (no realtime publish), and the app's own rules are skipped. Apps with rules worth keeping should replace those tools with actions or set `"dataTools": "read"`.
@@ -318,15 +320,15 @@ Schedules run apps' tools and commands in the background, without a tab open, an
 - **When:**
   - once at a time;
   - a cron expression in local time (`0 8 * * 1-5`);
-  - an event: NathApp started, an app started or crashed, or one an app sends itself with `POST $NATHAPP_API_URL/events {"name": "new-order"}`.
+  - an event: Rune Browser started, an app started or crashed, or one an app sends itself with `POST $RUNE_API_URL/events {"name": "new-order"}`.
 - **Who:** you on the page, or an app's agent (`create_schedule`, `update_schedule`, `delete_schedule`, `run_schedule`, `list_schedules`) for its own app, after you allow it once per app (`agent.schedule`).
 - **Limits:**
   - recurring schedules run at most every 5 minutes, and at most two runs happen at once (the rest wait);
   - a schedule never overlaps itself (the extra run is recorded as skipped), and every run has a time limit (5 s to 30 min, 5 min by default);
   - event runs happen at most every 30 s per schedule;
   - output is capped at 20 kB, and the last 50 runs per schedule are kept.
-- **Missed runs:** a run missed while NathApp wasn't running happens once when it starts. Runs that were going when it stopped are marked as failed.
-- **Notifications:** a notice when a run fails (or after every run, per schedule), and a system notification when NathApp isn't focused. Every run is in Activity.
+- **Missed runs:** a run missed while Rune Browser wasn't running happens once when it starts. Runs that were going when it stopped are marked as failed.
+- **Notifications:** a notice when a run fails (or after every run, per schedule), and a system notification when Rune Browser isn't focused. Every run is in Activity.
 
 ### Secrets
 
@@ -335,7 +337,7 @@ Apps get secrets (API keys, passwords) as environment variables. A secret belong
 - **At rest:** values are encrypted with AES-256-GCM, bound to the secret's scope and name.
   - Electron keeps the key in the OS keychain (`safeStorage`) and passes it to the server over stdin.
   - Without a keychain, the key is a 0600 file, and Settings say so.
-  - On Linux desktops Chromium doesn't recognize (Hyprland, Sway…), NathApp asks for the Secret Service (gnome-keyring, KeePassXC…) itself (`--password-store=gnome-libsecret`). KDE's KWallet is found on its own.
+  - On Linux desktops Chromium doesn't recognize (Hyprland, Sway…), Rune Browser asks for the Secret Service (gnome-keyring, KeePassXC…) itself (`--password-store=gnome-libsecret`). KDE's KWallet is found on its own.
 - **Never shown again:** the API never returns a value after it's saved. You can replace or delete one, not view it.
 - **Only the app's own processes:** the dev, build and start commands get secrets; dependency installs and the agents' `run_command` don't.
   - Secrets go in through the environment, never through process arguments. bwrap gets its environment directly instead of `--setenv`.
@@ -356,7 +358,7 @@ Anything an app or agent does beyond its own sandbox needs your OK:
 - the website agent using a site for you (per host), and each action with consequences (every time);
 - an agent reading another tab.
 
-NathApp asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
+Rune Browser asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
 
 **Full access** (Settings → Agent → Permissions, after a warning) lets agents do all of this without asking: what the website agent does on sites (customizing, acting with your logins, confirming purchases and messages, sending requests), reading other tabs, using other apps' tools and data, scheduling. Apps' own requests (AI, global secrets, other apps' data from their servers) still ask. While it's on, the agent sidebar shows a red "Full access" badge (click it to go back to asking) and working agents a red dot in the tab list. Every request allowed this way is in Activity (`permission.auto`), and History can still undo what an agent changed in apps and customizations (not what it did on websites).
 
@@ -369,11 +371,11 @@ The **Activity** page (in Settings) is the audit log: who, what, which tab and w
 
 Values are never logged.
 
-Agents' processes don't get NathApp's own environment variables (`NATHAPP_*`). In particular they don't get the API token, so they can't call NathApp's API around these checks.
+Agents' processes don't get Rune Browser's own environment variables (`RUNE_*`). In particular they don't get the API token, so they can't call Rune Browser's API around these checks.
 
 ### Web tabs
 
-Web tabs are `<webview>`s in their workspace's session, separate from NathApp's own. The website agent works on the
+Web tabs are `<webview>`s in their workspace's session, separate from Rune Browser's own. The website agent works on the
 open page and saves changes that apply on every visit. It gets only the page tools, no files or shell.
 
 **Page changes** (`db/PageChanges.ts`, applied by `shared/web.ts`) are single changes, each with a title:
@@ -385,7 +387,7 @@ open page and saves changes that apply on every visit. It gets only the page too
 - **History:** changes are part of the site customizations' snapshots (`@changes/<id>.json`). The agent improves an existing change rather than adding another, and has `list_snapshots`, `view_snapshot` and `restore_snapshot` (only the site it's on; the app builder has the same for its app). Agents can't delete snapshots.
 
 **Using pages for you.** The website agent can also do things on the web: open pages, click, type, fill in forms, press keys, scroll and wait for content (`agent/browseTools.ts`), with real input events in the tab you're looking at, so it works with your logins there.
-- **Every action names its element first** (by selector, visible text or a point on a screenshot; `lib/browse.ts` finds it in the page), so NathApp can check it before anything happens.
+- **Every action names its element first** (by selector, visible text or a point on a screenshot; `lib/browse.ts` finds it in the page), so Rune Browser can check it before anything happens.
 - **Your OK per site:** acting on a site with your session asks once per site (`agent.browse`, rememberable in Settings → Permissions).
 - **Confirmation every time** for what has consequences: clicking or submitting something that buys, pays, books, sends, posts, subscribes or deletes, submitting a form that takes card details, and typing card details (`agent.confirm`, never remembered). The agent asks for anything else with consequences itself (`confirm_action`). Passwords are never typed: you sign in yourself.
 - **Visible:** a marker shows where it clicks or types, and a banner says the agent is using the page, with **Take over**, which stops it.
@@ -396,15 +398,15 @@ The older **site override** (one stylesheet and script per hostname, `set_site_o
 
 Web tab logins are cookies, which are encrypted with a key from the same keychain, like Chrome's. The `EnableCookieEncryption` fuse is set in `electron-builder.yml` for the packaged app, and by `scripts/electron.ts` in `node_modules` for runs from source. As in Chrome, a site's local storage, IndexedDB and cache aren't encrypted. They sit in the 0700 profile folder.
 
-Web tabs say they're plain Chrome, because some sites turn away other browsers. Google's sign-in can tell that NathApp isn't Chrome, though, and refuses a browser that claims to be ("This browser or app may not be secure"). It accepts Electron when the user agent names it. So requests to `accounts.google.com` get Electron's own user agent, through the built-in extension that applies the network rules (`signInRule` in `src/shared/extensions.ts`).
+Web tabs say they're plain Chrome, because some sites turn away other browsers. Google's sign-in can tell that Rune Browser isn't Chrome, though, and refuses a browser that claims to be ("This browser or app may not be secure"). It accepts Electron when the user agent names it. So requests to `accounts.google.com` get Electron's own user agent, through the built-in extension that applies the network rules (`signInRule` in `src/shared/extensions.ts`).
 
 ### Mods
 
-Customizations packaged to share with others (Settings → Mods). A mod is one JSON document (`shared/mods.ts`, format `nathapp-mod`, version 1):
-- **What's in it:** page changes (how sites look and work), NathApp's theme, and Chrome Web Store extensions (by id: they're installed from the store, not their settings).
-- **Making one:** "Make a mod" picks your own page changes, your theme and your store extensions, and gives a share code (`NATHAPP-MOD:` and the compressed JSON), copied right away, or a file.
+Customizations packaged to share with others (Settings → Mods). A mod is one JSON document (`shared/mods.ts`, format `rune-mod`, version 1):
+- **What's in it:** page changes (how sites look and work), Rune Browser's theme, and Chrome Web Store extensions (by id: they're installed from the store, not their settings).
+- **Making one:** "Make a mod" picks your own page changes, your theme and your store extensions, and gives a share code (`RUNE-MOD:` and the compressed JSON), copied right away, or a file.
 - **Installing:** paste a share code or an https link into "Install a mod" (or the command bar), or open a file. A review comes first: what it changes, where it runs its own JavaScript (scripts, buttons, HTML with handlers: flagged as able to read everything there, with your logins), which extensions it installs, whether it changes the theme. A mod with the same id updates the installed one.
-- **Gallery:** NathApp's examples (`mods/gallery.ts`), plus galleries you add: https links to JSON files listing mods (`{ "mods": [...] }`). There's no central gallery service: a gallery is any file someone publishes.
+- **Gallery:** Rune Browser's examples (`mods/gallery.ts`), plus galleries you add: https links to JSON files listing mods (`{ "mods": [...] }`). There's no central gallery service: a gallery is any file someone publishes.
 - **Undo:** an installed mod can be turned off or removed. Its page changes are marked with it (`mod_id`) and go with it; the theme it replaced comes back (unless you changed the theme since); the extensions it installed are disabled or removed, ones you had before stay.
 - **Recorded:** installs, updates, switches and removals are snapshots (site customizations, settings) and in Activity. `/api/mods`, `/api/mods/review`, `/api/mods/package`, `/api/mods/gallery`.
 - **Limits:** extensions' own permissions are only known once they're installed (Settings → Extensions shows them). Restoring an older site-customizations snapshot can bring back or drop a mod's page changes without changing the mod's entry.
@@ -436,7 +438,7 @@ An imported extension gets `runtime.onInstalled` with `reason: "update"`, so it 
 **APIs.** What Electron lacks is added by a shim that the extension preload (`src/extension-preload/`) injects into extension pages and service workers; the main process does the work (`src/main/extensions/apis.ts`):
 
 - toolbar buttons (`action`, `browserAction`, `pageAction`: badges, popups, per-tab state);
-- `tabs`/`windows` (tabs open, select and close through NathApp's tab list);
+- `tabs`/`windows` (tabs open, select and close through Rune Browser's tab list);
 - `commands`, `contextMenus`, `permissions` (optional ones ask first);
 - `storage.sync`, `webNavigation`, `cookies`, `notifications`, `idle`, `management`;
 - `runtime.onInstalled`/`onStartup`/`openOptionsPage`;
@@ -444,12 +446,12 @@ An imported extension gets `runtime.onInstalled` with `reason: "update"`, so it 
 
 Stopped service workers are started again for the events they listened to. Electron doesn't enable static `declarativeNetRequest` rulesets by itself, so the shim enables the manifest's defaults on install and update.
 
-**Native messaging** uses the browser's own host manifests (`NativeMessagingHosts` in the browser's profile folder, `/etc/opt/chrome`, `/etc/chromium`), or NathApp's own (`<userData>/NativeMessagingHosts`). A host only runs for the extensions in its `allowed_origins`, and doesn't get NathApp's environment variables.
+**Native messaging** uses the browser's own host manifests (`NativeMessagingHosts` in the browser's profile folder, `/etc/opt/chrome`, `/etc/chromium`), or Rune Browser's own (`<userData>/NativeMessagingHosts`). A host only runs for the extensions in its `allowed_origins`, and doesn't get Rune Browser's environment variables.
 
 **Caveats:**
 
 - Not provided: `userScripts`, `privacy`, `sidePanel`, `tabGroups`, `debugger`. Import and Settings show what an extension asks for that's missing.
-- `chrome.storage.sync` data isn't imported (Chrome keeps it in a LevelDB that NathApp doesn't parse).
+- `chrome.storage.sync` data isn't imported (Chrome keeps it in a LevelDB that Rune Browser doesn't parse).
 - Settings are imported into each workspace once, when the extension first loads there; later changes stay per workspace.
 
 ### Process model and security
@@ -466,5 +468,5 @@ separate ports).
   standalone executable (next to the Claude Code binary the SDK drives). It
   doubles as the `bun` apps run on (`BUN_BE_BUN=1`), so users don't need Bun.
 
-Data lives in Electron's userData dir (`~/.config/NathApp/data` on Linux), or
+Data lives in Electron's userData dir (`~/.config/Rune Browser/data` on Linux), or
 `.data/` when running the server standalone.

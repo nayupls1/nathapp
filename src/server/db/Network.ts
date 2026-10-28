@@ -117,6 +117,6 @@ export const make = Effect.gen(function* () {
   };
 });
 
-export class Network extends Context.Service<Network, OrDie<Effect.Success<typeof make>>>()("nathapp/Network") {}
+export class Network extends Context.Service<Network, OrDie<Effect.Success<typeof make>>>()("rune/Network") {}
 
 export const layer = Layer.effect(Network, Effect.map(make, orDieAll));

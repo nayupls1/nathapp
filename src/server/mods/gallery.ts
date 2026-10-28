@@ -1,11 +1,11 @@
-// The mods NathApp's gallery always shows, next to the galleries the user
+// The mods Rune Browser's gallery always shows, next to the galleries the user
 // added (Settings → Mods): small examples of what a mod can be.
 import type { Mod } from "../../shared/mods";
 
 const mod = (fields: Omit<Mod, "format" | "version" | "author" | "modVersion" | "theme" | "extensions"> & Partial<Pick<Mod, "theme" | "extensions">>): Mod => ({
-  format: "nathapp-mod",
+  format: "rune-mod",
   version: 1,
-  author: "NathApp",
+  author: "Rune Browser",
   modVersion: "1",
   theme: null,
   extensions: [],
@@ -14,7 +14,7 @@ const mod = (fields: Omit<Mod, "format" | "version" | "author" | "modVersion" | 
 
 export const builtInMods: Mod[] = [
   mod({
-    id: "nathapp-quiet-youtube",
+    id: "rune-quiet-youtube",
     name: "Quiet YouTube",
     description: "Hides Shorts and the comments, so a video is just the video.",
     pageChanges: [
@@ -23,7 +23,7 @@ export const builtInMods: Mod[] = [
     ],
   }),
   mod({
-    id: "nathapp-readable-hacker-news",
+    id: "rune-readable-hacker-news",
     name: "Readable Hacker News",
     description: "Bigger text and a narrower column on Hacker News.",
     pageChanges: [
@@ -36,7 +36,7 @@ export const builtInMods: Mod[] = [
     ],
   }),
   mod({
-    id: "nathapp-wikipedia-focus",
+    id: "rune-wikipedia-focus",
     name: "Wikipedia focus",
     description: "Hides donation banners and lets articles use a comfortable reading width.",
     pageChanges: [
@@ -45,9 +45,9 @@ export const builtInMods: Mod[] = [
     ],
   }),
   mod({
-    id: "nathapp-sunset-theme",
+    id: "rune-sunset-theme",
     name: "Sunset",
-    description: "A dark NathApp with a warm orange accent and rounded corners.",
+    description: "A dark Rune Browser with a warm orange accent and rounded corners.",
     pageChanges: [],
     theme: { mode: "dark", accent: "#f97316", radius: "lg", font: "rounded" },
   }),

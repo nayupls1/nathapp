@@ -112,6 +112,6 @@ export const make = Effect.gen(function* () {
   };
 });
 
-export class Workspaces extends Context.Service<Workspaces, OrDie<Effect.Success<typeof make>>>()("nathapp/Workspaces") {}
+export class Workspaces extends Context.Service<Workspaces, OrDie<Effect.Success<typeof make>>>()("rune/Workspaces") {}
 
 export const layer = Layer.effect(Workspaces, Effect.map(make, orDieAll));

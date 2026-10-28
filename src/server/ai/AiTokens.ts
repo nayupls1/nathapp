@@ -1,5 +1,5 @@
 // Secret per-app tokens for AI requests. An app gets its token in its
-// environment (NATHAPP_AI_TOKEN); the token is how NathApp knows which app asks.
+// environment (RUNE_AI_TOKEN); the token is how Rune Browser knows which app asks.
 import { Context, Layer } from "effect";
 
 export interface AiTokensShape {
@@ -9,7 +9,7 @@ export interface AiTokensShape {
   readonly revoke: (appId: string) => void;
 }
 
-export class AiTokens extends Context.Service<AiTokens, AiTokensShape>()("nathapp/AiTokens") {}
+export class AiTokens extends Context.Service<AiTokens, AiTokensShape>()("rune/AiTokens") {}
 
 export const tokensLayer = Layer.sync(AiTokens, (): AiTokensShape => {
   const byApp = new Map<string, string>();

@@ -29,6 +29,6 @@ export const make = Effect.gen(function* () {
   };
 });
 
-export class Settings extends Context.Service<Settings, OrDie<Effect.Success<typeof make>>>()("nathapp/Settings") {}
+export class Settings extends Context.Service<Settings, OrDie<Effect.Success<typeof make>>>()("rune/Settings") {}
 
 export const layer = Layer.effect(Settings, Effect.map(make, orDieAll));

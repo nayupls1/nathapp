@@ -178,7 +178,7 @@ describe("network rules and saved requests (server)", () => {
     await expect(
       server.api("/api/network/requests", { method: "POST", json: { workspaceId: "default", name: "x", draft: { method: "GET", url: "file:///etc/passwd", headers: {}, body: null, sealed: null } } }),
     ).rejects.toThrow("400");
-    // Sending goes through the NathApp window, which isn't there in this test.
+    // Sending goes through the Rune Browser window, which isn't there in this test.
     await expect(server.api(`/api/network/requests/${saved.id}/send`, { method: "POST", json: {} })).rejects.toThrow("502");
   });
 

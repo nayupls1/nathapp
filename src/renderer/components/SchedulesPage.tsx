@@ -271,8 +271,8 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
   const [when, setWhen] = createSignal<ScheduleTrigger["type"]>(s?.trigger.type ?? "cron");
   const [at, setAt] = createSignal(s?.trigger.type === "once" ? localInput(s.trigger.at) : localInput(new Date(Date.now() + 3600_000).toISOString()));
   const [cron, setCron] = createSignal(s?.trigger.type === "cron" ? s.trigger.cron : "0 8 * * *");
-  const initialEvent = s?.trigger.type === "event" ? s.trigger.event : "nathapp.started";
-  const [eventKind, setEventKind] = createSignal(initialEvent === "nathapp.started" ? "nathapp.started" : initialEvent.split(":")[0]!);
+  const initialEvent = s?.trigger.type === "event" ? s.trigger.event : "rune.started";
+  const [eventKind, setEventKind] = createSignal(initialEvent === "rune.started" ? "rune.started" : initialEvent.split(":")[0]!);
   const [eventName, setEventName] = createSignal(initialEvent.startsWith("app:") ? initialEvent.split(":").slice(2).join(":") : "");
   const [notify, setNotify] = createSignal<ScheduleSpec["notify"]>(s?.notify ?? "failure");
   const [timeout, setTimeout_] = createSignal(String(s?.timeoutSec ?? DEFAULT_TIMEOUT_SEC));
@@ -301,7 +301,7 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
           ? { type: "cron", cron: cron().trim() }
           : {
               type: "event",
-              event: eventKind() === "nathapp.started" ? "nathapp.started" : eventKind() === "app" ? `app:${eventApp()}:${eventName().trim()}` : `${eventKind()}:${eventApp()}`,
+              event: eventKind() === "rune.started" ? "rune.started" : eventKind() === "app" ? `app:${eventApp()}:${eventName().trim()}` : `${eventKind()}:${eventApp()}`,
             };
     const where = target();
     const task: ScheduleTask = isPrompt()
@@ -315,7 +315,7 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
       : isTool()
         ? { type: "tool", appId: appId(), tool: tool(), ...(parsedParams ? { params: parsedParams } : {}) }
         : { type: "command", appId: appId(), command: command() };
-    if (isPrompt() && when() === "event" && eventKind() !== "nathapp.started" && where.startsWith("new:")) return "App events need an existing tab";
+    if (isPrompt() && when() === "event" && eventKind() !== "rune.started" && where.startsWith("new:")) return "App events need an existing tab";
     return {
       name: name().trim() || (isPrompt() ? prompt().trim().split(/\s+/).slice(0, 6).join(" ") : isTool() ? tool() : command().split(" ")[0]!) || "",
       trigger,
@@ -430,7 +430,7 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
         </Show>
         <Show when={when() === "event"}>
           <select value={eventKind()} onChange={(e) => setEventKind(e.currentTarget.value)} {...stylex.attrs(styles.input)}>
-            <option value="nathapp.started">NathApp starts</option>
+            <option value="rune.started">Rune Browser starts</option>
             <option value="app.started">The app starts</option>
             <option value="app.crashed">The app crashes</option>
             <option value="app">The app sends an event…</option>

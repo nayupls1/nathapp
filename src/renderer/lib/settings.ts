@@ -11,12 +11,12 @@ const [settingsLoaded, setSettingsLoaded] = createSignal(false);
 export { settings, settingsLoaded };
 
 // Safe mode leaves the theme out (a broken one could make the UI unusable).
-if (!window.nathapp.safeMode) applyCachedTheme();
+if (!window.rune.safeMode) applyCachedTheme();
 
 createRoot(() => {
   createEffect(() => {
     systemDark(); // re-apply when the OS switches between light and dark
-    if (settingsLoaded()) applyGlobalTheme(window.nathapp.safeMode ? { mode: settings().theme.mode } : settings().theme);
+    if (settingsLoaded()) applyGlobalTheme(window.rune.safeMode ? { mode: settings().theme.mode } : settings().theme);
   });
 });
 

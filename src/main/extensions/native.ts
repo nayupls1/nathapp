@@ -1,6 +1,6 @@
 // Native messaging: extensions talking to programs installed for them (password
 // managers, download helpers…). Hosts are found the way Chrome finds them, in
-// NathApp's own folder first and then the browsers' (so what was set up for
+// Rune Browser's own folder first and then the browsers' (so what was set up for
 // Chrome keeps working), and only the extensions a host lists may start it.
 // Messages are JSON with a 32-bit length in front, over the program's stdio.
 import { spawn, type ChildProcess } from "node:child_process";
@@ -61,10 +61,10 @@ export function hasHostsFor(extensionId: string) {
   return false;
 }
 
-/** The environment hosts get: NathApp's own variables stay out. */
+/** The environment hosts get: Rune Browser's own variables stay out. */
 function hostEnv() {
   const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith("NATHAPP_") && k !== "ELECTRON_RUN_AS_NODE") env[k] = v;
+  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith("RUNE_") && k !== "ELECTRON_RUN_AS_NODE") env[k] = v;
   return env;
 }
 

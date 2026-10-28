@@ -81,6 +81,6 @@ export const make = Effect.gen(function* () {
   };
 });
 
-export class PageChanges extends Context.Service<PageChanges, OrDie<Effect.Success<typeof make>>>()("nathapp/PageChanges") {}
+export class PageChanges extends Context.Service<PageChanges, OrDie<Effect.Success<typeof make>>>()("rune/PageChanges") {}
 
 export const layer = Layer.effect(PageChanges, Effect.map(make, orDieAll));

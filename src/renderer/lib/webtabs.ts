@@ -114,7 +114,7 @@ const registered = (tabId: string, ms: number) =>
 
 /**
  * The page of a tab, for agents. A tab that isn't loaded (unloaded for being
- * idle, or not opened since NathApp started) is woken up first, in the
+ * idle, or not opened since Rune Browser started) is woken up first, in the
  * background, and stays loaded until it's idle again.
  */
 export async function wakePage(tabId: string) {
@@ -166,9 +166,9 @@ handleRpc("page.applyOverride", async ({ tabId }) => {
 // --- Network (main/network.ts) ---------------------------------------------------------
 // What the website agent gets is always redacted (reveal: false).
 
-const network = window.nathapp.web.network;
+const network = window.rune.web.network;
 // DevTools for the agents (main/devtools.ts), on web tabs and app previews.
-handleRpc("devtools", async ({ tabId, command, params }) => window.nathapp.web.devtools((await page(tabId)).webContentsId(), command as DevtoolsCommand, params ?? {}));
+handleRpc("devtools", async ({ tabId, command, params }) => window.rune.web.devtools((await page(tabId)).webContentsId(), command as DevtoolsCommand, params ?? {}));
 handleRpc("network.list", async ({ tabId, filter }) => network.list((await page(tabId)).webContentsId(), (filter ?? {}) as NetworkFilter));
 handleRpc("network.get", async ({ tabId, id }) => network.get((await page(tabId)).webContentsId(), String(id), false));
 handleRpc("network.draft", async ({ tabId, id }) => network.draft((await page(tabId)).webContentsId(), String(id)));
@@ -275,10 +275,10 @@ function runShortcut(name: WebShortcut) {
   else if (name === "forward") handle.forward();
 }
 
-// From web pages (keys pressed while a page has focus) and Ctrl+R in NathApp itself.
-window.nathapp.web.onShortcut(runShortcut);
+// From web pages (keys pressed while a page has focus) and Ctrl+R in Rune Browser itself.
+window.rune.web.onShortcut(runShortcut);
 // Links that want a new window (web pages, app previews, chat links).
-window.nathapp.web.onOpenTab((url) => void newWebTab(url));
+window.rune.web.onOpenTab((url) => void newWebTab(url));
 
 window.addEventListener("keydown", (e) => {
   const digit = /^Digit([1-9])$/.exec(e.code);
