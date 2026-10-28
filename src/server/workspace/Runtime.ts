@@ -296,6 +296,9 @@ export const make = Effect.gen(function* () {
     stateOf(appId).lock.withPermits(1)(
       Effect.gen(function* () {
         yield* FiberMap.remove(sessions, appId);
+        // Not "stopped" from here on, even before the session gets going (reading the manifest, secrets…):
+        // whoever started it waits for it (settled) instead of giving up at once.
+        setStatus(appId, { state: "starting", url: null, port: null, error: null, exitCode: null });
         yield* FiberMap.run(sessions, appId, session(appId, mode));
         // Let the session publish its first status.
         yield* Effect.yieldNow;
