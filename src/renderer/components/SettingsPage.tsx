@@ -1077,6 +1077,20 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
             </div>
           </Show>
         </Row>
+        <Show when={info().shortcuts.length}>
+          <Row label="Keyboard shortcuts" wide>
+            <div {...stylex.attrs(styles.extShortcuts)} data-extension-shortcuts>
+              <For each={info().shortcuts}>
+                {(c) => (
+                  <div {...stylex.attrs(styles.extShortcut)}>
+                    <span>{c.description || (c.name.startsWith("_execute_") ? "Open its popup" : c.name)}</span>
+                    <span {...stylex.attrs(styles.extChip, styles.mono)}>{c.shortcut}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Row>
+        </Show>
         <Show when={info().nativeMessaging}>
           <Row label="Programs on this computer" description="It talks to programs installed for it (native messaging)." />
         </Show>
@@ -1651,6 +1665,8 @@ const styles = stylex.create({
   extChips: { display: "flex", flexWrap: "wrap", gap: 6 },
   extChip: { paddingBlock: 2, paddingInline: 8, borderRadius: radius.full, backgroundColor: colors.surfaceHover, fontSize: font.xs },
   extChipWarn: { color: colors.warning },
+  extShortcuts: { display: "flex", flexDirection: "column", gap: 6, width: "100%" },
+  extShortcut: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md, fontSize: font.sm },
   extIcon: { flexShrink: 0, marginTop: 2, objectFit: "contain" },
   extWarn: { color: colors.warning, fontSize: font.xs },
   extBad: { color: colors.danger, fontSize: font.xs, overflowWrap: "anywhere" },

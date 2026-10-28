@@ -19,11 +19,10 @@ import {
   type BrowserProfile,
   type ImportCandidate,
   type ProfileExtensionEntry,
-  type ShortcutPlatform,
 } from "../../shared/extensions";
-import { extensionsDir, imageDataUrl, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
+import { extensionsDir, imageDataUrl, platform, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
 
-export const platform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
+export { platform };
 
 /** A browser's user data folder (the one with "Local State" and the profiles). */
 export interface BrowserDir {

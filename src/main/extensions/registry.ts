@@ -14,10 +14,12 @@ import {
   localize,
   optionsPageOf,
   permissionsOf,
+  suggestedKey,
   unsupportedPermissions,
   type ExtensionInfo,
   type ExtensionSource,
   type Manifest,
+  type ShortcutPlatform,
 } from "../../shared/extensions";
 
 export interface InstalledExtension {
@@ -203,6 +205,17 @@ export class Registry {
   }
 }
 
+export const platform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
+
+/** An extension's commands and their keys on this platform (the user's own, else the manifest's suggestion; "" if none). */
+export function commandsOf(entry: InstalledExtension, info: ManifestInfo) {
+  return Object.entries(info.manifest.commands ?? {}).map(([name, c]) => ({
+    name,
+    description: localize(c?.description, info.messages),
+    shortcut: entry.commands?.[name] ?? suggestedKey(c?.suggested_key, platform) ?? "",
+  }));
+}
+
 /** How an installed extension is shown in the NathApp window. */
 export function describe(entry: InstalledExtension, error: string | null, hasNativeHosts: boolean): ExtensionInfo {
   let info: ManifestInfo | null = null;
@@ -234,6 +247,7 @@ export function describe(entry: InstalledExtension, error: string | null, hasNat
         ...(((m as { content_scripts?: { matches?: unknown[] }[] }).content_scripts ?? []).flatMap((c) => (c.matches ?? []).filter((x): x is string => typeof x === "string"))),
       ]),
     ].sort(),
+    shortcuts: info ? commandsOf(entry, info).filter((c) => c.shortcut) : [],
     nativeMessaging: permissionsOf(m).includes("nativeMessaging") && hasNativeHosts,
     updates: entry.source.kind !== "unpacked" && typeof m.update_url === "string",
     error: info ? error : `The extension's folder is gone: ${entry.path}`,

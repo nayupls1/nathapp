@@ -1540,11 +1540,11 @@ try {
     if (!row.includes(fixture.name) || !row.includes("Chromium (Work)")) throw new Error(`settings row: ${row}`);
     await page!.eval(`document.querySelector('[data-section="extensions"]').scrollIntoView({ block: "start" }), true`);
     await shot("extensions-settings.png");
-    // Its details: what it asks for, like Chrome's.
+    // Its details: what it asks for, like Chrome's, and the shortcut changed in the browser.
     await click(`[data-extension="${id}"] [data-extension-details]`);
     await page!.waitFor(`!!document.querySelector('[data-extension-details-page="${id}"]')`, { label: "details" });
     const details = await page!.eval<string>(`document.querySelector('[data-extension-details-page="${id}"]').innerText`);
-    if (!details.includes("Permissions") || !details.includes("Site access") || !details.includes(id)) throw new Error(`details: ${details.slice(0, 300)}`);
+    if (!details.includes("Permissions") || !details.includes("Site access") || !details.includes(id) || !/Bump\s*Alt\+Shift\+U/.test(details)) throw new Error(`details: ${details.slice(0, 400)}`);
     await shot("extension-details.png");
     await click(`[data-extension-details-page="${id}"] button`, "All extensions");
     await page!.waitFor(`!!document.querySelector('[data-extension="${id}"]')`, { label: "back to the list" });

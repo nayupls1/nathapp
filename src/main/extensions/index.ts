@@ -21,7 +21,6 @@ import {
   networkRulesToDnr,
   parseShortcut,
   shortcutMatches,
-  suggestedKey,
   webStoreId,
   type ExtensionAction,
   type ExtensionTabRequest,
@@ -36,7 +35,7 @@ import { builtinExtensionDir } from "./builtin";
 import { detectBrowsers, importExtensions, platform, storageFolders } from "./browsers";
 import { Contexts, dispatch, ExtensionState, stateFile, workerStatus, type ActionState } from "./host";
 import { hasHostsFor } from "./native";
-import { describe, extensionsDir, forgetIcons, imageDataUrl, readManifest, Registry, type InstalledExtension } from "./registry";
+import { commandsOf as registryCommandsOf, describe, extensionsDir, forgetIcons, imageDataUrl, readManifest, Registry, type InstalledExtension } from "./registry";
 import { checkUpdates, downloadFromWebStore, downloadUpdate, WEB_STORE_UPDATE_URL } from "./webstore";
 
 export interface ExtensionsOptions {
@@ -489,17 +488,11 @@ export function setupExtensions(options: ExtensionsOptions) {
   function commandsOf(id: string) {
     const entry = registry.get(id);
     if (!entry) return [];
-    let m;
     try {
-      m = readManifest(entry.path).manifest;
+      return registryCommandsOf(entry, readManifest(entry.path));
     } catch {
       return [];
     }
-    return Object.entries(m.commands ?? {}).map(([name, c]) => ({
-      name,
-      description: c?.description ?? "",
-      shortcut: entry.commands?.[name] ?? suggestedKey(c?.suggested_key, platform) ?? "",
-    }));
   }
 
   let bindings: { id: string; name: string; shortcut: Shortcut }[] = [];

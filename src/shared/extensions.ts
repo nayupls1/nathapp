@@ -32,6 +32,8 @@ export interface ExtensionInfo {
   /** What it asks for (Details on the extensions page): API permissions, and the sites it can read and change. */
   permissions: string[];
   siteAccess: string[];
+  /** Its commands that have a key on this platform (`_execute_action` opens its popup). */
+  shortcuts: { name: string; description: string; shortcut: string }[];
   /** Can start programs on this computer (native messaging hosts installed for it). */
   nativeMessaging: boolean;
   /** Updates come from the Chrome Web Store (or its own update URL). */
