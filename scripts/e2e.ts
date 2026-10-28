@@ -71,9 +71,14 @@ const feedPage = `<title>Feed</title><h1>Feed</h1><p id="status">Loading…</p><
 const site = Bun.serve({
   hostname: "127.0.0.1",
   port: 0,
-  fetch(req) {
+  async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
+    // A page that takes a while (the address bar's loading spinner).
+    if (path === "/slow") {
+      await Bun.sleep(2500);
+      return new Response("<title>Slow</title><h1>Slow</h1>", { headers: { "Content-Type": "text/html" } });
+    }
     if (path === "/api/feed") {
       siteSeen.push({ url: req.url, authorization: req.headers.get("authorization"), cookie: req.headers.get("cookie") });
       return Response.json({ items: [{ id: 1, title: "First post" }, { id: 2, title: "Second post" }], page: Number(url.searchParams.get("page")), sessionToken: "resp-secret-4" });
@@ -1071,6 +1076,13 @@ try {
     const before = await shape();
     if (before.radius === "0px" || before.top < 4 || before.right < 4 || before.bottom < 4) throw new Error(`inset: ${JSON.stringify(before)}`);
     await shot("inset-page.png");
+    // Loading shows as a spinner in the address bar (no bar across the page).
+    await inView(tab, `location.href = "/slow"`);
+    await page!.waitFor(`!!document.querySelector('${chromeFor(tab)} [data-address-loading]')`, { label: "spinner while loading" });
+    await shot("address-loading.png");
+    await page!.waitFor(`!document.querySelector('${chromeFor(tab)} [data-address-loading]')`, { label: "spinner gone once loaded", timeoutMs: 15_000 });
+    await inView(tab, `history.back()`);
+    await page!.waitFor(`!document.querySelector('${chromeFor(tab)} [data-address-loading]')`, { label: "back", timeoutMs: 15_000 });
     // A page going fullscreen (a video) takes the whole window, outside the inset and its corners.
     const asked = await inView<string>(tab, `document.documentElement.requestFullscreen().then(() => "ok", (e) => String(e))`, true);
     if (asked !== "ok") throw new Error(`fullscreen: ${asked}`);

@@ -509,11 +509,6 @@ export function WebTab(props: { appId: string; active: boolean }) {
   return (
     <div {...stylex.attrs(styles.split)} data-web-tab={props.appId}>
       <div {...stylex.attrs(styles.main)}>
-        <Show when={loading()}>
-          <div {...stylex.attrs(styles.progressTrack)}>
-            <div {...stylex.attrs(styles.progress)} />
-          </div>
-        </Show>
         <div {...stylex.attrs(styles.viewport)}>
           <Show when={src() && prepared()} fallback={<Show when={!src()}><StartPage onGo={go} /></Show>}>
             <webview
@@ -586,11 +581,6 @@ function StartPage(props: { onGo: (input: string) => boolean }) {
     </div>
   );
 }
-
-const progress = stylex.keyframes({
-  "0%": { transform: "translateX(-100%)" },
-  "100%": { transform: "translateX(250%)" },
-});
 
 const ping = stylex.keyframes({
   "0%": { transform: "scale(0.6)", opacity: 1 },
@@ -701,17 +691,6 @@ const styles = stylex.create({
     animationName: pulse,
     animationDuration: "1.2s",
     animationIterationCount: "infinite",
-  },
-  // The bar slides past the edges, so the track clips it (else the tab overflows and a scrollbar flickers in).
-  progressTrack: { position: "absolute", top: 43, left: 0, right: 0, zIndex: 2, height: 2, overflow: "hidden", pointerEvents: "none" },
-  progress: {
-    width: "40%",
-    height: "100%",
-    backgroundColor: colors.accent,
-    animationName: progress,
-    animationDuration: "1.1s",
-    animationIterationCount: "infinite",
-    animationTimingFunction: "ease-in-out",
   },
   viewport: { position: "relative", flex: 1, minHeight: 0, backgroundColor: "#ffffff" },
   webview: { position: "absolute", inset: 0, width: "100%", height: "100%" },

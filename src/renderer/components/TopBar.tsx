@@ -104,6 +104,7 @@ export function AddressBar() {
     input.select();
   }
 
+  const loadingShown = () => !editing() && !!chrome()?.loading();
   const query = () => (editing() ? text().trim() : "");
   const suggestions = (): Suggestion[] => {
     const q = query();
@@ -173,7 +174,10 @@ export function AddressBar() {
       }}
       data-address-bar
     >
-      <Icon name={editing() ? "search" : (chrome()?.icon() ?? "search")} size={13} {...stylex.attrs(styles.addressIcon)} />
+      {/* While the page loads, a spinner in place of its icon (the address bar is the toolbar). */}
+      <Show when={loadingShown()} fallback={<Icon name={editing() ? "search" : (chrome()?.icon() ?? "search")} size={13} {...stylex.attrs(styles.addressIcon)} />}>
+        <Icon name="loader-circle" size={13} {...stylex.attrs(styles.addressIcon, styles.spinning)} data-address-loading />
+      </Show>
       <input
         ref={input}
         value={text()}
@@ -260,6 +264,8 @@ export function TabTools() {
 /** Whether the tab on screen is an app (for labels). */
 export const selectedIsApp = () => appById(selectedId())?.kind === "app";
 
+const spin = stylex.keyframes({ from: { transform: "rotate(0deg)" }, to: { transform: "rotate(360deg)" } });
+
 const pulse = stylex.keyframes({ "0%": { opacity: 1 }, "50%": { opacity: 0.35 }, "100%": { opacity: 1 } });
 
 const styles = stylex.create({
@@ -307,6 +313,7 @@ const styles = stylex.create({
     boxShadow: `0 0 0 1px ${colors.border}`,
   },
   addressIcon: { flexShrink: 0, color: colors.muted },
+  spinning: { color: colors.accent, animationName: spin, animationDuration: "0.8s", animationIterationCount: "infinite", animationTimingFunction: "linear" },
   addressInput: {
     flex: 1,
     minWidth: 0,
