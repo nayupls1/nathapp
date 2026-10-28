@@ -9,7 +9,7 @@ import { PermissionHost } from "./components/PermissionHost";
 import { ModReviewHost } from "./components/ModsPage";
 import { SettingsShell } from "./components/SettingsPage";
 import { paneStyle, SplitChrome, SplitDropZones } from "./components/SplitView";
-import { visibleTabs } from "./lib/splits";
+import { visibleSplit, visibleTabs } from "./lib/splits";
 import { Sidebar } from "./components/Sidebar";
 import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
@@ -20,7 +20,7 @@ import { startWindowChrome } from "./lib/windowChrome";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
 import { currentWorkspace, HISTORY_VIEW, isSettingsView, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, workspaceTabs } from "./lib/store";
-import { colors, font, space } from "./theme.stylex";
+import { colors, font, radius, space } from "./theme.stylex";
 
 export default function App() {
   onMount(async () => {
@@ -47,6 +47,8 @@ export default function App() {
     }),
   );
 
+  const split = () => !!visibleSplit();
+
   return (
     <div {...stylex.attrs(styles.root)} data-app-root>
       <Sidebar />
@@ -71,7 +73,9 @@ export default function App() {
             </button>
           </div>
         </Show>
-        <div {...stylex.attrs(styles.content)}>
+        {/* The page, inset from the window and the sidebars with rounded corners (like Zen Browser);
+            in a split view each pane is a card of its own. */}
+        <div {...stylex.attrs(styles.content, split() && styles.contentSplit)} data-content>
           <Switch
             fallback={
               <div {...stylex.attrs(styles.empty)}>
@@ -95,12 +99,13 @@ export default function App() {
           <For each={openTabs()}>
             {(tab) => {
               const inBackground = () => !isSelected(tab.id) && !paneStyle(tab.id);
+              const inPane = () => !!paneStyle(tab.id);
               const focus = () => {
                 if (!isSelected(tab.id)) void selectApp(tab.id);
               };
               return (
                 <div
-                  {...stylex.attrs(styles.layer, inBackground() && styles.hidden)}
+                  {...stylex.attrs(styles.layer, inPane() && styles.pane, inBackground() && styles.hidden)}
                   style={paneStyle(tab.id)}
                   // Clicking into a pane (its page included: the webview takes the focus) focuses its tab.
                   onPointerDown={focus}
@@ -130,11 +135,27 @@ const styles = stylex.create({
     fontFamily: font.sans,
     fontSize: font.md,
     color: colors.text,
-    backgroundColor: colors.bg,
+    // The frame around the page: the sidebars' color.
+    backgroundColor: colors.sidebar,
   },
-  column: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 },
+  column: { display: "flex", flexDirection: "column", gap: space.sm, flex: 1, minWidth: 0, minHeight: 0, paddingBlock: space.sm, paddingRight: space.sm },
   // Pages scroll vertically; nothing in it should ever scroll the whole area sideways.
-  content: { position: "relative", flex: 1, minWidth: 0, minHeight: 0, overflowX: "hidden", overflowY: "auto" },
+  content: {
+    position: "relative",
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflowX: "hidden",
+    overflowY: "auto",
+    // A thin scrollbar on a clear track, inside the rounded corners.
+    scrollbarWidth: "thin",
+    scrollbarColor: "rgb(127 127 127 / 0.45) transparent",
+    borderRadius: radius.md,
+    backgroundColor: colors.bg,
+    boxShadow: `0 0 0 1px ${colors.border}, 0 1px 3px rgb(0 0 0 / 0.06)`,
+  },
+  // The panes are the cards; the gaps between them show the frame.
+  contentSplit: { backgroundColor: "transparent", boxShadow: "none" },
   // Plain colors on purpose: it must stay readable whatever the theme did.
   safeMode: {
     display: "flex",
@@ -142,6 +163,7 @@ const styles = stylex.create({
     gap: 10,
     paddingBlock: 8,
     paddingInline: 14,
+    borderRadius: radius.md,
     backgroundColor: "#fef3c7",
     color: "#422006",
     fontSize: 13,
@@ -160,7 +182,8 @@ const styles = stylex.create({
     fontSize: 12,
     cursor: "pointer",
   },
-  layer: { position: "absolute", inset: 0, zIndex: 1, backgroundColor: colors.bg },
+  layer: { position: "absolute", inset: 0, zIndex: 1, overflow: "hidden", borderRadius: radius.md, backgroundColor: colors.bg },
+  pane: { boxShadow: `0 0 0 1px ${colors.border}, 0 1px 3px rgb(0 0 0 / 0.06)` },
   // Not display:none: webviews must keep their size to stay rendered.
   hidden: { visibility: "hidden", pointerEvents: "none", zIndex: 0 },
   emptyActions: { display: "flex", gap: space.sm },

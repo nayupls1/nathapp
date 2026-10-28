@@ -1,6 +1,6 @@
-// The window has no title bar (main/index.ts). Its buttons sit over the top
-// right (components/WindowControls.tsx; macOS: the system's traffic lights,
-// top left), and the renderer's top bars (anything marked data-titlebar) are
+// The window has no title bar (main/index.ts). Its close button is first in
+// the sidebar's top row (components/WindowControls.tsx; macOS: the system's
+// traffic lights, top left), and the renderer's top bars (anything marked data-titlebar) are
 // where the window is dragged. Here: keeping a bar's content out from under
 // the buttons, and double-click to maximize where the system doesn't.
 
@@ -9,8 +9,6 @@ const isMac = bridge.platform === "darwin";
 /** Room for the traffic lights on macOS. */
 const MAC_BUTTONS = 78;
 
-/** The width of the window's buttons, top right (WindowControls). */
-export const CONTROLS_WIDTH = 138;
 export const hasOwnControls = !isMac;
 
 /** The space the window's buttons take at the left and right of the top edge. */

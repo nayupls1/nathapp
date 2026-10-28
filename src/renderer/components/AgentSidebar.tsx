@@ -98,18 +98,17 @@ const styles = stylex.create({
     // Never more than most of the window.
     maxWidth: "70vw",
     minHeight: 0,
-    borderLeftWidth: 1,
-    borderLeftStyle: "solid",
-    borderLeftColor: colors.border,
-    backgroundColor: colors.bg,
+    // Part of the frame around the page, like the tab sidebar.
+    backgroundColor: colors.sidebar,
   },
   handle: {
     position: "absolute",
     top: 0,
     bottom: 0,
-    left: -3,
+    // In the gap between the page and the sidebar.
+    left: -7,
     zIndex: 5,
-    width: 6,
+    width: 8,
     cursor: "col-resize",
     backgroundColor: { default: "transparent", ":hover": colors.accent, ":focus-visible": colors.accent },
     opacity: { default: 1, ":hover": 0.5, ":focus-visible": 0.5 },

@@ -720,10 +720,8 @@ const styles = stylex.create({
     gap: space.sm,
     flexShrink: 0,
     padding: space.md,
+    // No border: the page's inset (App.tsx) sets it apart, like Zen Browser.
     backgroundColor: colors.sidebar,
-    borderRightWidth: 1,
-    borderRightStyle: "solid",
-    borderRightColor: colors.border,
     overflowX: "hidden",
     overflowY: "auto",
   },

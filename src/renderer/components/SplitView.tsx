@@ -22,12 +22,20 @@ export function paneRect(tabId: string): { left: number; top: number; width: num
   return split.direction === "row" ? { left: offset, top: 0, width: size, height: 1 } : { left: 0, top: offset, width: 1, height: size };
 }
 
-/** The inline style that puts a layer in its pane. */
+/** The gap between panes: each is its own rounded card, like the page outside a split. */
+const PANE_GAP = 8;
+
+/** The inline style that puts a layer in its pane (half the gap off each edge it shares with another pane). */
 export function paneStyle(tabId: string): JSX.CSSProperties | undefined {
   const r = paneRect(tabId);
   if (!r) return undefined;
-  const pct = (v: number) => `${v * 100}%`;
-  return { left: pct(r.left), top: pct(r.top), width: pct(r.width), height: pct(r.height), right: "auto", bottom: "auto" };
+  const inner = (shared: boolean) => (shared ? PANE_GAP / 2 : 0);
+  const left = inner(r.left > 0.001);
+  const top = inner(r.top > 0.001);
+  const right = inner(r.left + r.width < 0.999);
+  const bottom = inner(r.top + r.height < 0.999);
+  const at = (v: number, px: number) => `calc(${v * 100}% + ${px}px)`;
+  return { left: at(r.left, left), top: at(r.top, top), width: at(r.width, -left - right), height: at(r.height, -top - bottom), right: "auto", bottom: "auto" };
 }
 
 /** The handles between the panes of the split on screen, and the focused pane's outline. */
@@ -189,8 +197,8 @@ const styles = stylex.create({
     // The line between the panes.
     boxShadow: `0 0 0 0.5px ${colors.border}`,
   },
-  gutterRow: { top: 0, bottom: 0, width: 6, marginLeft: -3, cursor: "col-resize" },
-  gutterColumn: { left: 0, right: 0, height: 6, marginTop: -3, cursor: "row-resize" },
+  gutterRow: { top: 0, bottom: 0, width: 8, marginLeft: -4, cursor: "col-resize" },
+  gutterColumn: { left: 0, right: 0, height: 8, marginTop: -4, cursor: "row-resize" },
   shield: { position: "fixed", inset: 0, zIndex: 1000 },
   focus: {
     position: "absolute",
@@ -199,6 +207,7 @@ const styles = stylex.create({
     borderWidth: 1.5,
     borderStyle: "solid",
     borderColor: colors.accent,
+    borderRadius: radius.md,
     opacity: 0.55,
   },
   drop: { position: "absolute", inset: 0, zIndex: 50 },

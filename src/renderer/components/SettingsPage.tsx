@@ -1095,7 +1095,7 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
           <Row label="Programs on this computer" description="It talks to programs installed for it (native messaging)." />
         </Show>
         <Show when={info().hasAction}>
-          <Row label="Pin to the toolbar" description="Its button shows in a web tab's tools at the top of the sidebar; otherwise it's in the extensions menu.">
+          <Row label="Pin" description="Keeps it at the top of the extensions menu, in a web tab's top row.">
             <Toggle checked={info().pinned} onChange={(on) => void ext.setPinned(info().id, on)} />
           </Row>
         </Show>

@@ -5,7 +5,7 @@
 //   bun run e2e --agent         also has the agents build an app and customize a site (uses your Claude plan)
 //   bun run e2e --agent "..."   ...with a custom prompt
 //   bun run e2e --visible       show the window while testing (default: offscreen)
-//   bun run e2e --only <text>   only the checks whose name contains it (and the boot check)
+//   bun run e2e --only <text>   only the checks whose name contains it ("a|b": either; and the boot check)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -132,9 +132,11 @@ async function shot(name: string) {
 }
 
 async function check(name: string, fn: () => Promise<string | void>) {
-  if (only && !name.includes(only) && !name.startsWith("app boots")) return;
+  if (only && !only.split("|").some((o) => name.includes(o)) && !name.startsWith("app boots")) return;
   const started = Date.now();
   try {
+    // Toasts left by earlier checks would cover this one's screenshots.
+    if (page) await page.eval(`[...document.querySelectorAll('[data-toast] button[aria-label="Dismiss"]')].forEach((b) => b.click()), true`).catch(() => {});
     const detail = await fn();
     results.push({ name, ok: true, detail: detail || undefined });
     console.log(`  ✓ ${name}${detail ? ` — ${detail}` : ""} (${Date.now() - started}ms)`);
@@ -923,7 +925,7 @@ try {
       })()`);
     await page!.waitFor(`!!document.querySelector('[data-tab-layer="${b.id}"] webview') && getComputedStyle(document.querySelector('[data-tab-layer="${a.id}"]')).visibility === "visible"`, { label: "both panes shown" });
     const half = await rects();
-    if (Math.abs(half.a.width - half.b.width) > 2 || Math.abs(half.a.right - half.b.left) > 1) throw new Error(`panes ${JSON.stringify(half)}`);
+    if (Math.abs(half.a.width - half.b.width) > 2 || Math.abs(half.b.left - half.a.right - 8) > 1) throw new Error(`panes (an 8px gap between them) ${JSON.stringify(half)}`);
     await page!.waitFor(`document.querySelector('${liOf(b.id)}').getAttribute("aria-current") === "page"`, { label: "dropped tab focused" });
     await page!.waitFor(`document.querySelectorAll('[data-split-group="${saved.id}"] li[data-app-id]').length === 2`, { label: "split group in the sidebar" });
 
@@ -964,7 +966,7 @@ try {
     await click("[data-context-menu] button", "Stack them");
     await waitForValue(async () => ((await splitsNow())[0]?.direction === "column" ? true : undefined));
     const stacked = await rects();
-    if (Math.abs(stacked.a.bottom - stacked.b.top) > 1 || Math.abs(stacked.a.width - stacked.b.width) > 1) throw new Error(`stacked panes ${JSON.stringify(stacked)}`);
+    if (Math.abs(stacked.b.top - stacked.a.bottom - 8) > 1 || Math.abs(stacked.a.width - stacked.b.width) > 1) throw new Error(`stacked panes ${JSON.stringify(stacked)}`);
 
     // Removing a tab from a split of two ends it.
     await page!.eval(`(() => {
@@ -1052,6 +1054,38 @@ try {
     );
     await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     return "picked, customized, popup";
+  });
+
+  await check("inset page: rounded and apart from the window; fullscreen fills it edge to edge", async () => {
+    const tab = `[data-web-tab="${webTabId}"]`;
+    const shape = () =>
+      page!.eval<{ radius: string; top: number; right: number; bottom: number; win: number[] }>(`(() => {
+        const c = document.querySelector("[data-content]");
+        const r = c.getBoundingClientRect();
+        return {
+          radius: getComputedStyle(c).borderTopLeftRadius,
+          top: Math.round(r.top), right: Math.round(innerWidth - r.right), bottom: Math.round(innerHeight - r.bottom),
+          win: [innerWidth, innerHeight],
+        };
+      })()`);
+    const before = await shape();
+    if (before.radius === "0px" || before.top < 4 || before.right < 4 || before.bottom < 4) throw new Error(`inset: ${JSON.stringify(before)}`);
+    await shot("inset-page.png");
+    // A page going fullscreen (a video) takes the whole window, outside the inset and its corners.
+    const asked = await inView<string>(tab, `document.documentElement.requestFullscreen().then(() => "ok", (e) => String(e))`, true);
+    if (asked !== "ok") throw new Error(`fullscreen: ${asked}`);
+    // Chromium draws the fullscreen page over the window (the webview element keeps its box), so it's the page's own viewport that tells.
+    const viewport = await waitForValue(async () => {
+      const size = await inView<number[]>(tab, `[innerWidth, innerHeight]`);
+      return size[0] === before.win[0] && size[1] === before.win[1] ? size : undefined;
+    }, 10_000);
+    if ((await page!.eval<string | null>(`document.fullscreenElement?.tagName ?? null`)) !== "WEBVIEW") throw new Error("the webview isn't fullscreen");
+    await shot("fullscreen-page.png");
+    await inView(tab, `document.exitFullscreen().then(() => "ok", (e) => String(e))`, true);
+    await page!.waitFor(`!document.fullscreenElement`, { label: "out of fullscreen" });
+    const after = await shape();
+    if (after.top !== before.top || after.right !== before.right) throw new Error(`after fullscreen: ${JSON.stringify(after)}`);
+    return `inset ${before.top}px, corners ${before.radius}; fullscreen fills ${viewport.join("×")}`;
   });
 
   await check("agent sidebar: closed on web tabs until opened (Ctrl+J), remembered per tab", async () => {
@@ -1549,7 +1583,7 @@ try {
     await click(`[data-extension-details-page="${id}"] button`, "All extensions");
     await page!.waitFor(`!!document.querySelector('[data-extension="${id}"]')`, { label: "back to the list" });
 
-    // A web tab: the content script ran with the data from Chrome, and the pinned button shows its badge.
+    // A web tab: the content script ran with the data from Chrome, and its menu (pinned first) shows the badge.
     const tabsBefore = await page!.eval<string[]>(`[...document.querySelectorAll("nav li")].map((li) => li.dataset.appId)`);
     await newTab("New web tab");
     const tabId = await page!.waitFor<string>(
@@ -1571,8 +1605,21 @@ try {
       return m?.startsWith("ok|") && !m.endsWith("undefined") ? m : undefined;
     }, 20_000);
     if (marks !== "ok|hello from chrome") throw new Error(`content script: ${marks}`);
-    const badge = await page!.waitFor<string>(`document.querySelector('${chromeFor(tab)} [data-extension-action="${id}"] [data-extension-badge]')?.textContent`, { label: "badge", timeoutMs: 15_000 });
+    // One puzzle button in the top row, no separate pinned buttons.
+    const topRow = await page!.eval<{ order: string[]; separate: number }>(`(() => {
+      const nav = document.querySelector('${chromeFor(tab)} [data-nav-row]');
+      const pick = (el) => el.matches("[data-window-controls]") ? "close" : el.matches("[data-agent-show], [title*='agent']") ? "agent" : el.matches("[data-extensions-menu]") ? "extensions" : el.matches("[data-back]") ? "back" : el.matches("[data-forward]") ? "forward" : el.matches("[data-reload]") ? "reload" : null;
+      return { order: [...nav.querySelectorAll("button")].map(pick).filter(Boolean), separate: nav.querySelectorAll("[data-extension-action]").length };
+    })()`);
+    if (topRow.order.join() !== "close,agent,extensions,back,forward,reload" || topRow.separate) throw new Error(`top row: ${JSON.stringify(topRow)}`);
+    await click(`${chromeFor(tab)} [data-extensions-menu]`);
+    const badge = await page!.waitFor<string>(`document.querySelector('[data-extensions-list] [data-extension-item="${id}"] [data-extension-badge]')?.textContent`, { label: "badge", timeoutMs: 15_000 });
     if (badge !== "7") throw new Error(`badge: ${badge}`);
+    const first = await page!.eval<string>(`document.querySelector("[data-extensions-list] [data-extension-item]")?.dataset.extensionItem`);
+    if (first !== id) throw new Error(`the pinned extension isn't first in the menu: ${first}`);
+    await shot("extensions-menu.png");
+    await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
+    await page!.waitFor(`!document.querySelector("[data-extensions-list]")`, { label: "menu closed" });
 
     // Its declarativeNetRequest rules block (and NathApp's own rules, checked above, still work alongside).
     const before = siteSeen.length;
@@ -1580,7 +1627,9 @@ try {
     if (blocked !== "blocked") throw new Error("the extension's rule didn't block the request");
 
     // The popup sees the tab it was opened on.
-    await click(`${chromeFor(tab)} [data-extension-action="${id}"]`);
+    await click(`${chromeFor(tab)} [data-extensions-menu]`);
+    await page!.waitFor(`!!document.querySelector('[data-extension-item="${id}"]')`, { label: "menu" });
+    await click(`[data-extension-item="${id}"]`);
     await page!.waitFor(`!!document.querySelector('[data-extension-popup="${id}"] webview')`, { label: "popup" });
     const popupUrl = await waitForValue(async () => {
       const text = await page!.eval<string>(`document.querySelector('[data-extension-popup="${id}"] webview').executeJavaScript('document.getElementById("url")?.textContent')`);
@@ -1805,9 +1854,9 @@ try {
       if (!nav.includes(id)) throw new Error(`settings sidebar: ${nav.join(", ")}`);
     }
     if (await page!.eval<boolean>(`!!document.querySelector("[data-provider-row]")`)) throw new Error("another category is shown too");
-    const rootBg = () => page!.eval<string>(`getComputedStyle(document.querySelector("#root > div")).backgroundColor`);
+    const pageBg = () => page!.eval<string>(`getComputedStyle(document.querySelector("[data-content]")).backgroundColor`);
     await click("[data-preset]", "Midnight");
-    await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor === "rgb(11, 16, 32)"`, {
+    await page!.waitFor(`getComputedStyle(document.querySelector("[data-content]")).backgroundColor === "rgb(11, 16, 32)"`, {
       label: "Midnight background",
     });
     await Bun.sleep(300); // let color transitions finish
@@ -1842,7 +1891,7 @@ try {
     await openSettingsAt("appearance");
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
-    return `${nav.length} categories; ${rows.join(", ")}; shells ${shells.join(", ")}; background ${await rootBg()} after reset`;
+    return `${nav.length} categories; ${rows.join(", ")}; shells ${shells.join(", ")}; background ${await pageBg()} after reset`;
   });
 
   await check("devtools: console, metrics, traces, accessibility, styles, storage, coverage and emulation for agents", async () => {

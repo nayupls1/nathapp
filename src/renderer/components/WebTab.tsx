@@ -502,7 +502,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
           </button>
         </Show>
       ),
-      tools: () => <ExtensionsBar workspaceId={workspaceId} tabId={contentsId} active={props.active} onImport={openExtensionImport} />,
+      extensions: () => <ExtensionsBar workspaceId={workspaceId} tabId={contentsId} active={props.active} onImport={openExtensionImport} />,
     }),
   );
 

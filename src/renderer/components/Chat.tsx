@@ -346,7 +346,7 @@ const bubble = {
 
 const styles = stylex.create({
   // The agent sidebar sizes it.
-  root: { display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0, backgroundColor: colors.bg },
+  root: { display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0 },
   header: {
     display: "flex",
     alignItems: "center",

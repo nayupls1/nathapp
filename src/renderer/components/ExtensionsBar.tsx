@@ -1,7 +1,7 @@
-// Extensions in a web tab's toolbar: the pinned ones' buttons (with their
-// badges), and the extensions menu with the rest. A button opens the
-// extension's popup (its page in a <webview> of the workspace's session,
-// sized by the page) or tells the extension it was clicked.
+// A web tab's extensions button, in the sidebar's top row like Zen Browser's:
+// one menu with every extension (the pinned ones first, with their badges).
+// Choosing one opens its popup (its page in a <webview> of the workspace's
+// session, sized by the page) or tells the extension it was clicked.
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -24,7 +24,6 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
   const [popup, setPopup] = createSignal<Popup | null>(null);
   const [menu, setMenu] = createSignal<DOMRect | null>(null);
   let menuButton!: HTMLButtonElement;
-  const buttons = new Map<string, HTMLButtonElement>();
 
   createEffect(() => {
     actionsVersion(props.workspaceId);
@@ -33,8 +32,7 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
     void bridge.actions(props.workspaceId, tabId).then(setActions, () => setActions([]));
   });
 
-  const pinned = () => actions().filter((a) => extensionById(a.extensionId)?.pinned);
-  const anchorOf = (id: string) => (buttons.get(id)?.isConnected ? buttons.get(id)! : menuButton).getBoundingClientRect();
+  const anchor = () => menuButton.getBoundingClientRect();
 
   async function activate(action: ExtensionAction, anchor: DOMRect) {
     setMenu(null);
@@ -49,7 +47,7 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
       if (!request || !props.active || request.workspaceId !== props.workspaceId) return;
       setPopupRequest(null);
       setMenu(null);
-      setPopup({ extensionId: request.extensionId, url: request.url, anchor: anchorOf(request.extensionId) });
+      setPopup({ extensionId: request.extensionId, url: request.url, anchor: anchor() });
     }),
   );
   createEffect(() => {
@@ -57,36 +55,16 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
   });
 
   const menuOpen = () => menu() !== null;
-  const actionButton = (action: ExtensionAction) => {
-    const showing = () => popup()?.extensionId === action.extensionId;
-    return (
-    <button
-      type="button"
-      ref={(el) => buttons.set(action.extensionId, el)}
-      title={action.title}
-      disabled={!action.enabled}
-      onClick={(e) => void activate(action, e.currentTarget.getBoundingClientRect())}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        void bridge.actionMenu(props.workspaceId, action.extensionId);
-      }}
-      {...stylex.attrs(styles.button, showing() && styles.buttonOn)}
-      data-extension-action={action.extensionId}
-    >
-      <ActionIcon action={action} />
-    </button>
-    );
-  };
+  const showing = () => popup() !== null;
 
   return (
     <>
-      <For each={pinned()}>{actionButton}</For>
       <button
         type="button"
         ref={menuButton}
         title="Extensions"
         onClick={(e) => setMenu(menu() ? null : e.currentTarget.getBoundingClientRect())}
-        {...stylex.attrs(styles.button, menuOpen() && styles.buttonOn)}
+        {...stylex.attrs(styles.button, menuOpen() && styles.buttonOn, showing() && styles.buttonOn)}
         data-extensions-menu
       >
         <Icon name="puzzle" size={16} />
@@ -96,7 +74,8 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
           <ExtensionsMenu
             anchor={anchor()}
             actions={actions()}
-            onActivate={(a) => void activate(a, anchorOf(a.extensionId))}
+            onActivate={(a) => void activate(a, anchor())}
+            onActionMenu={(a) => void bridge.actionMenu(props.workspaceId, a.extensionId)}
             onImport={() => {
               setMenu(null);
               props.onImport();
@@ -149,10 +128,11 @@ function useDismiss(el: () => HTMLElement, onClose: () => void, ignore?: () => H
   });
 }
 
-function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; onActivate: (a: ExtensionAction) => void; onImport: () => void; onClose: () => void }) {
+function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; onActivate: (a: ExtensionAction) => void; onActionMenu: (a: ExtensionAction) => void; onImport: () => void; onClose: () => void }) {
   let el!: HTMLDivElement;
   useDismiss(() => el, props.onClose);
-  const left = () => Math.max(8, Math.min(props.anchor.right - 300, window.innerWidth - 308));
+  const left = () => Math.max(8, Math.min(props.anchor.left, window.innerWidth - 308));
+  const pinnedFirst = () => [...props.actions].sort((a, b) => Number(!extensionById(a.extensionId)?.pinned) - Number(!extensionById(b.extensionId)?.pinned));
   const others = () => extensionList().filter((e) => e.enabled && !props.actions.some((a) => a.extensionId === e.id));
   return (
     <Portal>
@@ -169,19 +149,30 @@ function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; on
             </div>
           }
         >
-          <For each={props.actions}>
+          <For each={pinnedFirst()}>
             {(action) => {
               const info = () => extensionById(action.extensionId);
               const isPinned = () => info()?.pinned === true;
               return (
                 <div {...stylex.attrs(styles.item)}>
-                  <button type="button" disabled={!action.enabled} onClick={() => props.onActivate(action)} {...stylex.attrs(styles.itemMain)} data-extension-item={action.extensionId}>
+                  <button
+                    type="button"
+                    disabled={!action.enabled}
+                    onClick={() => props.onActivate(action)}
+                    // Its own menu items (chrome.contextMenus, "action" context).
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      props.onActionMenu(action);
+                    }}
+                    {...stylex.attrs(styles.itemMain)}
+                    data-extension-item={action.extensionId}
+                  >
                     <ActionIcon action={action} size={16} />
                     <span {...stylex.attrs(styles.itemName)}>{info()?.name ?? action.title}</span>
                   </button>
                   <button
                     type="button"
-                    title={isPinned() ? "Unpin from the toolbar" : "Pin to the toolbar"}
+                    title={isPinned() ? "Unpin" : "Pin to the top of this menu"}
                     aria-pressed={isPinned()}
                     onClick={() => void bridge.setPinned(action.extensionId, !isPinned())}
                     {...stylex.attrs(styles.pin, isPinned() && styles.pinOn)}
@@ -241,7 +232,7 @@ function ExtensionPopup(props: { popup: Popup; workspaceId: string; onClose: () 
   let ready = false;
   const [size, setSize] = createSignal<[number, number] | null>(null);
   useDismiss(() => el, props.onClose);
-  const right = () => Math.max(8, window.innerWidth - props.popup.anchor.right);
+  const left = () => Math.max(8, Math.min(props.popup.anchor.left, window.innerWidth - (size()?.[0] ?? 25) - 10));
   const measure = () => {
     if (!view || !ready) return;
     view
@@ -269,7 +260,7 @@ function ExtensionPopup(props: { popup: Popup; workspaceId: string; onClose: () 
   onCleanup(() => view?.remove());
   return (
     <Portal>
-      <div ref={el} {...stylex.attrs(styles.popup)} style={{ right: `${right()}px`, top: `${props.popup.anchor.bottom + 6}px` }} data-extension-popup={props.popup.extensionId}>
+      <div ref={el} {...stylex.attrs(styles.popup)} style={{ left: `${left()}px`, top: `${props.popup.anchor.bottom + 6}px` }} data-extension-popup={props.popup.extensionId}>
         <webview
           ref={attach}
           src={props.popup.url}
@@ -299,7 +290,8 @@ const styles = stylex.create({
     cursor: { default: "pointer", ":disabled": "default" },
   },
   buttonOn: { backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft }, color: { default: colors.accent, ":hover": colors.accent } },
-  iconWrap: { position: "relative", display: "grid", placeItems: "center" },
+  // Room for its badge before the name.
+  iconWrap: { position: "relative", display: "grid", placeItems: "center", marginRight: 6 },
   icon: { display: "block", objectFit: "contain" },
   badge: {
     position: "absolute",

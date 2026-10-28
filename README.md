@@ -230,7 +230,7 @@ Contents are stored once (content-addressed, gzipped) under `<data dir>/history/
 
 ### Window
 
-The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and NathApp draws minimize, maximize and close in the sidebar's top row, next to back, forward and reload (a column when the sidebar is collapsed; `components/WindowControls.tsx`); macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
+The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and NathApp draws one button, close, as a red macOS-style light first in the sidebar's top row (gray while the window isn't focused; `components/WindowControls.tsx`). There's no minimize or maximize button: drag the row to move the window, double-click it to maximize. macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
 
 ### Agent sidebar
 
@@ -242,10 +242,10 @@ It's resized like the tab sidebar: drag its left edge (or use the arrow keys on 
 
 ### Sidebar
 
-The sidebar is the browser's chrome, like Zen Browser's: pages get the whole content area, without a toolbar (`components/TopBar.tsx`, each tab's part in `lib/tabChrome.ts`).
-- **Top row:** back, forward, reload, the agent (Ctrl+J; a dot while it works) and the window's buttons. It drags the window.
+The sidebar is the browser's chrome, like Zen Browser's: pages get the whole content area, without a toolbar (`components/TopBar.tsx`, each tab's part in `lib/tabChrome.ts`). The page sits inset from the window and the sidebars, with rounded corners; each pane of a split view is its own card. Fullscreen video still fills the screen.
+- **Top row:** close, the agent (Ctrl+J; a dot while it works), a web tab's extensions (the puzzle: one menu, pinned ones first, with their badges and popups), then back, forward and reload. It drags the window.
 - **Address:** the tab on screen's address (an app's localhost URL). Typing suggests the open tabs that match (every workspace; Enter switches to the first), the address and a web search; Ctrl+L focuses it. Paths and localhost addresses open in an app's preview; anything else in a new web tab. A web tab's page changes are behind the paintbrush in it.
-- **The tab's tools:** a web tab's extensions; an app's state (editing, running…), restart, logs, secrets, history, data, tools and "open in your browser". The Network panel is in the command bar ("Network requests"); picking elements is in the agent's composer.
+- **The tab's tools:** an app's state (editing, running…), restart, logs, secrets, history, data, tools and "open in your browser". The Network panel is in the command bar ("Network requests"); picking elements is in the agent's composer.
 - **Pinned tabs** are tiles above the list (and stay loaded).
 - **Tabs** have an × (or middle-click, Ctrl+W). Closing a web tab removes it; Ctrl+Shift+T opens the last one again. Closing an app keeps it with its project, data, chat and secrets (`POST /api/apps/:id/close`): "New tab" lists the saved apps to open again in the current workspace (`/api/library`, `POST /api/apps/:id/reopen`), as does the command bar. "Delete" in its menu deletes it for good. A new app with nothing in it yet is just removed.
 - **"New tab"** is under the tabs. At the very bottom, one row: the collapse button on the left, the workspaces' icons centered, Settings on the right.
@@ -427,7 +427,7 @@ Web tabs run Chrome extensions (Manifest V3 and V2) with Electron's extension su
 
 **Import from your browser** (Settings → Extensions, or the puzzle menu in a web tab) reads the profiles of Chrome, Chromium, Brave, Edge and Vivaldi (including Flatpak and Snap installs). It offers what's turned on there. Store extensions are copied and keep their IDs. Unpacked ones are used from their folder. They come along with:
 
-- their pinned toolbar buttons;
+- which ones are pinned (at the top of the extensions menu);
 - the keyboard shortcuts changed there;
 - with "Bring their settings too", what they saved: `chrome.storage.local`, their dynamic blocking rules and IndexedDB (sign-ins, preferences).
 

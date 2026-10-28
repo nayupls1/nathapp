@@ -1,5 +1,5 @@
-// The top of the sidebar, like Zen Browser's: back, forward and reload with the
-// window's buttons, the address of the tab on screen (an app's localhost URL)
+// The top of the sidebar, like Zen Browser's: the window's close button, the
+// agent, extensions, back, forward and reload, then the address of the tab on screen (an app's localhost URL)
 // with suggestions as you type, and the tab's own tools. Pages get the whole
 // content area. Each tab provides what's shown here (lib/tabChrome.ts).
 import * as stylex from "@stylexjs/stylex";
@@ -24,7 +24,11 @@ interface Suggestion {
   run: () => void;
 }
 
-/** Back, forward, reload and the window's buttons: the strip the window is dragged by. */
+/**
+ * The strip the window is dragged by, like Zen Browser's: the close button
+ * (macOS: its own traffic lights), the agent, the tab's extensions, then back,
+ * forward and reload.
+ */
 export function NavRow(props: { compact: boolean }) {
   const chrome = () => chromeOf(selectedId());
   const tabId = () => (isTab(selectedId()) ? selectedId()! : null);
@@ -33,7 +37,27 @@ export function NavRow(props: { compact: boolean }) {
   const working = () => !!tabId() && !!states[tabId()!]?.running;
   return (
     <div {...stylex.attrs(styles.nav, props.compact && styles.navCompact)} data-titlebar data-nav-row>
+      <WindowControls />
       <Show when={!props.compact}>
+        <Show when={tabId()}>
+          <button
+            type="button"
+            title={agentHidden() ? "Show the agent (Ctrl+J)" : "Hide the agent (Ctrl+J)"}
+            onClick={() => toggleAgent(tabId()!)}
+            {...stylex.attrs(styles.navButton, styles.agentButton, agentShown() && styles.agentOn)}
+            data-agent-show={agentHidden() ? "" : undefined}
+          >
+            <Icon name="bot" size={16} />
+            <Show when={working()}>
+              <span {...stylex.attrs(styles.workingDot)} />
+            </Show>
+          </button>
+        </Show>
+        {/* Keyed: the tab on screen changes, and with it its extensions. */}
+        <Show when={chrome()?.extensions} keyed>
+          {(extensions) => extensions()}
+        </Show>
+        <span {...stylex.attrs(styles.spacer)} />
         <button type="button" title="Back (Alt+←)" disabled={!chrome()?.canBack()} onClick={() => chrome()?.back()} {...stylex.attrs(styles.navButton)} data-back>
           <Icon name="arrow-left" size={16} />
         </button>
@@ -52,23 +76,7 @@ export function NavRow(props: { compact: boolean }) {
             <Icon name="x" size={16} />
           </button>
         </Show>
-        <Show when={tabId()}>
-          <button
-            type="button"
-            title={agentHidden() ? "Show the agent (Ctrl+J)" : "Hide the agent (Ctrl+J)"}
-            onClick={() => toggleAgent(tabId()!)}
-            {...stylex.attrs(styles.navButton, styles.agentButton, agentShown() && styles.agentOn)}
-            data-agent-show={agentHidden() ? "" : undefined}
-          >
-            <Icon name="bot" size={16} />
-            <Show when={working()}>
-              <span {...stylex.attrs(styles.workingDot)} />
-            </Show>
-          </button>
-        </Show>
       </Show>
-      <span {...stylex.attrs(styles.spacer)} />
-      <WindowControls vertical={props.compact} />
     </div>
   );
 }
@@ -263,9 +271,9 @@ const styles = stylex.create({
     height: 40,
     marginTop: `calc(-1 * ${space.md})`,
     marginInline: `calc(-1 * ${space.md})`,
-    paddingInline: 8,
+    paddingInline: 10,
   },
-  navCompact: { flexDirection: "column", height: "auto", marginInline: -8, paddingTop: 4, paddingInline: 0 },
+  navCompact: { justifyContent: "center", marginInline: -8, paddingInline: 0 },
   navButton: {
     position: "relative",
     display: "grid",

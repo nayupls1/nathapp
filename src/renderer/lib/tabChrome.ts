@@ -1,5 +1,5 @@
 // What the sidebar's top bar shows for the tab on screen (components/TopBar.tsx):
-// its address, back, forward and reload, and its own tools. Pages get the whole
+// its address, back, forward and reload, its extensions and its own tools. Pages get the whole
 // content area, like in Zen Browser; each tab (WebTab, AppTab) registers its
 // chrome here while it's mounted.
 import { createSignal, type JSX } from "solid-js";
@@ -22,7 +22,9 @@ export interface TabChrome {
   go?: (input: string) => boolean;
   /** Inside the address field, at its end (a web tab's page changes). */
   addressExtras?: () => JSX.Element;
-  /** A row of the tab's own tools under the address (extensions, an app's logs and data…). */
+  /** Its extensions button, in the top row (a web tab's). */
+  extensions?: () => JSX.Element;
+  /** A row of the tab's own tools under the address (an app's logs, data…). */
   tools?: () => JSX.Element;
 }
 
