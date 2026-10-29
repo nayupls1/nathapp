@@ -14,6 +14,15 @@ if (process.platform === "linux" && !app.commandLine.hasSwitch("password-store")
   app.commandLine.appendSwitch("password-store", "gnome-libsecret");
 }
 
+// An extension (or anything else) failing in the background is logged instead
+// of taking the app down with an error dialog.
+process.on("uncaughtException", (err) => console.error("Uncaught error in the main process:", err));
+process.on("unhandledRejection", (reason) => console.error("Unhandled rejection in the main process:", reason));
+
+// Windows groups the taskbar button, its icon and notifications by this ID: the
+// installer's shortcut uses electron-builder's appId.
+if (process.platform === "win32") app.setAppUserModelId("dev.runebrowser.app");
+
 // Lets tests run against a throwaway profile instead of the real data.
 if (process.env.RUNE_USER_DATA_DIR) app.setPath("userData", process.env.RUNE_USER_DATA_DIR);
 
@@ -86,6 +95,8 @@ function createWindow(server: ServerHandle) {
     height: 750,
     show: false,
     autoHideMenuBar: true,
+    // The window and taskbar icon (Windows wants an .ico; the packaged app's executable has one too).
+    icon: join(distDir, "electron", process.platform === "win32" ? "icon.ico" : "icon.png"),
     // No title bar (like Chrome). macOS keeps its traffic lights (top left); elsewhere the
     // window is frameless and the renderer draws minimize, maximize and close (top right).
     // Its top bars are where the window is dragged (lib/windowChrome.ts).
@@ -117,6 +128,14 @@ function createWindow(server: ServerHandle) {
     if (mainWindow === win) mainWindow = undefined;
   });
   guardWindow(win, rendererOrigin, (input) => web?.windowInput(input) ?? false);
+  // The window's page crashed (out of memory, a GPU or renderer bug): it comes back, a few times at most.
+  let crashes: number[] = [];
+  win.webContents.on("render-process-gone", (_event, details) => {
+    if (details.reason === "clean-exit" || win.isDestroyed()) return;
+    console.error("The window's page is gone:", details.reason);
+    crashes = [...crashes.filter((t) => Date.now() - t < 60_000), Date.now()];
+    if (crashes.length <= 3) win.webContents.reload();
+  });
   // Works even when the UI itself is unusable.
   win.webContents.on("before-input-event", (event, input) => {
     if (input.type === "keyDown" && input.control && input.alt && input.shift && input.key.toLowerCase() === "s") {

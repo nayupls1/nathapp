@@ -3,7 +3,7 @@ productName: Rune Browser
 executableName: rune-browser
 directories:
   output: release
-  # icon.png (from icon.svg) for every platform
+  # icon.png (from icon.svg) for macOS and Linux, icon.ico (from icon.png) for Windows
   buildResources: build
 files:
   - package.json
@@ -28,3 +28,4 @@ mac:
   target: dmg
 win:
   target: nsis
+  icon: build/icon.ico
