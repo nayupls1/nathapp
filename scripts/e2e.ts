@@ -1117,7 +1117,8 @@ try {
     if ((await page!.eval<string | null>(`document.fullscreenElement?.tagName ?? null`)) !== "WEBVIEW") throw new Error("the webview isn't fullscreen");
     await shot("fullscreen-page.png");
     await inView(tab, `document.exitFullscreen().then(() => "ok", (e) => String(e))`, true);
-    await page!.waitFor(`!document.fullscreenElement`, { label: "out of fullscreen" });
+    // macOS animates the window out of its native fullscreen first.
+    await page!.waitFor(`!document.fullscreenElement`, { label: "out of fullscreen", timeoutMs: 20_000 });
     const after = await shape();
     if (after.top !== before.top || after.right !== before.right) throw new Error(`after fullscreen: ${JSON.stringify(after)}`);
     return `inset ${before.top}px, corners ${before.radius}; fullscreen fills ${viewport.join("×")}`;
@@ -1996,9 +1997,9 @@ try {
     }
     if (text.includes("c2lnbmF0dXJlLXNlY3JldA")) throw new Error("a token reached the console log");
 
-    // (Offscreen rendering reports no first paint, but the largest one.)
+    // (Offscreen rendering reports no first paint, but the largest one; on macOS neither.)
     const metrics = await dt<{ lcp: number | null; load: number | null; runtime: Record<string, unknown> }>("metrics");
-    if (typeof metrics.lcp !== "number" || typeof metrics.load !== "number" || !metrics.runtime.Nodes) throw new Error(`metrics: ${JSON.stringify(metrics)}`);
+    if ((typeof metrics.lcp !== "number" && process.platform !== "darwin") || typeof metrics.load !== "number" || !metrics.runtime.Nodes) throw new Error(`metrics: ${JSON.stringify(metrics)}`);
 
     // A trace of an interaction finds the slow function behind it, and is saved for Chrome DevTools.
     type Trace = { analysis: { hotFunctions: { name: string; selfMs: number }[]; longTasks: unknown[]; vitals: Record<string, number | null> }; file: string; events: number };
