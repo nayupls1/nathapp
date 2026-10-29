@@ -6,7 +6,9 @@ import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { extensionIdFromHash } from "../../src/shared/extensions";
+import { extensionIdFromHash, type ShortcutPlatform } from "../../src/shared/extensions";
+
+const shortcutPlatform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
 
 // --- LevelDB ---------------------------------------------------------------------------
 
@@ -201,7 +203,8 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
         },
         pinned_extensions: [id],
         // The shortcut was changed in the browser (from Alt+Shift+Y).
-        commands: { "linux:Alt+Shift+U": { command_name: "bump", extension: id, global: false } },
+        // Chrome keeps one per platform ("linux:", "windows:", "mac:").
+        commands: { [`${shortcutPlatform}:Alt+Shift+U`]: { command_name: "bump", extension: id, global: false } },
       },
     }),
   );

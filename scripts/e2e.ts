@@ -8,7 +8,7 @@
 //   bun run e2e --only <text>   only the checks whose name contains it ("a|b": either; and the boot check)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,9 +30,12 @@ if (!existsSync("dist/electron/main.cjs")) {
 
 const outDir = "test-results";
 mkdirSync(outDir, { recursive: true });
-const profile = mkdtempSync(join(tmpdir(), "rune-e2e-"));
+// The long form of the path: Windows' temp folder can be an 8.3 name (C:\Users\RUNNER~1\…), which file
+// watchers there (Bun's --hot in app previews) don't match with the changes they're told about.
+const tempDir = realpathSync.native(tmpdir());
+const profile = mkdtempSync(join(tempDir, "rune-e2e-"));
 // A browser to import extensions from (instead of the real ones on this computer).
-const browserDir = mkdtempSync(join(tmpdir(), "rune-e2e-browser-"));
+const browserDir = mkdtempSync(join(tempDir, "rune-e2e-browser-"));
 const fixture = writeFixtureBrowser(browserDir);
 const onlyIndex = args.indexOf("--only");
 const only = onlyIndex === -1 ? undefined : args[onlyIndex + 1];
@@ -581,7 +584,7 @@ try {
   }
 
   await check("import: a folder of your own becomes an app tab, run like any other", async () => {
-    const folder = join(mkdtempSync(join(tmpdir(), "rune-e2e-import-")), "hello-import");
+    const folder = join(mkdtempSync(join(tempDir, "rune-e2e-import-")), "hello-import");
     mkdirSync(folder);
     writeFileSync(join(folder, "package.json"), JSON.stringify({ name: "hello-import", scripts: { dev: "bun server.ts", start: "bun server.ts" } }));
     writeFileSync(join(folder, "server.ts"), `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("<h1>Imported and running</h1>", { headers: { "Content-Type": "text/html" } }) });`);
@@ -1779,6 +1782,7 @@ try {
     await page!.waitFor(`${currentWorkspaceName} === "Personal"`, { label: "Ctrl+Alt+1" });
     const back = await tabIds();
     if (back.join() !== personalTabs.join()) throw new Error(`Personal's tabs changed: ${back.join()} vs ${personalTabs.join()}`);
+    await waitForValue(async () => ((await selected()) === personalSelected ? true : undefined), 5_000).catch(() => {});
     if ((await selected()) !== personalSelected) throw new Error("the tab selected in Personal wasn't restored");
     await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", code: "Digit2", ctrlKey: true, altKey: true, bubbles: true })), true`);
     await page!.waitFor(`${currentWorkspaceName} === "Client"`, { label: "Ctrl+Alt+2" });
@@ -2059,7 +2063,7 @@ try {
 
   await check("sources: code attached to a tab for its agent, shown above the composer, removed again", async () => {
     await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
-    const folder = join(mkdtempSync(join(tmpdir(), "rune-e2e-source-")), "shop-frontend");
+    const folder = join(mkdtempSync(join(tempDir, "rune-e2e-source-")), "shop-frontend");
     mkdirSync(join(folder, "src"), { recursive: true });
     writeFileSync(join(folder, "src", "cart.ts"), "export const cart = [];\n");
     const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/` } });
