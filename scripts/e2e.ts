@@ -1657,7 +1657,9 @@ try {
       const pick = (el) => el.matches("[data-window-controls]") ? "close" : el.matches("[data-agent-show], [title*='agent']") ? "agent" : el.matches("[data-extensions-menu]") ? "extensions" : el.matches("[data-back]") ? "back" : el.matches("[data-forward]") ? "forward" : el.matches("[data-reload]") ? "reload" : null;
       return { order: [...nav.querySelectorAll("button")].map(pick).filter(Boolean), separate: nav.querySelectorAll("[data-extension-action]").length };
     })()`);
-    if (topRow.order.join() !== "close,agent,extensions,back,forward,reload" || topRow.separate) throw new Error(`top row: ${JSON.stringify(topRow)}`);
+    // macOS has its own traffic lights instead of the close button.
+    const expectedRow = `${process.platform === "darwin" ? "" : "close,"}agent,extensions,back,forward,reload`;
+    if (topRow.order.join() !== expectedRow || topRow.separate) throw new Error(`top row: ${JSON.stringify(topRow)}`);
     await click(`${chromeFor(tab)} [data-extensions-menu]`);
     const badge = await page!.waitFor<string>(`document.querySelector('[data-extensions-list] [data-extension-item="${id}"] [data-extension-badge]')?.textContent`, { label: "badge", timeoutMs: 15_000 });
     if (badge !== "7") throw new Error(`badge: ${badge}`);
