@@ -1,0 +1,60 @@
+name: Bug report
+description: Something doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a new app tab
+        2. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Rune Browser version
+      description: Settings → About.
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - Windows
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: os-details
+    attributes:
+      label: OS details
+      description: Distribution and desktop on Linux, version on Windows/macOS, how you installed it (AppImage, deb, installer…).
+      placeholder: Ubuntu 26.04, GNOME, AppImage
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent involved
+      description: If it happened while an agent was working.
+      multiple: true
+      options:
+        - Claude Code
+        - Codex
+        - OpenCode
+        - None
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: An app's logs are in its Logs panel; Settings → Activity shows what agents and apps did. Remove anything private first.

@@ -1,477 +1,112 @@
-<img src="build/icon.svg" width="96" alt="Rune Browser">
+<p align="center">
+  <img src="build/icon.svg" width="112" alt="Rune Browser">
+</p>
 
-# Rune Browser
+<h1 align="center">Rune Browser</h1>
 
-Desktop app for building small personal apps by talking to a coding agent, and
-for browsing the web with an agent that can customize sites. Each sidebar tab
-is an app or a web tab, grouped into workspaces. Describe an app and the agent builds it: a real project
-with its own server and SQLite database, running in a light sandbox and shown
-next to the chat in a live preview.
+<p align="center">
+  A desktop browser where coding agents build your own small apps,<br>
+  and customize the websites you use, on your own Claude, Codex or OpenCode login.
+</p>
 
-Built with **Electron** + **SolidJS** (styled with **StyleX**), backed by a local
-**Bun** server written with **Effect v4**. The agents are the coding CLIs you
-already use: **Claude Code** (Agent SDK), **Codex** and **OpenCode**.
+<p align="center">
+  <a href="https://github.com/nayupls1/rune-browser/releases/latest">Download</a> ·
+  <a href="docs/concepts.md">Docs</a> ·
+  <a href="https://github.com/nayupls1/rune-browser/issues">Issues</a>
+</p>
 
-Bun is used everywhere it can be: package manager, script runner, bundler for the
-Electron main/preload scripts, runtime for the backend server and for the apps
-themselves. The only thing not running on Bun is Electron itself.
+---
 
-## Getting started
+Every tab in Rune Browser is a web page or an **app**. Describe an app and the
+agent builds it: a real project with its own server and SQLite database,
+running in a sandbox and shown in a live preview next to the chat. Keep
+editing it by talking to the agent, or close the chat and use it. On web pages
+the same agent can hide, restyle or add things, and those changes stay.
 
-Requires [Bun](https://bun.sh) ≥ 1.3 and at least one agent signed in:
-[Claude Code](https://claude.com/claude-code) (`claude` → `/login`, or a token
-from `claude setup-token` in `CLAUDE_CODE_OAUTH_TOKEN`), [Codex](https://github.com/openai/codex)
-(`codex login`) or [OpenCode](https://opencode.ai). On Linux, install
-[bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) so apps run sandboxed.
+![A new app: describe it, pick an idea or a template](docs/screenshots/new-app.png)
+
+## What it does
+
+- **Apps from a sentence.** "A habit tracker with daily check-ins": the agent
+  writes a real project (React, vanilla or API-only, or whatever you ask for),
+  runs it, and fixes what it sees in the preview. Apps can store data, use AI,
+  run on a schedule, offer tools to agents, and read each other's data when you
+  allow it.
+- **Your own agents and logins.** Claude Code, Codex and OpenCode, the CLIs you
+  already use, signed in with your own subscription. No API keys, no accounts
+  here.
+- **Websites your way.** Ask the agent about a page or point at an element:
+  it hides, restyles or adds things, per page, site or pattern, each with its
+  own switch. Bundle changes, a theme and extensions into a **mod** to share.
+- **A real browser.** Workspaces with their own logins, split view, a command
+  bar (Ctrl+K), Chrome extensions (imported from your browser), and password
+  managers that fill in sign-ins.
+- **Safe by default.** Apps run in a sandbox (bubblewrap on Linux) and ask
+  before reaching anything beyond it; secrets never reach agents; web pages
+  never reach an agent that has tools. Everything agents and apps do is in
+  Activity.
+- **Nothing is lost.** Every change is a snapshot in History, with its diff,
+  to undo or restore, including the app's data.
+
+| | |
+| --- | --- |
+| ![An app with its agent and History](docs/screenshots/history.png) | ![Page changes on a website](docs/screenshots/page-changes.png) |
+| ![The mods gallery](docs/screenshots/mods-gallery.png) | |
+
+## Install
+
+Get the latest release from the
+[releases page](https://github.com/nayupls1/rune-browser/releases/latest).
+Rune Browser updates itself from there (Settings → About; a Beta channel gets
+pre-releases).
+
+| OS | Download | Notes |
+| --- | --- | --- |
+| **Linux** (x64) | `.AppImage` or `.deb` | Install [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) so apps run sandboxed (the deb recommends it). |
+| **Windows** (x64) | `-setup-x64.exe` | Not signed yet: on the SmartScreen warning, choose "More info" → "Run anyway". |
+| **macOS** (Apple Silicon) | `.dmg` | Supported but untested, and not signed yet: right-click → Open the first time. Updates are downloaded by hand. |
+
+Then install and sign in to at least one agent:
+
+- [Claude Code](https://claude.com/claude-code): `npm install -g @anthropic-ai/claude-code`, then `claude` → `/login`
+- [Codex](https://github.com/openai/codex): `npm install -g @openai/codex`, then `codex login`
+- [OpenCode](https://opencode.ai): `curl -fsSL https://opencode.ai/install | bash`
+
+Rune Browser finds them on your `PATH` (or set their paths in Settings →
+Providers).
+
+## Build from source
+
+With [Bun](https://bun.sh) installed:
 
 ```sh
 bun install
-bun run dev
+bun run dev       # run it with hot reload
+bun run check     # typecheck, tests, build, e2e
+bun run package   # installers for this OS, in release/
 ```
 
-## Scripts
+More in [Development](docs/development.md).
 
-| Command             | What it does                                                                           |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `bun run dev`       | Vite dev server (HMR) + Electron. Server hot-reloads, main/preload changes restart Electron. |
-| `bun run build`     | Production build into `dist/` (renderer, main/preload, compiled server binary).         |
-| `bun run start`     | Runs the production build (unpackaged).                                                 |
-| `bun run package`   | Builds and packages a distributable into `release/` via electron-builder.              |
-| `bun run server`    | Runs only the Bun server standalone (port 3000), with watch mode.                       |
-| `bun run typecheck` | Type-checks the whole project.                                                          |
-| `bun run test`      | Unit tests (MCP endpoint, presets, sandbox, runtime, web tabs, API auth).               |
-| `bun run e2e`       | Launches the built app with a throwaway profile and drives the UI; add `--agent` to also have the agents build an app and customize a site (uses your Claude plan). Runs on Chromium's headless display backend, so no window opens. Screenshots land in `test-results/`. |
-| `bun run check`     | Everything: typecheck, tests, build, e2e.                                               |
+## Docs
 
-## How it fits together
+- [Concepts](docs/concepts.md): workspaces, apps and their data, agents, AI in
+  apps, tools, schedules, secrets, permissions, history and mods
+- [Interface](docs/interface.md): the window, sidebars, command bar, split view, settings
+- [Browsing](docs/browsing.md): web tabs, page changes, network, extensions
+- [Architecture](docs/architecture.md): processes, the server's services, where data lives
+- [Development](docs/development.md) and [Releasing](docs/releasing.md)
 
-```
-src/
-  main/              Electron main process: server, window, webview sessions
-  preload/           Exposes `window.rune` (server URL, API token, web helpers)
-  renderer/          SolidJS UI (Vite + StyleX)
-    components/      Sidebar, app tabs (preview + agent), web tabs, settings, agent picker
-    lib/             Store, API client, hub connection, picker scripts
-  server/            Effect program on effect/http + Bun
-    services.ts      How the services are wired together
-    Http.ts          Routes, auth (token + origin), MCP endpoint
-    Hub.ts           WebSocket hub: pushes agent output, app status, logs; RPC to the renderer
-    db/              Host database (workspaces, tabs, chat, settings, site customizations)
-    providers/       Claude, Codex, OpenCode drivers behind one event stream
-    agent/           Agent turns, prompts, Rune Browser's MCP tools
-    history/         Snapshots: content store, diffs, undo and restore
-    workspace/       Projects: an app's lifecycle (Projects.ts), its files and presets (Workspace.ts, templates/), sandbox, runtime
-  shared/            Types and helpers shared by server and renderer
-scripts/             Bun scripts for dev / build / start / e2e
-tests/               bun:test tests
-```
+Built with Electron and SolidJS (StyleX), and a local Bun server written with
+Effect v4.
 
-### Workspaces
+## Contributing
 
-Workspaces keep projects and contexts apart, like Zen Browser's: each is a collection of tabs, shown as icons at the bottom of the tab sidebar. Click one to switch (or Ctrl+Alt+1…9, also from inside web pages), "+" makes a new one (and asks for its name), dragging an icon reorders them (`PUT /api/workspaces/order`), dropping a tab on one moves the tab there, and an icon's menu renames it, changes its icon, moves it or deletes it. The current workspace's icon is the highlighted one (its name is in the tooltip). Each has:
-- its own tabs. Tabs can be moved between workspaces (tab menu → Move to);
-- its own default agent and instructions, added after the global ones (Settings → Workspace);
-- secrets every app in it gets (an app's own secret of the same name wins);
-- remembered permissions: an answer can be remembered for one app or for every app in the workspace (the app's own choice wins);
-- its own web session, so cookies and logins don't cross workspaces. The first workspace keeps the original session;
-- its own view of the Activity page (plus what belongs to no workspace, like global secrets).
+Issues are welcome: [bug reports](https://github.com/nayupls1/rune-browser/issues/new?template=bug_report.yml)
+and [ideas](https://github.com/nayupls1/rune-browser/issues/new?template=feature_request.yml).
+Pull requests aren't accepted yet, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Security issues go through [private reporting](SECURITY.md).
 
-Switching keeps every opened tab running, and each workspace reopens on the tab you were last on. Deleting a workspace deletes its tabs with their projects and data, its secrets and permissions, and clears its web session. The last workspace can't be deleted. In the code, `db/Workspaces.ts` is this grouping; `workspace/Workspace.ts` is an app's project folder.
+## License
 
-### Apps
-
-Every app is a project folder (`<data>/apps/<id>`) with a `rune.json` that says
-how to run it:
-
-```json
-{ "install": "bun install", "dev": "bun run dev", "build": "bun run build", "start": "bun run start" }
-```
-
-The agent starts from a **preset** (React, vanilla TypeScript, API only; see
-`src/server/workspace/presets.ts`): a Bun fullstack server with a SQLite
-database, a small realtime library (server `publish`, client `subscribe` /
-`useLive`) and `src/tokens.css`, the design tokens generated from your Rune Browser
-theme. It can also write any other stack itself. Rune Browser gives every app:
-
-- `PORT` (a stable port per app on 127.0.0.1), `APP_URL`
-- `DATABASE_PATH` / `DATABASE_URL=file:…` (its SQLite database) and `RUNE_FILES_DIR` (a folder for uploads and other files), both kept by Rune Browser outside the project (see App data)
-- `RUNE_API_URL` / `RUNE_API_TOKEN` for Rune Browser's app API (other apps' data)
-- `NODE_ENV` / `RUNE_MODE`: development while editing, production when done
-
-Editing follows the agent sidebar. While it's open the app is being **edited**: Rune Browser
-runs the `dev` command (Bun `--hot` with HMR), so the agent's changes show up in the
-preview right away. Closing it (Ctrl+J) means **done**: Rune Browser runs `build` and then
-`start` and shows the finished app; "Edit" brings the agent back and the dev server
-with it. An agent turn always edits, so it reopens the panel. Dependencies are installed when `package.json` or the
-lockfile change.
-
-**Bring your own.** A new app tab can also start from a project you have (`POST /api/apps/:id/import`):
-- **Cloned from Git:** an https link, `owner/repo` (GitHub), a page showing a branch (`…/tree/<branch>`), an SSH link (`git@github.com:owner/repo.git`), with an optional branch. It's a shallow clone with submodules. The tab shows git's progress (receiving objects, resolving deltas) and can cancel it (`DELETE /api/apps/:id/import`).
-- **Private repositories** work with your own Git setup: credential helpers (`gh auth login`, Git Credential Manager) and SSH keys in ssh-agent. Git never prompts (there's no terminal to answer in), and no hooks run. Errors say what's missing.
-- **Copied from a folder** (without `node_modules`).
-- **Running it:** without a `rune.json`, Rune Browser writes one from `package.json`'s `dev`, `start`, `build` and `preview` scripts. Servers that don't read `$PORT` themselves (Vite and what's built on it, Astro, Angular) are given the port, and a Vite site's build is served with `vite preview`. If Rune Browser can't tell how to run the project, the agent is asked to set it up. When an app's output names another port than `$PORT`, its logs say so.
-
-**One lifecycle.** However an app came to be (the agent's `create_project` or a `rune.json` it wrote itself, a template you picked, a project you imported or cloned, a copy of another app), it goes through the same steps in `workspace/Projects.ts`: setting up, opening, editing and publishing, copying, moving and deleting. Building (the project's files: `Workspace.ts`, its data: `AppData.ts`), running (`Runtime.ts`) and displaying (the renderer, which only sees `AppDetail` and the hub's messages) stay separate. A copy brings the project along as its first snapshot, but not its data, chat or secrets.
-
-**Sandbox.** With bubblewrap every app process (installs, dev server, the
-agent's `run_command`) sees the system read-only, its own project and data folder
-read-write, a private `/tmp`, and its own PID/IPC namespaces. Your files and other apps are
-invisible, and the environment is cleared. Settings → Apps can turn it off.
-- **Developer tools:** the system (`/usr`, `/etc`, `/opt`, `/nix`) is there read-only, so git, curl, Python, compilers and the like work. Git has an identity of its own ("Rune Browser", in the app's `.rune/home/.gitconfig`), not yours.
-- **Your toolchains:** what version managers installed in your home folder (mise, asdf, nvm, Volta, rustup, pyenv, Bun, Deno, Go…) is shown read-only and kept on PATH; their shims, which need your config, aren't. Settings → Apps can turn this off and add more read-only folders. Nothing else of your home is visible: no `~/.ssh`, `~/.gitconfig` or credentials, and Rune Browser's own data stays hidden even inside a folder you add.
-- **Shell:** commands run in the shell chosen in Settings → Apps (`workspace/shells.ts`): `/bin/sh` by default, Bun's cross-platform shell (`bun exec`) on Windows, or bash, zsh, fish, PowerShell, cmd, Git Bash or any program that takes `-c`.
-- **Windows and macOS** have no sandbox: processes run in the project folder with a cleared environment (plus what Windows programs need), without a console window, and stopping an app ends its whole process tree (`taskkill /T`).
-
-### App data
-
-What an app stores belongs to Rune Browser, not to the project: its database and
-files live in `<data>/appdata/<id>`, mounted into the app's sandbox. Rebuilding,
-resetting or rewriting the project leaves them alone, and the agent's file
-tools never touch them (it reads them with `app_data`). Projects from before
-this keep their old `.rune/data.sqlite`: it moves there on first start.
-
-- **Look at it:** the database button in an app tab lists the tables and pages through their rows, with search.
-- **Export:** a `.tar.gz` with the database, every table as JSON and the files.
-- **Delete:** stops the app, deletes its database and files and restarts it. A snapshot is taken first, so History can bring them back.
-- **Snapshots:** an app's data is part of its snapshots (`@data/…`). Undo and restore leave it alone unless asked.
-- **Other apps' data:** an app can read (never write) another app's tables in the same workspace, after you allow it:
-
-```
-GET $RUNE_API_URL/data                      Authorization: Bearer $RUNE_API_TOKEN
-GET $RUNE_API_URL/data/<app id>             → its tables (name, row count, columns)
-GET $RUNE_API_URL/data/<app id>/<table>?offset=&limit=&search=&order=&desc=1&where.<column>=
-```
-
-  Like the AI API, it only answers the app's server (no `Origin` header). Every read of another app's data is in Activity. Apps in other workspaces aren't listed and can't ask.
-
-### Agents
-
-Providers are detected at startup (Settings → Providers shows their status,
-version and models). The picker in the composer chooses provider, model and
-effort per tab. Every provider gets the same instructions and Rune Browser's tools,
-served over MCP at a per-turn URL: `create_project`, `app_status`,
-`restart_app`, `app_logs`, `app_data`, `run_command`, `list_app_tools`, `use_app_tool`, the schedule tools, `set_app_info`, `search_icons`, the
-tab tools (`list_tabs`, `read_tab`), the
-page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
-that work on the preview or the web page, and DevTools (below). File editing is the provider's own.
-
-**DevTools.** Both agents get most of Chrome DevTools on their tab's page, the app's preview or the website (`agent/devtoolsTools.ts`; the work happens in Electron's main process over the DevTools protocol, `main/devtools.ts`), so they can test pages and find causes on their own:
-- `console_logs`: console messages, uncaught errors with their stack, and the browser's own messages (failed requests, CSP, deprecations). App previews are captured from the start; websites once an agent asks, since pages can notice it.
-- `network_requests` / `network_request`: app previews' traffic too, for app builders.
-- `page_metrics` and `performance_trace`: web vitals, load timing, DOM and heap size; a trace (of a reload, or of an interaction the agent runs in the page) analyzed like the Performance panel (`shared/trace.ts`): long tasks and what ran in them, main-thread time by kind, the hottest functions with file:line, forced reflows, layout shifts, slow, large, render-blocking and failed requests. The trace is saved in `<data>/traces/` (the last 20) for Chrome DevTools' Performance panel, and the chat says where.
-- `screenshot` also takes one element (`selector`, even scrolled out of view) or the whole page (`full_page`), so agents can look at what they're working on.
-- `accessibility_tree`, `element_styles` (the CSS rules that apply, winning first, with their file:line, the box model and computed values), `page_storage` (cookies, local and session storage, IndexedDB with record counts, caches, service workers) and `code_coverage` (unused JavaScript and CSS per file).
-- `emulate`: devices (iPhone, Pixel, iPad, laptop), sizes, offline and slow networks, slower CPUs, dark mode and reduced motion. It's undone when the agent's turn ends.
-- On websites, cookie values and credential-like storage values never leave the main process, and tokens in console text and URLs are redacted. Every call is in Activity like any tool call.
-
-**Images and files.** Paste a screenshot into the composer, drop files on it or pick them with the paperclip (`lib/attachments.ts`, `agent/Attachments.ts`, `/api/apps/:id/attachments`). They're kept per tab in `<data>/attachments/` and shown in the chat. Images (scaled to at most 2000 px) reach every provider as images the model sees, PDFs too for Claude; text files go into the prompt; anything else is given by its path. Up to 10 files of 20 MB per message. Only images are served inline; other files only download.
-
-**Code for the agent.** A tab can have code attached for its agent (the folder button next to the composer; `workspace/Sources.ts`, `/api/apps/:id/sources`): folders of yours, used in place, and Git repositories (the same links as cloning an app, with your own Git credentials), cloned into `<data>/sources/` and pulled again from their chip. Both agents get `list_sources`, `list_source_files`, `read_source_file`, `search_source` and `source_git` (status, log, diff, show, blame) to find where a problem they saw in a page or a trace comes from, and `edit_source_file` / `write_source_file` to fix it:
-- **Every change asks first,** with its diff in the dialog (permission `agent.source`, rememberable per folder). Changes to your folders aren't in Rune Browser's History: undo them with your own Git. Changes to a cloned repository stay in Rune Browser's clone; nothing is pushed.
-- **Never read or written:** paths outside the source (symlinks too), files that hold credentials (`.env`, keys, `.npmrc`, `credentials.json`…; `.env.example` is fine) and `.git`'s internals. Dependencies and builds are left out of listings and searches. Rune Browser's own data, a whole disk or your home folder can't be attached.
-- Removing a source deletes Rune Browser's clone, never your folder. Every call is in Activity.
-
-Auth is always the provider's own login: no API keys (Rune Browser strips
-`ANTHROPIC_API_KEY` from Claude's environment on purpose).
-
-### Shared tab context
-
-Agents can use what's in other tabs of the workspace, when the user shares it:
-- **Mentions:** typing `@` in a composer lists the workspace's other tabs; picking one shares it with the next message (a chip above the text, removable).
-- **Hand-off:** "Send to…" under an agent's reply passes it to another tab's agent: that tab opens with the reply attached to its next message.
-- **Agents asking:** `list_tabs` names the other tabs; `read_tab` reads one after the user allows it (permission `agent.tab`, per tab, rememberable).
-
-What the agent gets (`agent/sharedTabs.ts`, built on the server): a web page's URL, title, selected text and visible text (the main content, up to 30k characters, read by the renderer and waking an unloaded tab); for an app, its tools and how its data is laid out (tables and columns, never rows); and the handed-over reply. It's wrapped in `<shared-tab>`, marked as the tab's content rather than the user's instructions, and every share is in Activity. Only tabs of the same workspace can be shared.
-
-Web pages are untrusted, and so is what a website agent made of one: they only go to website agents, which have no tools of their own (`access: "none"`), never to an app builder (`shareRefusal`, checked by the server). An app's page isn't shared with app builders either, since it can show data from anywhere; they get its tools and data layout.
-
-### AI in apps
-
-Apps can use AI through Rune Browser, on the user's own subscription, so apps never
-hold API keys. The presets ship `src/ai.ts` (`ai.chat`, `ai.json`, `ai.stream`);
-other stacks call the HTTP API directly:
-
-```
-POST $RUNE_AI_URL/chat          Authorization: Bearer $RUNE_AI_TOKEN
-{ "messages": [{ "role": "user", "content": "…" }], "system"?: "…", "json"?: true, "stream"?: true }
-→ { "text": "…", "json"?: …, "provider": "claude", "model": "haiku" }
-GET  $RUNE_AI_URL/models        → enabled, model, models, today's usage
-```
-
-- **Per-app keys:** every app gets its own random token in its environment (new on each server start, revoked when the app is deleted).
-  - The token only works on `/ai/`, not on the rest of Rune Browser's API.
-  - Requests carrying an `Origin` header are refused, so only the app's server can ask, never a page in a browser.
-- **No tools:** requests run with the provider's own tools switched off: no files, shell, web or connectors.
-  - Claude: `tools: []`, strict MCP config, no claude.ai connectors.
-  - Codex: shell, code mode, image viewing, apps and web search turned off, and the user's MCP servers disabled.
-  - OpenCode: every tool asks for permission, and Rune Browser refuses (its free models need the tools to be defined).
-  - Each provider was tested by asking it to read a file. The website agent uses the same mode.
-- **Limits and visibility:** a daily request limit per app, at most two requests per app at a time, and one line per request in the app's logs (sizes and timing, not content).
-- **Settings → AI in apps** turns the feature on or off and picks the model. The default is a fast model (Haiku on Claude).
-
-### History
-
-Every change is saved as a snapshot you can look at and take back (Settings → History; the clock button in an app tab). A snapshot covers one of:
-- an **app**: its project files (without `node_modules`, builds, `.git`) and its data (see App data). SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
-- the **site customizations** and **page changes** the website agent (or you) made;
-- Rune Browser's **settings**, including each workspace's.
-
-Snapshots are taken before and after every agent turn (so what you or the app changed in between is kept apart from what the agent did), when an app starts from a template, and when you change settings or site customizations (changes made in a row are folded together). "Save a snapshot" takes one by hand.
-
-Each entry shows who made the change (which agent, you, Rune Browser) and its files with line diffs. Two ways back:
-- **Undo this change** reverts only that step. It refuses if those files were changed again since.
-- **Restore this version** puts everything back the way it was then.
-
-- **Restore everything to here** (on the History page) puts Rune Browser back to that moment in one step: its settings, the site customizations and every app of the workspace (or of all of them, with "All workspaces"), each as its own restore that can be undone. Apps made since are left as they are.
-
-Both keep the app's current data unless you tick "also its data". Restoring or undoing first saves the current state, so it can be undone too. When an app crashes, its tab offers to undo the agent's last change.
-
-If something breaks Rune Browser's own UI, **safe mode** starts it without the theme and site customizations. Start it with `--safe-mode` or press Ctrl+Alt+Shift+S, undo the change in History, then restart normally.
-
-Contents are stored once (content-addressed, gzipped) under `<data dir>/history/`. The last 200 snapshots are kept per app, for site customizations and for settings.
-
-### Window
-
-The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and Rune Browser draws one button, close, as a red macOS-style light first in the sidebar's top row (gray while the window isn't focused; `components/WindowControls.tsx`). There's no minimize or maximize button: drag the row to move the window, double-click it to maximize. macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
-
-### Agent sidebar
-
-The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J (or the agent button at the top of the sidebar) opens or closes it for the tab. Its header is the tab's name, a red shield while agents have full access, new chat, earlier chats and close. It's open by default only where it's needed: on a new app tab, to describe the app. Web pages and other tabs start with it closed and remember being opened; an app's tab follows its mode (open while it's being edited), and apps start finished when Rune Browser starts.
-
-**Chats.** "New chat" (in its header, a tab's menu or the command bar) starts a fresh conversation and keeps the current one: the clock button lists a tab's earlier chats, newest first, to open one again (it continues where it left off, with its agent session; the current chat is kept in its place) or delete it (`/api/apps/:id/chats`).
-
-It's resized like the tab sidebar: drag its left edge (or use the arrow keys on it), double-click for the default width, drag it far to the right to close it. The width is the same in every tab and remembered.
-
-### Sidebar
-
-The sidebar is the browser's chrome, like Zen Browser's: pages get the whole content area, without a toolbar (`components/TopBar.tsx`, each tab's part in `lib/tabChrome.ts`). The page sits inset from the window and the sidebars, with rounded corners; each pane of a split view is its own card. Fullscreen video still fills the screen.
-- **Top row:** close, the agent (Ctrl+J; a dot while it works), a web tab's extensions (the puzzle: one menu, pinned ones first, with their badges and popups), then back, forward and reload. It drags the window.
-- **Address:** the tab on screen's address (an app's localhost URL). A new web tab (Ctrl+T) opens blank with it focused and empty. Typing suggests the open tabs that match (every workspace; Enter switches to the first), the address and a web search; Ctrl+L focuses it. Paths and localhost addresses open in an app's preview; anything else in a new web tab. A web tab's page changes are behind the paintbrush in it.
-- **The tab's tools:** an app's state (editing, running…), restart, logs, secrets, history, data, tools and "open in your browser". The Network panel is in the command bar ("Network requests"); picking elements is in the agent's composer.
-- **Pinned tabs** are tiles above the list (and stay loaded).
-- **Tabs** have an × (or middle-click, Ctrl+W). Closing a web tab removes it; Ctrl+Shift+T opens the last one again. Closing an app keeps it with its project, data, chat and secrets (`POST /api/apps/:id/close`): "New tab" lists the saved apps to open again in the current workspace (`/api/library`, `POST /api/apps/:id/reopen`), as does the command bar. "Delete" in its menu deletes it for good. A new app with nothing in it yet is just removed.
-- **"New tab"** is under the tabs. At the very bottom, one row: the collapse button on the left, the workspaces' icons centered, Settings on the right.
-
-It collapses to a column of icons (the collapse button, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
-
-### Settings
-
-Settings has a sidebar of its own on the left, one category at a time on the right (`components/SettingsPage.tsx`, the list in `lib/settingsSections.ts`): Appearance, Workspace, Agent, Providers, Apps, Web tabs, Network, Extensions, Secrets, Permissions, About, and Rune Browser's pages: History, Schedules, Mods and Activity. Each category is also in the command bar ("Settings: Apps"), and the pages keep their own commands ("Open History").
-
-Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in their menu). The order is saved per workspace (`PUT /api/workspaces/:id/order`); new tabs, copies and tabs moved in from another workspace go last.
-
-Every tab can have its own icon ("Change icon…" in its menu): a Lucide icon (searchable), an emoji or an uploaded image (scaled to a 64px PNG). It's shown in the sidebar and the command bar; "Use the default" brings back the app icon or the site's favicon. An app's agent picks an icon with `set_app_info` (a Lucide name, or `icon_file`, an image from the project), but never replaces one you chose.
-
-### Tab unloading
-
-Tabs that haven't been on screen for a while are unloaded: their page (a web page or an app's preview) closes and frees its memory (Settings → Tabs: after 30 minutes by default, or never). They're dimmed in the sidebar and come back where you left them when opened: the same page, scroll position (the window's and scrolled containers') and what you typed, put back through the fields' own setters so frameworks notice. Passwords, hidden and file inputs and card fields aren't kept, and the rest lives only in memory (`lib/pagestate.ts`).
-
-- **Never unloaded:** tabs on screen (in a split, all of its tabs), tabs whose agent is working, pages playing sound, and pinned tabs ("Keep loaded" in a tab's menu, saved with the tab: `PUT /api/apps/:id/pinned`).
-- **By hand:** "Unload" in a tab's menu, or "Unload other tabs" in the command bar.
-- **Background work:** an agent's page tools wake an unloaded tab in the background (`wakePage` in `lib/webtabs.ts`) and it stays loaded until it's idle again. The chat keeps streaming, and an app's server keeps running for schedules, tools and other apps.
-- **Not kept:** a page's back/forward history, and anything only in its JavaScript memory. Extensions only see loaded tabs.
-
-### Split view
-
-Tabs of a workspace can be shown side by side or stacked, any kind together (apps, web tabs, extension pages), up to four at once.
-- **Making one:** drag a tab from the sidebar onto a side of the tab on screen (or onto an end of the split on screen), choose "Show beside …" in a tab's menu, or type "split" in the command bar.
-- **Using it:** clicking into a pane focuses its tab (the outlined one; shortcuts and the address bar go to it). Drag the line between panes to resize them, double-click it for equal sizes.
-- **In the sidebar** a split is one block with its tabs, which takes the place of its first tab. Its handle drags the whole split, its menu stacks or unstacks it, evens out the sizes or unsplits it. Dropping a tab next to one of its tabs adds it there, dropping one of its tabs elsewhere takes it out.
-- **Saved** with the workspace (`PUT /api/workspaces/:id/splits`, kept consistent by `normalizeSplits`): a deleted or moved tab leaves its split, and a split of one ends.
-
-Tabs aren't moved in the DOM for this (a webview that moves reloads): every tab keeps its layer, and a split only places its tabs' layers in their panes (`components/SplitView.tsx`, `lib/splits.ts`).
-
-### Command bar
-
-Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, Rune Browser's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.
-
-Apps declare their actions in `rune.json`:
-
-```json
-"actions": [
-  { "id": "report", "title": "Monthly report", "path": "/report" },
-  { "id": "add-expense", "title": "Add expense", "endpoint": "/api/actions/add-expense", "input": "What and how much" }
-]
-```
-
-- `path` opens the app at that page.
-- `endpoint`: Rune Browser starts the app if needed and POSTs `{ "input": … }` to its own server. The JSON reply's `message` (or `error`) is shown as a notice, and the call is recorded in Activity.
-- Paths and endpoints are always on the app's own server. Invalid actions are left out rather than breaking the manifest.
-
-### Tool registry
-
-Actions are part of a registry of what apps can do, for you, agents and other apps (`workspace/AppTools.ts`). An app's tools are:
-- its **actions** (above). `"params": { "month": { "type": "string", "required": true } }` gives agents and apps typed arguments; they arrive as `{ input, params }`, with `X-Rune-Caller: user | agent | app:<id>`, and the whole JSON reply comes back;
-- the **basic tools from its data**: `list-`, `get-`, `add-`, `update-` and `delete-<table>` for each table (not those starting with `_`). `"dataTools": "read"` keeps only list and get, `"none"` turns them off, and an action with the same id replaces one.
-
-Every call goes through Rune Browser, the hub between apps:
-- **You**: the Tools panel (wrench button in an app tab) lists them with a form to run each; actions are also in the command bar.
-- **Agents**: `list_app_tools` and `use_app_tool`.
-- **Apps**: `GET $RUNE_API_URL/tools` lists the workspace's apps and their tools; `POST $RUNE_API_URL/tools/<app>/<tool>` with `{ params?, input? }` runs one. Server-only, like the data API.
-- **Permissions**: an app and its agent may use the app's own tools. Another app's tools are limited to the same workspace and need your OK: reading data is the app-data permission, anything else is asked per tool. Opening pages is only for you. Every call is in Activity.
-
-Data tools write the app's database directly: the app sees the change on its next read, but open windows aren't told (no realtime publish), and the app's own rules are skipped. Apps with rules worth keeping should replace those tools with actions or set `"dataTools": "read"`.
-
-### Schedules
-
-Schedules run apps' tools and commands in the background, without a tab open, and prompts for a tab's agent (`scheduler/Scheduler.ts`). The Schedules page (in Settings) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
-- **What:** one of an app's tools from the registry, with params; the call goes through the registry's permissions and audit log, as the user (or as the agent that made it). Or a command in the app's sandbox, without its secrets, like `run_command`.
-- **Prompts:** or a prompt for an agent (made by you, not by agents). It runs in a tab of the workspace, or in a new app or web tab opened on its first run, which the schedule then keeps. Each run starts a new chat in that tab (the current chat goes to its earlier chats) and sends the prompt as if you had, so the run can be read and continued there; its tools ask for permissions as usual. A run fails if the tab's agent is busy, and the agent is stopped at the time limit. The run's result is the agent's last reply, or its error.
-- **When:**
-  - once at a time;
-  - a cron expression in local time (`0 8 * * 1-5`);
-  - an event: Rune Browser started, an app started or crashed, or one an app sends itself with `POST $RUNE_API_URL/events {"name": "new-order"}`.
-- **Who:** you on the page, or an app's agent (`create_schedule`, `update_schedule`, `delete_schedule`, `run_schedule`, `list_schedules`) for its own app, after you allow it once per app (`agent.schedule`).
-- **Limits:**
-  - recurring schedules run at most every 5 minutes, and at most two runs happen at once (the rest wait);
-  - a schedule never overlaps itself (the extra run is recorded as skipped), and every run has a time limit (5 s to 30 min, 5 min by default);
-  - event runs happen at most every 30 s per schedule;
-  - output is capped at 20 kB, and the last 50 runs per schedule are kept.
-- **Missed runs:** a run missed while Rune Browser wasn't running happens once when it starts. Runs that were going when it stopped are marked as failed.
-- **Notifications:** a notice when a run fails (or after every run, per schedule), and a system notification when Rune Browser isn't focused. Every run is in Activity.
-
-### Secrets
-
-Apps get secrets (API keys, passwords) as environment variables. A secret belongs to one app (key button in its tab), to a workspace (Settings → Workspace, for all its apps) or is global (Settings → Secrets, behind a warning). Global ones reach only the apps you allow.
-
-- **At rest:** values are encrypted with AES-256-GCM, bound to the secret's scope and name.
-  - Electron keeps the key in the OS keychain (`safeStorage`) and passes it to the server over stdin.
-  - Without a keychain, the key is a 0600 file, and Settings say so.
-  - On Linux desktops Chromium doesn't recognize (Hyprland, Sway…), Rune Browser asks for the Secret Service (gnome-keyring, KeePassXC…) itself (`--password-store=gnome-libsecret`). KDE's KWallet is found on its own.
-- **Never shown again:** the API never returns a value after it's saved. You can replace or delete one, not view it.
-- **Only the app's own processes:** the dev, build and start commands get secrets; dependency installs and the agents' `run_command` don't.
-  - Secrets go in through the environment, never through process arguments. bwrap gets its environment directly instead of `--setenv`.
-  - Values are masked in the app's logs and in command output.
-- **Agents never see values:** `list_secrets` shows names; `request_secret` puts a form in the chat for you to fill in.
-- **Changes apply right away:** changing, deleting or revoking a secret restarts the apps using it.
-- **Limits:** this keeps secrets away from everything that shouldn't have them. An app that legitimately has a secret can still leak it, through its own code or its dependencies.
-
-### Permissions and activity
-
-Anything an app or agent does beyond its own sandbox needs your OK:
-- an app using AI;
-- an app using a global secret;
-- an app reading another app's data;
-- an app (or its agent) using another app's tools;
-- an app's agent creating schedules (once per app);
-- the website agent customizing a site or changing pages (per host or pattern);
-- the website agent using a site for you (per host), and each action with consequences (every time);
-- an agent reading another tab.
-
-Rune Browser asks in a dialog; you can remember the answer. Unanswered requests are denied after a while. Settings → Permissions lists remembered decisions, each revocable.
-
-**Full access** (Settings → Agent → Permissions, after a warning) lets agents do all of this without asking: what the website agent does on sites (customizing, acting with your logins, confirming purchases and messages, sending requests), reading other tabs, using other apps' tools and data, scheduling. Apps' own requests (AI, global secrets, other apps' data from their servers) still ask. While it's on, the agent sidebar shows a red "Full access" badge (click it to go back to asking) and working agents a red dot in the tab list. Every request allowed this way is in Activity (`permission.auto`), and History can still undo what an agent changed in apps and customizations (not what it did on websites).
-
-The **Activity** page (in Settings) is the audit log: who, what, which tab and when. It records:
-- every agent turn and tool call (arguments summarized, long text only as a size);
-- AI requests;
-- secret changes and injections;
-- permission decisions;
-- runtime actions.
-
-Values are never logged.
-
-Agents' processes don't get Rune Browser's own environment variables (`RUNE_*`). In particular they don't get the API token, so they can't call Rune Browser's API around these checks.
-
-### Web tabs
-
-Web tabs are `<webview>`s in their workspace's session, separate from Rune Browser's own. The website agent works on the
-open page and saves changes that apply on every visit. It gets only the page tools, no files or shell.
-
-**Page changes** (`db/PageChanges.ts`, applied by `shared/web.ts`) are single changes, each with a title:
-- **What:** hide elements, restyle them (CSS declarations), replace their text, set an attribute, insert HTML next to or inside them, add a button with a click handler, or a stylesheet or script.
-- **Where:** a site (host; what the agent uses by default, so a change stays when you move around the site), a pattern (`*.example.com/*`, `example.com/docs/*`; `*.` also covers the bare domain), or one page (host and path, ignoring query and hash) when you ask for just that page. A change's scope can be changed from its row (click where it applies).
-- **Lasting:** they're applied on every load and in single-page apps on in-page navigation. A MutationObserver applies them to content the page adds later. CSS goes in through `insertCSS`, so pages' content security policies don't block it, and button handlers are compiled with the injected script rather than `eval`ed.
-- **Visible:** the paintbrush in the address bar lists every change on the page (and the site's CSS/JS override) with a switch and a remove button, and Settings → Web tabs lists all of them. Turning one off undoes it in place; only scripts need a reload, since what they did can't be taken back.
-- **Tools:** the website agent uses `add_page_change`, `update_page_change`, `remove_page_change` and `list_page_changes`, and asks per site or pattern first (`agent.site`). The API is `/api/page-changes`.
-- **History:** changes are part of the site customizations' snapshots (`@changes/<id>.json`). The agent improves an existing change rather than adding another, and has `list_snapshots`, `view_snapshot` and `restore_snapshot` (only the site it's on; the app builder has the same for its app). Agents can't delete snapshots.
-
-**Using pages for you.** The website agent can also do things on the web: open pages, click, type, fill in forms, press keys, scroll and wait for content (`agent/browseTools.ts`), with real input events in the tab you're looking at, so it works with your logins there.
-- **Every action names its element first** (by selector, visible text or a point on a screenshot; `lib/browse.ts` finds it in the page), so Rune Browser can check it before anything happens.
-- **Your OK per site:** acting on a site with your session asks once per site (`agent.browse`, rememberable in Settings → Permissions).
-- **Confirmation every time** for what has consequences: clicking or submitting something that buys, pays, books, sends, posts, subscribes or deletes, submitting a form that takes card details, and typing card details (`agent.confirm`, never remembered). The agent asks for anything else with consequences itself (`confirm_action`). Passwords are never typed: you sign in yourself.
-- **Visible:** a marker shows where it clicks or types, and a banner says the agent is using the page, with **Take over**, which stops it.
-- **App actions:** what it finds can go into your apps with `use_app_tool` (after your OK for that app's tool).
-- **Limits:** the checks read the element's text, name and form, so a site that labels "Buy" as an icon only can slip past the confirmation (the agent is told to use `confirm_action` then). `run_js` can still change a page directly; it's meant for exploring.
-
-The older **site override** (one stylesheet and script per hostname, `set_site_override`) still exists for larger reworks.
-
-Web tab logins are cookies, which are encrypted with a key from the same keychain, like Chrome's. The `EnableCookieEncryption` fuse is set in `electron-builder.yml` for the packaged app, and by `scripts/electron.ts` in `node_modules` for runs from source. As in Chrome, a site's local storage, IndexedDB and cache aren't encrypted. They sit in the 0700 profile folder.
-
-Web tabs say they're plain Chrome, because some sites turn away other browsers. Google's sign-in can tell that Rune Browser isn't Chrome, though, and refuses a browser that claims to be ("This browser or app may not be secure"). It accepts Electron when the user agent names it. So requests to `accounts.google.com` get Electron's own user agent, through the built-in extension that applies the network rules (`signInRule` in `src/shared/extensions.ts`).
-
-### Mods
-
-Customizations packaged to share with others (Settings → Mods). A mod is one JSON document (`shared/mods.ts`, format `rune-mod`, version 1):
-- **What's in it:** page changes (how sites look and work), Rune Browser's theme, and Chrome Web Store extensions (by id: they're installed from the store, not their settings).
-- **Making one:** "Make a mod" picks your own page changes, your theme and your store extensions, and gives a share code (`RUNE-MOD:` and the compressed JSON), copied right away, or a file.
-- **Installing:** paste a share code or an https link into "Install a mod" (or the command bar), or open a file. A review comes first: what it changes, where it runs its own JavaScript (scripts, buttons, HTML with handlers: flagged as able to read everything there, with your logins), which extensions it installs, whether it changes the theme. A mod with the same id updates the installed one.
-- **Gallery:** Rune Browser's examples (`mods/gallery.ts`), plus galleries you add: https links to JSON files listing mods (`{ "mods": [...] }`). There's no central gallery service: a gallery is any file someone publishes.
-- **Undo:** an installed mod can be turned off or removed. Its page changes are marked with it (`mod_id`) and go with it; the theme it replaced comes back (unless you changed the theme since); the extensions it installed are disabled or removed, ones you had before stay.
-- **Recorded:** installs, updates, switches and removals are snapshots (site customizations, settings) and in Activity. `/api/mods`, `/api/mods/review`, `/api/mods/package`, `/api/mods/gallery`.
-- **Limits:** extensions' own permissions are only known once they're installed (Settings → Extensions shows them). Restoring an older site-customizations snapshot can bring back or drop a mod's page changes without changing the mod's entry.
-
-### Network
-
-Every web tab's traffic is recorded in Electron's main process over the DevTools protocol (`src/main/network.ts`). "Network requests" in the command bar opens the Network panel: requests with their headers and the data they returned, filterable, data (fetch/XHR, JSON, XML, forms) by default.
-
-- **Bounded memory:** the last 500 requests per tab. Response bodies are kept for structured data only, at most 256 kB each, 3 MB per tab and 24 MB in all; the oldest go first. Settings → Network turns recording off.
-- **Credentials stay hidden:** cookies, `Authorization` and other credential headers, token-like URL parameters and JSON or form fields (`password`, `accessToken`…), JWTs and bearer tokens show as `[redacted]`. In the panel you can show them; the website agent only ever gets them redacted.
-- **Send again:** a captured request is sent again with the workspace's session (its cookies, plus the original credential headers), optionally changed.
-- **Save for later:** a saved request is stored per workspace with its credentials sealed (AES-GCM, with a key only the main process uses; the server stores the blob but never returns it). It can be sent from the panel's Saved tab or by the website agent without opening the site.
-- **Rules** block requests or set and remove request or response headers, for every workspace or one (Settings → Network, or "Block like this" in the panel). Patterns use `*` over the whole URL, or match text anywhere in it. A small built-in extension applies them as `declarativeNetRequest` session rules (`src/main/extensions/builtin.ts`), so they work alongside extensions like uBlock Origin Lite: Electron turns off every extension's blocking in a session that has `webRequest` hooks. Requests sent again from the panel check the rules themselves.
-
-The website agent has `network_requests`, `network_request`, `replay_request`, `save_request`, `saved_requests` and `send_saved_request`. Sending anything with the user's session asks first, once per site (permission `agent.network`), and every call is in the activity log.
-
-### Extensions
-
-Web tabs run Chrome extensions (Manifest V3 and V2) with Electron's extension support. Each workspace's session loads its own copy, so an extension only sees the tabs of its workspace and keeps separate data there (`chrome.storage.sync` is the exception: one copy per extension, shared). Settings → Extensions lists them. You can add one from the Chrome Web Store (link or ID), load an unpacked folder, or import from a browser. Store extensions update every 5 hours.
-
-**Import from your browser** (Settings → Extensions, or the puzzle menu in a web tab) reads the profiles of Chrome, Chromium, Brave, Edge and Vivaldi (including Flatpak and Snap installs). It offers what's turned on there. Store extensions are copied and keep their IDs. Unpacked ones are used from their folder. They come along with:
-
-- which ones are pinned (at the top of the extensions menu);
-- the keyboard shortcuts changed there;
-- with "Bring their settings too", what they saved: `chrome.storage.local`, their dynamic blocking rules and IndexedDB (sign-ins, preferences).
-
-An imported extension gets `runtime.onInstalled` with `reason: "update"`, so it doesn't open its welcome pages again.
-
-**APIs.** What Electron lacks is added by a shim that the extension preload (`src/extension-preload/`) injects into extension pages and service workers; the main process does the work (`src/main/extensions/apis.ts`):
-
-- toolbar buttons (`action`, `browserAction`, `pageAction`: badges, popups, per-tab state);
-- `tabs`/`windows` (tabs open, select and close through Rune Browser's tab list);
-- `commands`, `contextMenus`, `permissions` (optional ones ask first);
-- `storage.sync`, `webNavigation`, `cookies`, `notifications`, `idle`, `management`, `downloads.download`, `search`, `system.cpu`/`memory`/`display`;
-- `runtime.onInstalled`/`onStartup`/`openOptionsPage`;
-- native messaging.
-
-**Site sign-ins** (HTTP Basic/Digest, proxies): Electron cancels them and never asks extensions. Rune Browser handles them itself (`login` in `src/main/web.ts`): extensions that listen to `webRequest.onAuthRequired` (with `webRequestAuthProvider` or `webRequestBlocking`, and access to the site) are asked first, like in Chrome, so password managers fill them in. A retry keeps its request ID, and after two refused answers the extensions aren't asked again. Then Rune Browser's own sign-in dialog asks you (`components/AuthDialog.tsx`). App previews keep Electron's behavior.
-
-Chromium puts its own namespaces back on `chrome` whenever bindings update (another extension loading does that), so the shim extends the namespaces Electron has instead of replacing them.
-
-Stopped service workers are started again for the events they listened to. Electron doesn't enable static `declarativeNetRequest` rulesets by itself, so the shim enables the manifest's defaults on install and update.
-
-**Native messaging** uses the browser's own host manifests (`NativeMessagingHosts` in the browser's profile folder, `/etc/opt/chrome`, `/etc/chromium`), or Rune Browser's own (`<userData>/NativeMessagingHosts`). A host only runs for the extensions in its `allowed_origins`, and doesn't get Rune Browser's environment variables.
-
-**Caveats:**
-
-- **Limited permissions** (`shared/extensions.ts`, `permissionAbout`): what Rune Browser doesn't have gets a stand-in, so the extension keeps working: `history`, `bookmarks`, `sessions`, `tabGroups`, `topSites` are empty, `privacy` and `fontSettings` read as defaults and change nothing, `identity`, `tabCapture`, `gcm` and anything unknown fail with `lastError`, `desktopCapture` acts cancelled. A side panel (`sidePanel`) shows as the popup of its toolbar button, or in a tab. `userScripts` stays missing, like in Chrome with "Allow user scripts" off. Import and the extension's details say what's different for each.
-- **Allowing and blocking permissions:** an extension's details list every permission it asks for with a switch. Blocking one restarts the extension; its calls then fail (in the shim and in the main process) and its events don't come. Optional permissions are granted or taken back there too.
-- `chrome.storage.sync` data isn't imported (Chrome keeps it in a LevelDB that Rune Browser doesn't parse).
-- Settings are imported into each workspace once, when the extension first loads there; later changes stay per workspace.
-
-### Process model and security
-
-On startup the main process picks a free port, generates an API token and
-spawns the server, then opens the window and passes URL and token to the
-renderer through the preload script. The API requires the token and rejects
-browser requests from other origins, since web pages and app previews can
-reach 127.0.0.1 too. App previews run in a session per app (cookies don't
-separate ports).
-
-- **Dev:** the server runs from source with `bun --watch`.
-- **Production:** the server is compiled with `bun build --compile` into a
-  standalone executable (next to the Claude Code binary the SDK drives). It
-  doubles as the `bun` apps run on (`BUN_BE_BUN=1`), so users don't need Bun.
-
-Data lives in Electron's userData dir (`~/.config/Rune Browser/data` on Linux), or
-`.data/` when running the server standalone.
+[MIT](LICENSE)

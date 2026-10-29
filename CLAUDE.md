@@ -1,26 +1,23 @@
 # Rune Browser
 
-Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLite; Claude Code, Codex, OpenCode as agents). See README.md for architecture.
+Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLite; Claude Code, Codex, OpenCode as agents). See [docs/](docs/) for the architecture and concepts, [docs/releasing.md](docs/releasing.md) for releases.
 
-## Working with the user
+## Working in this repo
 
-- The user dictates by voice, so names arrive garbled: decode them phonetically ("Dialects" = StyleX, "Cloud Agents SDK" = Claude Agent SDK, "Cloud Sub" = Claude subscription, "Bonn" = Bun, "codecs" = Codex, "ping.gg" = pingdotgg). Ask only when it's genuinely ambiguous.
-- Work on `master` (don't create or rename branches). Don't push unless asked.
-- Commit on your own when a piece of work is done, without asking. Never commit anything sensitive: secrets, tokens, credentials, personal data, local databases or `.data/`. Check the staged diff before committing.
-- Several Claude threads may work in this repo at the same time:
-  - Commit only the files you changed (`git add <paths>`, not `git add -A`). Leave other threads' uncommitted work alone.
-  - Never use broad `pkill -f` patterns. They can kill other threads' servers and e2e runs, or your own shell when the pattern matches the command itself. Stop only the processes you started (by PID, or `pkill -x <name>`).
-  - Use throwaway data dirs (`RUNE_DATA_DIR=$(mktemp -d)`) and free ports for manual server runs, never `.data/` or a fixed port another thread might use.
-- Never open windows on the user's screen. They use Hyprland/Wayland, where windows pop up on the focused workspace, right where they're working.
-  - e2e runs Electron with `--ozone-platform=headless` and offscreen rendering, so nothing appears.
-  - Don't use `bun run start`, `bun run dev`, `e2e --visible`, or `xdg-open`/`shell.openExternal` for checks.
-- Use your own judgment for refinements and keep going until the task is complete. Report caveats honestly at the end.
+- Work on a branch per piece of work and open a pull request against `master`; `master` only changes through pull requests, and CI (`bun run check` on Linux, Windows and macOS) must pass. PR titles become the release notes, so write them for users.
+- Never commit anything sensitive: secrets, tokens, credentials, personal data, local databases or `.data/`. Check the staged diff before committing.
+- No backward compatibility before 1.0: rename and reshape freely, without migrations or legacy fallbacks.
+- Several agents may work in this repo at the same time:
+  - Commit only the files you changed (`git add <paths>`, not `git add -A`). Leave others' uncommitted work alone.
+  - Never use broad `pkill -f` patterns. They can kill other agents' servers and e2e runs, or your own shell when the pattern matches the command itself. Stop only the processes you started (by PID, or `pkill -x <name>`).
+  - Use throwaway data dirs (`RUNE_DATA_DIR=$(mktemp -d)`) and free ports for manual server runs, never `.data/` or a fixed port someone else might use.
+- Checks never open windows: e2e runs Electron with `--ozone-platform=headless` and offscreen rendering. Don't use `bun run start`, `bun run dev`, `e2e --visible`, or `xdg-open`/`shell.openExternal` for checks.
 
 ## Rules for the product
 
 - Auth is always the user's own logins (Claude subscription, Codex/ChatGPT, OpenCode). Never add an API-key path; `ANTHROPIC_API_KEY` is stripped from Claude's environment on purpose.
 - Don't show the user's account email anywhere in the UI. The plan type ("Claude Pro") is fine.
-- Secret values never reach agents, prompts, logs, process arguments or the API's responses (see README: Secrets). Agent processes get the environment via `agentEnv()` (no `RUNE_*`); app processes get exactly what the Runtime/Sandbox give them.
+- Secret values never reach agents, prompts, logs, process arguments or the API's responses (see docs/concepts.md: Secrets). Agent processes get the environment via `agentEnv()` (no `RUNE_*`); app processes get exactly what the Runtime/Sandbox give them.
 - New capabilities that let an app or agent reach beyond its sandbox go through `Permissions.ask` and are recorded with `Audit.record`.
 - Untrusted input never reaches a provider that has tools of its own. This covers web pages (the website agent) and apps' AI requests: they run with `access: "none"`, where every provider has its file, shell, web and connector tools switched off.
 
@@ -29,7 +26,7 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 - Bun everywhere: `bun install`, `bun run <script>`.
 - Verify changes with `bun run check` (typecheck, unit tests, build, e2e). Chain steps with `&&`, and don't hide failures behind pipes.
   - For UI work, look at the screenshots in `test-results/`.
-  - `bun run e2e --agent` exercises real agent runs. They use the user's plan; it picks Haiku/low effort.
+  - `bun run e2e --agent` exercises real agent runs. They use your own plan; it picks Haiku/low effort.
 - `scripts/lib/cdp.ts` is a small DevTools client for driving the running app if you need to inspect something e2e doesn't cover. Launch it headless as above.
 - StyleX:
   - No `border`/`background` shorthands: they're silently dropped. Use longhands.
