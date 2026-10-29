@@ -13,6 +13,7 @@ import { autoUpdate, extensionList } from "../lib/extensions";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
+import { checkForUpdates, installUpdate, setUpdateChannel, updateInfo } from "../lib/updates";
 import {
   ACTIVITY_VIEW,
   appById,
@@ -422,6 +423,8 @@ function PermissionsSection() {
 function AboutSection() {
   const [health] = createResource(() => api.health());
   return (
+    <>
+        <UpdatesSection />
         <Section title="Rune Browser" icon="info" anchor="about">
           <dl {...stylex.attrs(styles.about)}>
             <dt>Data folder</dt>
@@ -431,6 +434,68 @@ function AboutSection() {
               Electron {window.rune.versions.electron} · Chrome {window.rune.versions.chrome} · Bun {health()?.bun ?? "…"}
             </dd>
           </dl>
+        </Section>
+    </>
+  );
+}
+
+/** The running version, what the updater is doing, and the release channel. */
+function UpdatesSection() {
+  const info = updateInfo;
+  const status = () => info()?.status;
+  const checked = () => (info()?.checkedAt ? ` · checked ${new Date(info()!.checkedAt!).toLocaleString()}` : "");
+  const description = () => {
+    const s = status();
+    if (!s) return "…";
+    switch (s.state) {
+      case "unsupported":
+        return s.reason;
+      case "idle":
+        return `Up to date${checked()}`;
+      case "checking":
+        return "Checking for updates…";
+      case "available":
+        return `Version ${s.version} is out. Download it from its release page.`;
+      case "downloading":
+        return `Downloading version ${s.version}… ${s.percent}%`;
+      case "ready":
+        return `Version ${s.version} is ready. It's installed when Rune Browser restarts.`;
+      case "error":
+        return `Couldn't update: ${s.message}`;
+    }
+  };
+  const state = () => status()?.state;
+  const available = () => {
+    const s = status();
+    return s?.state === "available" ? s : null;
+  };
+  const canCheck = () => state() === "idle" || state() === "error";
+
+  return (
+        <Section title="Updates" icon="refresh-cw" anchor="updates">
+          <Row label={`Rune Browser ${info()?.version ?? ""}`} description={description()}>
+            <span data-update-state={state()}>
+              <Switch>
+                <Match when={state() === "ready"}>
+                  <Button onClick={installUpdate}>Restart to update</Button>
+                </Match>
+                <Match when={available()}>{(s) => <Button onClick={() => window.rune.web.openExternal(s().url)}>Download</Button>}</Match>
+                <Match when={canCheck()}>
+                  <Button onClick={() => void checkForUpdates()}>Check for updates</Button>
+                </Match>
+              </Switch>
+            </span>
+          </Row>
+          <Row label="Channel" description="Beta also gets pre-releases: new features earlier, and sometimes rough edges.">
+            <Segmented
+              value={info()?.channel ?? "stable"}
+              options={[
+                ["stable", "Stable"],
+                ["beta", "Beta"],
+              ]}
+              onChange={(channel) => void setUpdateChannel(channel)}
+            />
+          </Row>
         </Section>
   );
 }
@@ -491,7 +556,7 @@ function ProviderRow(props: { id: ProviderId }) {
         <span {...stylex.attrs(styles.muted)}>Binary</span>
         <input
           value={config().binaryPath}
-          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with Rune Browser" : `${props.id} on your PATH`)}
+          placeholder={status()?.binary ?? `${props.id} on your PATH`}
           onChange={(e) => setConfig({ binaryPath: e.currentTarget.value.trim() })}
           {...stylex.attrs(styles.textInput, styles.mono)}
         />

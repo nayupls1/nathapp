@@ -1,0 +1,93 @@
+# Publishes a release when a version tag (v0.2.0, v0.2.0-beta.1) is pushed,
+# usually by `bun run release` (see docs/releasing.md):
+#   1. a draft GitHub release with generated notes (what changed, PR by PR)
+#   2. the full CI checks on every OS
+#   3. installers built on each OS and uploaded to the draft by electron-builder,
+#      with the update feeds (latest*.yml / beta*.yml) the app reads
+#   4. SHA256SUMS.txt, then the draft is published
+# Nothing is published unless every step passed; a failed run leaves a draft
+# (and the tag) to delete before tagging again.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Draft release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: The tag matches package.json
+        run: |
+          version="$(jq -r .version package.json)"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json ($version)"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Draft with generated notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # A version with a suffix (0.2.0-beta.1) is a pre-release: only the beta channel gets it.
+          prerelease=""
+          case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes --title "Rune Browser $VERSION" $prerelease
+
+  check:
+    name: Checks
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: [prepare, check]
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Package and upload to the draft
+        run: bunx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # No signing certificates yet (NAT-89).
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+  publish:
+    name: Publish
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir assets && cd assets
+          gh release download "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY"
+          sha256sum -- * > ../SHA256SUMS.txt
+          gh release upload "$GITHUB_REF_NAME" ../SHA256SUMS.txt -R "$GITHUB_REPOSITORY"
+      - name: Publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false -R "$GITHUB_REPOSITORY"

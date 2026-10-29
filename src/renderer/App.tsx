@@ -16,6 +16,7 @@ import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
 import "./lib/schedules";
+import "./lib/updates";
 import { startUnloading } from "./lib/unload";
 import { startWindowChrome } from "./lib/windowChrome";
 import { loadSettings } from "./lib/settings";

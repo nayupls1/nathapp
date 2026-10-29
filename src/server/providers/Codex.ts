@@ -9,6 +9,7 @@ import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
 import { commandTitle, displayPath, streamFrom, type Probe, type ProviderDriver } from "./Provider";
 import { agentEnv, findBinary, kill, readLines, runCommand, tailOf } from "./process";
+import { VERSION } from "../../shared/version";
 
 type Json = Record<string, any>;
 
@@ -79,7 +80,7 @@ class AppServer {
   }
 
   async initialize() {
-    await this.request("initialize", { clientInfo: { name: "rune", title: "Rune Browser", version: "0.1.0" }, capabilities: null });
+    await this.request("initialize", { clientInfo: { name: "rune", title: "Rune Browser", version: VERSION }, capabilities: null });
     this.notify("initialized");
   }
 

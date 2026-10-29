@@ -1,6 +1,7 @@
 appId: dev.runebrowser.app
 productName: Rune Browser
 executableName: rune-browser
+copyright: Copyright © 2026 nayupls1
 directories:
   output: release
   # icon.png (from icon.svg) for macOS and Linux, icon.ico (from icon.png) for Windows
@@ -9,23 +10,49 @@ files:
   - package.json
   - dist/electron/**
   - dist/renderer/**
-# The compiled Bun server and the Claude Code binary are native executables,
-# so they live outside the asar.
+# The compiled Bun server is a native executable, so it lives outside the asar.
 extraResources:
   - from: dist/server
     to: server
     filter:
       - rune-server*
-      - claude*
       - "!*.map"
+# Nothing to rebuild: the main process is bundled, the server compiled.
+npmRebuild: false
+artifactName: rune-browser-${version}-${os}-${arch}.${ext}
 # Cookies (web tab logins) encrypted with the key in the OS keychain.
 electronFuses:
   enableCookieEncryption: true
+# Releases (and the update feed the app reads, see src/main/updates.ts) are on
+# GitHub. CI creates the draft release; electron-builder uploads into it.
+publish:
+  provider: github
+  owner: nayupls1
+  repo: rune-browser
+  releaseType: draft
 linux:
-  target: AppImage
-  category: Utility
-mac:
-  target: dmg
+  target:
+    - AppImage
+    - deb
+  category: Network;WebBrowser
+  synopsis: A browser where coding agents build your own small apps
+  maintainer: nayupls1 <316469236+nathanpls@users.noreply.github.com>
+  # The window's Wayland app id / WM_CLASS matches the .desktop file (its icon, pinning).
+  syncDesktopName: true
+deb:
+  # Apps are sandboxed with bubblewrap.
+  recommends:
+    - bubblewrap
 win:
   target: nsis
   icon: build/icon.ico
+nsis:
+  artifactName: rune-browser-${version}-setup-${arch}.${ext}
+mac:
+  target:
+    - dmg
+    # Updates read the zip.
+    - zip
+  category: public.app-category.productivity
+  # Not signed yet (NAT-89): ad-hoc, so Apple Silicon runs it after "Open anyway".
+  identity: "-"

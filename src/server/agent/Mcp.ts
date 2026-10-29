@@ -3,6 +3,7 @@
 // random token (/mcp/<token>); the token is the only way in, and it's gone
 // when the turn ends.
 import { Cause, Context, Effect, Layer, Schema } from "effect";
+import { VERSION } from "../../shared/version";
 
 export type ToolContent = { type: "text"; text: string } | { type: "image"; data: string; mimeType: string };
 
@@ -87,7 +88,7 @@ export const make = (baseUrl: string) =>
             respond(msg.id, {
               protocolVersion: msg.params?.protocolVersion ?? "2025-06-18",
               capabilities: { tools: { listChanged: false } },
-              serverInfo: { name: "rune", title: "Rune Browser", version: "0.1.0" },
+              serverInfo: { name: "rune", title: "Rune Browser", version: VERSION },
             }),
           );
         case "ping":

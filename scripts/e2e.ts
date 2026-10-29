@@ -297,7 +297,8 @@ try {
       return list.every((p) => p.state !== "checking") ? list : undefined;
     }, 60_000);
     const claude = providers.find((p) => p.id === "claude");
-    if (claude?.state !== "ready" || !claude.models.length) throw new Error(`Claude isn't ready: ${JSON.stringify(claude)}`);
+    // CI has no agent logins: there, detecting them (installed or not) is enough.
+    if (!process.env.CI && (claude?.state !== "ready" || !claude.models.length)) throw new Error(`Claude isn't ready: ${JSON.stringify(claude)}`);
     return providers.map((p) => `${p.id} ${p.state} (${p.models.length})`).join(", ");
   });
 
@@ -317,7 +318,9 @@ try {
     await click("[data-agent-picker]");
     await page!.waitFor(`!!document.querySelector("[data-agent-popover]")`, { label: "picker popover" });
     const rail = await page!.eval<number>(`document.querySelectorAll("[data-agent-popover] [data-provider]").length`);
-    const models = await page!.waitFor<number>(`document.querySelectorAll("[data-agent-popover] [data-model]").length`, { label: "models" });
+    const countModels = `document.querySelectorAll("[data-agent-popover] [data-model]").length`;
+    // Without logins (CI) there are no models to list.
+    const models = process.env.CI ? await page!.eval<number>(countModels) : await page!.waitFor<number>(countModels, { label: "models" });
     await shot("agent-picker.png");
     await page!.eval(`document.querySelector("[data-agent-popover] input").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     await page!.waitFor(`!document.querySelector("[data-agent-popover]")`, { label: "Escape to close" });
@@ -1941,6 +1944,23 @@ try {
     await click("[data-preset]", "Default");
     await page!.waitFor(`getComputedStyle(document.querySelector("#root > div")).backgroundColor !== "rgb(11, 16, 32)"`);
     return `${nav.length} categories; ${rows.join(", ")}; shells ${shells.join(", ")}; background ${await pageBg()} after reset`;
+  });
+
+  await check("updates: About shows the version, that runs from source don't update, and the channel is remembered", async () => {
+    await openSettingsAt("about");
+    const version = (await Bun.file("package.json").json()).version as string;
+    await page!.waitFor(`document.querySelector('[data-section="updates"]')?.innerText.includes("Rune Browser ${version}")`, { label: "version" });
+    await page!.waitFor(`!!document.querySelector('[data-update-state="unsupported"]') && document.querySelector('[data-section="updates"]').innerText.includes("installed builds")`, {
+      label: "not updating from source",
+    });
+    await click('[data-section="updates"] [role="radio"]', "Beta");
+    await page!.waitFor(`document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Beta"`, { label: "beta selected" });
+    const stored = await page!.eval<{ channel: string }>(`window.rune.updates.get()`);
+    if (stored.channel !== "beta") throw new Error(`channel: ${stored.channel}`);
+    await shot("settings-about.png");
+    await click('[data-section="updates"] [role="radio"]', "Stable");
+    await page!.waitFor(`document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Stable"`, { label: "stable again" });
+    return `${version}, beta remembered`;
   });
 
   await check("devtools: console, metrics, traces, accessibility, styles, storage, coverage and emulation for agents", async () => {

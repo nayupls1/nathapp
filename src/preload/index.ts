@@ -30,6 +30,13 @@ const bridge: RuneBridge = {
     chrome: process.versions.chrome ?? "",
     node: process.versions.node ?? "",
   },
+  updates: {
+    get: () => ipcRenderer.invoke("rune:updates-get"),
+    check: () => ipcRenderer.invoke("rune:updates-check"),
+    setChannel: (channel) => ipcRenderer.invoke("rune:updates-set-channel", channel),
+    install: () => ipcRenderer.send("rune:updates-install"),
+    onChanged: listen("rune:updates-changed"),
+  },
   web: {
     clearWorkspace: (workspaceId) => ipcRenderer.invoke("rune:clear-workspace", workspaceId),
     onOpenTab: listen("rune:open-tab"),

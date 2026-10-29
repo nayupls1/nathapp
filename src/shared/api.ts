@@ -12,6 +12,7 @@ import type {
   InstallResult,
 } from "./extensions";
 import type { WorkspaceSettings } from "./settings";
+import type { UpdateChannel, UpdateInfo } from "./updates";
 
 export interface HealthResponse {
   ok: true;
@@ -59,6 +60,16 @@ export interface RuneBridge {
     electron: string;
     chrome: string;
     node: string;
+  };
+  /** Updates of Rune Browser itself (main/updates.ts). */
+  updates: {
+    get: () => Promise<UpdateInfo>;
+    /** Checks now (and downloads what it finds). */
+    check: () => Promise<UpdateInfo>;
+    setChannel: (channel: UpdateChannel) => Promise<UpdateInfo>;
+    /** Restarts into the downloaded update. */
+    install: () => void;
+    onChanged: (fn: (info: UpdateInfo) => void) => () => void;
   };
   web: {
     /** Deletes the cookies and storage of a workspace's web tabs (the workspace was deleted). */

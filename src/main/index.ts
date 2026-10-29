@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { startServer, type ServerHandle } from "./server";
+import { setupUpdates } from "./updates";
 import { guardWindow, setupWebTabs } from "./web";
 
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
@@ -155,6 +156,7 @@ function createWindow(server: ServerHandle) {
 app.whenReady().then(async () => {
   if (!devServerUrl) registerAppProtocol();
   web = setupWebTabs(() => mainWindow);
+  setupUpdates(() => mainWindow);
 
   try {
     server = await startServer(rendererOrigin);
