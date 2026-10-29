@@ -47,6 +47,8 @@ const bridge: RuneBridge = {
       setRecording: (enabled) => ipcRenderer.send("rune:network-recording", enabled),
       onChanged: listen("rune:network-changed"),
     },
+    onAuthPrompt: listen("rune:auth-prompt"),
+    authReply: (requestId, value) => ipcRenderer.send("rune:auth-reply", requestId, value),
   },
   extensions: {
     list: () => ipcRenderer.invoke("rune:extensions-list"),

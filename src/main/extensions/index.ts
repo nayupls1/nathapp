@@ -864,5 +864,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     menuItems,
     handleInput,
     setNetworkRules,
+    /** A site in a web tab wants a username and password: what an extension (a password manager) answers. */
+    authRequired: (contents: WebContents, url: string, info: Parameters<typeof apis.authRequired>[3]) =>
+      attached.has(contents.session) ? apis.authRequired(contents.session, contents, url, info) : Promise.resolve(null),
   };
 }

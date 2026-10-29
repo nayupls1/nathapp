@@ -204,7 +204,7 @@ export function keepAlive(worker: ServiceWorkerMain) {
 /**
  * Delivers an event to an extension's pages and service worker in a session.
  * With `wake`, a stopped service worker that listened for it before is
- * started and gets it once it listens again.
+ * started and gets it once it listens again. Resolves with how many got it.
  */
 export async function dispatch(contexts: Contexts, state: ExtensionState | undefined, session: Session, extensionId: string, event: string, args: unknown[], wake = true) {
   const targets = contexts.of(session, extensionId).filter((c) => c.events.has(event));
@@ -212,15 +212,16 @@ export async function dispatch(contexts: Contexts, state: ExtensionState | undef
     if (ctx.worker) keepAlive(ctx.worker);
     ctx.send(event, args);
   }
-  if (!wake || targets.some((c) => c.worker) || !state?.backgroundEvents.has(event)) return;
+  if (!wake || targets.some((c) => c.worker) || !state?.backgroundEvents.has(event)) return targets.length;
   const scope = `chrome-extension://${extensionId}/`;
   try {
     await session.serviceWorkers.startWorkerForScope(scope);
   } catch {
-    return;
+    return targets.length;
   }
   const ctx = await contexts.waitFor((c) => c.worker !== null && c.session === session && c.extensionId === extensionId && c.events.has(event), 5000);
-  if (!ctx) return;
+  if (!ctx) return targets.length;
   if (ctx.worker) keepAlive(ctx.worker);
   ctx.send(event, args);
+  return targets.length + 1;
 }

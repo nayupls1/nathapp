@@ -74,6 +74,14 @@ const site = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
+    // Pages behind a sign-in (HTTP Basic): the fixture extension fills in /auth/extension, you /auth/you.
+    if (path.startsWith("/auth/")) {
+      const user = path === "/auth/extension" ? "fixture:from-extension" : "you:typed";
+      if (req.headers.get("authorization") !== `Basic ${btoa(user)}`) {
+        return new Response("<title>Denied</title>", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="E2E"', "Content-Type": "text/html" } });
+      }
+      return new Response(`<title>Signed in as ${user.split(":")[0]}</title>`, { headers: { "Content-Type": "text/html" } });
+    }
     // A page that takes a while (the address bar's loading spinner).
     if (path === "/slow") {
       await Bun.sleep(2500);
@@ -1693,7 +1701,21 @@ try {
     if (stored.command !== "bump" || stored.tabUrl !== `${site.url.origin}/`) throw new Error(`command: ${JSON.stringify(stored)}`);
     if (stored.fromWorker !== 1) throw new Error("storage.sync didn't keep the value");
     if (siteSeen.length !== before) throw new Error("a blocked request reached the site");
-    return `content script with Chrome's data, badge ${badge}, popup on ${popupUrl}, shortcut → ${stored.command}, onInstalled: ${stored.installed.reason}`;
+
+    // A site's sign-in: the extension fills it in (webRequest.onAuthRequired), else Rune Browser's dialog asks.
+    const titleOf = () => inPage<string>("document.title");
+    await page!.eval(`document.querySelector('${tab} webview').loadURL("${site.url.origin}/auth/extension").catch(() => {}), true`);
+    const byExtension = await waitForValue(async () => ((await titleOf())?.startsWith("Signed in") ? titleOf() : undefined), 15_000);
+    if (byExtension !== "Signed in as fixture") throw new Error(`sign-in by the extension: ${byExtension}`);
+    await page!.eval(`document.querySelector('${tab} webview').loadURL("${site.url.origin}/auth/you").catch(() => {}), true`);
+    await page!.waitFor(`!!document.querySelector("[data-auth-dialog]")`, { label: "sign-in dialog", timeoutMs: 15_000 });
+    await shot("auth-dialog.png");
+    await type("[data-auth-username]", "you");
+    await type("[data-auth-password]", "typed");
+    await click("[data-auth-submit]");
+    const byYou = await waitForValue(async () => ((await titleOf())?.startsWith("Signed in") ? titleOf() : undefined), 15_000);
+    if (byYou !== "Signed in as you") throw new Error(`sign-in in the dialog: ${byYou}`);
+    return `content script with Chrome's data, badge ${badge}, popup on ${popupUrl}, shortcut → ${stored.command}, onInstalled: ${stored.installed.reason}, sign-ins by the extension and the dialog`;
   });
 
   await check("workspaces: icons at the bottom, own tabs and web logins, switching keeps state, reorder, move tabs, shortcuts", async () => {

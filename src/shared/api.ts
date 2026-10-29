@@ -21,6 +21,17 @@ export interface HealthResponse {
 }
 
 /** API exposed on `window.rune` by the preload script. */
+/** A site's sign-in prompt (HTTP authentication) for the user. */
+export interface AuthPrompt {
+  requestId: string;
+  url: string;
+  host: string;
+  realm: string;
+  isProxy: boolean;
+  /** The web tab's webContents. */
+  contentsId: number;
+}
+
 export interface RuneBridge {
   /** The window without a title bar (renderer: lib/windowChrome.ts, components/WindowControls.tsx). */
   window: {
@@ -77,6 +88,10 @@ export interface RuneBridge {
       /** A tab's captured traffic changed (throttled). */
       onChanged: (fn: (webContentsId: number) => void) => () => void;
     };
+    /** A site (or proxy) in a web tab asks for a username and password, and no extension filled them in. */
+    onAuthPrompt: (fn: (request: AuthPrompt) => void) => () => void;
+    /** The user's answer to an AuthPrompt (null: cancelled). */
+    authReply: (requestId: string, value: { username: string; password: string } | null) => void;
   };
   /** Chrome extensions in web tabs (see main/extensions/). */
   extensions: {

@@ -20,6 +20,7 @@ import {
 import { arch, cpus, freemem, totalmem } from "node:os";
 import { join } from "node:path";
 import {
+  BUILTIN_EXTENSION_ID,
   hostPermissionsOf,
   iconPath,
   matchesAny,
@@ -663,6 +664,10 @@ export function createApis(env: ApiEnv) {
       else await env.requestTab({ action: "open", workspaceId, url, active: true });
     },
     "runtime.reload": (ctx) => env.reload(ctx.session, ctx.extensionId),
+    // webRequest.onAuthRequired: what one of its listeners answered.
+    "auth.reply": (ctx, requestId: unknown, response: unknown) => {
+      if (typeof requestId === "string") authReplies.get(`${ctx.extensionId}|${requestId}`)?.(response);
+    },
     "native.send": (ctx, application: string, message: unknown) => {
       if (!hasPermission(ctx.session, ctx.extensionId, "nativeMessaging")) throw err("Access to native messaging requires the 'nativeMessaging' permission.");
       return sendNativeMessage(String(application), ctx.extensionId, message);
@@ -1113,7 +1118,90 @@ export function createApis(env: ApiEnv) {
     return out;
   }
 
-  return { handle, tabObject, trackGuest, tabsChanged, watchCookies, menuItems, hasPermission, sidePanelUrl, forgetSync: (id: string) => sync.forget(id) };
+  // --- HTTP sign-in (webRequest.onAuthRequired) --------------------------------------------------
+  // Electron doesn't ask extensions when a site wants a username and password
+  // (Basic/Digest, or a proxy): Rune Browser does, like Chrome, before its own
+  // dialog. Password managers fill them in this way.
+
+  const AUTH_EVENT = "webRequest.onAuthRequired";
+  const authReplies = new Map<string, (response: unknown) => void>();
+  // A retry (the server refused what was given) keeps its request ID, so extensions know not to give the same again.
+  const authRequests = new Map<string, { requestId: string; at: number; attempts: number }>();
+  let authIds = 0;
+
+  /** Credentials from an extension, "cancel" when one cancelled the sign-in, or null when none answered. */
+  async function authRequired(s: Session, contents: WebContents, url: string, info: { isProxy: boolean; scheme: string; host: string; port: number; realm: string }) {
+    const key = `${contents.id}|${url}|${info.realm}`;
+    const previous = authRequests.get(key);
+    const retry = previous && Date.now() - previous.at < 60_000 ? previous : null;
+    const requestId = retry?.requestId ?? `auth-${++authIds}`;
+    const attempts = (retry?.attempts ?? 0) + 1;
+    authRequests.set(key, { requestId, at: Date.now(), attempts });
+    for (const [k, r] of authRequests) if (Date.now() - r.at > 60_000) authRequests.delete(k);
+    // Refused twice: the extensions don't have the right ones (and one that keeps giving them would loop).
+    if (attempts > 2) return null;
+    const workspaceId = env.workspaceOf(s);
+    const details = {
+      requestId,
+      url,
+      method: "GET",
+      frameId: 0,
+      parentFrameId: -1,
+      tabId: workspaceId && env.tabs(workspaceId).includes(contents.id) ? contents.id : -1,
+      type: "main_frame",
+      timeStamp: Date.now(),
+      scheme: info.scheme.toLowerCase(),
+      realm: info.realm,
+      challenger: { host: info.host, port: info.port },
+      isProxy: info.isProxy,
+      statusCode: info.isProxy ? 407 : 401,
+      statusLine: info.isProxy ? "HTTP/1.1 407 Proxy Authentication Required" : "HTTP/1.1 401 Unauthorized",
+      frameType: "outermost_frame",
+      documentLifecycle: "active",
+    };
+    for (const ext of s.extensions.getAllExtensions()) {
+      const id = ext.id;
+      if (id === BUILTIN_EXTENSION_ID || !hasPermission(s, id, "webRequest")) continue;
+      if (!hasPermission(s, id, "webRequestAuthProvider") && !hasPermission(s, id, "webRequestBlocking")) continue;
+      if (!info.isProxy && !hostAccess(s, id, url)) continue;
+      const listens = env.contexts.of(s, id).some((c) => c.events.has(AUTH_EVENT)) || !!env.state(s, id)?.backgroundEvents.has(AUTH_EVENT);
+      if (!listens) continue;
+      const answer = await askForAuth(s, id, details);
+      if (answer) return answer;
+    }
+    return null;
+  }
+
+  /** Asks one extension; its first listener with an answer wins (or every one said nothing, or it took too long). */
+  function askForAuth(s: Session, id: string, details: { requestId: string }) {
+    return new Promise<{ username: string; password: string } | "cancel" | null>((resolve) => {
+      const key = `${id}|${details.requestId}`;
+      let sent: number | null = null;
+      let replied = 0;
+      const finish = (value: { username: string; password: string } | "cancel" | null) => {
+        clearTimeout(timer);
+        if (authReplies.get(key) === onReply) authReplies.delete(key);
+        resolve(value);
+      };
+      const onReply = (response: unknown) => {
+        const r = (response ?? {}) as { cancel?: unknown; authCredentials?: { username?: unknown; password?: unknown } };
+        const c = r.authCredentials;
+        if (c && typeof c.username === "string" && typeof c.password === "string") return finish({ username: c.username, password: c.password });
+        if (r.cancel === true) return finish("cancel");
+        replied++;
+        if (sent !== null && replied >= sent) finish(null);
+      };
+      // Long enough for a password manager that asks to be unlocked.
+      const timer = setTimeout(() => finish(null), 60_000);
+      authReplies.set(key, onReply);
+      void dispatch(env.contexts, env.state(s, id), s, id, AUTH_EVENT, [details]).then((n) => {
+        sent = n;
+        if (replied >= n) finish(null);
+      });
+    });
+  }
+
+  return { handle, authRequired, tabObject, trackGuest, tabsChanged, watchCookies, menuItems, hasPermission, sidePanelUrl, forgetSync: (id: string) => sync.forget(id) };
 }
 
 const cookieUrl = (c: Electron.Cookie) => `${c.secure ? "https" : "http"}://${(c.domain ?? "").replace(/^\./, "")}${c.path ?? "/"}`;

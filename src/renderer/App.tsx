@@ -3,6 +3,7 @@ import { createEffect, For, Match, on, onMount, Show, Switch } from "solid-js";
 import { AgentSidebar } from "./components/AgentSidebar";
 import { AppTab } from "./components/AppTab";
 import { CommandBar } from "./components/CommandBar";
+import { AuthHost } from "./components/AuthDialog";
 import { ConfirmHost } from "./components/ConfirmDialog";
 import { ExtensionImportHost } from "./components/ExtensionImport";
 import { PermissionHost } from "./components/PermissionHost";
@@ -53,6 +54,7 @@ export default function App() {
     <div {...stylex.attrs(styles.root)} data-app-root>
       <Sidebar />
       <ConfirmHost />
+      <AuthHost />
       <ExtensionImportHost />
       <PermissionHost />
       <ModReviewHost />

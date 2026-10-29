@@ -193,6 +193,42 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     return s;
   }
 
+  // A site (or a proxy) asks for a username and password: extensions first (a
+  // password manager fills it in), then Rune Browser's own sign-in dialog.
+  // Electron would cancel it otherwise. App previews keep that.
+  const authPrompts = new Map<string, (value: { username: string; password: string } | null) => void>();
+  let authPromptIds = 0;
+  app.on("login", (event, contents, details, authInfo, callback) => {
+    if (!contents || contents.isDestroyed() || !webSessions.has(contents.session)) return;
+    event.preventDefault();
+    void (async () => {
+      let answer: Awaited<ReturnType<typeof extensions.authRequired>> = null;
+      try {
+        answer = await extensions.authRequired(contents, details.url, authInfo);
+      } catch (err) {
+        console.warn("Asking extensions for a sign-in failed:", err);
+      }
+      if (answer === "cancel") return callback();
+      if (answer) return callback(answer.username, answer.password);
+      const win = getWindow();
+      if (!win || contents.isDestroyed()) return callback();
+      const requestId = String(++authPromptIds);
+      const typed = await new Promise<{ username: string; password: string } | null>((resolve) => {
+        authPrompts.set(requestId, resolve);
+        contents.once("destroyed", () => resolve(null));
+        send("rune:auth-prompt", { requestId, url: details.url, host: authInfo.host, realm: authInfo.realm, isProxy: authInfo.isProxy, contentsId: contents.id });
+      });
+      authPrompts.delete(requestId);
+      if (typed) callback(typed.username, typed.password);
+      else callback();
+    })();
+  });
+  ipcMain.on("rune:auth-reply", (event, requestId: unknown, value: unknown) => {
+    if (event.sender !== getWindow()?.webContents || typeof requestId !== "string") return;
+    const v = value as { username?: unknown; password?: unknown } | null;
+    authPrompts.get(requestId)?.(v && typeof v.username === "string" && typeof v.password === "string" ? { username: v.username, password: v.password } : null);
+  });
+
   // A deleted workspace's cookies, logins and cache go with it.
   ipcMain.handle("rune:clear-workspace", async (event, workspaceId: unknown) => {
     if (event.sender !== getWindow()?.webContents || typeof workspaceId !== "string" || !/^[\w-]+$/.test(workspaceId)) return;

@@ -92,6 +92,12 @@ chrome.permissions.onAdded.addListener(() => {});
 chrome.history.onVisited.addListener(() => {});
 chrome.extension.isAllowedIncognitoAccess();
 chrome.storage.managed.get(null);
+// Like a password manager: fills in a site's sign-in.
+chrome.webRequest.onAuthRequired.addListener(
+  (details, callback) => callback(details.url.endsWith("/auth/extension") ? { authCredentials: { username: "fixture", password: "from-extension" } } : {}),
+  { urls: ["http://127.0.0.1/*"] },
+  ["asyncBlocking"],
+);
 chrome.action.setBadgeText({ text: "7" });
 chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
 chrome.storage.sync.set({ fromWorker: 1 });
@@ -173,7 +179,7 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
     action: { default_popup: "popup.html", default_title: "Fixture", default_icon: { 16: "icon.png" } },
     options_page: "options.html",
     background: { service_worker: "background.js" },
-    permissions: ["storage", "tabs", "contextMenus", "declarativeNetRequest", "history"],
+    permissions: ["storage", "tabs", "contextMenus", "declarativeNetRequest", "history", "webRequest", "webRequestAuthProvider"],
     host_permissions: ["http://127.0.0.1/*"],
     content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"], run_at: "document_start" }],
     declarative_net_request: { rule_resources: [{ id: "fixture", enabled: true, path: "rules.json" }] },

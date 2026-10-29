@@ -278,7 +278,7 @@ const PERMISSIONS: Record<string, PermissionAbout> = {
   webNavigation: full("Follow how tabs navigate"),
   webRequest: full("See and change network requests"),
   webRequestBlocking: full("Block network requests"),
-  webRequestAuthProvider: limited("Answer websites' sign-in prompts", "Answering websites' sign-in prompts (HTTP authentication) may not work."),
+  webRequestAuthProvider: full("Fill in websites' sign-in prompts (password managers)"),
 };
 
 /** Permissions that only allow something (no chrome.* namespace of their own). */

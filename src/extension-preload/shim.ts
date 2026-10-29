@@ -632,6 +632,78 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     defineApi("webNavigation", nav);
   }
 
+  // --- webRequest.onAuthRequired: sites asking for a username and password ------------------------
+  // Electron never fires it; Rune Browser's main process asks here instead (and
+  // waits for the answer) before showing its own sign-in dialog.
+
+  if (c.webRequest && (has("webRequestAuthProvider") || has("webRequestBlocking"))) {
+    const matches = (pattern: string, url: string) => {
+      if (pattern === "<all_urls>") return /^(https?|wss?|ftp):/i.test(url);
+      const m = /^(\*|https?|wss?|ftp):\/\/([^/]*)(\/.*)?$/i.exec(pattern);
+      if (!m) return false;
+      let u: URL;
+      try {
+        u = new URL(url);
+      } catch {
+        return false;
+      }
+      const [, scheme, host, path = "/*"] = m as unknown as [string, string, string, string?];
+      if (scheme === "*" ? !/^https?:$/.test(u.protocol) : u.protocol !== `${scheme.toLowerCase()}:`) return false;
+      const h = host.toLowerCase().replace(/:\d+$/, "");
+      if (h !== "*" && !(h.startsWith("*.") ? u.hostname === h.slice(2) || u.hostname.endsWith(h.slice(1)) : u.hostname === h)) return false;
+      const re = new RegExp(`^${path.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+      return re.test(u.pathname + u.search);
+    };
+    const listeners: { fn: (...args: any[]) => any; filter: any; spec: string[] }[] = [];
+    const wants = (filter: any, details: any) =>
+      (!Array.isArray(filter?.urls) || filter.urls.some((p: unknown) => typeof p === "string" && matches(p, details.url))) &&
+      (!Array.isArray(filter?.types) || filter.types.includes(details.type)) &&
+      (typeof filter?.tabId !== "number" || filter.tabId === details.tabId);
+    // A listener's answer: through the callback (asyncBlocking), returned (blocking), or a promise.
+    const answerOf = (l: (typeof listeners)[number], details: any) =>
+      new Promise<any>((resolve) => {
+        const blocking = l.spec.includes("blocking") || l.spec.includes("asyncBlocking");
+        const done = (r?: unknown) => resolve(r ?? null);
+        let out: any;
+        try {
+          out = l.fn({ ...details }, l.spec.includes("asyncBlocking") ? done : undefined);
+        } catch (err) {
+          console.error(err);
+          return done();
+        }
+        if (out && typeof out.then === "function") out.then(done, () => done());
+        else if (!blocking || out !== undefined || !l.spec.includes("asyncBlocking")) done(out);
+      });
+    internal.set("webRequest.onAuthRequired", async ([details]) => {
+      let answer: any = null;
+      for (const l of listeners.slice()) {
+        if (!wants(l.filter, details)) continue;
+        const r = await answerOf(l, details);
+        if (r && (r.authCredentials || r.cancel)) {
+          answer = r;
+          break;
+        }
+      }
+      void call("auth.reply", details.requestId, answer && JSON.parse(JSON.stringify(answer))).catch(() => {});
+    });
+    define(c.webRequest, "onAuthRequired", {
+      addListener(fn: (...args: any[]) => any, filter?: any, spec?: string[]) {
+        if (typeof fn !== "function") throw new TypeError("The listener has to be a function");
+        if (listeners.some((l) => l.fn === fn)) return;
+        listeners.push({ fn, filter, spec: Array.isArray(spec) ? spec : [] });
+        if (listeners.length === 1) void call("listen", "webRequest.onAuthRequired").catch(() => {});
+      },
+      removeListener(fn: (...args: any[]) => any) {
+        const i = listeners.findIndex((l) => l.fn === fn);
+        if (i === -1) return;
+        listeners.splice(i, 1);
+        if (!listeners.length) void call("unlisten", "webRequest.onAuthRequired").catch(() => {});
+      },
+      hasListener: (fn: (...args: any[]) => any) => listeners.some((l) => l.fn === fn),
+      hasListeners: () => listeners.length > 0,
+    });
+  }
+
   // --- chrome.cookies -------------------------------------------------------------------------------------
 
   if (has("cookies")) {
@@ -1029,7 +1101,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
 
   if (b && b !== c) {
     for (const [target, name, value] of defined) {
-      const key = target === c ? null : (apiNames.get(target) ?? ["runtime", "storage", "declarativeNetRequest", "extension"].find((k) => c[k] === target));
+      const key = target === c ? null : (apiNames.get(target) ?? ["runtime", "storage", "declarativeNetRequest", "extension", "webRequest"].find((k) => c[k] === target));
       const other = key === null ? b : key ? b[key] : undefined;
       if (other && other !== target) defineOn(other, name, value);
     }
