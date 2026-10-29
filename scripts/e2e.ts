@@ -286,6 +286,8 @@ try {
   });
   await page.attachChildren();
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+  // The window is offscreen and, on CI, never focused: without this, menus that close on blur close at once.
+  await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 
   await check("app boots and shows the sidebar", async () => {
     await page!.waitFor(`!!document.querySelector('[data-page-link="Settings"]')`, { timeoutMs: 20_000 });
@@ -663,11 +665,13 @@ try {
       })()).length;
       return { controls: c ? { left: Math.round(c.left), top: Math.round(c.top), width: Math.round(c.width) } : null, inRow: !!el?.closest("[data-nav-row]"), overlapping, navRight: Math.round(nav.right) };
     })()`);
-    if (!r.controls || !r.inRow || r.controls.top > 12 || r.controls.left + r.controls.width > r.navRight) throw new Error(`controls: ${JSON.stringify(r)}`);
+    // macOS keeps its own traffic lights (top left), so Rune Browser draws none there.
+    const mac = process.platform === "darwin";
+    if (mac ? r.controls : !r.controls || !r.inRow || r.controls.top > 12 || r.controls.left + r.controls.width > r.navRight) throw new Error(`controls: ${JSON.stringify(r)}`);
     if (r.overlapping) throw new Error(`${r.overlapping} drag regions cover the window buttons`);
     const drag = await page!.eval<string>(`getComputedStyle(document.querySelector("[data-nav-row]")).webkitAppRegion || getComputedStyle(document.querySelector("[data-nav-row]")).getPropertyValue("-webkit-app-region")`);
     if (drag !== "drag") throw new Error(`the sidebar's top row isn't a drag region: ${drag}`);
-    return `${r.controls.width}px of buttons in the sidebar's top row`;
+    return mac ? "macOS's own traffic lights" : `${r.controls!.width}px of buttons in the sidebar's top row`;
   });
 
   await check("sidebar: collapses to icons, resizes, remembers both", async () => {
