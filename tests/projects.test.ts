@@ -196,7 +196,8 @@ describe("importing an existing project", () => {
         return {
           manifest: project?.manifest,
           name: (yield* apps.get(a.id))!.name,
-          deps: existsSync(join(workspace.dir(a.id), "node_modules")),
+          // The folder's dependencies aren't copied (the app's own install may already have made node_modules).
+          deps: existsSync(join(workspace.dir(a.id), "node_modules", "dep")),
           first: (yield* history.list({ target: appTarget(a.id) })).at(-1)?.summary,
           note: (yield* apps.messages(a.id))[0]?.content,
           again,
