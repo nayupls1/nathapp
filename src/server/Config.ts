@@ -1,7 +1,7 @@
 // Server configuration, read once from the environment. Electron passes the
 // port, the renderer's origin, the API token and its userData dir.
 import { mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { Context, Effect, Layer } from "effect";
 
 export interface ServerConfigShape {
@@ -22,8 +22,6 @@ export interface ServerConfigShape {
   readonly token: string | null;
   /** Runs `bun` for app processes (installs, dev servers). */
   readonly bunCommand: { readonly path: string; readonly env: Record<string, string> };
-  /** Claude Code binary for the Agent SDK (only needed in the compiled server). */
-  readonly claudePath: string | undefined;
   /**
    * The key secrets are encrypted with, handed over by Electron (protected by
    * the OS keychain there). "locked": Electron couldn't unlock it. null: no
@@ -52,7 +50,6 @@ export function readConfig(
   const agentDir = join(dataDir, "agent");
   for (const dir of [dataDir, appsDir, cacheDir, agentDir]) mkdirSync(dir, { recursive: true });
   const port = Number(env.PORT ?? 3000);
-  const exe = process.platform === "win32" ? ".exe" : "";
   return {
     dataDir,
     appsDir,
@@ -64,7 +61,6 @@ export function readConfig(
     token: env.RUNE_TOKEN || null,
     // The compiled server is a Bun executable itself; BUN_BE_BUN makes it act as the bun CLI.
     bunCommand: compiled() ? { path: process.execPath, env: { BUN_BE_BUN: "1" } } : { path: process.execPath, env: {} },
-    claudePath: env.RUNE_CLAUDE_PATH || (compiled() ? join(dirname(process.execPath), `claude${exe}`) : undefined),
     secretsKey,
   };
 }
