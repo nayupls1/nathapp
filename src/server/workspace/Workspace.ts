@@ -14,6 +14,7 @@ import { cancelGit, clone, cloneError, parseGitSource, type GitProgress } from "
 
 export { parseGitProgress, parseGitSource } from "./git";
 import { findPreset, presets, render } from "./presets";
+import { removeDir } from "./removeDir";
 
 export class WorkspaceError extends Data.TaggedError("WorkspaceError")<{ readonly message: string }> {}
 
@@ -265,7 +266,7 @@ export const make = Effect.gen(function* () {
         return { project: project ? { dir: target, manifest: project } : null, name };
       }),
 
-    remove: (appId) => Effect.promise(() => rm(dir(appId), { recursive: true, force: true })),
+    remove: (appId) => Effect.promise(() => removeDir(dir(appId))),
   } satisfies WorkspaceShape;
 });
 

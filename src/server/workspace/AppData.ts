@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { Context, Data, Effect, Layer } from "effect";
 import type { DataColumn, DataOverview, DataRows, DataTable } from "../../shared/api";
 import { ServerConfig } from "../Config";
+import { removeDir } from "./removeDir";
 
 export class AppDataError extends Data.TaggedError("AppDataError")<{ readonly status: 400 | 404; readonly message: string }> {}
 
@@ -400,11 +401,11 @@ export const make = Effect.gen(function* () {
     clear: (appId) =>
       Effect.promise(async () => {
         for (const suffix of SQLITE_SUFFIXES) await rm(databaseOf(appId) + suffix, { force: true });
-        await rm(filesOf(appId), { recursive: true, force: true });
+        await removeDir(filesOf(appId));
         mkdirSync(filesOf(appId), { recursive: true });
       }),
 
-    remove: (appId) => Effect.promise(() => rm(dir(appId), { recursive: true, force: true })),
+    remove: (appId) => Effect.promise(() => removeDir(dir(appId))),
   } satisfies AppDataShape;
 });
 

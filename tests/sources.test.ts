@@ -4,7 +4,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Effect, ManagedRuntime } from "effect";
 import { readConfig } from "../src/server/Config";
 import { Apps } from "../src/server/db/Apps";
@@ -154,7 +154,7 @@ describe("sources", () => {
     expect(result.allowed.text).toBe("Changed src/cart.ts.");
     expect(result.secret).toMatchObject({ error: true });
     expect(readFileSync(join(folder, "src/cart.ts"), "utf8")).toContain("requestAnimationFrame(layoutThrash)");
-    expect(logged).toEqual([`Changed src/cart.ts in ${folder.split("/").pop()}`]);
+    expect(logged).toEqual([`Changed src/cart.ts in ${basename(folder)}`]);
   });
 
   test("credential files", () => {
