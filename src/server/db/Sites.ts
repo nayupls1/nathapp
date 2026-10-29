@@ -44,6 +44,6 @@ export const make = Effect.gen(function* () {
   };
 });
 
-export class Sites extends Context.Service<Sites, OrDie<Effect.Success<typeof make>>>()("nathapp/Sites") {}
+export class Sites extends Context.Service<Sites, OrDie<Effect.Success<typeof make>>>()("rune/Sites") {}
 
 export const layer = Layer.effect(Sites, Effect.map(make, orDieAll));

@@ -98,7 +98,7 @@ const str = (max: number) => Schema.String.check(Schema.isMaxLength(max));
 // --- Auth ----------------------------------------------------------------------------
 
 /**
- * Only NathApp's renderer may use the API. Requests need the token Electron gave
+ * Only Rune Browser's renderer may use the API. Requests need the token Electron gave
  * the renderer, and browsers must come from the renderer's origin: websites in
  * web tabs and apps in previews can reach 127.0.0.1 too.
  */
@@ -1159,10 +1159,10 @@ const aiApp = Effect.gen(function* () {
   const tokens = yield* AiTokens;
   const req = yield* HttpServerRequest.HttpServerRequest;
   if (req.headers.origin !== undefined) {
-    return yield* fail(403, "AI requests must come from the app's server, not from the browser. Call your server, and let it call NathApp.");
+    return yield* fail(403, "AI requests must come from the app's server, not from the browser. Call your server, and let it call Rune Browser.");
   }
   const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
-  if (!appId) return yield* fail(401, "Missing or invalid NATHAPP_AI_TOKEN");
+  if (!appId) return yield* fail(401, "Missing or invalid RUNE_AI_TOKEN");
   return appId;
 });
 
@@ -1316,7 +1316,7 @@ const dataRoutes = HttpRouter.addAll([
         const runtime = yield* Runtime;
         const history = yield* History;
         if (yield* (yield* Agent).isRunning(id)) return yield* fail(409, "Stop the agent before deleting the app's data");
-        yield* history.record(appTarget(id), { actor: "nathapp", actorLabel: "NathApp", summary: "Before deleting the app's data" });
+        yield* history.record(appTarget(id), { actor: "rune", actorLabel: "Rune Browser", summary: "Before deleting the app's data" });
         const status = yield* runtime.status(id);
         yield* runtime.stop(id);
         yield* (yield* AppData).clear(id);
@@ -1330,13 +1330,13 @@ const dataRoutes = HttpRouter.addAll([
   ),
 ]);
 
-/** The app calling NathApp's app API: from its token, and only from its server (never a browser). */
+/** The app calling Rune Browser's app API: from its token, and only from its server (never a browser). */
 const apiApp = Effect.gen(function* () {
   const tokens = yield* AiTokens;
   const req = yield* HttpServerRequest.HttpServerRequest;
-  if (req.headers.origin !== undefined) return yield* fail(403, "NathApp's app API is for the app's server, not the browser.");
+  if (req.headers.origin !== undefined) return yield* fail(403, "Rune Browser's app API is for the app's server, not the browser.");
   const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
-  if (!appId) return yield* fail(401, "Missing or invalid NATHAPP_API_TOKEN");
+  if (!appId) return yield* fail(401, "Missing or invalid RUNE_API_TOKEN");
   const app = yield* (yield* Apps).get(appId);
   if (!app) return yield* fail(401, "The app no longer exists");
   return app;
@@ -1368,12 +1368,12 @@ const mayRead = (app: { id: string; name: string; workspaceId: string }, targetI
       target: target.name,
       outcome: allowed ? "ok" : "denied",
     });
-    if (!allowed) return yield* fail(403, `The user didn't allow reading the data of "${target.name}". It can be allowed in NathApp's Settings → Permissions.`);
+    if (!allowed) return yield* fail(403, `The user didn't allow reading the data of "${target.name}". It can be allowed in Rune Browser's Settings → Permissions.`);
     return target;
   });
 
 const appApiRoutes = HttpRouter.addAll([
-  // An app tells NathApp something happened ("app:<id>:<name>"); schedules waiting for it run.
+  // An app tells Rune Browser something happened ("app:<id>:<name>"); schedules waiting for it run.
   HttpRouter.route(
     "POST",
     "/app-api/v1/events",
@@ -1460,7 +1460,7 @@ const callTool = (caller: ToolCaller, appId: string, toolId: string, args: { par
   });
 
 const actionRoutes = HttpRouter.addAll([
-  // Every app's actions, from their nathapp.json.
+  // Every app's actions, from their rune.json.
   HttpRouter.route(
     "GET",
     "/api/actions",
@@ -1938,7 +1938,7 @@ const permissionRoutes = HttpRouter.addAll([
         yield* audit.list({
           tabId: params.get("tab") ?? undefined,
           workspaceId: params.get("workspace") ?? undefined,
-          actor: actor === "user" || actor === "agent" || actor === "app" || actor === "nathapp" ? actor : undefined,
+          actor: actor === "user" || actor === "agent" || actor === "app" || actor === "rune" ? actor : undefined,
           before: params.get("before") ? Number(params.get("before")) : undefined,
           limit: params.get("limit") ? Number(params.get("limit")) : undefined,
         }),
@@ -1997,7 +1997,7 @@ const ensureWorkspace = (id: string | null) =>
     if (id !== null && !(yield* (yield* Workspaces).get(id))) return yield* fail(404, "No such workspace");
   });
 
-/** Sends a saved request with its workspace's session (in Electron's main process, through the NathApp window). */
+/** Sends a saved request with its workspace's session (in Electron's main process, through the Rune Browser window). */
 export const sendSaved = (id: string, overrides: ReplayOverrides) =>
   Effect.gen(function* () {
     const network = yield* Network;

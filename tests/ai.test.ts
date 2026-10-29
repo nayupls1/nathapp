@@ -1,12 +1,13 @@
 // AI for apps: only an app's server, with its own token, may ask; browsers
 // and the renderer's token can't. (No model is called here.)
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { instructionsFor, promptFor } from "../src/server/ai/Ai";
 import type { AppSummary } from "../src/shared/api";
 import type { Settings } from "../src/shared/settings";
 import { startServer } from "./lib/server";
+import { writesVariable } from "./lib/apps";
 
 describe("requests", () => {
   test("a conversation becomes one prompt", () => {
@@ -36,9 +37,9 @@ describe("gateway", () => {
     server = await startServer();
     const app = await server.api<AppSummary>("/api/apps", { method: "POST" });
     await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
-    // A dev command that hands us the environment NathApp gives the app.
+    // A dev command that hands us the environment Rune Browser gives the app.
     const dir = join(server.dataDir, "apps", app.id);
-    writeFileSync(join(dir, "nathapp.json"), JSON.stringify({ install: "true", dev: 'printf %s "$NATHAPP_AI_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
+    writesVariable(dir, "RUNE_AI_TOKEN", "token.txt");
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
     const file = join(dir, "token.txt");
     for (let i = 0; i < 100 && !(existsSync(file) && readFileSync(file, "utf8")); i++) await Bun.sleep(100);

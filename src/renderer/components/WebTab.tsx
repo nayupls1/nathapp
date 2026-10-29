@@ -48,7 +48,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const [contentsId, setContentsId] = createSignal<number | null>(null);
   // The webview waits for the workspace's extensions (never long).
   const [prepared, setPrepared] = createSignal(false);
-  void window.nathapp.extensions.prepare(workspaceId).finally(() => setPrepared(true));
+  void window.rune.extensions.prepare(workspaceId).finally(() => setPrepared(true));
   const host = () => hostOf(currentUrl());
   const collapsed = () => isAgentCollapsed(props.appId);
   const state = () => states[props.appId];
@@ -82,7 +82,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     webview && ready ? { url: webview.getURL(), title: webview.getTitle() } : { url: currentUrl(), title: "" };
 
   function go(input: string) {
-    // Chrome's extensions page is NathApp's.
+    // Chrome's extensions page is Rune Browser's.
     if (/^chrome:\/\/extensions\/?$/i.test(input.trim())) {
       showExtensionSettings();
       return false;
@@ -119,7 +119,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   let lastError: string | undefined;
   let loadApplied: Promise<void> = Promise.resolve();
 
-  const customizing = () => settings().web.overrides && !window.nathapp.safeMode;
+  const customizing = () => settings().web.overrides && !window.rune.safeMode;
 
   async function activeOverride() {
     const url = webview?.getURL() ?? "";
@@ -364,7 +364,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const unregister = registerPage(props.appId, {
     info,
     eval: (code) => requireReady().executeJavaScript(code),
-    capture: () => window.nathapp.web.capture(requireReady().getWebContentsId()),
+    capture: () => window.rune.web.capture(requireReady().getWebContentsId()),
     navigate: async (url) => {
       const done = waitForLoad();
       if (!go(url)) throw new Error(`Invalid URL: ${url}`);

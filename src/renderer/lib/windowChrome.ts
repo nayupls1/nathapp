@@ -4,7 +4,7 @@
 // where the window is dragged. Here: keeping a bar's content out from under
 // the buttons, and double-click to maximize where the system doesn't.
 
-const bridge = window.nathapp.window;
+const bridge = window.rune.window;
 const isMac = bridge.platform === "darwin";
 /** Room for the traffic lights on macOS. */
 const MAC_BUTTONS = 78;

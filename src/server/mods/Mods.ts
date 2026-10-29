@@ -67,7 +67,7 @@ export const make = Effect.gen(function* () {
   const snapshots = (summary: string, theme: boolean) =>
     Effect.all([history.record("sites", { actor: "user", actorLabel: "You", summary }), theme ? history.record("settings", { actor: "user", actorLabel: "You", summary }) : Effect.void]);
 
-  /** Sets NathApp's theme and tells the renderer. */
+  /** Sets Rune Browser's theme and tells the renderer. */
   const setTheme = (theme: GlobalTheme) =>
     Effect.gen(function* () {
       const next = { ...(yield* settings.get()), theme };
@@ -186,7 +186,7 @@ export const make = Effect.gen(function* () {
         const chosen = input.pageChangeIds.map((id) => all.find((c) => c.id === id)).filter((c) => c !== undefined);
         if (chosen.length !== input.pageChangeIds.length) return yield* new ModError({ status: 400, message: "Some of those page changes don't exist anymore." });
         const mod = {
-          format: "nathapp-mod",
+          format: "rune-mod",
           version: 1,
           id: newModId(input.name),
           name: input.name,
@@ -200,9 +200,9 @@ export const make = Effect.gen(function* () {
         return yield* check(mod);
       }),
 
-    /** NathApp's example mods and the ones in the user's galleries (Settings → Mods). */
+    /** Rune Browser's example mods and the ones in the user's galleries (Settings → Mods). */
     gallery: Effect.gen(function* () {
-      const result: GalleryResult = { entries: builtInMods.map((mod) => ({ mod, gallery: "NathApp" })), errors: [] };
+      const result: GalleryResult = { entries: builtInMods.map((mod) => ({ mod, gallery: "Rune Browser" })), errors: [] };
       for (const url of (yield* settings.get()).mods.galleries) {
         const listed = yield* fetchJson(url).pipe(
           Effect.map((json) => (Array.isArray(json) ? json : Array.isArray((json as { mods?: unknown })?.mods) ? (json as { mods: unknown[] }).mods : null)),
@@ -248,6 +248,6 @@ function fetchJson(url: string) {
   });
 }
 
-export class Mods extends Context.Service<Mods, Effect.Success<typeof make>>()("nathapp/Mods") {}
+export class Mods extends Context.Service<Mods, Effect.Success<typeof make>>()("rune/Mods") {}
 
 export const layer = Layer.effect(Mods, make);

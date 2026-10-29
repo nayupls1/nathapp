@@ -1,10 +1,10 @@
 // The tool registry: what apps can do, for the user, agents and other apps.
-// An app's tools are the actions it declares in nathapp.json and the basic
-// ones NathApp derives from its data (list, get, add, update, delete per
+// An app's tools are the actions it declares in rune.json and the basic
+// ones Rune Browser derives from its data (list, get, add, update, delete per
 // table); an action with a data tool's id replaces it, and "dataTools" in
-// nathapp.json turns the derived ones down to read-only or off.
+// rune.json turns the derived ones down to read-only or off.
 //
-// Every call goes through here, so NathApp is the hub between apps: nobody
+// Every call goes through here, so Rune Browser is the hub between apps: nobody
 // talks to another app directly. The user may call anything. An app (its
 // server or its agent) may call its own tools; another app's only in the same
 // workspace and after the user allows it (reading data: "app.data", the same
@@ -21,7 +21,7 @@ import { Workspace } from "./Workspace";
 
 export class AppToolError extends Data.TaggedError("AppToolError")<{ readonly status: 400 | 403 | 404 | 409 | 502; readonly message: string }> {}
 
-/** Who is calling: the user (NathApp's UI), an agent working in a tab, or an app's server. */
+/** Who is calling: the user (Rune Browser's UI), an agent working in a tab, or an app's server. */
 export type ToolCaller =
   | { readonly kind: "user" }
   | { readonly kind: "agent"; readonly tabId: string; readonly label: string }
@@ -41,7 +41,7 @@ export interface AppToolsShape {
   readonly call: (caller: ToolCaller, appId: string, toolId: string, args: ToolArgs) => Effect.Effect<ToolResult, AppToolError>;
 }
 
-export class AppTools extends Context.Service<AppTools, AppToolsShape>()("nathapp/AppTools") {}
+export class AppTools extends Context.Service<AppTools, AppToolsShape>()("rune/AppTools") {}
 
 const MAX_REPLY = 64_000;
 
@@ -240,7 +240,7 @@ export const make = Effect.gen(function* () {
       if (!allowed) {
         return yield* new AppToolError({
           status: 403,
-          message: `The user didn't allow using ${tool.id} in "${target.name}". It can be allowed in NathApp's Settings → Permissions.`,
+          message: `The user didn't allow using ${tool.id} in "${target.name}". It can be allowed in Rune Browser's Settings → Permissions.`,
         });
       }
     });
@@ -292,7 +292,7 @@ export const make = Effect.gen(function* () {
             headers: {
               "Content-Type": "application/json",
               // Who asked: "user", "agent" or "app:<id>" (the app may treat them differently).
-              "X-NathApp-Caller": caller.kind === "app" ? `app:${caller.appId}` : caller.kind,
+              "X-Rune-Caller": caller.kind === "app" ? `app:${caller.appId}` : caller.kind,
             },
             body: JSON.stringify({ input: args.input ?? null, params }),
             signal: AbortSignal.timeout(30_000),

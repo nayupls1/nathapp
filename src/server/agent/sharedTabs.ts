@@ -62,7 +62,7 @@ const appSummary = (source: AppSummary) =>
     const tools = yield* registry.list(source.id).pipe(Effect.orElseSucceed(() => []));
     const data = yield* appData.overview(source.id).pipe(Effect.orElseSucceed(() => null));
     const lines = [
-      `It's an app in NathApp${status.state === "running" ? `, running at ${status.url}` : ` (${status.state})`}.`,
+      `It's an app in Rune Browser${status.state === "running" ? `, running at ${status.url}` : ` (${status.state})`}.`,
       tools.length ? `Its tools (use_app_tool):\n${tools.slice(0, 40).map((t) => `- ${t.id}: ${t.title}${t.description ? ` — ${clip(t.description, 120)}` : ""}`).join("\n")}` : "",
       data?.tables.length
         ? `Its data:\n${data.tables

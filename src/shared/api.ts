@@ -12,6 +12,7 @@ import type {
   InstallResult,
 } from "./extensions";
 import type { WorkspaceSettings } from "./settings";
+import type { UpdateChannel, UpdateInfo } from "./updates";
 
 export interface HealthResponse {
   ok: true;
@@ -20,8 +21,19 @@ export interface HealthResponse {
   dataDir: string;
 }
 
-/** API exposed on `window.nathapp` by the preload script. */
-export interface NathAppBridge {
+/** API exposed on `window.rune` by the preload script. */
+/** A site's sign-in prompt (HTTP authentication) for the user. */
+export interface AuthPrompt {
+  requestId: string;
+  url: string;
+  host: string;
+  realm: string;
+  isProxy: boolean;
+  /** The web tab's webContents. */
+  contentsId: number;
+}
+
+export interface RuneBridge {
   /** The window without a title bar (renderer: lib/windowChrome.ts, components/WindowControls.tsx). */
   window: {
     platform: string;
@@ -33,7 +45,7 @@ export interface NathAppBridge {
   /** Asks for a folder (a system dialog); null if none was picked. */
   pickFolder: (title: string) => Promise<string | null>;
   serverUrl: string;
-  /** Sent with every request to the NathApp server (and the hub). */
+  /** Sent with every request to the Rune Browser server (and the hub). */
   token: string;
   /**
    * Started with --safe-mode (or Ctrl+Alt+Shift+S): the theme and site
@@ -42,12 +54,22 @@ export interface NathAppBridge {
   safeMode: boolean;
   /** Rendered offscreen (e2e): nothing may show up on the user's screen, notifications included. */
   offscreen: boolean;
-  /** Restarts NathApp, in safe mode or normally. */
+  /** Restarts Rune Browser, in safe mode or normally. */
   relaunch: (safeMode: boolean) => void;
   versions: {
     electron: string;
     chrome: string;
     node: string;
+  };
+  /** Updates of Rune Browser itself (main/updates.ts). */
+  updates: {
+    get: () => Promise<UpdateInfo>;
+    /** Checks now (and downloads what it finds). */
+    check: () => Promise<UpdateInfo>;
+    setChannel: (channel: UpdateChannel) => Promise<UpdateInfo>;
+    /** Restarts into the downloaded update. */
+    install: () => void;
+    onChanged: (fn: (info: UpdateInfo) => void) => () => void;
   };
   web: {
     /** Deletes the cookies and storage of a workspace's web tabs (the workspace was deleted). */
@@ -70,13 +92,17 @@ export interface NathAppBridge {
       clear: (webContentsId: number) => Promise<void>;
       /** Sends a captured request (or a saved one, in its workspace's session) again. */
       replay: (target: ReplayTarget, overrides: ReplayOverrides, reveal: boolean) => Promise<ReplayResult>;
-      /** A captured request ready to be saved: its credentials sealed (only NathApp's main process can open them). */
+      /** A captured request ready to be saved: its credentials sealed (only Rune Browser's main process can open them). */
       draft: (webContentsId: number, id: string) => Promise<RequestDraft>;
       setRules: (rules: NetworkRule[]) => void;
       setRecording: (enabled: boolean) => void;
       /** A tab's captured traffic changed (throttled). */
       onChanged: (fn: (webContentsId: number) => void) => () => void;
     };
+    /** A site (or proxy) in a web tab asks for a username and password, and no extension filled them in. */
+    onAuthPrompt: (fn: (request: AuthPrompt) => void) => () => void;
+    /** The user's answer to an AuthPrompt (null: cancelled). */
+    authReply: (requestId: string, value: { username: string; password: string } | null) => void;
   };
   /** Chrome extensions in web tabs (see main/extensions/). */
   extensions: {
@@ -96,6 +122,8 @@ export interface NathAppBridge {
     /** Asks for a folder; null when none was picked. */
     loadUnpacked: () => Promise<InstallResult | null>;
     setEnabled: (id: string, enabled: boolean) => Promise<void>;
+    /** Allows or blocks one of its permissions (the extension restarts with it). */
+    setPermission: (id: string, permission: string, allowed: boolean) => Promise<void>;
     setPinned: (id: string, pinned: boolean) => Promise<void>;
     remove: (id: string) => Promise<void>;
     setAutoUpdate: (enabled: boolean) => Promise<void>;
@@ -303,7 +331,7 @@ export interface AppDetail extends AppSummary {
   runtime: RuntimeStatus | null;
 }
 
-/** An app's project: its folder and nathapp.json. Null until the agent set one up. */
+/** An app's project: its folder and rune.json. Null until the agent set one up. */
 export interface ProjectInfo {
   dir: string;
   manifest: Manifest;
@@ -345,7 +373,7 @@ export interface DataRows {
   limit: number;
 }
 
-/** nathapp.json at the root of an app's project. */
+/** rune.json at the root of an app's project. */
 export interface Manifest {
   /** The preset the project started from. */
   preset?: string;
@@ -357,15 +385,15 @@ export interface Manifest {
   build?: string;
   /** Serve the built app on $PORT. */
   start: string;
-  /** What the app offers in NathApp's command bar and tool registry. */
+  /** What the app offers in Rune Browser's command bar and tool registry. */
   actions?: AppAction[];
-  /** Which tools NathApp derives from the app's data: all (default), read (list/get) or none. */
+  /** Which tools Rune Browser derives from the app's data: all (default), read (list/get) or none. */
   dataTools?: "all" | "read" | "none";
 }
 
 /**
- * A command an app offers in the command bar (nathapp.json "actions"). Either
- * opens the app at `path`, or has NathApp POST `{ input }` (JSON) to the
+ * A command an app offers in the command bar (rune.json "actions"). Either
+ * opens the app at `path`, or has Rune Browser POST `{ input }` (JSON) to the
  * app's `endpoint`, whose JSON `{ message }` is shown as the result.
  */
 export interface AppAction {
@@ -388,8 +416,8 @@ export interface ToolParam {
 }
 
 /**
- * Something an app can do, in NathApp's tool registry: the app's own actions
- * (nathapp.json) and the basic ones NathApp derives from its data (list, get,
+ * Something an app can do, in Rune Browser's tool registry: the app's own actions
+ * (rune.json) and the basic ones Rune Browser derives from its data (list, get,
  * add, update, delete per table). An action with a data tool's id replaces it.
  */
 export interface AppTool {
@@ -422,7 +450,7 @@ export interface AppToolsInfo {
 
 export interface ToolResult {
   ok: boolean;
-  /** The app's HTTP status (actions), or NathApp's. */
+  /** The app's HTTP status (actions), or Rune Browser's. */
   status: number;
   /** What happened, short (shown as a notice). */
   message: string;
@@ -468,14 +496,14 @@ export type SandboxKind = "bwrap" | "none";
 
 /**
  * Code attached to a tab for its agent: a folder of yours, used in place, or
- * a Git repository NathApp cloned (server: workspace/Sources.ts).
+ * a Git repository Rune Browser cloned (server: workspace/Sources.ts).
  */
 export interface ContextSource {
   id: string;
   tabId: string;
   kind: "folder" | "git";
   name: string;
-  /** Where its files are: the folder itself, or NathApp's clone. */
+  /** Where its files are: the folder itself, or Rune Browser's clone. */
   path: string;
   /** The repository it was cloned from (git). */
   url: string | null;
@@ -678,7 +706,7 @@ export interface PageChange extends PageChangeSpec {
 
 /**
  * When a schedule runs: once at a time, on a cron expression (local time),
- * or on an event: "nathapp.started", "app.started:<appId>",
+ * or on an event: "rune.started", "app.started:<appId>",
  * "app.crashed:<appId>", or one an app sends ("app:<appId>:<name>").
  */
 export type ScheduleTrigger = { type: "once"; at: string } | { type: "cron"; cron: string } | { type: "event"; event: string };
@@ -765,9 +793,9 @@ export interface SecretsOverview {
 
 export const SECRET_NAME_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 
-/** Names NathApp sets itself (or that would break app processes). */
+/** Names Rune Browser sets itself (or that would break app processes). */
 export const isReservedSecretName = (name: string) =>
-  /^(NATHAPP_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
+  /^(RUNE_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
   ["PORT", "HOST", "APP_URL", "DATABASE_PATH", "DATABASE_URL", "PATH", "HOME", "TMPDIR", "LANG", "NO_COLOR", "SHELL", "USER"].includes(name);
 
 // --- Network (web tabs' traffic) ---------------------------------------------------
@@ -843,7 +871,7 @@ export interface RequestDraft {
   /** Without cookies (the session sends its own) and credentials (sealed). */
   headers: Record<string, string>;
   body: string | null;
-  /** Credential headers (Authorization…), encrypted with a key only NathApp's main process uses. */
+  /** Credential headers (Authorization…), encrypted with a key only Rune Browser's main process uses. */
   sealed: string | null;
 }
 
@@ -923,7 +951,7 @@ export interface AuditEntry {
   id: number;
   at: string;
   /** Who did it. */
-  actor: "user" | "agent" | "app" | "nathapp";
+  actor: "user" | "agent" | "app" | "rune";
   /** e.g. "Claude Code (haiku)", the app's name, "You". */
   actorLabel: string;
   /** The tab it happened in, if any. */
@@ -943,7 +971,7 @@ export interface AuditEntry {
 /**
  * What a snapshot covers. app:<id>: the app's project files and its data
  * (SQLite databases). sites: the website agent's site customizations.
- * settings: NathApp's settings and the workspaces' settings.
+ * settings: Rune Browser's settings and the workspaces' settings.
  */
 export type HistoryTarget = `app:${string}` | "sites" | "settings";
 

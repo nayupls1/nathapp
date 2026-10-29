@@ -11,7 +11,7 @@ const at = (name: string, ts: number, extra: Partial<TraceEvent> = {}): TraceEve
 
 const events: TraceEvent[] = [
   { name: "thread_name", ph: "M", ts: 0, pid: PID, tid: TID, args: { name: "CrRendererMain" } },
-  // Another renderer (NathApp's own window) that must not count.
+  // Another renderer (Rune Browser's own window) that must not count.
   { name: "thread_name", ph: "M", ts: 0, pid: 99, tid: 1, args: { name: "CrRendererMain" } },
   { name: "RunTask", ph: "X", ts: ms(1), dur: ms(500), pid: 99, tid: 1 },
   {

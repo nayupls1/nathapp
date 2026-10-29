@@ -3,7 +3,7 @@
 // and find out what's wrong on its own: console, metrics and web vitals,
 // performance traces, accessibility tree, CSS rules, storage, coverage and
 // emulation. The work happens in Electron's main process (main/devtools.ts),
-// reached through the NathApp window. On web tabs, cookie values and tokens
+// reached through the Rune Browser window. On web tabs, cookie values and tokens
 // stay hidden there.
 import { Effect, Schema } from "effect";
 import type { DevtoolsCommand } from "../../shared/api";

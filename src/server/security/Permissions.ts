@@ -66,7 +66,7 @@ export interface PermissionsShape {
   readonly forget: (subject: string) => Effect.Effect<void>;
 }
 
-export class Permissions extends Context.Service<Permissions, PermissionsShape>()("nathapp/Permissions") {}
+export class Permissions extends Context.Service<Permissions, PermissionsShape>()("rune/Permissions") {}
 
 export const subjectName = (subject: string, appName: string | null, workspaceName: string | null = null) =>
   subject === WEBSITE_AGENT
@@ -141,7 +141,7 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         if (input.agentTab && (yield* settings.get()).agent.permissions === "full") {
           yield* audit.record({
-            actor: "nathapp",
+            actor: "rune",
             actorLabel: "Full access",
             tabId: input.agentTab,
             action: "permission.auto",
@@ -182,8 +182,8 @@ export const make = Effect.gen(function* () {
               resolve(request.id, false).pipe(
                 Effect.andThen(
                   audit.record({
-                    actor: "nathapp",
-                    actorLabel: "NathApp",
+                    actor: "rune",
+                    actorLabel: "Rune Browser",
                     tabId: input.subject === WEBSITE_AGENT ? null : input.subject,
                     action: "permission.timeout",
                     target: `${input.action}${input.resource ? ` ${input.resource}` : ""}`,

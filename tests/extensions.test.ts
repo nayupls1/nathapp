@@ -28,6 +28,8 @@ import {
   shortcutMatches,
   suggestedKey,
   unsupportedPermissions,
+  permissionAbout,
+  idSourceForPath,
   webStoreId,
 } from "../src/shared/extensions";
 
@@ -158,10 +160,23 @@ describe("manifests", () => {
     expect(iconPath(undefined)).toBeNull();
   });
 
-  test("permissions NathApp doesn't provide", () => {
+  test("permissions Rune Browser doesn't provide", () => {
     expect(
       unsupportedPermissions({ manifest_version: 3, name: "x", version: "1", permissions: ["storage", "privacy", "userScripts", "https://*/*", "tabs"] }),
     ).toEqual(["privacy", "userScripts"]);
+    // Each one says what it's for and what's different; unknown ones too.
+    expect(permissionAbout("storage")).toEqual({ description: "Store its settings and data", limited: null });
+    expect(permissionAbout("history").limited).toContain("empty");
+    expect(permissionAbout("fileSystem.write").limited).toContain("Chrome apps");
+    expect(permissionAbout("somethingNew")).toMatchObject({ description: "somethingNew", limited: expect.stringContaining("keeps working") });
+  });
+
+  test("the ID of an extension without a key, like Chromium derives it", () => {
+    expect(idSourceForPath("/home/me/ext", "linux")).toEqual({ text: "/home/me/ext", encoding: "utf8" });
+    // Windows: UTF-16, drive letter upper-cased.
+    expect(idSourceForPath("c:\\Users\\me\\ext", "windows")).toEqual({ text: "C:\\Users\\me\\ext", encoding: "utf16le" });
+    const { text, encoding } = idSourceForPath("C:\\ext", "windows");
+    expect(Buffer.from(text, encoding)).toEqual(Buffer.from([0x43, 0, 0x3a, 0, 0x5c, 0, 0x65, 0, 0x78, 0, 0x74, 0]));
   });
 
   test("IDs, versions, links", () => {
@@ -347,7 +362,7 @@ describe("CRX packages", () => {
   });
 
   test("unpacking stays inside the folder", () => {
-    const dir = mkdtempSync(join(tmpdir(), "nathapp-crx-"));
+    const dir = mkdtempSync(join(tmpdir(), "rune-crx-"));
     try {
       extractZip(zip, dir);
       expect(readFileSync(join(dir, "js/background.js"), "utf8")).toStartWith("console.log");

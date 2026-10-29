@@ -42,7 +42,7 @@ export function sourceOf(text: string): ModSource {
   try {
     return { mod: JSON.parse(t) };
   } catch {
-    throw new Error("Paste a mod's share code (NATHAPP-MOD:…), a link to a mod, or its JSON.");
+    throw new Error("Paste a mod's share code (RUNE-MOD:…), a link to a mod, or its JSON.");
   }
 }
 
@@ -67,12 +67,12 @@ export async function installReviewed() {
 async function installExtensions(installedMod: InstalledMod) {
   const wanted = installedMod.mod.extensions;
   if (!wanted.length) return [];
-  const present = new Set((await window.nathapp.extensions.list()).extensions.map((e) => e.id));
+  const present = new Set((await window.rune.extensions.list()).extensions.map((e) => e.id));
   const added: string[] = [];
   const failed: string[] = [];
   for (const ext of wanted) {
     if (present.has(ext.id)) continue;
-    const result = await window.nathapp.extensions.install(ext.id).catch((err: unknown) => ({ installed: [], failed: [{ id: ext.id, name: ext.name, error: String(err) }] }));
+    const result = await window.rune.extensions.install(ext.id).catch((err: unknown) => ({ installed: [], failed: [{ id: ext.id, name: ext.name, error: String(err) }] }));
     if (result.installed.some((e) => e.id === ext.id)) added.push(ext.id);
     else failed.push(`${ext.name}: ${result.failed[0]?.error ?? "not installed"}`);
   }
@@ -84,13 +84,13 @@ async function installExtensions(installedMod: InstalledMod) {
 
 export async function setModEnabled(id: string, enabled: boolean) {
   const mod = await api.setModEnabled(id, enabled);
-  for (const ext of mod.installedExtensions) await window.nathapp.extensions.setEnabled(ext, enabled).catch(() => {});
+  for (const ext of mod.installedExtensions) await window.rune.extensions.setEnabled(ext, enabled).catch(() => {});
   await loadMods();
 }
 
 export async function removeMod(id: string) {
   const removed = await api.removeMod(id);
-  for (const ext of removed.installedExtensions) await window.nathapp.extensions.remove(ext).catch(() => {});
+  for (const ext of removed.installedExtensions) await window.rune.extensions.remove(ext).catch(() => {});
   await loadMods();
 }
 
@@ -103,12 +103,12 @@ export async function copyShareCode(mod: Mod) {
   return code;
 }
 
-/** Saves a mod as a file (it opens in NathApp's Mods page, or as a link once it's online). */
+/** Saves a mod as a file (it opens in Rune Browser's Mods page, or as a link once it's online). */
 export function saveModFile(mod: Mod) {
   const url = URL.createObjectURL(new Blob([`${JSON.stringify(mod, null, 2)}\n`], { type: "application/json" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${mod.id}.nathappmod.json`;
+  a.download = `${mod.id}.runemod.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }

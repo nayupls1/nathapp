@@ -1,4 +1,4 @@
-// The NathApp server's HTTP API. Every request carries the token Electron gave
+// The Rune Browser server's HTTP API. Every request carries the token Electron gave
 // this window; agent output and app status arrive on the hub (realtime.ts).
 import type { Settings } from "../../shared/settings";
 import type { GalleryResult, InstalledMod, Mod, ModExtension, ModReview } from "../../shared/mods";
@@ -50,13 +50,13 @@ import type {
 } from "../../shared/api";
 import type { WorkspaceSettings } from "../../shared/settings";
 
-const url = (path: string) => `${window.nathapp.serverUrl}${path}`;
+const url = (path: string) => `${window.rune.serverUrl}${path}`;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url(path), {
     ...init,
     headers: {
-      Authorization: `Bearer ${window.nathapp.token}`,
+      Authorization: `Bearer ${window.rune.token}`,
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
@@ -158,7 +158,7 @@ export const api = {
   },
   /** The app's data as a .tar.gz, with the file name the server suggests. */
   exportAppData: async (id: string) => {
-    const res = await fetch(url(`/api/apps/${id}/data/export`), { headers: { Authorization: `Bearer ${window.nathapp.token}` } });
+    const res = await fetch(url(`/api/apps/${id}/data/export`), { headers: { Authorization: `Bearer ${window.rune.token}` } });
     if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `${res.status} ${res.statusText}`);
     const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "app-data.tar.gz";
     return { blob: await res.blob(), name };
@@ -194,7 +194,7 @@ export const api = {
   savedRequests: (workspaceId?: string) => request<SavedRequest[]>(`/api/network/requests${workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : ""}`),
   saveRequest: (workspaceId: string, name: string, draft: RequestDraft) => post<SavedRequest>("/api/network/requests", { workspaceId, name, draft }),
   deleteSavedRequest: (id: string) => request<void>(`/api/network/requests/${id}`, { method: "DELETE" }),
-  /** Sends a saved request with its workspace's session (credentials stay in NathApp's main process). */
+  /** Sends a saved request with its workspace's session (credentials stay in Rune Browser's main process). */
   sendSavedRequest: (id: string, overrides?: ReplayOverrides) => post<ReplayResult>(`/api/network/requests/${id}/send`, overrides ? { overrides } : {}),
 
   listSites: () => request<SiteOverride[]>("/api/sites"),

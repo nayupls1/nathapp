@@ -1,7 +1,6 @@
-// The host database (nathapp.sqlite): workspaces, tabs, chat history, settings,
+// The host database (rune.sqlite): workspaces, tabs, chat history, settings,
 // site customizations, secrets, permissions and the audit log. Apps keep
 // their own data inside their project folders.
-import { existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { SqliteClient } from "@effect/sql-sqlite-bun";
 import { Effect, Layer } from "effect";
@@ -252,7 +251,7 @@ const migrate = Effect.gen(function* () {
     yield* sql.unsafe("UPDATE audit SET workspace_id = (SELECT workspace_id FROM apps WHERE apps.id = audit.tab_id) WHERE tab_id IS NOT NULL");
   }
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_workspace ON audit (workspace_id, id)");
-  // Code attached to a tab for its agent: a folder of the user's, or a repository NathApp cloned (workspace/Sources.ts).
+  // Code attached to a tab for its agent: a folder of the user's, or a repository Rune Browser cloned (workspace/Sources.ts).
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS sources (
       id         TEXT PRIMARY KEY,
@@ -273,12 +272,7 @@ const migrate = Effect.gen(function* () {
 export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    const filename = join(config.dataDir, "nathapp.sqlite");
-    // The database of NathApp's earlier name (gApp) carries over.
-    const legacy = join(config.dataDir, "gapp.sqlite");
-    if (!existsSync(filename) && existsSync(legacy)) {
-      for (const suffix of ["", "-wal", "-shm"]) if (existsSync(legacy + suffix)) renameSync(legacy + suffix, filename + suffix);
-    }
+    const filename = join(config.dataDir, "rune.sqlite");
     const client = SqliteClient.layer({ filename });
     return Layer.effectDiscard(migrate).pipe(Layer.provideMerge(client));
   }),

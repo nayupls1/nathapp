@@ -3,6 +3,7 @@ import { createEffect, For, Match, on, onMount, Show, Switch } from "solid-js";
 import { AgentSidebar } from "./components/AgentSidebar";
 import { AppTab } from "./components/AppTab";
 import { CommandBar } from "./components/CommandBar";
+import { AuthHost } from "./components/AuthDialog";
 import { ConfirmHost } from "./components/ConfirmDialog";
 import { ExtensionImportHost } from "./components/ExtensionImport";
 import { PermissionHost } from "./components/PermissionHost";
@@ -15,6 +16,7 @@ import { ToastHost } from "./components/Toast";
 import { Button } from "./components/ui";
 import { WebTab } from "./components/WebTab";
 import "./lib/schedules";
+import "./lib/updates";
 import { startUnloading } from "./lib/unload";
 import { startWindowChrome } from "./lib/windowChrome";
 import { loadSettings } from "./lib/settings";
@@ -53,13 +55,14 @@ export default function App() {
     <div {...stylex.attrs(styles.root)} data-app-root>
       <Sidebar />
       <ConfirmHost />
+      <AuthHost />
       <ExtensionImportHost />
       <PermissionHost />
       <ModReviewHost />
       <CommandBar />
       <ToastHost />
       <div {...stylex.attrs(styles.column)}>
-        <Show when={window.nathapp.safeMode}>
+        <Show when={window.rune.safeMode}>
           <div role="status" {...stylex.attrs(styles.safeMode)} data-safe-mode data-titlebar>
             <Icon name="life-buoy" size={16} />
             <span {...stylex.attrs(styles.safeModeText)}>
@@ -68,7 +71,7 @@ export default function App() {
             <button type="button" onClick={() => void selectApp(HISTORY_VIEW)} {...stylex.attrs(styles.safeModeButton)}>
               Open History
             </button>
-            <button type="button" onClick={() => window.nathapp.relaunch(false)} {...stylex.attrs(styles.safeModeButton)}>
+            <button type="button" onClick={() => window.rune.relaunch(false)} {...stylex.attrs(styles.safeModeButton)}>
               Restart normally
             </button>
           </div>

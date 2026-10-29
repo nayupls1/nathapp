@@ -44,8 +44,8 @@ describe("repository links", () => {
 });
 
 describe("projects", () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-projects-"));
-  const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+  const dataDir = mkdtempSync(join(tmpdir(), "rune-projects-"));
+  const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
   afterAll(async () => {
     await runtime.dispose();
     rmSync(dataDir, { recursive: true, force: true });
@@ -142,9 +142,9 @@ describe("projects", () => {
 });
 
 describe("importing an existing project", () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-import-"));
-  const source = mkdtempSync(join(tmpdir(), "nathapp-import-src-"));
-  const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+  const dataDir = mkdtempSync(join(tmpdir(), "rune-import-"));
+  const source = mkdtempSync(join(tmpdir(), "rune-import-src-"));
+  const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
   afterAll(async () => {
     await runtime.dispose();
     rmSync(dataDir, { recursive: true, force: true });
@@ -152,10 +152,10 @@ describe("importing an existing project", () => {
   });
   const run = <A>(effect: Effect.Effect<A, unknown, any>) => runtime.runPromise(effect as Effect.Effect<A>);
 
-  test("nathapp.json from package.json's scripts", () => {
+  test("rune.json from package.json's scripts", () => {
     const port = " --port $PORT --strictPort --host 127.0.0.1";
     expect(inferManifest({ scripts: { dev: "vite", build: "vite build", start: "node server.js" } })).toEqual({ dev: `bun run dev${port}`, build: "bun run build", start: "bun run start" });
-    // Vite sites: the dev server gets NathApp's port; the build is served with vite preview.
+    // Vite sites: the dev server gets Rune Browser's port; the build is served with vite preview.
     expect(inferManifest({ scripts: { dev: "vite", build: "tsc && vite build" } })).toEqual({ dev: `bun run dev${port}`, build: "bun run build", start: `bunx vite preview${port}` });
     expect(inferManifest({ scripts: { dev: "vite dev", build: "vite build", preview: "vite preview", start: "vite" } })).toEqual({
       dev: `bun run dev${port}`,
@@ -196,7 +196,8 @@ describe("importing an existing project", () => {
         return {
           manifest: project?.manifest,
           name: (yield* apps.get(a.id))!.name,
-          deps: existsSync(join(workspace.dir(a.id), "node_modules")),
+          // The folder's dependencies aren't copied (the app's own install may already have made node_modules).
+          deps: existsSync(join(workspace.dir(a.id), "node_modules", "dep")),
           first: (yield* history.list({ target: appTarget(a.id) })).at(-1)?.summary,
           note: (yield* apps.messages(a.id))[0]?.content,
           again,
@@ -217,7 +218,7 @@ describe("importing an existing project", () => {
     expect(result.none).toBeNull();
     expect(result.noneNote).toContain("ask the agent to set it up");
     expect(result.notFolder).toContain("isn't a folder");
-    expect(result.own).toBe("That folder is NathApp's own data.");
+    expect(result.own).toBe("That folder is Rune Browser's own data.");
     expect(result.git).toContain("https link");
   });
 });

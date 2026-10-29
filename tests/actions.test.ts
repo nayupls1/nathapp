@@ -1,4 +1,4 @@
-// Command bar actions declared in nathapp.json: parsing, listing, and running
+// Command bar actions declared in rune.json: parsing, listing, and running
 // an endpoint action against a real (sandboxed) app server. No model is called.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
@@ -58,7 +58,7 @@ describe("app actions", () => {
 });`,
     );
     writeFileSync(
-      join(dir, "nathapp.json"),
+      join(dir, "rune.json"),
       JSON.stringify({
         install: "true",
         dev: "bun action.ts",

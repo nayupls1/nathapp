@@ -1,4 +1,4 @@
-// NathApp's MCP endpoint: what agents see when they connect (the provider CLIs
+// Rune Browser's MCP endpoint: what agents see when they connect (the provider CLIs
 // validate tool schemas strictly and drop the whole server if one is off).
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -11,8 +11,8 @@ import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools 
 import { readConfig } from "../src/server/Config";
 import { core } from "../src/server/services";
 
-const dataDir = mkdtempSync(join(tmpdir(), "nathapp-mcp-test-"));
-const config = readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" });
+const dataDir = mkdtempSync(join(tmpdir(), "rune-mcp-test-"));
+const config = readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" });
 const runtime = ManagedRuntime.make(
   core(config),
 );
@@ -25,7 +25,7 @@ afterAll(async () => {
 const env = { tabId: "tab", log: () => Effect.void, message: () => Effect.void, label: "Test agent" };
 
 async function session(tools: Tool[]) {
-  const mcp = await Effect.runPromise(make("http://nathapp"));
+  const mcp = await Effect.runPromise(make("http://rune"));
   const scope = await Effect.runPromise(Scope.make());
   const url = await Effect.runPromise(mcp.register(tools).pipe(Scope.provide(scope)));
   const token = url.split("/").pop()!;
@@ -40,7 +40,7 @@ describe("mcp", () => {
       tool("echo", "Echo", Schema.Struct({ text: Schema.String }), ({ text }) => Effect.succeed(text)),
       tool("boom", "Fails", Schema.Struct({}), () => Effect.fail(new Error("kaputt"))),
     ]);
-    expect(s.url).toStartWith("http://nathapp/mcp/");
+    expect(s.url).toStartWith("http://rune/mcp/");
     const init = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } });
     expect(init.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} } });
     expect(await Effect.runPromise(s.mcp.handle(s.token, { jsonrpc: "2.0", method: "notifications/initialized" }))).toBeNull();
@@ -65,7 +65,7 @@ describe("mcp", () => {
     await expect(Effect.runPromise(s.mcp.handle(s.token, { jsonrpc: "2.0", id: 1, method: "ping" }))).rejects.toBeDefined();
   });
 
-  test("every NathApp tool has an object input schema", async () => {
+  test("every Rune Browser tool has an object input schema", async () => {
     const tools = await runtime.runPromise(
       Effect.gen(function* () {
         return [

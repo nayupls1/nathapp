@@ -1,6 +1,6 @@
 // Other browsers on this computer (Chrome, Chromium, Brave, Edge, Vivaldi):
 // their profiles and the extensions installed in them, and copying those over.
-// Store extensions are copied into NathApp's data; ones loaded from a folder are
+// Store extensions are copied into Rune Browser's data; ones loaded from a folder are
 // used where they are. Their chrome.storage.local data (settings, logins of the
 // extension…) can come along: it's copied aside and put into each workspace
 // before the extension first starts there.
@@ -10,7 +10,6 @@ import { cpSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import {
-  extensionIdFromHash,
   iconPath,
   profileCommands,
   profileExtensions,
@@ -20,7 +19,7 @@ import {
   type ImportCandidate,
   type ProfileExtensionEntry,
 } from "../../shared/extensions";
-import { extensionsDir, imageDataUrl, platform, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
+import { extensionsDir, idForPath, imageDataUrl, platform, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
 
 export { platform };
 
@@ -30,9 +29,9 @@ export interface BrowserDir {
   dir: string;
 }
 
-/** Where Chromium-based browsers keep their data, per platform. NATHAPP_BROWSER_DIRS ("Name=/path;…") replaces the list (tests). */
+/** Where Chromium-based browsers keep their data, per platform. RUNE_BROWSER_DIRS ("Name=/path;…") replaces the list (tests). */
 export function browserDirs(): BrowserDir[] {
-  const override = process.env.NATHAPP_BROWSER_DIRS;
+  const override = process.env.RUNE_BROWSER_DIRS;
   if (override !== undefined) {
     return override
       .split(";")
@@ -192,9 +191,6 @@ export function detectBrowsers(registry: Registry): BrowserProfile[] {
     .filter((p) => p.extensions.length > 0);
 }
 
-/** Chromium's ID for an extension without a key: from the folder it's loaded from. */
-const idForPath = (path: string) => extensionIdFromHash(createHash("sha256").update(path).digest("hex"));
-
 /** Copies an extension's chrome.storage data aside, to go into each workspace. */
 function copySeed(profileDir: string, id: string): string | undefined {
   const seed = join(extensionsDir(), "seeds", id);
@@ -273,5 +269,5 @@ export function importExtensions(registry: Registry, profileKey: string, ids: st
   return { installed, failed };
 }
 
-/** NathApp's own native messaging hosts folder (checked before the browsers'). */
+/** Rune Browser's own native messaging hosts folder (checked before the browsers'). */
 export const nativeHostsDir = () => join(app.getPath("userData"), "NativeMessagingHosts");

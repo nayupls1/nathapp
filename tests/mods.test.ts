@@ -6,15 +6,15 @@ import { encodeShareCode, decodeShareCode, parseMod, reviewMod, type GalleryResu
 import type { Settings } from "../src/shared/settings";
 import { startServer } from "./lib/server";
 
-const base = { format: "nathapp-mod", version: 1, id: "test-mod", name: "Test", description: "", author: "Ana", modVersion: "1", theme: null, extensions: [] };
+const base = { format: "rune-mod", version: 1, id: "test-mod", name: "Test", description: "", author: "Ana", modVersion: "1", theme: null, extensions: [] };
 
 describe("the mod format", () => {
   test("checks and normalizes untrusted mods", () => {
     expect(parseMod({ ...base, pageChanges: [{ title: "Hide ads", scope: { type: "site", value: "example.com" }, action: "hide", selector: ".ad" }] })).toMatchObject({
       mod: { id: "test-mod", pageChanges: [{ title: "Hide ads" }] },
     });
-    expect(parseMod({ ...base, format: "other", pageChanges: [] })).toEqual({ error: expect.stringContaining("isn't a NathApp mod") });
-    expect(parseMod({ ...base, version: 2 })).toEqual({ error: expect.stringContaining("newer NathApp") });
+    expect(parseMod({ ...base, format: "other", pageChanges: [] })).toEqual({ error: expect.stringContaining("isn't a Rune Browser mod") });
+    expect(parseMod({ ...base, version: 2 })).toEqual({ error: expect.stringContaining("newer Rune Browser") });
     expect(parseMod({ ...base, pageChanges: [] })).toEqual({ error: "The mod doesn't change anything." });
     expect(parseMod({ ...base, pageChanges: [{ title: "x", scope: { type: "site", value: "bad host!" }, action: "hide", selector: "p" }] })).toEqual({ error: expect.stringContaining("Page change 1") });
     expect(parseMod({ ...base, pageChanges: [], extensions: [{ id: "../../etc", name: "x" }] })).toEqual({ error: expect.stringContaining("Chrome Web Store id") });
@@ -44,7 +44,7 @@ describe("the mod format", () => {
   test("share codes round-trip; damaged ones are refused", async () => {
     const mod = (parseMod({ ...base, pageChanges: [], theme: { accent: "#123456" } }) as { mod: Mod }).mod;
     const code = await encodeShareCode(mod);
-    expect(code).toStartWith("NATHAPP-MOD:");
+    expect(code).toStartWith("RUNE-MOD:");
     expect(await decodeShareCode(`  ${code.slice(0, 40)}\n${code.slice(40)}  `)).toEqual(mod);
     await expect(decodeShareCode(code.slice(0, -6))).rejects.toThrow("damaged");
     await expect(decodeShareCode("hello")).rejects.toThrow("isn't a mod");
@@ -74,7 +74,7 @@ describe("mods on the server", () => {
     expect(packaged).toMatchObject({ name: "My tweaks", theme: { mode: "dark", accent: "#00aa55" }, pageChanges: [{ title: "Greet", action: "script" }] });
     expect(packaged.id).toMatch(/^my-tweaks-[0-9a-f]{6}$/);
 
-    // Someone else's NathApp: here, the same one after removing the original change and theme.
+    // Someone else's Rune Browser: here, the same one after removing the original change and theme.
     await server.api(`/api/page-changes/${mine.id}`, { method: "DELETE" });
     await server.api("/api/settings", { method: "PUT", json: { ...(await server.api<Settings>("/api/settings")), theme: { mode: "light" } } });
     const code = await encodeShareCode(packaged);
@@ -123,10 +123,10 @@ describe("mods on the server", () => {
     await expect(server.api("/api/mods/nope", { method: "PATCH", json: { enabled: true } })).rejects.toThrow("404");
   });
 
-  test("the gallery has NathApp's examples, and says which galleries failed", async () => {
+  test("the gallery has Rune Browser's examples, and says which galleries failed", async () => {
     await server.api("/api/settings", { method: "PUT", json: { ...(await server.api<Settings>("/api/settings")), mods: { galleries: ["http://insecure.example/mods.json"] } } });
     const gallery = await server.api<GalleryResult>("/api/mods/gallery");
-    expect(gallery.entries.filter((e) => e.gallery === "NathApp").length).toBeGreaterThanOrEqual(3);
+    expect(gallery.entries.filter((e) => e.gallery === "Rune Browser").length).toBeGreaterThanOrEqual(3);
     expect(gallery.errors).toEqual([{ gallery: "http://insecure.example/mods.json", error: expect.stringContaining("https") }]);
   });
 });

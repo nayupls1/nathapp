@@ -1,7 +1,6 @@
 // Claude Code through the Agent SDK. The SDK drives the Claude Code binary,
 // which signs in with the user's own Claude login (subscription); API keys are
 // stripped from its environment so it never bills an API account.
-import { createRequire } from "node:module";
 import { isAbsolute, relative, resolve } from "node:path";
 import { query, type CanUseTool, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { Effect } from "effect";
@@ -9,12 +8,13 @@ import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
 import { describeTool, streamFrom, type Probe, type ProviderDriver, type TurnInput } from "./Provider";
-import { agentEnv, runCommand } from "./process";
+import { agentEnv, findBinary, runCommand } from "./process";
+import { VERSION } from "../../shared/version";
 
 /**
  * Environment for Claude Code. API keys are removed so it always uses the
  * logged-in Claude account, and variables leaked from a parent Claude Code
- * session (e.g. when NathApp is started from one) are dropped.
+ * session (e.g. when Rune Browser is started from one) are dropped.
  */
 export function claudeEnv(extra: Record<string, string> = {}) {
   const env: Record<string, string | undefined> = agentEnv(extra);
@@ -22,25 +22,14 @@ export function claudeEnv(extra: Record<string, string> = {}) {
     if (key === "ANTHROPIC_API_KEY" || key === "ANTHROPIC_AUTH_TOKEN" || key === "CLAUDECODE") delete env[key];
     if (key.startsWith("CLAUDE_CODE_") && key !== "CLAUDE_CODE_OAUTH_TOKEN") delete env[key];
   }
-  env.CLAUDE_AGENT_SDK_CLIENT_APP = "nathapp/0.1.0";
-  // Only NathApp's own MCP server: no connectors from the user's claude.ai account.
+  env.CLAUDE_AGENT_SDK_CLIENT_APP = `rune/${VERSION}`;
+  // Only Rune Browser's own MCP server: no connectors from the user's claude.ai account.
   env.ENABLE_CLAUDEAI_MCP_SERVERS = "false";
   return env;
 }
 
-/** The binary to run: from Settings, next to the compiled server, or the SDK's bundled one. */
-function executable(settings: ProviderSettings): string | undefined {
-  return settings.binaryPath || readConfig().claudePath;
-}
-
-function bundledBinary(): string | null {
-  try {
-    const exe = process.platform === "win32" ? ".exe" : "";
-    return createRequire(import.meta.url).resolve(`@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude${exe}`);
-  } catch {
-    return null;
-  }
-}
+/** The user's own Claude Code: the path from Settings, or `claude` on PATH. */
+const binaryFor = (settings: ProviderSettings) => findBinary("claude", settings.binaryPath);
 
 const inside = (root: string, path: string) => {
   const rel = relative(root, isAbsolute(path) ? path : resolve(root, path));
@@ -87,8 +76,18 @@ export const ClaudeDriver: ProviderDriver = {
 
   probe: (settings) =>
     Effect.tryPromise(async (): Promise<Probe> => {
-      const binary = executable(settings) ?? bundledBinary();
-      const version = binary ? ((await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim().split(" ")[0] ?? null) : null;
+      const binary = binaryFor(settings);
+      if (!binary) {
+        return {
+          state: "missing",
+          version: null,
+          binary: null,
+          message: "Install Claude Code: npm install -g @anthropic-ai/claude-code",
+          models: [],
+          defaultModel: null,
+        };
+      }
+      const version = (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim().split(" ")[0] ?? null;
       // A session that never receives a prompt: only used to ask for models and the account.
       const session = query({
         prompt: idlePrompt(),
@@ -98,7 +97,7 @@ export const ClaudeDriver: ProviderDriver = {
           cwd: readConfig().agentDir,
           env: claudeEnv(),
           persistSession: false,
-          pathToClaudeCodeExecutable: executable(settings),
+          pathToClaudeCodeExecutable: binary,
         },
       });
       try {
@@ -126,7 +125,7 @@ export const ClaudeDriver: ProviderDriver = {
         Effect.succeed<Probe>({
           state: "error",
           version: null,
-          binary: executable(settings) ?? bundledBinary(),
+          binary: binaryFor(settings),
           message: err instanceof Error ? err.message : String(err),
           models: [],
           defaultModel: null,
@@ -136,6 +135,8 @@ export const ClaudeDriver: ProviderDriver = {
 
   run: (input, settings) =>
     streamFrom(async (emit, signal) => {
+      const binary = binaryFor(settings);
+      if (!binary) throw new Error("Claude Code isn't installed (npm install -g @anthropic-ai/claude-code).");
       const abortController = new AbortController();
       signal.addEventListener("abort", () => abortController.abort(), { once: true });
       const workspace = input.access === "workspace";
@@ -144,7 +145,7 @@ export const ClaudeDriver: ProviderDriver = {
           ? { type: "preset", preset: "claude_code", append: input.instructions }
           : { type: "custom", prompt: input.instructions, snapshot: false },
         resume: input.resume ?? undefined,
-        // The website agent only gets NathApp's tools (pages, customizations), AI requests none.
+        // The website agent only gets Rune Browser's tools (pages, customizations), AI requests none.
         ...(workspace ? {} : { tools: [] }),
         mcpServers: input.mcp ? { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } } : {},
         strictMcpConfig: true, // no MCP servers from the user's own config
@@ -154,7 +155,7 @@ export const ClaudeDriver: ProviderDriver = {
         env: claudeEnv(input.env),
         includePartialMessages: true,
         abortController,
-        pathToClaudeCodeExecutable: executable(settings),
+        pathToClaudeCodeExecutable: binary,
         model: input.model ?? undefined,
         effort: (input.effort as Options["effort"]) ?? undefined,
         permissionMode: "acceptEdits",

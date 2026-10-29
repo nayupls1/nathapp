@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppSummary, AuditEntry, DataOverview, DataRows, HistoryEntry, PermissionRequest, WorkspaceInfo } from "../src/shared/api";
 import { startServer } from "./lib/server";
+import { devScript } from "./lib/apps";
 
 const waitFor = async <T,>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
   const deadline = Date.now() + ms;
@@ -26,17 +27,17 @@ describe("managed app data", () => {
   const projectOf = (app: AppSummary) => join(server.dataDir, "apps", app.id);
   const dataOf = (app: AppSummary) => join(server.dataDir, "appdata", app.id);
 
-  /** An app whose dev command writes down the environment NathApp gave it. */
+  /** An app whose dev command writes down the environment Rune Browser gave it. */
   const create = async (workspaceId?: string) => {
     const app = await server.api<AppSummary>("/api/apps", { method: "POST", json: workspaceId ? { workspaceId } : {} });
     await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
-    writeFileSync(join(projectOf(app), "nathapp.json"), JSON.stringify({ install: "true", dev: "env > env.txt; sleep 600", start: "sleep 600" }));
+    devScript(projectOf(app), 'await Bun.write("env.txt", Object.entries(process.env).map(([k, v]) => `${k}=${v}`).join("\\n"));');
     return app;
   };
   const envOf = async (app: AppSummary) => {
     const file = join(projectOf(app), "env.txt");
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
-    const text = await waitFor(() => (existsSync(file) && readFileSync(file, "utf8").includes("NATHAPP_API_TOKEN=") ? readFileSync(file, "utf8") : undefined));
+    const text = await waitFor(() => (existsSync(file) && readFileSync(file, "utf8").includes("RUNE_API_TOKEN=") ? readFileSync(file, "utf8") : undefined));
     return Object.fromEntries(text.split("\n").filter(Boolean).map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
   };
   const appApi = (path: string, token: string, origin?: string) =>
@@ -45,9 +46,10 @@ describe("managed app data", () => {
   beforeAll(async () => {
     server = await startServer();
     notes = await create();
-    // A database from before managed data, in the project's .nathapp/: it moves out on first use.
-    mkdirSync(join(projectOf(notes), ".nathapp"), { recursive: true });
-    const db = new Database(join(projectOf(notes), ".nathapp/data.sqlite"));
+    mkdirSync(dataOf(notes), { recursive: true });
+    const db = new Database(join(dataOf(notes), "data.sqlite"));
+    // Rune Browser may be reading it (History) while this writes.
+    db.run("PRAGMA busy_timeout = 5000");
     db.run("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT, done INTEGER)");
     for (let i = 1; i <= 120; i++) db.run("INSERT INTO notes (title, done) VALUES (?, ?)", [i === 7 ? "100% sure" : `note ${i}`, i % 2]);
     db.close();
@@ -58,10 +60,9 @@ describe("managed app data", () => {
 
   test("the app's database and files live outside the project, and the app's process gets their paths", () => {
     expect(env.DATABASE_PATH).toBe(join(dataOf(notes), "data.sqlite"));
-    expect(env.NATHAPP_FILES_DIR).toBe(join(dataOf(notes), "files"));
-    expect(env.NATHAPP_API_URL).toBe(`${server.url}/app-api/v1`);
-    expect(env.NATHAPP_API_TOKEN).toMatch(/^nai_/);
-    expect(existsSync(join(projectOf(notes), ".nathapp/data.sqlite"))).toBe(false);
+    expect(env.RUNE_FILES_DIR).toBe(join(dataOf(notes), "files"));
+    expect(env.RUNE_API_URL).toBe(`${server.url}/app-api/v1`);
+    expect(env.RUNE_API_TOKEN).toMatch(/^nai_/);
     expect(existsSync(join(dataOf(notes), "data.sqlite"))).toBe(true);
   });
 
@@ -105,7 +106,7 @@ describe("managed app data", () => {
 
   test("another app reads it only after the user allows it; browsers never", async () => {
     const otherEnv = await envOf(other);
-    const token = otherEnv.NATHAPP_API_TOKEN!;
+    const token = otherEnv.RUNE_API_TOKEN!;
     // Its own data: no question.
     expect((await appApi(`/data/${other.id}`, token)).status).toBe(200);
     const listed = (await (await appApi("/data", token)).json()) as { id: string; self: boolean }[];
@@ -135,7 +136,7 @@ describe("managed app data", () => {
   test("apps in another workspace can't even ask", async () => {
     const client = await server.api<WorkspaceInfo>("/api/workspaces", { method: "POST", json: { name: "Client" } });
     const outsider = await create(client.id);
-    const token = (await envOf(outsider)).NATHAPP_API_TOKEN!;
+    const token = (await envOf(outsider)).RUNE_API_TOKEN!;
     expect((await appApi(`/data/${notes.id}`, token)).status).toBe(404);
     expect(((await (await appApi("/data", token)).json()) as { id: string }[]).map((a) => a.id)).toEqual([outsider.id]);
   });

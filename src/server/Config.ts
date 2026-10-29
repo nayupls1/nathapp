@@ -1,7 +1,7 @@
 // Server configuration, read once from the environment. Electron passes the
 // port, the renderer's origin, the API token and its userData dir.
 import { mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { Context, Effect, Layer } from "effect";
 
 export interface ServerConfigShape {
@@ -22,8 +22,6 @@ export interface ServerConfigShape {
   readonly token: string | null;
   /** Runs `bun` for app processes (installs, dev servers). */
   readonly bunCommand: { readonly path: string; readonly env: Record<string, string> };
-  /** Claude Code binary for the Agent SDK (only needed in the compiled server). */
-  readonly claudePath: string | undefined;
   /**
    * The key secrets are encrypted with, handed over by Electron (protected by
    * the OS keychain there). "locked": Electron couldn't unlock it. null: no
@@ -38,7 +36,7 @@ export interface SecretsKey {
   readonly protection: "keychain" | "file";
 }
 
-export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()("nathapp/ServerConfig") {}
+export class ServerConfig extends Context.Service<ServerConfig, ServerConfigShape>()("rune/ServerConfig") {}
 
 const compiled = () => import.meta.path.includes("$bunfs") || import.meta.path.includes("~BUN");
 
@@ -46,13 +44,12 @@ export function readConfig(
   env: Record<string, string | undefined> = process.env,
   secretsKey: SecretsKey | "locked" | null = null,
 ): ServerConfigShape {
-  const dataDir = resolve(env.NATHAPP_DATA_DIR ?? ".data");
+  const dataDir = resolve(env.RUNE_DATA_DIR ?? ".data");
   const appsDir = join(dataDir, "apps");
   const cacheDir = join(dataDir, "cache");
   const agentDir = join(dataDir, "agent");
   for (const dir of [dataDir, appsDir, cacheDir, agentDir]) mkdirSync(dir, { recursive: true });
   const port = Number(env.PORT ?? 3000);
-  const exe = process.platform === "win32" ? ".exe" : "";
   return {
     dataDir,
     appsDir,
@@ -60,11 +57,10 @@ export function readConfig(
     agentDir,
     port,
     url: `http://127.0.0.1:${port}`,
-    allowedOrigin: env.NATHAPP_ALLOWED_ORIGIN ?? "http://localhost:5173",
-    token: env.NATHAPP_TOKEN || null,
+    allowedOrigin: env.RUNE_ALLOWED_ORIGIN ?? "http://localhost:5173",
+    token: env.RUNE_TOKEN || null,
     // The compiled server is a Bun executable itself; BUN_BE_BUN makes it act as the bun CLI.
     bunCommand: compiled() ? { path: process.execPath, env: { BUN_BE_BUN: "1" } } : { path: process.execPath, env: {} },
-    claudePath: env.NATHAPP_CLAUDE_PATH || (compiled() ? join(dirname(process.execPath), `claude${exe}`) : undefined),
     secretsKey,
   };
 }

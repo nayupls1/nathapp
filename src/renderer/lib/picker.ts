@@ -10,7 +10,7 @@ const ACCENT = "#6d4aff";
  * ElementInfo, or null when cancelled (Escape or `cancelPickScript`).
  */
 export const pickScript = `(() => new Promise((resolve) => {
-  window.__nathappPicker?.cancel();
+  window.__runePicker?.cancel();
   const KEYS = ${JSON.stringify(inspectedStyles)};
   const root = document.documentElement;
   const box = document.createElement("div");
@@ -101,27 +101,27 @@ export const pickScript = `(() => new Promise((resolve) => {
     box.remove();
     label.remove();
     root.style.cursor = cursor;
-    window.__nathappPicker = null;
+    window.__runePicker = null;
     if (!el) return resolve(null);
-    if (!document.getElementById("nathapp-picked-style")) {
+    if (!document.getElementById("rune-picked-style")) {
       const style = document.createElement("style");
-      style.id = "nathapp-picked-style";
-      style.textContent = "[data-nathapp-picked]{outline:2px solid ${ACCENT} !important;outline-offset:2px !important}";
+      style.id = "rune-picked-style";
+      style.textContent = "[data-rune-picked]{outline:2px solid ${ACCENT} !important;outline-offset:2px !important}";
       root.append(style);
     }
-    el.setAttribute("data-nathapp-picked", "");
+    el.setAttribute("data-rune-picked", "");
     resolve(info(el));
   }
-  window.__nathappPicker = { cancel: () => finish(null) };
+  window.__runePicker = { cancel: () => finish(null) };
 }))()`;
 
-export const cancelPickScript = `(() => { window.__nathappPicker?.cancel(); return true; })()`;
+export const cancelPickScript = `(() => { window.__runePicker?.cancel(); return true; })()`;
 
 /** Removes the outline from picked elements (all, or the ones matching `selector`). */
 export const unmarkScript = (selector?: string) => `(() => {
   const sel = ${JSON.stringify(selector ?? null)};
-  for (const el of document.querySelectorAll("[data-nathapp-picked]")) {
-    try { if (!sel || el.matches(sel)) el.removeAttribute("data-nathapp-picked"); } catch {}
+  for (const el of document.querySelectorAll("[data-rune-picked]")) {
+    try { if (!sel || el.matches(sel)) el.removeAttribute("data-rune-picked"); } catch {}
   }
   return true;
 })()`;

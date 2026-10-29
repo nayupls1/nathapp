@@ -48,11 +48,11 @@ export function NewApp(props: { appId: string }) {
     setProgress({ phase: "git" in source ? "Starting git…" : "Copying…", percent: null });
     try {
       const { project } = await api.importApp(props.appId, source);
-      // NathApp couldn't tell how to run it: the agent sets it up.
+      // Rune Browser couldn't tell how to run it: the agent sets it up.
       if (!project) {
         setAgentCollapsed(props.appId, false);
         await send(
-          "I imported this project. Look at it and set it up so NathApp can run it: write nathapp.json (install, dev, build and start commands), make the server listen on $PORT, then start it and check that it works.",
+          "I imported this project. Look at it and set it up so Rune Browser can run it: write rune.json (install, dev, build and start commands), make the server listen on $PORT, then start it and check that it works.",
         );
       }
     } catch (err) {
@@ -67,7 +67,7 @@ export function NewApp(props: { appId: string }) {
     if (url) void importFrom({ git: url, ...(branch().trim() ? { branch: branch().trim() } : {}) });
   };
   const pickFolder = async () => {
-    const folder = await window.nathapp.pickFolder("Import an app from a folder");
+    const folder = await window.rune.pickFolder("Import an app from a folder");
     if (folder) await importFrom({ folder });
   };
 

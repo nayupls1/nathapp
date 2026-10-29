@@ -4,7 +4,7 @@ import { createSignal } from "solid-js";
 import { Socket, type TopicMessage } from "../../shared/hub";
 
 const socket = new Socket(
-  `${window.nathapp.serverUrl.replace(/^http/, "ws")}/api/ws?role=renderer&token=${encodeURIComponent(window.nathapp.token)}`,
+  `${window.rune.serverUrl.replace(/^http/, "ws")}/api/ws?role=renderer&token=${encodeURIComponent(window.rune.token)}`,
 );
 
 const [connected, setConnected] = createSignal(false);
@@ -31,7 +31,7 @@ export function handleRpc(method: string, fn: RpcHandler) {
 }
 
 // For the e2e checks: what the server's requests to the window do, without an agent turn.
-(window as unknown as { __nathappRpc?: (method: string, params: unknown) => unknown }).__nathappRpc = (method, params) => {
+(window as unknown as { __runeRpc?: (method: string, params: unknown) => unknown }).__runeRpc = (method, params) => {
   const fn = rpcHandlers.get(method);
   if (!fn) throw new Error(`Unknown request: ${method}`);
   return fn(params);

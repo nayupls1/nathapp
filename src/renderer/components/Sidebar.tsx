@@ -257,7 +257,7 @@ async function newWorkspace() {
   setNamingRequest((n) => n + 1);
 }
 
-const WORKSPACE_DRAG_TYPE = "application/x-nathapp-workspace";
+const WORKSPACE_DRAG_TYPE = "application/x-rune-workspace";
 
 /**
  * The workspaces as icons at the bottom of the sidebar: click one to switch,

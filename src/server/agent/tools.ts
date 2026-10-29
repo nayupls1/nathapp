@@ -1,5 +1,5 @@
-// The tools agents get from NathApp (over MCP). Page tools reach the page open in
-// a tab — a website, or an app's preview — through the NathApp window (RPC over
+// The tools agents get from Rune Browser (over MCP). Page tools reach the page open in
+// a tab — a website, or an app's preview — through the Rune Browser window (RPC over
 // the hub). App tools run and inspect the app's project; site tools save
 // customizations for websites.
 import { readFile, realpath, stat } from "node:fs/promises";
@@ -219,7 +219,7 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
       action: "agent.site",
       resource,
       title: `Let the website agent change ${where}?`,
-      detail: `It wants to add or change “${spec.title}” (${spec.action}${spec.action === "script" || spec.action === "button" ? ", with JavaScript" : ""}), applied whenever you open ${where} in NathApp. You can turn it off or remove it later.`,
+      detail: `It wants to add or change “${spec.title}” (${spec.action}${spec.action === "script" || spec.action === "button" ? ", with JavaScript" : ""}), applied whenever you open ${where} in Rune Browser. You can turn it off or remove it later.`,
       timeoutMs: 120_000,
     });
   };
@@ -236,11 +236,11 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
       if (error) return text(`${done}, but it failed on the page: ${error}`, true);
       const url = yield* currentUrl.pipe(Effect.orElseSucceed(() => ""));
       if (!scopeMatches(change.scope, url)) return `${done}. It doesn't apply to the current page (scope ${change.scope.type}: ${change.scope.value}).`;
-      return result.changesEnabled ? `${done}; applied to the page.` : `${done}, but customizations are turned off in Settings (or NathApp is in safe mode), so it isn't applied.`;
+      return result.changesEnabled ? `${done}; applied to the page.` : `${done}, but customizations are turned off in Settings (or Rune Browser is in safe mode), so it isn't applied.`;
     });
 
   return [
-    tool("get_site_override", "The current site's customization (CSS and JavaScript applied whenever it loads in NathApp).", NoArgs, () =>
+    tool("get_site_override", "The current site's customization (CSS and JavaScript applied whenever it loads in Rune Browser).", NoArgs, () =>
       Effect.gen(function* () {
         const host = yield* currentHost;
         const override = yield* sites.get(host);
@@ -265,7 +265,7 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
             action: "agent.site",
             resource: host,
             title: `Let the website agent customize ${host}?`,
-            detail: `It wants to save ${js?.trim() ? "CSS and JavaScript" : "CSS"} that is applied whenever you open ${host} in NathApp. You can turn it off or remove it later.`,
+            detail: `It wants to save ${js?.trim() ? "CSS and JavaScript" : "CSS"} that is applied whenever you open ${host} in Rune Browser. You can turn it off or remove it later.`,
             timeoutMs: 120_000,
           });
           if (!allowed) return text(`The user didn't allow customizing ${host}. Nothing was saved; tell them what you would have changed.`, true);
@@ -393,7 +393,7 @@ export const registryTools = Effect.fn(function* (env: ToolEnv) {
   return [
     tool(
       "list_app_tools",
-      "What the apps in this workspace can do: each app's actions and the basic tools NathApp derives from its data (list/get/add/update/delete per table), with their params. Use one with use_app_tool. Using another app's tools needs the user's OK.",
+      "What the apps in this workspace can do: each app's actions and the basic tools Rune Browser derives from its data (list/get/add/update/delete per table), with their params. Use one with use_app_tool. Using another app's tools needs the user's OK.",
       Schema.Struct({ app: Schema.optionalKey(Schema.String.annotate({ description: "An app id, to list only its tools" })) }),
       ({ app }) =>
         Effect.gen(function* () {
@@ -438,7 +438,7 @@ const TriggerArgs = {
   at: Schema.optionalKey(Schema.String.annotate({ description: "Run once at this time (ISO 8601, e.g. 2026-11-02T08:00:00+01:00)" })),
   cron: Schema.optionalKey(Schema.String.annotate({ description: 'Or repeat: a cron expression in local time, e.g. "0 8 * * 1-5" (at most every 5 minutes)' })),
   event: Schema.optionalKey(
-    Schema.String.annotate({ description: 'Or on an event: "nathapp.started", "app.started", "app.crashed" (this app), or a name the app sends to $NATHAPP_API_URL/events' }),
+    Schema.String.annotate({ description: 'Or on an event: "rune.started", "app.started", "app.crashed" (this app), or a name the app sends to $RUNE_API_URL/events' }),
   ),
 };
 
@@ -455,7 +455,7 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
     if (args.at) return { type: "once", at: new Date(args.at).toISOString() };
     if (args.cron) return { type: "cron", cron: args.cron };
     const e = args.event!;
-    return { type: "event", event: e === "nathapp.started" ? e : e === "app.started" || e === "app.crashed" ? `${e}:${appId}` : `app:${appId}:${e}` };
+    return { type: "event", event: e === "rune.started" ? e : e === "app.started" || e === "app.crashed" ? `${e}:${appId}` : `app:${appId}:${e}` };
   };
   const allowed = Effect.gen(function* () {
     const app = yield* apps.get(appId);
@@ -481,7 +481,7 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "create_schedule",
-      "Run one of this app's tools (see list_app_tools; params as for use_app_tool) or a command in its sandbox in the background: once, repeating, or on an event. It runs without a tab open; the user sees it in Schedules and can pause or delete it. Commands don't get the app's secrets; use a tool (an action in nathapp.json) for work that needs them.",
+      "Run one of this app's tools (see list_app_tools; params as for use_app_tool) or a command in its sandbox in the background: once, repeating, or on an event. It runs without a tab open; the user sees it in Schedules and can pause or delete it. Commands don't get the app's secrets; use a tool (an action in rune.json) for work that needs them.",
       Schema.Struct({
         name: Schema.String.annotate({ description: "Short, for the user, e.g. 'Fetch new articles'" }),
         ...TriggerArgs,
@@ -605,7 +605,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           const project = yield* projects.create(appId, preset, { name, by: { actor: "agent", actorLabel: env.label } });
           yield* env.log(`Created the project (${preset})`);
           const files = Object.keys(presets.find((p) => p.id === preset)!.files).sort();
-          return `Created in ${project.dir}:\n${files.join("\n")}\nnathapp.json, src/tokens.css\n\n${yield* statusText(20)}`;
+          return `Created in ${project.dir}:\n${files.join("\n")}\nrune.json, src/tokens.css\n\n${yield* statusText(20)}`;
         }),
     ),
 
@@ -613,7 +613,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "restart_app",
-      "Restart the app: installs dependencies if package.json changed, then starts the dev server again. Use it after changing dependencies or nathapp.json, or when the app crashed. Returns its status and output.",
+      "Restart the app: installs dependencies if package.json changed, then starts the dev server again. Use it after changing dependencies or rune.json, or when the app crashed. Returns its status and output.",
       NoArgs,
       () =>
         Effect.gen(function* () {
@@ -650,7 +650,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "app_data",
-      "The data the app stored (kept by NathApp outside the project, at DATABASE_PATH and NATHAPP_FILES_DIR): its tables with columns and row counts, or with `table` a page of that table's rows (optionally only rows containing `search`). Read-only; change data through the app or run_command.",
+      "The data the app stored (kept by Rune Browser outside the project, at DATABASE_PATH and RUNE_FILES_DIR): its tables with columns and row counts, or with `table` a page of that table's rows (optionally only rows containing `search`). Read-only; change data through the app or run_command.",
       Schema.Struct({
         table: Schema.optionalKey(Schema.String),
         search: Schema.optionalKey(Schema.String),
@@ -680,7 +680,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
 
     tool(
       "set_app_info",
-      "Set the app's name (short, shown in NathApp's sidebar) and icon: a Lucide icon name (find one with search_icons), or icon_file, an image in the project (PNG, SVG, ICO, JPEG, GIF or WebP, at most 100 kB, square works best), e.g. a logo or favicon you made for it.",
+      "Set the app's name (short, shown in Rune Browser's sidebar) and icon: a Lucide icon name (find one with search_icons), or icon_file, an image in the project (PNG, SVG, ICO, JPEG, GIF or WebP, at most 100 kB, square works best), e.g. a logo or favicon you made for it.",
       Schema.Struct({
         name: Schema.optionalKey(Schema.String),
         icon: Schema.optionalKey(Schema.String),
@@ -735,7 +735,7 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
       ({ name, description }) =>
         Effect.gen(function* () {
           if (!SECRET_NAME_PATTERN.test(name) || isReservedSecretName(name)) {
-            return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names NathApp sets itself.`, true);
+            return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names Rune Browser sets itself.`, true);
           }
           const { own, workspace, global } = yield* secrets.available(appId);
           if ([...own, ...workspace, ...global].includes(name)) return `${name} is already available as process.env.${name}.`;

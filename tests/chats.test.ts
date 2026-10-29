@@ -10,8 +10,8 @@ import { readConfig } from "../src/server/Config";
 import { Apps } from "../src/server/db/Apps";
 import { core } from "../src/server/services";
 
-const dataDir = mkdtempSync(join(tmpdir(), "nathapp-chats-"));
-const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+const dataDir = mkdtempSync(join(tmpdir(), "rune-chats-"));
+const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
 afterAll(async () => {
   await runtime.dispose();
   rmSync(dataDir, { recursive: true, force: true });

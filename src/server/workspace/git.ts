@@ -1,8 +1,8 @@
-// Git for NathApp itself: cloning projects into new app tabs (Workspace.ts)
+// Git for Rune Browser itself: cloning projects into new app tabs (Workspace.ts)
 // and repositories attached to a tab for its agent (Sources.ts), pulling them
 // again, and reading their state. It runs with your own Git setup (credential
 // helpers, SSH keys and agent), so private repositories work, but never
-// prompts: NathApp has no terminal to answer in. No hooks run.
+// prompts: Rune Browser has no terminal to answer in. No hooks run.
 import { basename } from "node:path";
 import { Effect } from "effect";
 import { agentEnv } from "../providers/process";
@@ -114,7 +114,7 @@ export const runGit = (
         windowsHide: true,
       });
     } catch {
-      resume(Effect.succeed({ code: -1, err: "git isn't installed (or not on NathApp's PATH)", out: "", cancelled: false }));
+      resume(Effect.succeed({ code: -1, err: "git isn't installed (or not on Rune Browser's PATH)", out: "", cancelled: false }));
       return;
     }
     let cancelled = false;

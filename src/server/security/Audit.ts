@@ -52,7 +52,7 @@ export interface AuditShape {
   }) => Effect.Effect<AuditEntry[]>;
 }
 
-export class Audit extends Context.Service<Audit, AuditShape>()("nathapp/Audit") {}
+export class Audit extends Context.Service<Audit, AuditShape>()("rune/Audit") {}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;

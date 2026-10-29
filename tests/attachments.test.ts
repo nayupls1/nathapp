@@ -46,8 +46,8 @@ describe("attachments over the API", () => {
 });
 
 describe("what the provider gets", () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-attachments-"));
-  const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+  const dataDir = mkdtempSync(join(tmpdir(), "rune-attachments-"));
+  const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
   afterAll(async () => {
     await runtime.dispose();
     rmSync(dataDir, { recursive: true, force: true });

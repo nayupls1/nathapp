@@ -25,6 +25,8 @@ export async function buildElectron({ dev = false } = {}) {
     for (const log of result.logs) console.error(log);
     throw new Error("Electron build failed");
   }
+  // The window's icon (main/index.ts): .ico on Windows, .png elsewhere.
+  for (const icon of ["icon.png", "icon.ico"]) copyFileSync(`build/${icon}`, `dist/electron/${icon}`);
 }
 
 /**

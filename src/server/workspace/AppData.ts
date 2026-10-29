@@ -1,20 +1,20 @@
-// Managed app data: every app's storage is NathApp's, not the project's. It
+// Managed app data: every app's storage is Rune Browser's, not the project's. It
 // lives in <dataDir>/appdata/<id> (a SQLite database and a folder for files),
 // outside the project folder, so rebuilding, resetting or rewriting the
 // project leaves it alone and the agent's file tools never touch it. App
 // processes get it mounted into their sandbox (DATABASE_PATH,
-// NATHAPP_FILES_DIR); other apps only through NathApp, after the user allows it.
+// RUNE_FILES_DIR); other apps only through Rune Browser, after the user allows it.
 //
 // The user can look at an app's tables, export everything and delete it. It's
 // part of the app's snapshots (history/History.ts, under "@data/").
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { readdir, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Context, Data, Effect, Layer } from "effect";
 import type { DataColumn, DataOverview, DataRows, DataTable } from "../../shared/api";
 import { ServerConfig } from "../Config";
-import { Workspace } from "./Workspace";
+import { removeDir } from "./removeDir";
 
 export class AppDataError extends Data.TaggedError("AppDataError")<{ readonly status: 400 | 404; readonly message: string }> {}
 
@@ -56,7 +56,7 @@ export interface TableSchema {
 export type CellValue = string | number | boolean | null;
 
 export interface AppDataShape {
-  /** The app's data folder (created, and moved out of an old project's .nathapp/ the first time). */
+  /** The app's data folder (created, and moved out of an old project's .rune/ the first time). */
   readonly ensure: (appId: string) => Effect.Effect<{ dir: string; database: string; files: string }>;
   readonly dir: (appId: string) => string;
   readonly overview: (appId: string) => Effect.Effect<DataOverview>;
@@ -78,7 +78,7 @@ export interface AppDataShape {
   readonly remove: (appId: string) => Effect.Effect<void>;
 }
 
-export class AppData extends Context.Service<AppData, AppDataShape>()("nathapp/AppData") {}
+export class AppData extends Context.Service<AppData, AppDataShape>()("rune/AppData") {}
 
 export const quoteName = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
@@ -208,7 +208,6 @@ export function queryRows(db: Database, table: string, query: RowQuery): DataRow
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
-  const workspace = yield* Workspace;
   const root = join(config.dataDir, "appdata");
   const dir = (appId: string) => join(root, appId);
   const databaseOf = (appId: string) => join(dir(appId), DATABASE_FILE);
@@ -217,11 +216,6 @@ export const make = Effect.gen(function* () {
   const ensure = (appId: string) =>
     Effect.sync(() => {
       mkdirSync(filesOf(appId), { recursive: true });
-      // Projects from before managed data kept their database in .nathapp/: it moves here once.
-      const legacy = join(workspace.stateDir(appId), DATABASE_FILE);
-      if (existsSync(legacy) && !existsSync(databaseOf(appId))) {
-        for (const suffix of SQLITE_SUFFIXES) if (existsSync(legacy + suffix)) renameSync(legacy + suffix, databaseOf(appId) + suffix);
-      }
       return { dir: dir(appId), database: databaseOf(appId), files: filesOf(appId) };
     });
 
@@ -407,11 +401,11 @@ export const make = Effect.gen(function* () {
     clear: (appId) =>
       Effect.promise(async () => {
         for (const suffix of SQLITE_SUFFIXES) await rm(databaseOf(appId) + suffix, { force: true });
-        await rm(filesOf(appId), { recursive: true, force: true });
+        await removeDir(filesOf(appId));
         mkdirSync(filesOf(appId), { recursive: true });
       }),
 
-    remove: (appId) => Effect.promise(() => rm(dir(appId), { recursive: true, force: true })),
+    remove: (appId) => Effect.promise(() => removeDir(dir(appId))),
   } satisfies AppDataShape;
 });
 

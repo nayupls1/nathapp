@@ -26,7 +26,7 @@ export function WindowControls() {
         type="button"
         title="Close"
         aria-label="Close"
-        onClick={() => window.nathapp.window.close()}
+        onClick={() => window.rune.window.close()}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         {...stylex.attrs(styles.button)}

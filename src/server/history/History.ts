@@ -10,7 +10,7 @@
 //   tables' row counts for the timeline.
 // - sites: the site customizations (<host>/style.css, script.js, site.json) and
 //   page changes (@changes/<id>.json).
-// - settings: NathApp's settings and each workspace's (settings.json,
+// - settings: Rune Browser's settings and each workspace's (settings.json,
 //   workspaces/<id>.json).
 //
 // Restoring or undoing first takes a snapshot of the current state, so it can
@@ -40,7 +40,7 @@ import { PageChanges } from "../db/PageChanges";
 import { Sites } from "../db/Sites";
 import { Workspaces } from "../db/Workspaces";
 import { Hub } from "../Hub";
-import { AppData, DATA_PREFIX, DATABASE_FILE } from "../workspace/AppData";
+import { AppData, DATA_PREFIX } from "../workspace/AppData";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 
@@ -107,14 +107,8 @@ const sameTree = (a: Tree, b: Tree) => {
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 };
 
-/** Snapshots from before managed app data have the database in the project's .nathapp/. */
-const LEGACY_DATABASE = ".nathapp/data.sqlite";
 /** Where page changes are in the sites target (not a host name). */
 const CHANGES_PREFIX = "@changes/";
-const renamePath = (path: string) => (path === LEGACY_DATABASE ? `${DATA_PREFIX}${DATABASE_FILE}` : path);
-function legacyPaths<T>(record: Record<string, T>): Record<string, T> {
-  return LEGACY_DATABASE in record ? Object.fromEntries(Object.entries(record).map(([k, v]) => [renamePath(k), v])) : record;
-}
 
 const isBinary = (bytes: Uint8Array) => bytes.subarray(0, 8000).includes(0);
 
@@ -182,7 +176,7 @@ export interface HistoryShape {
    */
   readonly undo: (id: number, options: { data: boolean }) => Effect.Effect<{ note: string | null }, HistoryError>;
   /**
-   * Puts NathApp back the way it was when snapshot `at` was taken: the settings,
+   * Puts Rune Browser back the way it was when snapshot `at` was taken: the settings,
    * the site customizations and every app (of the workspace, if given) that had
    * a snapshot by then, each as one restore (undoable). Returns what changed.
    */
@@ -191,7 +185,7 @@ export interface HistoryShape {
   readonly forget: (target: HistoryTarget) => Effect.Effect<void>;
 }
 
-export class History extends Context.Service<History, HistoryShape>()("nathapp/History") {}
+export class History extends Context.Service<History, HistoryShape>()("rune/History") {}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -267,8 +261,8 @@ export const make = Effect.gen(function* () {
           for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
             const path = rel ? `${rel}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
-              // NathApp's state folder (dependency stamp, home) isn't the app's.
-              if (path !== ".nathapp" && !(skipDirs && SKIP_DIRS.has(entry.name))) await walk(join(dir, entry.name), path, skipDirs);
+              // Rune Browser's state folder (dependency stamp, home) isn't the app's.
+              if (path !== ".rune" && !(skipDirs && SKIP_DIRS.has(entry.name))) await walk(join(dir, entry.name), path, skipDirs);
             } else if (entry.isFile() && !SKIP_FILES.test(entry.name) && files.length < MAX_FILES) files.push(path);
           }
         };
@@ -454,8 +448,6 @@ export const make = Effect.gen(function* () {
 
   const toEntry = (r: SnapshotRow): HistoryEntry => {
     const changes = JSON.parse(r.changes) as Changes;
-    for (const list of [changes.added, changes.modified, changes.removed]) list.forEach((p, i) => (list[i] = renamePath(p)));
-    changes.data = legacyPaths(changes.data);
     return {
       id: r.id,
       target: r.target,
@@ -472,7 +464,7 @@ export const make = Effect.gen(function* () {
       first: changes.first,
     };
   };
-  const stored = (r: SnapshotRow) => ({ tree: legacyPaths(JSON.parse(r.tree) as Tree), data: legacyPaths(JSON.parse(r.data) as DataStats) });
+  const stored = (r: SnapshotRow) => ({ tree: JSON.parse(r.tree) as Tree, data: JSON.parse(r.data) as DataStats });
 
   const publish = (row: SnapshotRow | null) => (row ? hub.publish({ type: "snapshot", topic: topics.history, entry: toEntry(row) }) : Effect.void);
   const changed = (target: string) => hub.publish({ type: "history-changed", topic: topics.history, target });
@@ -547,9 +539,9 @@ export const make = Effect.gen(function* () {
   /** The app's data (kept as it is unless restoring "with its data"): its managed folder and any database in the project. */
   const isData = (path: string, ...stats: DataStats[]) => path.startsWith(DATA_PREFIX) || isDatabase(path, ...stats);
 
-  // Where undoing the first change of settings or sites goes back to (also catches changes made while NathApp wasn't running).
+  // Where undoing the first change of settings or sites goes back to (also catches changes made while Rune Browser wasn't running).
   for (const target of ["settings", "sites"] as const) {
-    yield* record(target, { actor: "nathapp", actorLabel: "NathApp", summary: "As it was when NathApp started" }).pipe(Effect.ignoreCause);
+    yield* record(target, { actor: "rune", actorLabel: "Rune Browser", summary: "As it was when Rune Browser started" }).pipe(Effect.ignoreCause);
   }
 
   // Clean up after deleted snapshots, a while after startup.
@@ -564,7 +556,7 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const current = yield* capture(row.target);
           if (!current) return yield* fail(404, "Nothing to restore into");
-          yield* insert(row.target, current, { actor: "nathapp", actorLabel: "NathApp", summary: "Before restoring an earlier version" });
+          yield* insert(row.target, current, { actor: "rune", actorLabel: "Rune Browser", summary: "Before restoring an earlier version" });
           const target = stored(row);
           const desired: Tree = { ...target.tree };
           if (!options.data) {
@@ -723,7 +715,7 @@ export const make = Effect.gen(function* () {
               if (keptData.length) return "Only the data changed, and it has changed again since, so nothing was undone.";
               return skippedData ? "Only the data changed in this step; undo it with its data to take that back." : "Nothing left to undo.";
             }
-            yield* insert(row.target, current, { actor: "nathapp", actorLabel: "NathApp", summary: "Before undoing a change" });
+            yield* insert(row.target, current, { actor: "rune", actorLabel: "Rune Browser", summary: "Before undoing a change" });
             yield* apply(row.target, desired, current.tree);
             const now = yield* capture(row.target);
             if (now) yield* insert(row.target, now, { actor: "user", actorLabel: "You", summary: `Undid: ${row.summary}` });

@@ -275,7 +275,7 @@ function Reply(props: { appId: string; message: ChatMessage }) {
 function Markdown(props: { text: string }) {
   return (
     <div {...stylex.attrs(styles.assistant, styles.markdown)}>
-      <div class="nathapp-markdown" innerHTML={markdownToHtml(props.text)} />
+      <div class="rune-markdown" innerHTML={markdownToHtml(props.text)} />
     </div>
   );
 }

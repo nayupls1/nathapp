@@ -25,7 +25,7 @@ export interface ProvidersShape {
   readonly driver: (id: ProviderId) => ProviderDriver;
 }
 
-export class Providers extends Context.Service<Providers, ProvidersShape>()("nathapp/Providers") {}
+export class Providers extends Context.Service<Providers, ProvidersShape>()("rune/Providers") {}
 
 export const make = Effect.gen(function* () {
   const settings = yield* Settings;

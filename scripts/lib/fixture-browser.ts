@@ -1,12 +1,14 @@
 // A fake Chromium profile for the e2e checks: one store-installed extension
-// (with a key, so it keeps its ID) that uses the APIs NathApp provides, and its
+// (with a key, so it keeps its ID) that uses the APIs Rune Browser provides, and its
 // chrome.storage.local data in a real LevelDB folder, written by hand (a log
 // file with one write batch, and a manifest that points at it).
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { extensionIdFromHash } from "../../src/shared/extensions";
+import { extensionIdFromHash, type ShortcutPlatform } from "../../src/shared/extensions";
+
+const shortcutPlatform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
 
 // --- LevelDB ---------------------------------------------------------------------------
 
@@ -88,6 +90,16 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 // Real extensions read these at the top level.
 chrome.permissions.onAdded.addListener(() => {});
+// Ones Rune Browser only stands in for (no history, no policies): the worker still starts.
+chrome.history.onVisited.addListener(() => {});
+chrome.extension.isAllowedIncognitoAccess();
+chrome.storage.managed.get(null);
+// Like a password manager: fills in a site's sign-in.
+chrome.webRequest.onAuthRequired.addListener(
+  (details, callback) => callback(details.url.endsWith("/auth/extension") ? { authCredentials: { username: "fixture", password: "from-extension" } } : {}),
+  { urls: ["http://127.0.0.1/*"] },
+  ["asyncBlocking"],
+);
 chrome.action.setBadgeText({ text: "7" });
 chrome.action.setBadgeBackgroundColor({ color: "#16a34a" });
 chrome.storage.sync.set({ fromWorker: 1 });
@@ -143,7 +155,7 @@ function png(size: number, [r, g, b]: [number, number, number]) {
 }
 
 export interface FixtureBrowser {
-  /** For NATHAPP_BROWSER_DIRS. */
+  /** For RUNE_BROWSER_DIRS. */
   dirs: string;
   extensionId: string;
   name: string;
@@ -154,7 +166,7 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
   const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const der = publicKey.export({ type: "spki", format: "der" });
   const id = extensionIdFromHash(createHash("sha256").update(der).digest("hex"));
-  const name = "NathApp Fixture";
+  const name = "Rune Browser Fixture";
   const profile = join(root, "Default");
   const dir = join(profile, "Extensions", id, "1.0_0");
   mkdirSync(dir, { recursive: true });
@@ -169,7 +181,7 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
     action: { default_popup: "popup.html", default_title: "Fixture", default_icon: { 16: "icon.png" } },
     options_page: "options.html",
     background: { service_worker: "background.js" },
-    permissions: ["storage", "tabs", "contextMenus", "declarativeNetRequest"],
+    permissions: ["storage", "tabs", "contextMenus", "declarativeNetRequest", "history", "webRequest", "webRequestAuthProvider"],
     host_permissions: ["http://127.0.0.1/*"],
     content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"], run_at: "document_start" }],
     declarative_net_request: { rule_resources: [{ id: "fixture", enabled: true, path: "rules.json" }] },
@@ -191,7 +203,8 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
         },
         pinned_extensions: [id],
         // The shortcut was changed in the browser (from Alt+Shift+Y).
-        commands: { "linux:Alt+Shift+U": { command_name: "bump", extension: id, global: false } },
+        // Chrome keeps one per platform ("linux:", "windows:", "mac:").
+        commands: { [`${shortcutPlatform}:Alt+Shift+U`]: { command_name: "bump", extension: id, global: false } },
       },
     }),
   );

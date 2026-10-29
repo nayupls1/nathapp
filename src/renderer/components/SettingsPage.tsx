@@ -1,6 +1,6 @@
 // Settings: a sidebar of categories (appearance, the current workspace,
 // agent defaults and providers, apps, web tabs and their network and
-// extensions, secrets and permissions) and NathApp's pages (History,
+// extensions, secrets and permissions) and Rune Browser's pages (History,
 // Schedules, Mods, Activity), with the chosen one beside it.
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
@@ -13,6 +13,7 @@ import { autoUpdate, extensionList } from "../lib/extensions";
 import { securityVersion } from "../lib/security";
 import { watchTopic } from "../lib/realtime";
 import { settings, updateSettings } from "../lib/settings";
+import { checkForUpdates, installUpdate, setUpdateChannel, updateInfo } from "../lib/updates";
 import {
   ACTIVITY_VIEW,
   appById,
@@ -51,7 +52,7 @@ import { Button, Select } from "./ui";
 
 /**
  * Settings: a sidebar of categories on the left, the chosen one on the right.
- * NathApp's pages (History, Schedules, Mods, Activity) are categories too.
+ * Rune Browser's pages (History, Schedules, Mods, Activity) are categories too.
  */
 export function SettingsShell(props: { view: string }) {
   const current = () => settingsSections.find((s) => (s.view ? s.view === props.view : props.view === SETTINGS_VIEW && s.id === settingsSection())) ?? settingsSections[0]!;
@@ -234,7 +235,7 @@ function ProvidersSection() {
   return (
         <Section title="Coding agents" icon="plug" anchor="providers">
           <p {...stylex.attrs(styles.muted, styles.note)}>
-            The coding agents NathApp can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
+            The coding agents Rune Browser can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
           </p>
           <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
         </Section>
@@ -368,7 +369,7 @@ function AppsSection() {
 
           <Section title="AI in apps" icon="sparkles">
             <p {...stylex.attrs(styles.muted, styles.note)}>
-              Apps can use AI (summaries, suggestions, chat) through NathApp, on your own subscription: no API keys in your apps. Only an
+              Apps can use AI (summaries, suggestions, chat) through Rune Browser, on your own subscription: no API keys in your apps. Only an
               app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
               shows up in the app's logs.
             </p>
@@ -422,15 +423,79 @@ function PermissionsSection() {
 function AboutSection() {
   const [health] = createResource(() => api.health());
   return (
-        <Section title="NathApp" icon="info" anchor="about">
+    <>
+        <UpdatesSection />
+        <Section title="Rune Browser" icon="info" anchor="about">
           <dl {...stylex.attrs(styles.about)}>
             <dt>Data folder</dt>
             <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
             <dt>Versions</dt>
             <dd {...stylex.attrs(styles.dd, styles.mono)}>
-              Electron {window.nathapp.versions.electron} · Chrome {window.nathapp.versions.chrome} · Bun {health()?.bun ?? "…"}
+              Electron {window.rune.versions.electron} · Chrome {window.rune.versions.chrome} · Bun {health()?.bun ?? "…"}
             </dd>
           </dl>
+        </Section>
+    </>
+  );
+}
+
+/** The running version, what the updater is doing, and the release channel. */
+function UpdatesSection() {
+  const info = updateInfo;
+  const status = () => info()?.status;
+  const checked = () => (info()?.checkedAt ? ` · checked ${new Date(info()!.checkedAt!).toLocaleString()}` : "");
+  const description = () => {
+    const s = status();
+    if (!s) return "…";
+    switch (s.state) {
+      case "unsupported":
+        return s.reason;
+      case "idle":
+        return `Up to date${checked()}`;
+      case "checking":
+        return "Checking for updates…";
+      case "available":
+        return `Version ${s.version} is out. Download it from its release page.`;
+      case "downloading":
+        return `Downloading version ${s.version}… ${s.percent}%`;
+      case "ready":
+        return `Version ${s.version} is ready. It's installed when Rune Browser restarts.`;
+      case "error":
+        return `Couldn't update: ${s.message}`;
+    }
+  };
+  const state = () => status()?.state;
+  const available = () => {
+    const s = status();
+    return s?.state === "available" ? s : null;
+  };
+  const canCheck = () => state() === "idle" || state() === "error";
+
+  return (
+        <Section title="Updates" icon="refresh-cw" anchor="updates">
+          <Row label={`Rune Browser ${info()?.version ?? ""}`} description={description()}>
+            <span data-update-state={state()}>
+              <Switch>
+                <Match when={state() === "ready"}>
+                  <Button onClick={installUpdate}>Restart to update</Button>
+                </Match>
+                <Match when={available()}>{(s) => <Button onClick={() => window.rune.web.openExternal(s().url)}>Download</Button>}</Match>
+                <Match when={canCheck()}>
+                  <Button onClick={() => void checkForUpdates()}>Check for updates</Button>
+                </Match>
+              </Switch>
+            </span>
+          </Row>
+          <Row label="Channel" description="Beta also gets pre-releases: new features earlier, and sometimes rough edges.">
+            <Segmented
+              value={info()?.channel ?? "stable"}
+              options={[
+                ["stable", "Stable"],
+                ["beta", "Beta"],
+              ]}
+              onChange={(channel) => void setUpdateChannel(channel)}
+            />
+          </Row>
         </Section>
   );
 }
@@ -491,7 +556,7 @@ function ProviderRow(props: { id: ProviderId }) {
         <span {...stylex.attrs(styles.muted)}>Binary</span>
         <input
           value={config().binaryPath}
-          placeholder={status()?.binary ?? (props.id === "claude" ? "Bundled with NathApp" : `${props.id} on your PATH`)}
+          placeholder={status()?.binary ?? `${props.id} on your PATH`}
           onChange={(e) => setConfig({ binaryPath: e.currentTarget.value.trim() })}
           {...stylex.attrs(styles.textInput, styles.mono)}
         />
@@ -628,7 +693,7 @@ function GlobalSecrets() {
       ? "Encrypted, with the key in your OS keychain."
       : overview()?.protection === "file"
         ? "Encrypted, with the key protected by file permissions only (no OS keychain found)."
-        : "Locked: NathApp couldn't unlock its key from the OS keychain.";
+        : "Locked: Rune Browser couldn't unlock its key from the OS keychain.";
   return (
     <>
       <p {...stylex.attrs(styles.muted, styles.note)}>
@@ -850,10 +915,10 @@ function NetworkRules() {
  * (permissions, site access, options) on demand.
  */
 function ExtensionsSection() {
-  const ext = window.nathapp.extensions;
+  const ext = window.rune.extensions;
   const [input, setInput] = createSignal("");
   const [query, setQuery] = createSignal("");
-  const [developer, setDeveloper] = createSignal(localStorage.getItem("nathapp.extensions-developer") === "1");
+  const [developer, setDeveloper] = createSignal(localStorage.getItem("rune.extensions-developer") === "1");
   const [details, setDetails] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<string>();
@@ -885,7 +950,7 @@ function ExtensionsSection() {
     });
   const toggleDeveloper = (on: boolean) => {
     setDeveloper(on);
-    localStorage.setItem("nathapp.extensions-developer", on ? "1" : "0");
+    localStorage.setItem("rune.extensions-developer", on ? "1" : "0");
   };
   const shown = () => {
     const q = query().trim().toLowerCase();
@@ -967,12 +1032,12 @@ const extensionSource = (info: ExtensionInfo) => {
 };
 
 const removeExtension = async (info: ExtensionInfo) => {
-  if (await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await window.nathapp.extensions.remove(info.id);
+  if (await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await window.rune.extensions.remove(info.id);
 };
 
 /** One extension: icon, name, version, description; Details, Remove and its switch. */
 function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetails: () => void }) {
-  const ext = window.nathapp.extensions;
+  const ext = window.rune.extensions;
   const info = () => props.info;
   const off = () => !info().enabled;
   return (
@@ -994,7 +1059,9 @@ function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetai
             <span {...stylex.attrs(styles.extBad)}>{info().error}</span>
           </Show>
           <Show when={info().unsupported.length}>
-            <span {...stylex.attrs(styles.extWarn)}>Parts may not work: {info().unsupported.join(", ")}</span>
+            <button type="button" onClick={props.onDetails} title="What's different, in its details" {...stylex.attrs(styles.extLimited)} data-extension-limited>
+              Limited in Rune Browser: {info().unsupported.join(", ")}
+            </button>
           </Show>
         </div>
       </div>
@@ -1017,9 +1084,9 @@ function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetai
   );
 }
 
-/** An extension's details: what it is, what it can do, and its settings in NathApp. */
+/** An extension's details: what it is, what it can do, and its settings in Rune Browser. */
 function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
-  const ext = window.nathapp.extensions;
+  const ext = window.rune.extensions;
   const info = () => props.info;
   return (
     <div {...stylex.attrs(styles.extDetails)} data-extension-details-page={info().id}>
@@ -1047,18 +1114,34 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
         <Row label="Source" description={info().source.kind === "unpacked" ? info().path : info().updates ? "Updated from the Chrome Web Store" : undefined}>
           <span>{extensionSource(info())}</span>
         </Row>
-        <Row label="Permissions" description={info().permissions.length ? undefined : "None"} wide={info().permissions.length > 0}>
+        <Row
+          label="Permissions"
+          description={info().permissions.length ? "What it may use. Changing one restarts the extension." : "None"}
+          wide={info().permissions.length > 0}
+        >
           <Show when={info().permissions.length}>
-            <div {...stylex.attrs(styles.extChips)}>
+            <div {...stylex.attrs(styles.extPermissions)} data-extension-permissions>
               <For each={info().permissions}>
-                {(p) => {
-                  const missing = () => info().unsupported.includes(p);
-                  return (
-                    <span {...stylex.attrs(styles.extChip, missing() && styles.extChipWarn)} title={missing() ? "Not available in NathApp" : undefined}>
-                      {p}
-                    </span>
-                  );
-                }}
+                {(p) => (
+                  <div {...stylex.attrs(styles.extPermission)} data-extension-permission={p.name}>
+                    <div {...stylex.attrs(styles.extPermissionText)}>
+                      <span {...stylex.attrs(styles.extPermissionName)}>
+                        {p.description}
+                        <span {...stylex.attrs(styles.extChip, styles.mono)}>{p.name}</span>
+                        <Show when={p.optional}>
+                          <span {...stylex.attrs(styles.extChip)}>Optional</span>
+                        </Show>
+                      </span>
+                      <Show when={p.limited}>
+                        <span {...stylex.attrs(styles.extPermissionNote)} data-permission-limited>
+                          <Icon name="info" size={13} {...stylex.attrs(styles.extNoteIcon)} />
+                          {p.limited}
+                        </span>
+                      </Show>
+                    </div>
+                    <Toggle checked={p.allowed} onChange={(on) => void ext.setPermission(info().id, p.name, on)} />
+                  </div>
+                )}
               </For>
             </div>
           </Show>
@@ -1166,7 +1249,7 @@ function SandboxRows() {
     return "";
   };
   const addFolder = async () => {
-    const folder = await window.nathapp.pickFolder("A folder apps may read");
+    const folder = await window.rune.pickFolder("A folder apps may read");
     if (folder && !apps().sandboxReadOnly.includes(folder)) setApps({ sandboxReadOnly: [...apps().sandboxReadOnly, folder] });
   };
 
@@ -1232,7 +1315,7 @@ function SandboxRows() {
         >
           <Toggle checked={apps().sandboxToolchains} onChange={(sandboxToolchains) => setApps({ sandboxToolchains })} />
         </Row>
-        <Row label="More folders apps can read" description="Read-only, in every app's sandbox. NathApp's own data stays hidden even if it's inside one." wide>
+        <Row label="More folders apps can read" description="Read-only, in every app's sandbox. Rune Browser's own data stays hidden even if it's inside one." wide>
           <div {...stylex.attrs(styles.folderList)} data-sandbox-folders>
             <For each={apps().sandboxReadOnly}>
               {(folder) => (
@@ -1657,11 +1740,26 @@ const styles = stylex.create({
   },
   extChips: { display: "flex", flexWrap: "wrap", gap: 6 },
   extChip: { paddingBlock: 2, paddingInline: 8, borderRadius: radius.full, backgroundColor: colors.surfaceHover, fontSize: font.xs },
-  extChipWarn: { color: colors.warning },
+  extPermissions: { display: "flex", flexDirection: "column", gap: space.sm, width: "100%" },
+  extPermission: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md },
+  extPermissionText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  extPermissionName: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, fontSize: font.sm },
+  extPermissionNote: { display: "flex", alignItems: "flex-start", gap: 4, color: colors.muted, fontSize: font.xs },
+  extNoteIcon: { flexShrink: 0, marginTop: 1 },
+  extLimited: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: colors.muted,
+    fontFamily: "inherit",
+    fontSize: font.xs,
+    textAlign: "left",
+    cursor: "pointer",
+    textDecoration: { default: "none", ":hover": "underline" },
+  },
   extShortcuts: { display: "flex", flexDirection: "column", gap: 6, width: "100%" },
   extShortcut: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md, fontSize: font.sm },
   extIcon: { flexShrink: 0, marginTop: 2, objectFit: "contain" },
-  extWarn: { color: colors.warning, fontSize: font.xs },
   extBad: { color: colors.danger, fontSize: font.xs, overflowWrap: "anywhere" },
   plainButton: { color: { default: colors.muted, ":hover": colors.text } },
   iconButton: {

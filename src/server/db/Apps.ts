@@ -202,7 +202,7 @@ export const make = Effect.gen(function* () {
 
     setMode: (id: string, mode: AppMode) => sql`UPDATE apps SET mode = ${mode} WHERE id = ${id}`.pipe(Effect.asVoid),
 
-    /** When NathApp starts, apps left being edited are done: no agent is working on them anymore. */
+    /** When Rune Browser starts, apps left being edited are done: no agent is working on them anymore. */
     finishEditing: () => sql`UPDATE apps SET mode = 'live' WHERE kind = 'app' AND mode = 'dev'`.pipe(Effect.asVoid),
 
     touch: (id: string) => touch(id).pipe(Effect.asVoid),
@@ -280,6 +280,6 @@ export const make = Effect.gen(function* () {
   return repo;
 });
 
-export class Apps extends Context.Service<Apps, OrDie<Effect.Success<typeof make>>>()("nathapp/Apps") {}
+export class Apps extends Context.Service<Apps, OrDie<Effect.Success<typeof make>>>()("rune/Apps") {}
 
 export const layer = Layer.effect(Apps, Effect.map(make, orDieAll));

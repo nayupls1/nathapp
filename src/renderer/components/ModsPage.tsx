@@ -38,7 +38,7 @@ export function ModsPage() {
           Mods
         </h1>
         <p {...stylex.attrs(styles.muted)}>
-          Customizations of websites and of NathApp, packaged to share: page changes, a theme, extensions. You see what a mod changes before installing it, and turning it off or
+          Customizations of websites and of Rune Browser, packaged to share: page changes, a theme, extensions. You see what a mod changes before installing it, and turning it off or
           removing it takes all of that back.
         </p>
       </header>
@@ -95,7 +95,7 @@ function InstallBox() {
       <div {...stylex.attrs(styles.row)}>
         <input
           value={text()}
-          placeholder="Paste a share code (NATHAPP-MOD:…) or a link to a mod"
+          placeholder="Paste a share code (RUNE-MOD:…) or a link to a mod"
           spellcheck={false}
           onInput={(e) => setText(e.currentTarget.value)}
           onKeyDown={(e) => e.key === "Enter" && text().trim() && void review(() => reviewMod(sourceOf(text())))}
@@ -111,7 +111,7 @@ function InstallBox() {
         <input
           ref={file}
           type="file"
-          accept=".json,.nathappmod,application/json"
+          accept=".json,.runemod,application/json"
           hidden
           onChange={(e) => {
             const chosen = e.currentTarget.files?.[0];
@@ -218,9 +218,9 @@ function Gallery() {
               </span>
               <p {...stylex.attrs(styles.galleryText)}>{entry.mod.description}</p>
               <div {...stylex.attrs(styles.row)}>
-                <span {...stylex.attrs(styles.meta, styles.grow)}>{entry.gallery === "NathApp" ? "From NathApp" : new URL(entry.gallery).host}</span>
+                <span {...stylex.attrs(styles.meta, styles.grow)}>{entry.gallery === "Rune Browser" ? "From Rune Browser" : new URL(entry.gallery).host}</span>
                 <Show when={!installedIds().has(`${entry.mod.id}@${entry.mod.modVersion}`)} fallback={<span {...stylex.attrs(styles.meta)}>Installed</span>}>
-                  <Button onClick={() => void reviewMod({ mod: entry.mod }, entry.gallery === "NathApp" ? "gallery" : entry.gallery).catch((err) => toast({ message: errorText(err), kind: "error" }))} data-gallery-install>
+                  <Button onClick={() => void reviewMod({ mod: entry.mod }, entry.gallery === "Rune Browser" ? "gallery" : entry.gallery).catch((err) => toast({ message: errorText(err), kind: "error" }))} data-gallery-install>
                     Install…
                   </Button>
                 </Show>
@@ -235,7 +235,7 @@ function Gallery() {
       <section {...stylex.attrs(styles.card)}>
         <h2 {...stylex.attrs(styles.sectionTitle)}>Galleries</h2>
         <p {...stylex.attrs(styles.muted)}>
-          Mods made by others, from galleries you add: an https link to a JSON file that lists mods (<code>{'{ "mods": [ … ] }'}</code>). NathApp's examples are always here.
+          Mods made by others, from galleries you add: an https link to a JSON file that lists mods (<code>{'{ "mods": [ … ] }'}</code>). Rune Browser's examples are always here.
         </p>
         <For each={settings().mods.galleries}>
           {(g) => (
@@ -277,7 +277,7 @@ function Create(props: { onCreated: () => void }) {
   const [made, setMade] = createSignal<{ mod: Mod; code: string } | null>(null);
   const [error, setError] = createSignal<string>();
   const [available] = createResource(() =>
-    window.nathapp.extensions
+    window.rune.extensions
       .list()
       .then((r) => r.extensions.filter((e: ExtensionInfo) => e.source.kind !== "unpacked"))
       .catch(() => [] as ExtensionInfo[]),
@@ -326,7 +326,7 @@ function Create(props: { onCreated: () => void }) {
                 )}
               </For>
             </div>
-            <h3 {...stylex.attrs(styles.subTitle)}>NathApp</h3>
+            <h3 {...stylex.attrs(styles.subTitle)}>Rune Browser</h3>
             <label {...stylex.attrs(styles.choice)}>
               <input type="checkbox" checked={theme()} onChange={(e) => setTheme(e.currentTarget.checked)} data-mod-theme />
               <span>Your theme (colors, corners, font)</span>
@@ -361,7 +361,7 @@ function Create(props: { onCreated: () => void }) {
             <p {...stylex.attrs(styles.itemTitle)}>
               <Icon name="circle-check" size={16} {...stylex.attrs(styles.accent)} /> {result().mod.name} is ready to share
             </p>
-            <p {...stylex.attrs(styles.muted)}>Its share code is copied. Anyone with NathApp can paste it into Install a mod (or Ctrl+K) and review it before installing.</p>
+            <p {...stylex.attrs(styles.muted)}>Its share code is copied. Anyone with Rune Browser can paste it into Install a mod (or Ctrl+K) and review it before installing.</p>
             <textarea readOnly value={result().code} rows={3} {...stylex.attrs(styles.input, styles.textarea, styles.code)} data-mod-code />
             <div {...stylex.attrs(styles.row)}>
               <Button onClick={() => void copyShareCode(result().mod).then(() => toast({ message: "Copied", kind: "success" }))}>Copy again</Button>

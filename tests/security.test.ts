@@ -1,7 +1,7 @@
 // Secrets, permissions and the audit log, against the real server and real
 // (sandboxed) app processes. No model is called.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Effect } from "effect";
 import { claudeEnv } from "../src/server/providers/Claude";
@@ -10,6 +10,28 @@ import { makeVault } from "../src/server/security/Vault";
 import type { AppSummary, AuditEntry, PermissionGrant, PermissionRequest, SecretInfo, SecretsOverview } from "../src/shared/api";
 import type { Settings } from "../src/shared/settings";
 import { startServer } from "./lib/server";
+import { devScript, writesVariable } from "./lib/apps";
+
+/** Every process's command line on this machine, as one string. */
+async function commandLines(): Promise<string> {
+  if (process.platform === "linux") {
+    return readdirSync("/proc")
+      .filter((p) => /^\d+$/.test(p))
+      .map((pid) => {
+        try {
+          return readFileSync(`/proc/${pid}/cmdline`, "utf8");
+        } catch {
+          return "";
+        }
+      })
+      .join("\n");
+  }
+  const command =
+    process.platform === "win32"
+      ? ["powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_Process | ForEach-Object { $_.CommandLine }"]
+      : ["ps", "-axww", "-o", "command="];
+  return new Response(Bun.spawn(command, { stdout: "pipe" }).stdout).text();
+}
 
 describe("vault", () => {
   const vault = makeVault(Buffer.alloc(32, 7), "file");
@@ -29,14 +51,14 @@ describe("vault", () => {
 });
 
 describe("agent processes", () => {
-  test("don't get NathApp's own variables (the API token)", () => {
-    process.env.NATHAPP_TOKEN = "renderer-token";
+  test("don't get Rune Browser's own variables (the API token)", () => {
+    process.env.RUNE_TOKEN = "renderer-token";
     try {
-      expect(Object.keys(agentEnv()).filter((k) => k.startsWith("NATHAPP_"))).toEqual([]);
-      expect(Object.keys(claudeEnv()).filter((k) => k.startsWith("NATHAPP_"))).toEqual([]);
+      expect(Object.keys(agentEnv()).filter((k) => k.startsWith("RUNE_"))).toEqual([]);
+      expect(Object.keys(claudeEnv()).filter((k) => k.startsWith("RUNE_"))).toEqual([]);
       expect(agentEnv({ EXTRA: "1" }).EXTRA).toBe("1");
     } finally {
-      delete process.env.NATHAPP_TOKEN;
+      delete process.env.RUNE_TOKEN;
     }
   });
 });
@@ -64,14 +86,11 @@ describe("secrets, permissions and the audit log", () => {
     return existsSync(file) ? readFileSync(file, "utf8") || undefined : undefined;
   };
   /** From now on, the app's dev "server" reports which secrets it got (for `step`), prints one, and stays up. */
-  const report = (step: string) => {
-    const dev = [
-      `for n in MY_KEY SHARED_KEY; do eval "printf %s \\"\\\${$n:-unset}\\"" > seen-${step}-$n.txt; done`,
-      'echo "the key is $MY_KEY"',
-      "sleep 600",
-    ].join("; ");
-    writeFileSync(join(dir, "nathapp.json"), JSON.stringify({ install: "true", dev, start: "sleep 600" }));
-  };
+  const report = (step: string) =>
+    devScript(
+      dir,
+      `for (const n of ["MY_KEY", "SHARED_KEY"]) await Bun.write(\`seen-${step}-\${n}.txt\`, process.env[n] || "unset");\nconsole.log("the key is " + process.env.MY_KEY);`,
+    );
 
   beforeAll(async () => {
     server = await startServer();
@@ -91,7 +110,7 @@ describe("secrets, permissions and the audit log", () => {
     expect(overview.secrets.map((s) => s.name)).toEqual(["MY_KEY"]);
     expect(JSON.stringify(overview)).not.toContain(VALUE);
     // Not in plain text in the database (or its WAL).
-    for (const file of readdirSync(server.dataDir).filter((f) => f.startsWith("nathapp.sqlite"))) {
+    for (const file of readdirSync(server.dataDir).filter((f) => f.startsWith("rune.sqlite"))) {
       expect(readFileSync(join(server.dataDir, file)).includes(Buffer.from(VALUE))).toBe(false);
     }
   });
@@ -112,15 +131,7 @@ describe("secrets, permissions and the audit log", () => {
     });
     expect(logs.find((l) => l.text.startsWith("the key is"))!.text).toBe("the key is ••••••");
     expect(JSON.stringify(logs)).not.toContain(VALUE);
-    for (const pid of readdirSync("/proc").filter((p) => /^\d+$/.test(p))) {
-      let cmdline = "";
-      try {
-        cmdline = readFileSync(`/proc/${pid}/cmdline`, "utf8");
-      } catch {
-        continue;
-      }
-      expect(cmdline.includes(VALUE)).toBe(false);
-    }
+    expect((await commandLines()).includes(VALUE)).toBe(false);
   });
 
   test("a global secret needs the user's permission per app", async () => {
@@ -143,7 +154,7 @@ describe("secrets, permissions and the audit log", () => {
     await server.api("/api/settings", { method: "PUT", json: { ...settings, apps: { ...settings.apps, ai: { ...settings.apps.ai, enabled: true } } } });
     // The app's AI token (its dev process could read it; here we take it from the environment it saw).
     const env = join(dir, "token.txt");
-    writeFileSync(join(dir, "nathapp.json"), JSON.stringify({ install: "true", dev: 'printf %s "$NATHAPP_AI_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
+    writesVariable(dir, "RUNE_AI_TOKEN", "token.txt");
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
     const token = await waitFor(() => (existsSync(env) && readFileSync(env, "utf8")) || undefined);
     const ask = () =>

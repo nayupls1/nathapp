@@ -1,5 +1,5 @@
 // Settings' categories, listed in its sidebar (components/SettingsPage.tsx)
-// and the command bar. `view`: NathApp's own pages, which are views of their
+// and the command bar. `view`: Rune Browser's own pages, which are views of their
 // own (History…) shown inside Settings.
 import { ACTIVITY_VIEW, HISTORY_VIEW, MODS_VIEW, SCHEDULES_VIEW } from "./store";
 

@@ -1,4 +1,4 @@
-// Runs agent turns: picks the provider, gives it NathApp's instructions and tools,
+// Runs agent turns: picks the provider, gives it Rune Browser's instructions and tools,
 // persists the conversation and pushes everything to the renderer on the hub
 // (topic app:<id>). A turn runs in the background; stopping interrupts it.
 import { delimiter } from "node:path";
@@ -67,7 +67,7 @@ export interface AgentShape {
   readonly isRunning: (appId: string) => Effect.Effect<boolean>;
 }
 
-export class Agent extends Context.Service<Agent, AgentShape>()("nathapp/Agent") {}
+export class Agent extends Context.Service<Agent, AgentShape>()("rune/Agent") {}
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -183,7 +183,7 @@ export const make = Effect.gen(function* () {
       // Snapshots around the turn: what changed before it (the user, the app's data), and what the agent changed.
       const target = web ? "sites" : appTarget(appId);
       const prompt = request.prompt.trim();
-      yield* history.record(target, { actor: "nathapp", actorLabel: "Automatic snapshot", summary: `Before “${prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt}”` });
+      yield* history.record(target, { actor: "rune", actorLabel: "Automatic snapshot", summary: `Before “${prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt}”` });
       const snapshotAfter = history.record(target, { actor: "agent", actorLabel, summary: prompt });
       yield* audit.record({ actor: "agent", actorLabel, tabId: appId, action: "agent.turn", detail: `${request.prompt.length} characters` });
 
@@ -198,7 +198,7 @@ export const make = Effect.gen(function* () {
         instructions = buildAppPrompt({ instructions: combine(s.agent.instructions, space?.instructions), dir: cwd, hasProject: !!project });
         yield* projects.editing(appId);
       }
-      // The code attached to the tab: the agent works with it through NathApp's source tools.
+      // The code attached to the tab: the agent works with it through Rune Browser's source tools.
       const attached = yield* sources.list(appId);
       if (attached.length) {
         instructions += `\n\n# Code attached to this tab\nThe user attached this code for you to work with:\n${attached.map((a) => `- ${describeSource(a)}`).join("\n")}\nUse search_source, list_source_files, read_source_file and source_git to find your way in it, for example where a slow function from a trace or a broken style comes from. Change it only with edit_source_file / write_source_file: the user approves every diff. Your own file tools don't reach it.`;
@@ -213,7 +213,7 @@ export const make = Effect.gen(function* () {
         model: choice.model,
         effort: choice.effort,
         resume,
-        mcp: { name: "nathapp", url: mcpUrl, headers: {} },
+        mcp: { name: "rune", url: mcpUrl, headers: {} },
         access: web ? "none" : "workspace",
         env: { PATH: `${process.env.PATH ?? ""}${delimiter}${sandbox.binDir}` },
       });

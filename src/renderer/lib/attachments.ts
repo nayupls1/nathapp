@@ -17,7 +17,7 @@ export const uploadingCount = (tabId: string) => uploading[tabId] ?? 0;
 
 /** Where an attachment can be seen (an <img> src: carries the window's token). */
 export const attachmentUrl = (tabId: string, id: string) =>
-  `${window.nathapp.serverUrl}/api/apps/${tabId}/attachments/${id}?token=${encodeURIComponent(window.nathapp.token)}`;
+  `${window.rune.serverUrl}/api/apps/${tabId}/attachments/${id}?token=${encodeURIComponent(window.rune.token)}`;
 
 const toBase64 = async (blob: Blob) => {
   const bytes = new Uint8Array(await blob.arrayBuffer());

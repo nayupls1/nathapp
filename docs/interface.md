@@ -1,0 +1,71 @@
+# Interface
+
+[README](../README.md) · [Architecture](architecture.md) · [Concepts](concepts.md) · [Interface](interface.md) · [Browsing](browsing.md) · [Development](development.md) · [Releasing](releasing.md)
+
+## Window
+
+The window has no title bar, like Zen Browser. On Linux and Windows it's frameless and Rune Browser draws one button, close, as a red macOS-style light first in the sidebar's top row (gray while the window isn't focused; `components/WindowControls.tsx`). There's no minimize or maximize button: drag the row to move the window, double-click it to maximize. macOS keeps its traffic lights, top left. That row and the agent sidebar's header are where the window is dragged, and double-clicking one maximizes it (`lib/windowChrome.ts`).
+
+## Sidebar
+
+The sidebar is the browser's chrome, like Zen Browser's: pages get the whole content area, without a toolbar (`components/TopBar.tsx`, each tab's part in `lib/tabChrome.ts`). The page sits inset from the window and the sidebars, with rounded corners; each pane of a split view is its own card. Fullscreen video still fills the screen.
+- **Top row:** close, the agent (Ctrl+J; a dot while it works), a web tab's extensions (the puzzle: one menu, pinned ones first, with their badges and popups), then back, forward and reload. It drags the window.
+- **Address:** the tab on screen's address (an app's localhost URL). A new web tab (Ctrl+T) opens blank with it focused and empty. Typing suggests the open tabs that match (every workspace; Enter switches to the first), the address and a web search; Ctrl+L focuses it. Paths and localhost addresses open in an app's preview; anything else in a new web tab. A web tab's page changes are behind the paintbrush in it.
+- **The tab's tools:** an app's state (editing, running…), restart, logs, secrets, history, data, tools and "open in your browser". The Network panel is in the command bar ("Network requests"); picking elements is in the agent's composer.
+- **Pinned tabs** are tiles above the list (and stay loaded).
+- **Tabs** have an × (or middle-click, Ctrl+W). Closing a web tab removes it; Ctrl+Shift+T opens the last one again. Closing an app keeps it with its project, data, chat and secrets (`POST /api/apps/:id/close`): "New tab" lists the saved apps to open again in the current workspace (`/api/library`, `POST /api/apps/:id/reopen`), as does the command bar. "Delete" in its menu deletes it for good. A new app with nothing in it yet is just removed.
+- **"New tab"** is under the tabs. At the very bottom, one row: the collapse button on the left, the workspaces' icons centered, Settings on the right.
+
+It collapses to a column of icons (the collapse button, or Ctrl+Shift+B, also from inside web pages) and is resized by dragging its edge (double-click it for the default width; dragging it far enough to the left collapses it). Its width and whether it's collapsed are remembered.
+
+## Agent sidebar
+
+The agent has one place: the agent sidebar, right of the tabs (`components/AgentSidebar.tsx`). It looks and works the same for every kind of tab: building or editing an app, customizing a site and using it all happen there. It shows the agent of the tab that has the focus (in a split view, the focused pane's), with the tab's name in its header; each tab keeps its own conversation, and what you typed but didn't send stays with the tab. Elements picked in a page (the crosshair) show above its composer (`lib/picks.ts`). Ctrl+J (or the agent button at the top of the sidebar) opens or closes it for the tab. Its header is the tab's name, a red shield while agents have full access, new chat, earlier chats and close. It's open by default only where it's needed: on a new app tab, to describe the app. Web pages and other tabs start with it closed and remember being opened; an app's tab follows its mode (open while it's being edited), and apps start finished when Rune Browser starts.
+
+**Chats.** "New chat" (in its header, a tab's menu or the command bar) starts a fresh conversation and keeps the current one: the clock button lists a tab's earlier chats, newest first, to open one again (it continues where it left off, with its agent session; the current chat is kept in its place) or delete it (`/api/apps/:id/chats`).
+
+It's resized like the tab sidebar: drag its left edge (or use the arrow keys on it), double-click for the default width, drag it far to the right to close it. The width is the same in every tab and remembered.
+
+## Command bar
+
+Ctrl+K opens it from anywhere, including inside web pages and app previews. It finds tabs (in every workspace), workspaces, Rune Browser's own commands (new tab, rename, move, snapshot, theme, safe mode…) and the actions apps offer. Free text is routed: a URL opens in a tab; a sentence nothing matches goes to the agent of the tab you're on, or builds a new app; anything else can be searched for on the web. Commands that need text (rename, "Add expense") ask for it after you pick them, or take it inline: `add expense lunch 12`.
+
+Apps declare their actions in `rune.json`:
+
+```json
+"actions": [
+  { "id": "report", "title": "Monthly report", "path": "/report" },
+  { "id": "add-expense", "title": "Add expense", "endpoint": "/api/actions/add-expense", "input": "What and how much" }
+]
+```
+
+- `path` opens the app at that page.
+- `endpoint`: Rune Browser starts the app if needed and POSTs `{ "input": … }` to its own server. The JSON reply's `message` (or `error`) is shown as a notice, and the call is recorded in Activity.
+- Paths and endpoints are always on the app's own server. Invalid actions are left out rather than breaking the manifest.
+
+## Split view
+
+Tabs of a workspace can be shown side by side or stacked, any kind together (apps, web tabs, extension pages), up to four at once.
+- **Making one:** drag a tab from the sidebar onto a side of the tab on screen (or onto an end of the split on screen), choose "Show beside …" in a tab's menu, or type "split" in the command bar.
+- **Using it:** clicking into a pane focuses its tab (the outlined one; shortcuts and the address bar go to it). Drag the line between panes to resize them, double-click it for equal sizes.
+- **In the sidebar** a split is one block with its tabs, which takes the place of its first tab. Its handle drags the whole split, its menu stacks or unstacks it, evens out the sizes or unsplits it. Dropping a tab next to one of its tabs adds it there, dropping one of its tabs elsewhere takes it out.
+- **Saved** with the workspace (`PUT /api/workspaces/:id/splits`, kept consistent by `normalizeSplits`): a deleted or moved tab leaves its split, and a split of one ends.
+
+Tabs aren't moved in the DOM for this (a webview that moves reloads): every tab keeps its layer, and a split only places its tabs' layers in their panes (`components/SplitView.tsx`, `lib/splits.ts`).
+
+## Tab unloading
+
+Tabs that haven't been on screen for a while are unloaded: their page (a web page or an app's preview) closes and frees its memory (Settings → Tabs: after 30 minutes by default, or never). They're dimmed in the sidebar and come back where you left them when opened: the same page, scroll position (the window's and scrolled containers') and what you typed, put back through the fields' own setters so frameworks notice. Passwords, hidden and file inputs and card fields aren't kept, and the rest lives only in memory (`lib/pagestate.ts`).
+
+- **Never unloaded:** tabs on screen (in a split, all of its tabs), tabs whose agent is working, pages playing sound, and pinned tabs ("Keep loaded" in a tab's menu, saved with the tab: `PUT /api/apps/:id/pinned`).
+- **By hand:** "Unload" in a tab's menu, or "Unload other tabs" in the command bar.
+- **Background work:** an agent's page tools wake an unloaded tab in the background (`wakePage` in `lib/webtabs.ts`) and it stays loaded until it's idle again. The chat keeps streaming, and an app's server keeps running for schedules, tools and other apps.
+- **Not kept:** a page's back/forward history, and anything only in its JavaScript memory. Extensions only see loaded tabs.
+
+## Settings
+
+Settings has a sidebar of its own on the left, one category at a time on the right (`components/SettingsPage.tsx`, the list in `lib/settingsSections.ts`): Appearance, Workspace, Agent, Providers, Apps, Web tabs, Network, Extensions, Secrets, Permissions, About, and Rune Browser's pages: History, Schedules, Mods and Activity. Each category is also in the command bar ("Settings: Apps"), and the pages keep their own commands ("Open History").
+
+Tabs are put in order by dragging them up or down (or "Move up"/"Move down" in their menu). The order is saved per workspace (`PUT /api/workspaces/:id/order`); new tabs, copies and tabs moved in from another workspace go last.
+
+Every tab can have its own icon ("Change icon…" in its menu): a Lucide icon (searchable), an emoji or an uploaded image (scaled to a 64px PNG). It's shown in the sidebar and the command bar; "Use the default" brings back the app icon or the site's favicon. An app's agent picks an icon with `set_app_info` (a Lucide name, or `icon_file`, an image from the project), but never replaces one you chose.

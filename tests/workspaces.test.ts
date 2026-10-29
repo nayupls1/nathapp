@@ -2,11 +2,12 @@
 // against the real server and real (sandboxed) app processes. No model is called.
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_WORKSPACE, type AppSummary, type AuditEntry, type PermissionGrant, type WorkspaceInfo } from "../src/shared/api";
 import { startServer } from "./lib/server";
+import { devScript } from "./lib/apps";
 
 const waitFor = async <T>(fn: () => T | undefined, ms = 15_000): Promise<T> => {
   const deadline = Date.now() + ms;
@@ -31,10 +32,15 @@ describe("workspaces", () => {
   };
   /** From now on, the app's dev "server" writes the secrets it got (for `step`) and stays up. */
   const report = (app: AppSummary, step: string) =>
-    writeFileSync(
-      join(dirOf(app), "nathapp.json"),
-      JSON.stringify({ install: "true", dev: `printf %s "\${SHARED:-unset} \${GLOBAL_KEY:-unset}" > seen-${step}.txt; sleep 600`, start: "sleep 600" }),
-    );
+    devScript(dirOf(app), `await Bun.write("seen-${step}.txt", [process.env.SHARED || "unset", process.env.GLOBAL_KEY || "unset"].join(" "));`);
+  /**
+   * What the app's dev process reports for `step`, once it's `expected`, or the last thing it reported. A restart
+   * from an earlier step can land late (slow process starts on Windows) and report first with what it was given then.
+   */
+  const reported = async (app: AppSummary, step: string, expected: string) => {
+    await waitFor(() => (seen(app, step) === expected ? true : undefined)).catch(() => {});
+    return seen(app, step);
+  };
   const restart = (app: AppSummary) => server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
   const newApp = async (workspaceId?: string) => {
     const app = await server.api<AppSummary>("/api/apps", { method: "POST", json: workspaceId ? { workspaceId } : {} });
@@ -80,13 +86,13 @@ describe("workspaces", () => {
     report(inClient, "shared");
     report(inPersonal, "shared");
     await Promise.all([restart(inClient), restart(inPersonal)]);
-    expect(await waitFor(() => seen(inClient, "shared"))).toBe("from-workspace unset");
-    expect(await waitFor(() => seen(inPersonal, "shared"))).toBe("unset unset");
+    expect(await reported(inClient, "shared", "from-workspace unset")).toBe("from-workspace unset");
+    expect(await reported(inPersonal, "shared", "unset unset")).toBe("unset unset");
 
     await server.api("/api/secrets", { method: "PUT", json: { scope: inClient.id, name: "SHARED", value: "own" } });
     report(inClient, "own");
     await restart(inClient);
-    expect(await waitFor(() => seen(inClient, "own"))).toBe("own unset");
+    expect(await reported(inClient, "own", "own unset")).toBe("own unset");
     const own = (await server.api<{ secrets: { id: string }[] }>(`/api/secrets?scope=${inClient.id}`)).secrets[0]!;
     await server.api(`/api/secrets/${own.id}`, { method: "DELETE" });
 
@@ -102,16 +108,16 @@ describe("workspaces", () => {
       method: "PUT",
       json: { subject: `workspace:${client.id}`, action: "app.secret", resource: "GLOBAL_KEY", decision: "allow" },
     });
-    expect(await waitFor(() => seen(inClient, "granted"))).toBe("from-workspace glob");
+    expect(await reported(inClient, "granted", "from-workspace glob")).toBe("from-workspace glob");
     await restart(inPersonal);
-    expect(await waitFor(() => seen(inPersonal, "granted"))).toBe("unset unset");
+    expect(await reported(inPersonal, "granted", "unset unset")).toBe("unset unset");
 
     const grant = (await server.api<PermissionGrant[]>("/api/permissions")).find((g) => g.subject === `workspace:${client.id}`)!;
     expect(grant).toMatchObject({ subjectName: "Apps in Client", workspaceId: client.id });
 
     report(inClient, "denied");
     await server.api("/api/permissions", { method: "PUT", json: { subject: inClient.id, action: "app.secret", resource: "GLOBAL_KEY", decision: "deny" } });
-    expect(await waitFor(() => seen(inClient, "denied"))).toBe("from-workspace unset");
+    expect(await reported(inClient, "denied", "from-workspace unset")).toBe("from-workspace unset");
     const own = (await server.api<PermissionGrant[]>("/api/permissions")).find((g) => g.subject === inClient.id)!;
     await server.api(`/api/permissions/${own.id}`, { method: "DELETE" });
   });
@@ -120,10 +126,10 @@ describe("workspaces", () => {
     report(inClient, "moved");
     const moved = await server.api<AppSummary>(`/api/apps/${inClient.id}/move`, { method: "POST", json: { workspaceId: DEFAULT_WORKSPACE } });
     expect(moved.workspaceId).toBe(DEFAULT_WORKSPACE);
-    expect(await waitFor(() => seen(inClient, "moved"))).toBe("unset unset");
+    expect(await reported(inClient, "moved", "unset unset")).toBe("unset unset");
     report(inClient, "back");
     await server.api(`/api/apps/${inClient.id}/move`, { method: "POST", json: { workspaceId: client.id } });
-    expect(await waitFor(() => seen(inClient, "back"))).toBe("from-workspace glob");
+    expect(await reported(inClient, "back", "from-workspace glob")).toBe("from-workspace glob");
   });
 
   test("the audit log is filtered by workspace", async () => {
@@ -200,8 +206,8 @@ describe("workspaces", () => {
 
 describe("a database from before workspaces", () => {
   test("gets one workspace with all its tabs and audit entries", async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), "nathapp-old-db-"));
-    const db = new Database(join(dataDir, "nathapp.sqlite"));
+    const dataDir = mkdtempSync(join(tmpdir(), "rune-old-db-"));
+    const db = new Database(join(dataDir, "rune.sqlite"));
     db.run(`CREATE TABLE apps (id TEXT PRIMARY KEY, name TEXT NOT NULL, icon TEXT, created_at TEXT NOT NULL DEFAULT 'x', updated_at TEXT NOT NULL DEFAULT 'x')`);
     db.run(`CREATE TABLE audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL DEFAULT 'x', actor TEXT NOT NULL, actor_label TEXT NOT NULL,
       tab_id TEXT, action TEXT NOT NULL, target TEXT, detail TEXT, outcome TEXT NOT NULL DEFAULT 'ok')`);

@@ -1,4 +1,4 @@
-// The NathApp hub: one WebSocket between the renderer and the server. The server
+// The Rune Browser hub: one WebSocket between the renderer and the server. The server
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
@@ -83,7 +83,7 @@ export type TopicMessage = Exclude<ServerMessage, { type: "rpc" }>;
 
 type Handler = (msg: TopicMessage) => void;
 
-/** A WebSocket to the NathApp hub that reconnects and re-subscribes on its own. */
+/** A WebSocket to the Rune Browser hub that reconnects and re-subscribes on its own. */
 export class Socket {
   private ws: WebSocket | undefined;
   private handlers = new Map<string, Set<Handler>>();

@@ -1,5 +1,5 @@
 // The app tab's data panel: what the app has stored (its tables and files,
-// kept by NathApp outside the project), with a row browser, export and delete.
+// kept by Rune Browser outside the project), with a row browser, export and delete.
 import * as stylex from "@stylexjs/stylex";
 import { createEffect, createResource, createSignal, For, on, Show } from "solid-js";
 import { api } from "../lib/api";
@@ -118,8 +118,8 @@ export function DataPanel(props: { appId: string; onClose: () => void }) {
         </Show>
         <Show when={empty()}>
           <p {...stylex.attrs(styles.note)} data-data-empty>
-            This app hasn't stored anything yet. Its database (<code>DATABASE_PATH</code>) and files (<code>NATHAPP_FILES_DIR</code>) are kept by
-            NathApp outside the project, so rebuilds and resets don't touch them.
+            This app hasn't stored anything yet. Its database (<code>DATABASE_PATH</code>) and files (<code>RUNE_FILES_DIR</code>) are kept by
+            Rune Browser outside the project, so rebuilds and resets don't touch them.
           </p>
         </Show>
         <Show when={overview()?.tables.length}>

@@ -8,7 +8,7 @@
 //   bun run e2e --only <text>   only the checks whose name contains it ("a|b": either; and the boot check)
 //
 // Screenshots go to test-results/. Run `bun run build` first.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,9 +30,12 @@ if (!existsSync("dist/electron/main.cjs")) {
 
 const outDir = "test-results";
 mkdirSync(outDir, { recursive: true });
-const profile = mkdtempSync(join(tmpdir(), "nathapp-e2e-"));
+// The long form of the path: Windows' temp folder can be an 8.3 name (C:\Users\RUNNER~1\…), which file
+// watchers there (Bun's --hot in app previews) don't match with the changes they're told about.
+const tempDir = realpathSync.native(tmpdir());
+const profile = mkdtempSync(join(tempDir, "rune-e2e-"));
 // A browser to import extensions from (instead of the real ones on this computer).
-const browserDir = mkdtempSync(join(tmpdir(), "nathapp-e2e-browser-"));
+const browserDir = mkdtempSync(join(tempDir, "rune-e2e-browser-"));
 const fixture = writeFixtureBrowser(browserDir);
 const onlyIndex = args.indexOf("--only");
 const only = onlyIndex === -1 ? undefined : args[onlyIndex + 1];
@@ -49,7 +52,7 @@ const port = await new Promise<number>((resolve) => {
 // window can show up on the user's screen (Wayland compositors ignore window
 // positions and would open it wherever the user is). --visible shows it.
 const visible = args.includes("--visible");
-const electron = await launchElectron({ NATHAPP_USER_DATA_DIR: profile, NATHAPP_OFFSCREEN: visible ? undefined : "1", NATHAPP_BROWSER_DIRS: fixture.dirs, NATHAPP_EXTENSION_UPDATES: "0" }, [
+const electron = await launchElectron({ RUNE_USER_DATA_DIR: profile, RUNE_OFFSCREEN: visible ? undefined : "1", RUNE_BROWSER_DIRS: fixture.dirs, RUNE_EXTENSION_UPDATES: "0" }, [
   ...(visible ? [] : ["--ozone-platform=headless", "--ozone-override-screen-size=1920,1080"]),
   // No OS keychain (it could ask to be unlocked): the secrets key falls back to a file.
   "--password-store=basic",
@@ -74,6 +77,14 @@ const site = Bun.serve({
   async fetch(req) {
     const url = new URL(req.url);
     const path = url.pathname;
+    // Pages behind a sign-in (HTTP Basic): the fixture extension fills in /auth/extension, you /auth/you.
+    if (path.startsWith("/auth/")) {
+      const user = path === "/auth/extension" ? "fixture:from-extension" : "you:typed";
+      if (req.headers.get("authorization") !== `Basic ${btoa(user)}`) {
+        return new Response("<title>Denied</title>", { status: 401, headers: { "WWW-Authenticate": 'Basic realm="E2E"', "Content-Type": "text/html" } });
+      }
+      return new Response(`<title>Signed in as ${user.split(":")[0]}</title>`, { headers: { "Content-Type": "text/html" } });
+    }
     // A page that takes a while (the address bar's loading spinner).
     if (path === "/slow") {
       await Bun.sleep(2500);
@@ -171,11 +182,11 @@ async function newTab(label: "New app" | "New web tab") {
   await click("[data-context-menu] button", label);
 }
 
-/** Authenticated request to the NathApp server, made from the renderer. */
+/** Authenticated request to the Rune Browser server, made from the renderer. */
 const apiCall = <T>(path: string, init: { method?: string; body?: unknown } = {}) =>
-  page!.eval<T>(`fetch(window.nathapp.serverUrl + ${JSON.stringify(path)}, {
+  page!.eval<T>(`fetch(window.rune.serverUrl + ${JSON.stringify(path)}, {
     method: ${JSON.stringify(init.method ?? "GET")},
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + window.nathapp.token },
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + window.rune.token },
     ${init.body !== undefined ? `body: ${JSON.stringify(JSON.stringify(init.body))},` : ""}
   }).then(async (r) => { if (!r.ok) throw new Error(r.status + " " + (await r.text())); return r.status === 204 ? null : r.json(); })`);
 
@@ -267,7 +278,7 @@ const startPicking = async (tabId: string) => {
 };
 
 try {
-  console.log("Launching NathApp…");
+  console.log("Launching Rune Browser…");
   page = await Page.connect(port);
   await page.send("Runtime.enable");
   await page.send("Page.enable");
@@ -278,6 +289,8 @@ try {
   });
   await page.attachChildren();
   await page.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+  // The window is offscreen and, on CI, never focused: without this, menus that close on blur close at once.
+  await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 
   await check("app boots and shows the sidebar", async () => {
     await page!.waitFor(`!!document.querySelector('[data-page-link="Settings"]')`, { timeoutMs: 20_000 });
@@ -289,7 +302,8 @@ try {
       return list.every((p) => p.state !== "checking") ? list : undefined;
     }, 60_000);
     const claude = providers.find((p) => p.id === "claude");
-    if (claude?.state !== "ready" || !claude.models.length) throw new Error(`Claude isn't ready: ${JSON.stringify(claude)}`);
+    // CI has no agent logins: there, detecting them (installed or not) is enough.
+    if (!process.env.CI && (claude?.state !== "ready" || !claude.models.length)) throw new Error(`Claude isn't ready: ${JSON.stringify(claude)}`);
     return providers.map((p) => `${p.id} ${p.state} (${p.models.length})`).join(", ");
   });
 
@@ -309,7 +323,9 @@ try {
     await click("[data-agent-picker]");
     await page!.waitFor(`!!document.querySelector("[data-agent-popover]")`, { label: "picker popover" });
     const rail = await page!.eval<number>(`document.querySelectorAll("[data-agent-popover] [data-provider]").length`);
-    const models = await page!.waitFor<number>(`document.querySelectorAll("[data-agent-popover] [data-model]").length`, { label: "models" });
+    const countModels = `document.querySelectorAll("[data-agent-popover] [data-model]").length`;
+    // Without logins (CI) there are no models to list.
+    const models = process.env.CI ? await page!.eval<number>(countModels) : await page!.waitFor<number>(countModels, { label: "models" });
     await shot("agent-picker.png");
     await page!.eval(`document.querySelector("[data-agent-popover] input").dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     await page!.waitFor(`!document.querySelector("[data-agent-popover]")`, { label: "Escape to close" });
@@ -336,7 +352,7 @@ try {
 
   await check("element picker in the preview", async () => {
     await startPicking(appId);
-    await waitForValue(async () => ((await inView<boolean>(appTab(), `!!window.__nathappPicker`)) ? true : undefined));
+    await waitForValue(async () => ((await inView<boolean>(appTab(), `!!window.__runePicker`)) ? true : undefined));
     await inView(appTab(), `document.querySelector("h1").click(), true`);
     await page!.waitFor(`!!document.querySelector('${agentOf(appId)} [data-picked-chip]')`, { label: "picked chip" });
   });
@@ -442,7 +458,7 @@ try {
     await choose("[data-schedule-app]", appId);
     await choose("[data-schedule-task]", "command");
     await page!.waitFor(`!!document.querySelector("[data-schedule-command]")`, { label: "command field" });
-    await type("[data-schedule-command]", "echo scheduled in $NATHAPP_MODE");
+    await type("[data-schedule-command]", "echo scheduled in $RUNE_MODE");
     await click("[data-save-schedule]");
     const row = "[data-schedules] [data-schedule]";
     await page!.waitFor(`!!document.querySelector('${row}') && !document.querySelector("[data-schedule-editor]")`, { label: "schedule listed" });
@@ -568,7 +584,7 @@ try {
   }
 
   await check("import: a folder of your own becomes an app tab, run like any other", async () => {
-    const folder = join(mkdtempSync(join(tmpdir(), "nathapp-e2e-import-")), "hello-import");
+    const folder = join(mkdtempSync(join(tempDir, "rune-e2e-import-")), "hello-import");
     mkdirSync(folder);
     writeFileSync(join(folder, "package.json"), JSON.stringify({ name: "hello-import", scripts: { dev: "bun server.ts", start: "bun server.ts" } }));
     writeFileSync(join(folder, "server.ts"), `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("<h1>Imported and running</h1>", { headers: { "Content-Type": "text/html" } }) });`);
@@ -652,11 +668,13 @@ try {
       })()).length;
       return { controls: c ? { left: Math.round(c.left), top: Math.round(c.top), width: Math.round(c.width) } : null, inRow: !!el?.closest("[data-nav-row]"), overlapping, navRight: Math.round(nav.right) };
     })()`);
-    if (!r.controls || !r.inRow || r.controls.top > 12 || r.controls.left + r.controls.width > r.navRight) throw new Error(`controls: ${JSON.stringify(r)}`);
+    // macOS keeps its own traffic lights (top left), so Rune Browser draws none there.
+    const mac = process.platform === "darwin";
+    if (mac ? r.controls : !r.controls || !r.inRow || r.controls.top > 12 || r.controls.left + r.controls.width > r.navRight) throw new Error(`controls: ${JSON.stringify(r)}`);
     if (r.overlapping) throw new Error(`${r.overlapping} drag regions cover the window buttons`);
     const drag = await page!.eval<string>(`getComputedStyle(document.querySelector("[data-nav-row]")).webkitAppRegion || getComputedStyle(document.querySelector("[data-nav-row]")).getPropertyValue("-webkit-app-region")`);
     if (drag !== "drag") throw new Error(`the sidebar's top row isn't a drag region: ${drag}`);
-    return `${r.controls.width}px of buttons in the sidebar's top row`;
+    return mac ? "macOS's own traffic lights" : `${r.controls!.width}px of buttons in the sidebar's top row`;
   });
 
   await check("sidebar: collapses to icons, resizes, remembers both", async () => {
@@ -682,7 +700,7 @@ try {
     })()`);
     const after = await navWidth();
     if (Math.abs(after - before - 100) > 2) throw new Error(`width ${before} → ${after}`);
-    const saved = await page!.eval<{ width: number; collapsed: boolean }>(`JSON.parse(localStorage.getItem("nathapp.sidebar"))`);
+    const saved = await page!.eval<{ width: number; collapsed: boolean }>(`JSON.parse(localStorage.getItem("rune.sidebar"))`);
     if (saved.width !== Math.round(after) || saved.collapsed) throw new Error(`saved ${JSON.stringify(saved)}`);
     await shot("sidebar-wide.png");
     // Back to the default width.
@@ -711,7 +729,7 @@ try {
     await drag(-120);
     const wider = await width();
     if (wider !== before + 120) throw new Error(`${before} → ${wider}, expected +120`);
-    const saved = await page!.eval<string>(`localStorage.getItem("nathapp.agentSidebar")`);
+    const saved = await page!.eval<string>(`localStorage.getItem("rune.agentSidebar")`);
     if (!saved.includes(String(wider))) throw new Error(`not remembered: ${saved}`);
     // Dragged far to the right: it closes (and comes back at its width).
     await drag(5000);
@@ -1022,12 +1040,12 @@ try {
 
     // Pick the button: the picker resolves on a click inside the page.
     await startPicking(tabId);
-    await waitForValue(async () => ((await inPage<boolean>(`!!window.__nathappPicker`)) ? true : undefined));
+    await waitForValue(async () => ((await inPage<boolean>(`!!window.__runePicker`)) ? true : undefined));
     await inPage(`document.querySelector(".cta").click(), true`);
     await page!.waitFor(`document.querySelector('${agentOf(tabId)} [data-picked-chip]')?.innerText.includes("Buy now")`, {
       label: "picked element chip",
     });
-    const outlined = await inPage<boolean>(`document.querySelector(".cta").hasAttribute("data-nathapp-picked")`);
+    const outlined = await inPage<boolean>(`document.querySelector(".cta").hasAttribute("data-rune-picked")`);
     if (!outlined) throw new Error("picked element isn't marked");
 
     // A customization (as the agent would save it) applies live: CSS now, JS after a reload.
@@ -1099,7 +1117,8 @@ try {
     if ((await page!.eval<string | null>(`document.fullscreenElement?.tagName ?? null`)) !== "WEBVIEW") throw new Error("the webview isn't fullscreen");
     await shot("fullscreen-page.png");
     await inView(tab, `document.exitFullscreen().then(() => "ok", (e) => String(e))`, true);
-    await page!.waitFor(`!document.fullscreenElement`, { label: "out of fullscreen" });
+    // macOS animates the window out of its native fullscreen first.
+    await page!.waitFor(`!document.fullscreenElement`, { label: "out of fullscreen", timeoutMs: 20_000 });
     const after = await shape();
     if (after.top !== before.top || after.right !== before.right) throw new Error(`after fullscreen: ${JSON.stringify(after)}`);
     return `inset ${before.top}px, corners ${before.radius}; fullscreen fills ${viewport.join("×")}`;
@@ -1153,9 +1172,9 @@ try {
     // Content the page adds later gets the changes too.
     await inPage(`document.querySelector("main").insertAdjacentHTML("beforeend", '<p class="lead">Later</p>'), true`);
     await until(`[...document.querySelectorAll(".lead")].every((el) => el.title === "tip")`, "dynamic content");
-    await until(`!!document.querySelector("button.nathapp-button")`, "button");
-    await inPage(`document.querySelector("button.nathapp-button").click(), true`);
-    await until(`document.querySelector("button.nathapp-button").textContent === "Clicked"`, "button behavior");
+    await until(`!!document.querySelector("button.rune-button")`, "button");
+    await inPage(`document.querySelector("button.rune-button").click(), true`);
+    await until(`document.querySelector("button.rune-button").textContent === "Clicked"`, "button behavior");
 
     // Every change on the page, each with its switch; the other site's isn't listed.
     await click(`${chromeFor(tab)} [data-customized]`);
@@ -1172,7 +1191,7 @@ try {
 
     // After a reload: still hidden, still off, still gone.
     await inPage(`location.reload(), true`);
-    await until(`document.readyState === "complete" && !!document.querySelector("button.nathapp-button")`, "reloaded with the button");
+    await until(`document.readyState === "complete" && !!document.querySelector("button.rune-button")`, "reloaded with the button");
     await until(`getComputedStyle(document.querySelector(".cta")).display === "none"`, "hidden after reload");
     const after = await inPage<string>(`document.querySelector("#headline").textContent + "|" + !!document.querySelector(".added")`);
     if (after !== "Hello from the test site|false") throw new Error(`after reload: ${after}`);
@@ -1180,7 +1199,7 @@ try {
     await until(`getComputedStyle(document.querySelector(".cta")).display !== "none"`, "removed through the API");
     // The checks after this one get the page as it is.
     for (const change of await apiCall<{ id: string }[]>("/api/page-changes")) await apiCall(`/api/page-changes/${change.id}`, { method: "DELETE" });
-    await until(`!document.querySelector("button.nathapp-button")`, "all removed");
+    await until(`!document.querySelector("button.rune-button")`, "all removed");
     return "5 changes applied, one turned off, one removed";
   });
 
@@ -1231,7 +1250,7 @@ try {
       await page!.waitFor(`!document.querySelector("[data-context-menu]")`, { label: "menu to close" });
     };
     // On screen: never unloaded, and "Unload" is off.
-    await page!.eval(`window.__nathappTabs.sweep(4 * 3600_000)`);
+    await page!.eval(`window.__runeTabs.sweep(4 * 3600_000)`);
     if (!(await page!.eval<boolean>(`!!document.querySelector('${tab} webview')`))) throw new Error("the tab on screen was unloaded");
     await openMenu();
     const unloadDisabled = await page!.eval<boolean>(`[...document.querySelectorAll("[data-context-menu] button")].find((b) => b.textContent.includes("Unload")).disabled`);
@@ -1243,15 +1262,15 @@ try {
     await page!.waitFor(`document.querySelector('${li}').hasAttribute("data-pinned")`, { label: "pinned" });
     await click(other);
     await page!.waitFor(`document.querySelector('${li}').getAttribute("aria-current") !== "page"`, { label: "other tab selected" });
-    const swept = await page!.eval<string[]>(`window.__nathappTabs.sweep(4 * 3600_000)`);
+    const swept = await page!.eval<string[]>(`window.__runeTabs.sweep(4 * 3600_000)`);
     if (swept.includes(tabId) || !(await page!.eval<boolean>(`!!document.querySelector('${tab} webview')`))) throw new Error("a pinned tab was unloaded");
 
     // Not pinned: idle long enough, it's unloaded.
     await choose("Unpin");
     await page!.waitFor(`!document.querySelector('${li}').hasAttribute("data-pinned")`, { label: "unpinned" });
-    const idleNow = await page!.eval<string[]>(`window.__nathappTabs.sweep(60_000)`);
+    const idleNow = await page!.eval<string[]>(`window.__runeTabs.sweep(60_000)`);
     if (idleNow.includes(tabId)) throw new Error("unloaded after a minute");
-    await page!.eval(`window.__nathappTabs.sweep(4 * 3600_000)`);
+    await page!.eval(`window.__runeTabs.sweep(4 * 3600_000)`);
     await page!.waitFor(`!document.querySelector('${tab}') && !document.querySelector('${li}').hasAttribute("data-loaded")`, { label: "unloaded" });
     await shot("tab-unloaded.png");
 
@@ -1272,7 +1291,7 @@ try {
     await page!.waitFor(`document.querySelector('${li}').getAttribute("aria-current") !== "page"`, { label: "other tab selected" });
     await choose("Unload");
     await page!.waitFor(`!document.querySelector('${tab}')`, { label: "unloaded by hand" });
-    const woken = await page!.eval<string>(`window.__nathappTabs.wake(${JSON.stringify(tabId)})`);
+    const woken = await page!.eval<string>(`window.__runeTabs.wake(${JSON.stringify(tabId)})`);
     if (!woken.endsWith("/form")) throw new Error(`woke up on ${woken}`);
     const background = await page!.eval<boolean>(`!!document.querySelector('${tab} webview') && document.querySelector('${li}').getAttribute("aria-current") !== "page"`);
     if (!background) throw new Error("waking it should load it without showing it");
@@ -1344,7 +1363,7 @@ try {
       { label: "web tab in the sidebar" },
     );
     const tab = `[data-web-tab="${tabId}"]`;
-    const rpc = <T>(method: string, params: object = {}) => page!.eval<T>(`window.__nathappRpc(${JSON.stringify(method)}, ${JSON.stringify({ tabId, ...params })})`);
+    const rpc = <T>(method: string, params: object = {}) => page!.eval<T>(`window.__runeRpc(${JSON.stringify(method)}, ${JSON.stringify({ tabId, ...params })})`);
     const inPage = <T>(code: string) => page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
     await page!.waitFor(`!!document.querySelector('${chromeFor(tab)} [data-address]')`, { label: "address bar" });
     await rpc("page.navigate", { url: `${site.url.origin}/act` });
@@ -1404,7 +1423,7 @@ try {
     })()`);
     await click("[data-mod-make]");
     const code = await page!.waitFor<string>(`document.querySelector("[data-mod-code]")?.value`, { label: "share code" });
-    if (!code.startsWith("NATHAPP-MOD:")) throw new Error(`code: ${code.slice(0, 40)}`);
+    if (!code.startsWith("RUNE-MOD:")) throw new Error(`code: ${code.slice(0, 40)}`);
     await shot("mods-made.png");
 
     // Installed from the code (as someone else would), after the review.
@@ -1436,7 +1455,7 @@ try {
     if ((await apiCall<Change[]>("/api/page-changes")).some((c) => c.modId === modId)) throw new Error("the mod's change is still there");
 
     // A mod with a script is flagged before anything is installed.
-    const scripty = { format: "nathapp-mod", version: 1, id: "e2e-scripty", name: "Scripty", author: "Someone", pageChanges: [{ title: "Watch", scope: { type: "pattern", value: "*" }, action: "script", value: "console.log(location.href)" }] };
+    const scripty = { format: "rune-mod", version: 1, id: "e2e-scripty", name: "Scripty", author: "Someone", pageChanges: [{ title: "Watch", scope: { type: "pattern", value: "*" }, action: "script", value: "console.log(location.href)" }] };
     await page!.eval(`(() => {
       const input = document.querySelector("[data-mod-input]");
       input.value = ${JSON.stringify(JSON.stringify(scripty))};
@@ -1552,7 +1571,7 @@ try {
         page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
       await click(`nav li[data-app-id="${webTabId}"]`);
       await startPicking(webTabId!);
-      await waitForValue(async () => ((await inPage<boolean>(`!!window.__nathappPicker`)) ? true : undefined));
+      await waitForValue(async () => ((await inPage<boolean>(`!!window.__runePicker`)) ? true : undefined));
       await inPage(`document.querySelector("#headline").click(), true`);
       await page!.waitFor(`!!document.querySelector('${agentOf(webTabId!)} [data-picked-chip]')`, { label: "picked heading" });
       await chooseAgent(agentOf(webTabId!), "claude", "haiku", "Low");
@@ -1566,7 +1585,7 @@ try {
       if (!color) throw new Error(`heading isn't green:\n${chat.slice(-800)}`);
       const saved = await apiCall<{ css: string; js: string } | null>("/api/sites/127.0.0.1");
       if (!saved?.css.includes("16a34a")) throw new Error("customization wasn't saved");
-      const reply = await page!.eval<string>(`[...document.querySelectorAll('${agentOf(webTabId!)} .nathapp-markdown')].at(-1)?.innerText ?? ""`);
+      const reply = await page!.eval<string>(`[...document.querySelectorAll('${agentOf(webTabId!)} .rune-markdown')].at(-1)?.innerText ?? ""`);
       return reply.slice(0, 140);
     });
   }
@@ -1597,6 +1616,16 @@ try {
     const details = await page!.eval<string>(`document.querySelector('[data-extension-details-page="${id}"]').innerText`);
     if (!details.includes("Permissions") || !details.includes("Site access") || !details.includes(id) || !/Bump\s*Alt\+Shift\+U/.test(details)) throw new Error(`details: ${details.slice(0, 400)}`);
     await shot("extension-details.png");
+    // Every permission can be blocked; a limited one says what's different.
+    const permission = (name: string) => `[data-extension-details-page="${id}"] [data-extension-permission="${name}"]`;
+    const note = await page!.eval<string>(`document.querySelector('${permission("history")} [data-permission-limited]')?.textContent ?? ""`);
+    if (!note.includes("history")) throw new Error(`history permission note: ${note}`);
+    const allowed = (name: string) => `window.rune.extensions.list().then((r) => r.extensions.find((e) => e.id === "${id}").permissions.find((p) => p.name === "${name}").allowed)`;
+    await click(`${permission("history")} [role="switch"]`);
+    await page!.waitFor(`${allowed("history")}.then((a) => a === false)`, { label: "history blocked" });
+    await page!.waitFor(`document.querySelector('${permission("history")} [role="switch"]').getAttribute("aria-checked") === "false"`, { label: "switch off" });
+    await click(`${permission("history")} [role="switch"]`);
+    await page!.waitFor(`${allowed("history")}.then((a) => a === true)`, { label: "history allowed again" });
     await click(`[data-extension-details-page="${id}"] button`, "All extensions");
     await page!.waitFor(`!!document.querySelector('[data-extension="${id}"]')`, { label: "back to the list" });
 
@@ -1628,7 +1657,9 @@ try {
       const pick = (el) => el.matches("[data-window-controls]") ? "close" : el.matches("[data-agent-show], [title*='agent']") ? "agent" : el.matches("[data-extensions-menu]") ? "extensions" : el.matches("[data-back]") ? "back" : el.matches("[data-forward]") ? "forward" : el.matches("[data-reload]") ? "reload" : null;
       return { order: [...nav.querySelectorAll("button")].map(pick).filter(Boolean), separate: nav.querySelectorAll("[data-extension-action]").length };
     })()`);
-    if (topRow.order.join() !== "close,agent,extensions,back,forward,reload" || topRow.separate) throw new Error(`top row: ${JSON.stringify(topRow)}`);
+    // macOS has its own traffic lights instead of the close button.
+    const expectedRow = `${process.platform === "darwin" ? "" : "close,"}agent,extensions,back,forward,reload`;
+    if (topRow.order.join() !== expectedRow || topRow.separate) throw new Error(`top row: ${JSON.stringify(topRow)}`);
     await click(`${chromeFor(tab)} [data-extensions-menu]`);
     const badge = await page!.waitFor<string>(`document.querySelector('[data-extensions-list] [data-extension-item="${id}"] [data-extension-badge]')?.textContent`, { label: "badge", timeoutMs: 15_000 });
     if (badge !== "7") throw new Error(`badge: ${badge}`);
@@ -1638,7 +1669,7 @@ try {
     await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`);
     await page!.waitFor(`!document.querySelector("[data-extensions-list]")`, { label: "menu closed" });
 
-    // Its declarativeNetRequest rules block (and NathApp's own rules, checked above, still work alongside).
+    // Its declarativeNetRequest rules block (and Rune Browser's own rules, checked above, still work alongside).
     const before = siteSeen.length;
     const blocked = await inPage<string>(`fetch("/blocked-by-extension").then(() => "loaded", () => "blocked")`);
     if (blocked !== "blocked") throw new Error("the extension's rule didn't block the request");
@@ -1683,7 +1714,21 @@ try {
     if (stored.command !== "bump" || stored.tabUrl !== `${site.url.origin}/`) throw new Error(`command: ${JSON.stringify(stored)}`);
     if (stored.fromWorker !== 1) throw new Error("storage.sync didn't keep the value");
     if (siteSeen.length !== before) throw new Error("a blocked request reached the site");
-    return `content script with Chrome's data, badge ${badge}, popup on ${popupUrl}, shortcut → ${stored.command}, onInstalled: ${stored.installed.reason}`;
+
+    // A site's sign-in: the extension fills it in (webRequest.onAuthRequired), else Rune Browser's dialog asks.
+    const titleOf = () => inPage<string>("document.title");
+    await page!.eval(`document.querySelector('${tab} webview').loadURL("${site.url.origin}/auth/extension").catch(() => {}), true`);
+    const byExtension = await waitForValue(async () => ((await titleOf())?.startsWith("Signed in") ? titleOf() : undefined), 15_000);
+    if (byExtension !== "Signed in as fixture") throw new Error(`sign-in by the extension: ${byExtension}`);
+    await page!.eval(`document.querySelector('${tab} webview').loadURL("${site.url.origin}/auth/you").catch(() => {}), true`);
+    await page!.waitFor(`!!document.querySelector("[data-auth-dialog]")`, { label: "sign-in dialog", timeoutMs: 15_000 });
+    await shot("auth-dialog.png");
+    await type("[data-auth-username]", "you");
+    await type("[data-auth-password]", "typed");
+    await click("[data-auth-submit]");
+    const byYou = await waitForValue(async () => ((await titleOf())?.startsWith("Signed in") ? titleOf() : undefined), 15_000);
+    if (byYou !== "Signed in as you") throw new Error(`sign-in in the dialog: ${byYou}`);
+    return `content script with Chrome's data, badge ${badge}, popup on ${popupUrl}, shortcut → ${stored.command}, onInstalled: ${stored.installed.reason}, sign-ins by the extension and the dialog`;
   });
 
   await check("workspaces: icons at the bottom, own tabs and web logins, switching keeps state, reorder, move tabs, shortcuts", async () => {
@@ -1740,6 +1785,7 @@ try {
     await page!.waitFor(`${currentWorkspaceName} === "Personal"`, { label: "Ctrl+Alt+1" });
     const back = await tabIds();
     if (back.join() !== personalTabs.join()) throw new Error(`Personal's tabs changed: ${back.join()} vs ${personalTabs.join()}`);
+    await waitForValue(async () => ((await selected()) === personalSelected ? true : undefined), 5_000).catch(() => {});
     if ((await selected()) !== personalSelected) throw new Error("the tab selected in Personal wasn't restored");
     await page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", code: "Digit2", ctrlKey: true, altKey: true, bubbles: true })), true`);
     await page!.waitFor(`${currentWorkspaceName} === "Client"`, { label: "Ctrl+Alt+2" });
@@ -1797,7 +1843,7 @@ try {
     const selected = () => page!.eval<string | undefined>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
 
     // An app declares an action that opens one of its pages.
-    const manifestFile = join(profile, "data", "apps", appId, "nathapp.json");
+    const manifestFile = join(profile, "data", "apps", appId, "rune.json");
     const manifest = JSON.parse(await Bun.file(manifestFile).text());
     await Bun.write(manifestFile, JSON.stringify({ ...manifest, actions: [{ id: "second", title: "Open the second page", path: "/?from=command-bar" }] }));
 
@@ -1865,7 +1911,7 @@ try {
   await check("settings: categories in a sidebar, theme presets apply and prompt additions are saved", async () => {
     await openSettingsAt("appearance");
     await page!.waitFor(`!!document.querySelector("[data-settings] [data-preset]")`, { label: "settings page" });
-    // Its sidebar lists the categories and NathApp's pages; only the chosen one is shown.
+    // Its sidebar lists the categories and Rune Browser's pages; only the chosen one is shown.
     const nav = await page!.eval<string[]>(`[...document.querySelectorAll("[data-settings-nav]")].map((b) => b.dataset.settingsNav)`);
     for (const id of ["appearance", "workspace", "agent", "providers", "apps", "secrets", "permissions", "history", "schedules", "mods", "activity"]) {
       if (!nav.includes(id)) throw new Error(`settings sidebar: ${nav.join(", ")}`);
@@ -1911,13 +1957,30 @@ try {
     return `${nav.length} categories; ${rows.join(", ")}; shells ${shells.join(", ")}; background ${await pageBg()} after reset`;
   });
 
+  await check("updates: About shows the version, that runs from source don't update, and the channel is remembered", async () => {
+    await openSettingsAt("about");
+    const version = (await Bun.file("package.json").json()).version as string;
+    await page!.waitFor(`document.querySelector('[data-section="updates"]')?.innerText.includes("Rune Browser ${version}")`, { label: "version" });
+    await page!.waitFor(`!!document.querySelector('[data-update-state="unsupported"]') && document.querySelector('[data-section="updates"]').innerText.includes("installed builds")`, {
+      label: "not updating from source",
+    });
+    await click('[data-section="updates"] [role="radio"]', "Beta");
+    await page!.waitFor(`document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Beta"`, { label: "beta selected" });
+    const stored = await page!.eval<{ channel: string }>(`window.rune.updates.get()`);
+    if (stored.channel !== "beta") throw new Error(`channel: ${stored.channel}`);
+    await shot("settings-about.png");
+    await click('[data-section="updates"] [role="radio"]', "Stable");
+    await page!.waitFor(`document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Stable"`, { label: "stable again" });
+    return `${version}, beta remembered`;
+  });
+
   await check("devtools: console, metrics, traces, accessibility, styles, storage, coverage and emulation for agents", async () => {
     await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
     const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/devtools` } });
     await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${tab.id}"]')`, { label: "web tab in the sidebar" });
     await click(`nav li[data-app-id="${tab.id}"]`);
     const rpcOn = <T>(tabId: string, method: string, params: object = {}) =>
-      page!.eval<T>(`window.__nathappRpc(${JSON.stringify(method)}, ${JSON.stringify({ tabId, ...params })})`);
+      page!.eval<T>(`window.__runeRpc(${JSON.stringify(method)}, ${JSON.stringify({ tabId, ...params })})`);
     const dt = <T>(command: string, params: object = {}) => rpcOn<T>(tab.id, "devtools", { command, params });
     await page!.waitFor(`document.querySelector('nav li[data-app-id="${tab.id}"]')?.innerText.includes("DevTools page")`, { timeoutMs: 20_000, label: "devtools page" });
 
@@ -1936,9 +1999,9 @@ try {
     }
     if (text.includes("c2lnbmF0dXJlLXNlY3JldA")) throw new Error("a token reached the console log");
 
-    // (Offscreen rendering reports no first paint, but the largest one.)
+    // (Offscreen rendering reports no first paint, but the largest one; on macOS neither.)
     const metrics = await dt<{ lcp: number | null; load: number | null; runtime: Record<string, unknown> }>("metrics");
-    if (typeof metrics.lcp !== "number" || typeof metrics.load !== "number" || !metrics.runtime.Nodes) throw new Error(`metrics: ${JSON.stringify(metrics)}`);
+    if ((typeof metrics.lcp !== "number" && process.platform !== "darwin") || typeof metrics.load !== "number" || !metrics.runtime.Nodes) throw new Error(`metrics: ${JSON.stringify(metrics)}`);
 
     // A trace of an interaction finds the slow function behind it, and is saved for Chrome DevTools.
     type Trace = { analysis: { hotFunctions: { name: string; selfMs: number }[]; longTasks: unknown[]; vitals: Record<string, number | null> }; file: string; events: number };
@@ -2003,7 +2066,7 @@ try {
 
   await check("sources: code attached to a tab for its agent, shown above the composer, removed again", async () => {
     await page!.waitFor(`!!${currentWorkspaceName}`, { label: "workspace loaded" });
-    const folder = join(mkdtempSync(join(tmpdir(), "nathapp-e2e-source-")), "shop-frontend");
+    const folder = join(mkdtempSync(join(tempDir, "rune-e2e-source-")), "shop-frontend");
     mkdirSync(join(folder, "src"), { recursive: true });
     writeFileSync(join(folder, "src", "cart.ts"), "export const cart = [];\n");
     const tab = await apiCall<{ id: string }>("/api/apps", { method: "POST", body: { kind: "web", url: `${site.url.origin}/` } });

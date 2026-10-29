@@ -64,7 +64,7 @@ export function overrideScript(js: string) {
       for (const el of document.querySelectorAll(selector)) {
         if (seen.has(el)) continue;
         seen.add(el);
-        try { fn(el); } catch (e) { console.error("[NathApp override]", e); }
+        try { fn(el); } catch (e) { console.error("[Rune Browser override]", e); }
       }
     };
     run();
@@ -75,7 +75,7 @@ export function overrideScript(js: string) {
   try {
 ${js}
   } catch (e) {
-    console.error("[NathApp override]", e);
+    console.error("[Rune Browser override]", e);
     return String((e && e.stack) || e);
   }
   return null;
@@ -189,23 +189,23 @@ export function pageChangeSpec(c: PageChangeSpec): PageChangeSpec {
 export function pageChangesCss(changes: readonly PageChange[]) {
   const rules = changes.flatMap((c) =>
     c.action === "hide"
-      ? [`/* nathapp:${c.id} */ ${c.selector} { display: none !important; }`]
+      ? [`/* rune:${c.id} */ ${c.selector} { display: none !important; }`]
       : c.action === "style"
-        ? [`/* nathapp:${c.id} */ ${c.selector} { ${c.value} }`]
+        ? [`/* rune:${c.id} */ ${c.selector} { ${c.value} }`]
         : c.action === "css"
-          ? [`/* nathapp:${c.id} */\n${c.value}`]
+          ? [`/* rune:${c.id} */\n${c.value}`]
           : [],
   );
   if (changes.some((c) => c.action === "button")) {
     rules.unshift(
-      `button.nathapp-button { font: 500 13px/1.2 system-ui, sans-serif; padding: 5px 12px; margin: 4px; border-radius: 6px; border: 1px solid rgba(0,0,0,.15); background: #6d4aff; color: #fff; cursor: pointer; }`,
+      `button.rune-button { font: 500 13px/1.2 system-ui, sans-serif; padding: 5px 12px; margin: 4px; border-radius: 6px; border: 1px solid rgba(0,0,0,.15); background: #6d4aff; color: #fff; cursor: pointer; }`,
     );
   }
   return rules.join("\n");
 }
 
 /** The page's state for page changes (shared by the scripts below). */
-const CHANGES_STATE = `(window.__nathappChanges || (window.__nathappChanges = { active: new Map(), handlers: {}, errors: {} }))`;
+const CHANGES_STATE = `(window.__runeChanges || (window.__runeChanges = { active: new Map(), handlers: {}, errors: {} }))`;
 
 /** The DOM changes (text, attribute, insert, button) to apply: undoes the rest. Evaluates to { [id]: error }. */
 export function pageChangesScript(changes: readonly PageChange[]) {
@@ -213,7 +213,7 @@ export function pageChangesScript(changes: readonly PageChange[]) {
     .filter((c) => c.action === "text" || c.action === "attribute" || c.action === "insert" || c.action === "button")
     .map((c) => pageChangeSpecWithId(c));
   return `(() => {
-  const ATTR = "data-nathapp-change";
+  const ATTR = "data-rune-change";
   const s = ${CHANGES_STATE};
   const want = ${JSON.stringify(dom)};
   const keyOf = (c) => JSON.stringify(c);
@@ -226,7 +226,7 @@ export function pageChangesScript(changes: readonly PageChange[]) {
   }
   if (!s.html) {
     try {
-      const policy = window.trustedTypes && window.trustedTypes.createPolicy("nathapp-changes", { createHTML: (x) => x });
+      const policy = window.trustedTypes && window.trustedTypes.createPolicy("rune-changes", { createHTML: (x) => x });
       s.html = (x) => (policy ? policy.createHTML(x) : x);
     } catch (e) {
       s.html = (x) => x;
@@ -289,12 +289,12 @@ export function pageChangesScript(changes: readonly PageChange[]) {
         if (c.action === "button") {
           node = document.createElement("button");
           node.type = "button";
-          node.className = "nathapp-button";
+          node.className = "rune-button";
           node.textContent = c.value;
           node.addEventListener("click", (event) => {
             const handler = s.handlers[c.id];
             if (!handler) return;
-            try { handler.call(node, event, node); } catch (e) { console.error("[NathApp page change]", e); }
+            try { handler.call(node, event, node); } catch (e) { console.error("[Rune Browser page change]", e); }
           });
         } else {
           const template = document.createElement("template");

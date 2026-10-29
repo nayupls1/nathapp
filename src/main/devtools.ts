@@ -5,7 +5,7 @@
 // rules and box model, cookies and storage, code coverage, and emulating
 // devices, slow networks and CPUs, and media features.
 //
-// The NathApp window asks over IPC (the server's agent tools → the hub → the
+// The Rune Browser window asks over IPC (the server's agent tools → the hub → the
 // renderer → here). Web tabs are the user's own pages, with their logins:
 // cookie values never leave this process, and storage values, console text
 // and URLs are shown with tokens redacted. Console capture starts on web tabs
@@ -296,7 +296,7 @@ export function setupDevtools(options: DevtoolsOptions) {
         host = new URL(url).host.replace(/[^\w.-]+/g, "_") || "page";
       } catch {}
       const file = join(tracesDir, `trace-${new Date(startedAt).toISOString().replace(/[:.]/g, "-")}-${host}.json`);
-      writeFileSync(file, JSON.stringify({ traceEvents: events, metadata: { source: "NathApp", startTime: new Date(startedAt).toISOString() } }));
+      writeFileSync(file, JSON.stringify({ traceEvents: events, metadata: { source: "Rune Browser", startTime: new Date(startedAt).toISOString() } }));
       const traces = readdirSync(tracesDir).filter((f) => f.startsWith("trace-")).sort();
       for (const old of traces.slice(0, Math.max(0, traces.length - KEEP_TRACES))) rmSync(join(tracesDir, old), { force: true });
       return { analysis, summary: describeTrace(analysis), file, events: events.length, seconds, ...(interactionError ? { interactionError } : {}) };
@@ -608,7 +608,7 @@ export function setupDevtools(options: DevtoolsOptions) {
   }
 
   const fromWindow = (event: Electron.IpcMainInvokeEvent) => event.sender === options.getWindow()?.webContents;
-  ipcMain.handle("nathapp:devtools", (event, id: unknown, command: unknown, params: unknown) => {
+  ipcMain.handle("rune:devtools", (event, id: unknown, command: unknown, params: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;
     if (!fromWindow(event) || !target || target.getType() !== "webview" || target.hostWebContents !== event.sender) throw new Error("Unknown page");
     return run(target, String(command), params);

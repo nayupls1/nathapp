@@ -26,7 +26,7 @@ export interface TabState {
   runtime: RuntimeStatus | null;
 }
 
-/** Pseudo tab ids for NathApp's own pages, all shown in Settings (its sidebar lists them). */
+/** Pseudo tab ids for Rune Browser's own pages, all shown in Settings (its sidebar lists them). */
 export const SETTINGS_VIEW = "settings";
 export const ACTIVITY_VIEW = "activity";
 export const HISTORY_VIEW = "history";
@@ -37,13 +37,13 @@ const settingsViews = [SETTINGS_VIEW, ACTIVITY_VIEW, HISTORY_VIEW, SCHEDULES_VIE
 export const isSettingsView = (id: string | null) => !!id && settingsViews.includes(id);
 
 /** The category Settings shows (SettingsPage.tsx: settingsSections). */
-const [settingsSection, setSettingsSection] = createSignal(sessionStorage.getItem("nathapp.settings-section") ?? "appearance");
+const [settingsSection, setSettingsSection] = createSignal(sessionStorage.getItem("rune.settings-section") ?? "appearance");
 export { settingsSection };
 /** Opens Settings, at a category if given (the one last shown otherwise). */
 export function openSettings(section?: string) {
   if (section) {
     setSettingsSection(section);
-    sessionStorage.setItem("nathapp.settings-section", section);
+    sessionStorage.setItem("rune.settings-section", section);
   }
   return selectApp(SETTINGS_VIEW);
 }
@@ -53,7 +53,7 @@ const [states, setStates] = createStore<Record<string, TabState>>({});
 const [selectedId, setSelectedId] = createSignal<string | null>(null);
 const [providers, setProviders] = createSignal<ProviderStatus[]>([]);
 const [workspaces, setWorkspaces] = createStore<WorkspaceInfo[]>([]);
-const [workspaceId, setWorkspaceId] = createSignal<string | null>(localStorage.getItem("nathapp.workspace"));
+const [workspaceId, setWorkspaceId] = createSignal<string | null>(localStorage.getItem("rune.workspace"));
 
 export { apps, providers, selectedId, states, workspaces };
 
@@ -89,11 +89,11 @@ export const unmountTab = (id: string) => setOpened(opened().filter((x) => x !==
 // Whether the agent sidebar is open, per tab. It's open by default only where
 // it's needed: a new app tab, to describe the app. For apps with a project
 // it's their mode: open exactly while the app is being edited (dev server),
-// and closing it means done (built and started; NathApp starts them done).
+// and closing it means done (built and started; Rune Browser starts them done).
 // Other tabs (web pages) start closed and remember being opened, also across
 // restarts, until it's closed again.
-const OPEN_KEY = "nathapp.agentOpen";
-localStorage.removeItem("nathapp.agentCollapsed"); // before: open by default, closed remembered
+const OPEN_KEY = "rune.agentOpen";
+localStorage.removeItem("rune.agentCollapsed"); // before: open by default, closed remembered
 const [openChoice, setOpenChoice] = createSignal<Record<string, boolean>>(
   (() => {
     try {
@@ -477,7 +477,7 @@ export async function moveApp(id: string, workspaceId: string) {
 
 // --- Workspaces --------------------------------------------------------------------------
 
-const WORKSPACE_TABS_KEY = "nathapp.workspaceTabs";
+const WORKSPACE_TABS_KEY = "rune.workspaceTabs";
 const lastTabs = (): Record<string, string> => {
   try {
     return JSON.parse(localStorage.getItem(WORKSPACE_TABS_KEY) ?? "{}");
@@ -491,7 +491,7 @@ function rememberTab(workspaceId: string, tabId: string) {
 
 function setCurrentWorkspace(id: string) {
   setWorkspaceId(id);
-  localStorage.setItem("nathapp.workspace", id);
+  localStorage.setItem("rune.workspace", id);
 }
 
 /** Switches the sidebar to a workspace and opens the tab you were last on there. Open tabs elsewhere keep running. */
@@ -578,7 +578,7 @@ export async function reorderWorkspaces(ids: string[]) {
 export async function deleteWorkspace(id: string) {
   await api.deleteWorkspace(id);
   forgetWorkspace(id);
-  await window.nathapp.web.clearWorkspace(id).catch((err) => console.error("Clearing the workspace's web data failed:", err));
+  await window.rune.web.clearWorkspace(id).catch((err) => console.error("Clearing the workspace's web data failed:", err));
 }
 
 // --- Agent -------------------------------------------------------------------------------

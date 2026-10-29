@@ -8,6 +8,7 @@ import {
   nativeImage,
   Notification,
   powerMonitor,
+  screen,
   webContents,
   webFrameMain,
   type WebFrameMain,
@@ -16,8 +17,10 @@ import {
   type Session,
   type WebContents,
 } from "electron";
+import { arch, cpus, freemem, totalmem } from "node:os";
 import { join } from "node:path";
 import {
+  BUILTIN_EXTENSION_ID,
   hostPermissionsOf,
   iconPath,
   matchesAny,
@@ -47,10 +50,11 @@ export interface ApiEnv {
   hasActiveTab: (s: Session, id: string, tabId: number) => boolean;
   /** The user invoked the extension on a tab (toolbar button, shortcut, context menu): activeTab. */
   grantActiveTab: (s: Session, id: string, tabId: number | null) => void;
-  /** Asks the NathApp window to open, select or close a tab; resolves with the tab's webContents id. */
+  /** Asks the Rune Browser window to open, select or close a tab; resolves with the tab's webContents id. */
   requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) => Promise<number | null>;
   requestPermission: (s: Session, id: string, permissions: string[], origins: string[]) => Promise<boolean>;
-  openPopup: (s: Session, id: string) => boolean;
+  /** Shows its popup (or another of its pages there, like its side panel). */
+  openPopup: (s: Session, id: string, url?: string) => boolean;
   actionsChanged: (s: Session) => void;
   commandsOf: (id: string) => { name: string; description: string; shortcut: string }[];
   rules: (s: Session) => DnrRule[];
@@ -101,6 +105,7 @@ const itemSize = (key: string, value: unknown) => key.length + JSON.stringify(va
 
 export function createApis(env: ApiEnv) {
   const sync = new SyncStore();
+  let downloadIds = 0;
   const favicons = new Map<number, string>();
   const nativePorts = new Map<string, NativePort>();
   const notifications = new Map<string, Notification>();
@@ -115,13 +120,26 @@ export function createApis(env: ApiEnv) {
     return { permissions: permissionsOf(m), origins: hostPermissionsOf(m) };
   };
   const granted = (id: string) => entryOf(id)?.granted ?? { permissions: [], origins: [] };
+  /** Permissions the user blocked in its details. */
+  const denied = (id: string) => entryOf(id)?.denied ?? [];
   const allPermissions = (s: Session, id: string) => {
     const r = required(s, id);
     const g = granted(id);
-    return { permissions: [...new Set([...r.permissions, ...g.permissions])], origins: [...new Set([...r.origins, ...g.origins])] };
+    const blocked = denied(id);
+    return {
+      permissions: [...new Set([...r.permissions, ...g.permissions])].filter((p) => !blocked.includes(p)),
+      origins: [...new Set([...r.origins, ...g.origins])],
+    };
   };
   const hasPermission = (s: Session, id: string, permission: string) => allPermissions(s, id).permissions.includes(permission);
   const hostAccess = (s: Session, id: string, url: string) => matchesAny(allPermissions(s, id).origins, url);
+
+  /** The page of its side panel (the one it set, or the manifest's), or null. */
+  function sidePanelUrl(s: Session, id: string) {
+    const m = manifestOf(s, id) as Manifest & { side_panel?: { default_path?: string } };
+    const path = env.state(s, id)?.stored.sidePanel?.path ?? m.side_panel?.default_path;
+    return typeof path === "string" && path ? `chrome-extension://${id}/${path.replace(/^\/+/, "")}` : null;
+  }
 
   const covers = (origins: string[], pattern: string) => origins.includes(pattern) || matchesAny(origins, sampleUrl(pattern));
 
@@ -323,7 +341,8 @@ export function createApis(env: ApiEnv) {
   type Handler = (ctx: Context, ...args: any[]) => unknown;
 
   const handlers: Record<string, Handler> = {
-    hello: () => ({}),
+    // The shim's first call: what the user blocked (its calls then fail, its events don't come).
+    hello: (ctx) => ({ denied: denied(ctx.extensionId) }),
     listen: (ctx, name: string) => {
       if (typeof name !== "string") return;
       env.contexts.listened(ctx, name);
@@ -339,7 +358,7 @@ export function createApis(env: ApiEnv) {
     },
     unlisten: (ctx, name: string) => void ctx.events.delete(name),
     unsupported: (_ctx, name: string) => {
-      throw err(`${name} isn't supported in NathApp`);
+      throw err(`${name} isn't available in Rune Browser`);
     },
 
     // chrome.action
@@ -501,7 +520,10 @@ export function createApis(env: ApiEnv) {
       }
       if (!(await env.requestPermission(s, id, permissions, origins))) return false;
       const g = granted(id);
-      env.registry.update(id, { granted: { permissions: [...new Set([...g.permissions, ...permissions])], origins: [...new Set([...g.origins, ...origins])] } });
+      env.registry.update(id, {
+        granted: { permissions: [...new Set([...g.permissions, ...permissions])], origins: [...new Set([...g.origins, ...origins])] },
+        denied: denied(id).filter((x) => !permissions.includes(x)),
+      });
       for (const session of env.sessions()) void dispatch(env.contexts, env.state(session, id), session, id, "permissions.onAdded", [{ permissions, origins }]);
       return true;
     },
@@ -642,6 +664,10 @@ export function createApis(env: ApiEnv) {
       else await env.requestTab({ action: "open", workspaceId, url, active: true });
     },
     "runtime.reload": (ctx) => env.reload(ctx.session, ctx.extensionId),
+    // webRequest.onAuthRequired: what one of its listeners answered.
+    "auth.reply": (ctx, requestId: unknown, response: unknown) => {
+      if (typeof requestId === "string") authReplies.get(`${ctx.extensionId}|${requestId}`)?.(response);
+    },
     "native.send": (ctx, application: string, message: unknown) => {
       if (!hasPermission(ctx.session, ctx.extensionId, "nativeMessaging")) throw err("Access to native messaging requires the 'nativeMessaging' permission.");
       return sendNativeMessage(String(application), ctx.extensionId, message);
@@ -676,6 +702,72 @@ export function createApis(env: ApiEnv) {
 
     // The rest
     "idle.queryState": (_ctx, seconds: number) => powerMonitor.getSystemIdleState(Math.max(15, Number(seconds) || 60)),
+    "downloads.download": (ctx, options: { url?: unknown }) => {
+      if (!hasPermission(ctx.session, ctx.extensionId, "downloads")) throw err("Access to downloads requires the 'downloads' permission.");
+      const url = typeof options?.url === "string" ? options.url : "";
+      if (!/^(https?|data|blob):/i.test(url)) throw err("Invalid URL.");
+      ctx.session.downloadURL(url);
+      return ++downloadIds;
+    },
+    "search.query": async (ctx, q: { text?: unknown; disposition?: unknown; tabId?: unknown }) => {
+      const text = typeof q?.text === "string" ? q.text.trim() : "";
+      if (!text) throw err("Empty text parameter.");
+      const workspaceId = env.workspaceOf(ctx.session);
+      if (!workspaceId) throw err("No window");
+      await env.requestTab({ action: "open", workspaceId, url: "", search: text, active: true });
+    },
+    "system.cpu": () => {
+      const list = cpus();
+      return {
+        numOfProcessors: list.length,
+        archName: arch(),
+        modelName: list[0]?.model ?? "",
+        features: [],
+        processors: list.map((c) => ({ usage: { user: c.times.user, kernel: c.times.sys, idle: c.times.idle, total: c.times.user + c.times.sys + c.times.idle + c.times.irq + c.times.nice } })),
+        temperatures: [],
+      };
+    },
+    "system.memory": () => ({ capacity: totalmem(), availableCapacity: freemem() }),
+    "system.display": () =>
+      screen.getAllDisplays().map((d, i) => ({
+        id: String(d.id),
+        name: d.label || `Display ${i + 1}`,
+        isPrimary: d.id === screen.getPrimaryDisplay().id,
+        isInternal: d.internal,
+        isEnabled: true,
+        isUnified: false,
+        dpiX: 96 * d.scaleFactor,
+        dpiY: 96 * d.scaleFactor,
+        rotation: d.rotation,
+        bounds: d.bounds,
+        workArea: d.workArea,
+        overscan: { left: 0, top: 0, right: 0, bottom: 0 },
+        displayZoomFactor: 1,
+        mirroringSourceId: "",
+        mirroringDestinationIds: [],
+        modes: [],
+        hasTouchSupport: d.touchSupport === "available",
+        hasAccelerometerSupport: false,
+        availableDisplayZoomFactors: [],
+        activeState: "active",
+      })),
+    // chrome.sidePanel: there's no side panel; its page shows as its popup (or a tab).
+    "sidePanel.set": (ctx, change: { path?: unknown; openOnAction?: unknown }) => {
+      const state = env.state(ctx.session, ctx.extensionId);
+      if (!state) return;
+      const panel = { ...state.stored.sidePanel };
+      if (typeof change?.path === "string") panel.path = change.path.replace(/^\/+/, "");
+      if (typeof change?.openOnAction === "boolean") panel.openOnAction = change.openOnAction;
+      state.stored.sidePanel = panel;
+      state.save();
+      env.actionsChanged(ctx.session);
+    },
+    "sidePanel.open": async (ctx) => {
+      const url = sidePanelUrl(ctx.session, ctx.extensionId);
+      if (!url) throw err("No active side panel for this extension.");
+      if (env.openPopup(ctx.session, ctx.extensionId, url)) return;
+      await openTab(ctx.session, ctx.extensionId, url, true);
+    },
     "management.getSelf": (ctx) => managementInfo(ctx.session, ctx.extensionId),
     "management.get": (ctx, id: string) => {
       if (!ctx.session.extensions.getExtension(id)) throw err(`Failed to find extension with id ${id}.`);
@@ -775,9 +867,37 @@ export function createApis(env: ApiEnv) {
     n.show();
   }
 
+  /** The calls of each permission (any one of them will do). */
+  const CALLS_OF: [string, string[]][] = [
+    ["notifications.", ["notifications"]],
+    ["cookies.", ["cookies"]],
+    ["idle.", ["idle"]],
+    ["menus.", ["contextMenus", "menus"]],
+    ["nav.", ["webNavigation"]],
+    ["sync.", ["storage"]],
+    ["downloads.", ["downloads"]],
+    ["search.", ["search"]],
+    ["sidePanel.", ["sidePanel"]],
+    ["system.cpu", ["system.cpu"]],
+    ["system.memory", ["system.memory"]],
+    ["system.display", ["system.display"]],
+  ];
+
+  /** A permission it asks for that the user blocked, if `method` needs it. */
+  function blockedFor(s: Session, id: string, method: string) {
+    const perms = CALLS_OF.find(([prefix]) => method.startsWith(prefix))?.[1];
+    if (!perms) return null;
+    const m = manifestOf(s, id);
+    const asked = perms.filter((p) => permissionsOf(m).includes(p) || (m.optional_permissions ?? []).includes(p));
+    const blocked = denied(id);
+    return asked.length && asked.every((p) => blocked.includes(p)) ? asked[0]! : null;
+  }
+
   async function handle(ctx: Context, method: string, args: unknown[]) {
     const handler = handlers[method];
-    if (!handler) return { error: `${method} isn't supported in NathApp` };
+    if (!handler) return { error: `${method} isn't supported in Rune Browser` };
+    const blocked = blockedFor(ctx.session, ctx.extensionId, method);
+    if (blocked) return { error: `The '${blocked}' permission is blocked for this extension in Rune Browser.` };
     try {
       return { value: await handler(ctx, ...(Array.isArray(args) ? args : [])) };
     } catch (e) {
@@ -787,7 +907,7 @@ export function createApis(env: ApiEnv) {
 
   // --- Events from web tabs ---------------------------------------------------------------------------
 
-  /** Every extension (but NathApp's own) in a session that some context listens to `event` for. */
+  /** Every extension (but Rune Browser's own) in a session that some context listens to `event` for. */
   function* listeners(s: Session, event: string) {
     const ids = new Set<string>();
     for (const ctx of env.contexts.inSession(s)) if (ctx.events.has(event)) ids.add(ctx.extensionId);
@@ -998,7 +1118,90 @@ export function createApis(env: ApiEnv) {
     return out;
   }
 
-  return { handle, tabObject, trackGuest, tabsChanged, watchCookies, menuItems, forgetSync: (id: string) => sync.forget(id) };
+  // --- HTTP sign-in (webRequest.onAuthRequired) --------------------------------------------------
+  // Electron doesn't ask extensions when a site wants a username and password
+  // (Basic/Digest, or a proxy): Rune Browser does, like Chrome, before its own
+  // dialog. Password managers fill them in this way.
+
+  const AUTH_EVENT = "webRequest.onAuthRequired";
+  const authReplies = new Map<string, (response: unknown) => void>();
+  // A retry (the server refused what was given) keeps its request ID, so extensions know not to give the same again.
+  const authRequests = new Map<string, { requestId: string; at: number; attempts: number }>();
+  let authIds = 0;
+
+  /** Credentials from an extension, "cancel" when one cancelled the sign-in, or null when none answered. */
+  async function authRequired(s: Session, contents: WebContents, url: string, info: { isProxy: boolean; scheme: string; host: string; port: number; realm: string }) {
+    const key = `${contents.id}|${url}|${info.realm}`;
+    const previous = authRequests.get(key);
+    const retry = previous && Date.now() - previous.at < 60_000 ? previous : null;
+    const requestId = retry?.requestId ?? `auth-${++authIds}`;
+    const attempts = (retry?.attempts ?? 0) + 1;
+    authRequests.set(key, { requestId, at: Date.now(), attempts });
+    for (const [k, r] of authRequests) if (Date.now() - r.at > 60_000) authRequests.delete(k);
+    // Refused twice: the extensions don't have the right ones (and one that keeps giving them would loop).
+    if (attempts > 2) return null;
+    const workspaceId = env.workspaceOf(s);
+    const details = {
+      requestId,
+      url,
+      method: "GET",
+      frameId: 0,
+      parentFrameId: -1,
+      tabId: workspaceId && env.tabs(workspaceId).includes(contents.id) ? contents.id : -1,
+      type: "main_frame",
+      timeStamp: Date.now(),
+      scheme: info.scheme.toLowerCase(),
+      realm: info.realm,
+      challenger: { host: info.host, port: info.port },
+      isProxy: info.isProxy,
+      statusCode: info.isProxy ? 407 : 401,
+      statusLine: info.isProxy ? "HTTP/1.1 407 Proxy Authentication Required" : "HTTP/1.1 401 Unauthorized",
+      frameType: "outermost_frame",
+      documentLifecycle: "active",
+    };
+    for (const ext of s.extensions.getAllExtensions()) {
+      const id = ext.id;
+      if (id === BUILTIN_EXTENSION_ID || !hasPermission(s, id, "webRequest")) continue;
+      if (!hasPermission(s, id, "webRequestAuthProvider") && !hasPermission(s, id, "webRequestBlocking")) continue;
+      if (!info.isProxy && !hostAccess(s, id, url)) continue;
+      const listens = env.contexts.of(s, id).some((c) => c.events.has(AUTH_EVENT)) || !!env.state(s, id)?.backgroundEvents.has(AUTH_EVENT);
+      if (!listens) continue;
+      const answer = await askForAuth(s, id, details);
+      if (answer) return answer;
+    }
+    return null;
+  }
+
+  /** Asks one extension; its first listener with an answer wins (or every one said nothing, or it took too long). */
+  function askForAuth(s: Session, id: string, details: { requestId: string }) {
+    return new Promise<{ username: string; password: string } | "cancel" | null>((resolve) => {
+      const key = `${id}|${details.requestId}`;
+      let sent: number | null = null;
+      let replied = 0;
+      const finish = (value: { username: string; password: string } | "cancel" | null) => {
+        clearTimeout(timer);
+        if (authReplies.get(key) === onReply) authReplies.delete(key);
+        resolve(value);
+      };
+      const onReply = (response: unknown) => {
+        const r = (response ?? {}) as { cancel?: unknown; authCredentials?: { username?: unknown; password?: unknown } };
+        const c = r.authCredentials;
+        if (c && typeof c.username === "string" && typeof c.password === "string") return finish({ username: c.username, password: c.password });
+        if (r.cancel === true) return finish("cancel");
+        replied++;
+        if (sent !== null && replied >= sent) finish(null);
+      };
+      // Long enough for a password manager that asks to be unlocked.
+      const timer = setTimeout(() => finish(null), 60_000);
+      authReplies.set(key, onReply);
+      void dispatch(env.contexts, env.state(s, id), s, id, AUTH_EVENT, [details]).then((n) => {
+        sent = n;
+        if (replied >= n) finish(null);
+      });
+    });
+  }
+
+  return { handle, authRequired, tabObject, trackGuest, tabsChanged, watchCookies, menuItems, hasPermission, sidePanelUrl, forgetSync: (id: string) => sync.forget(id) };
 }
 
 const cookieUrl = (c: Electron.Cookie) => `${c.secure ? "https" : "http"}://${(c.domain ?? "").replace(/^\./, "")}${c.path ?? "/"}`;

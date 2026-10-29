@@ -1,7 +1,7 @@
 // Mods: customizations packaged to share with others. A mod is one JSON
-// document: page changes (how sites look and work, shared/web.ts), NathApp's
+// document: page changes (how sites look and work, shared/web.ts), Rune Browser's
 // theme and Chrome Web Store extensions. It travels as a file, a link to that
-// file or a share code (the JSON, compressed, after "NATHAPP-MOD:"), and is
+// file or a share code (the JSON, compressed, after "RUNE-MOD:"), and is
 // reviewed before it's installed (reviewMod). Installed mods can be turned off
 // or removed, which takes back everything they did (server: mods/Mods.ts).
 import { Schema } from "effect";
@@ -9,8 +9,8 @@ import type { PageChangeSpec } from "./api";
 import { GlobalTheme } from "./settings";
 import { pageChangeProblem, pageChangeSpec } from "./web";
 
-export const MOD_FORMAT = "nathapp-mod";
-export const SHARE_CODE_PREFIX = "NATHAPP-MOD:";
+export const MOD_FORMAT = "rune-mod";
+export const SHARE_CODE_PREFIX = "RUNE-MOD:";
 /** A mod's JSON is at most this big. */
 export const MOD_MAX_BYTES = 1_000_000;
 export const MOD_MAX_CHANGES = 200;
@@ -50,7 +50,7 @@ export interface InstalledMod {
 /** A mod in the gallery, with where it's listed. */
 export interface GalleryEntry {
   mod: Mod;
-  /** "NathApp" for the built-in examples, else the gallery's URL. */
+  /** "Rune Browser" for the built-in examples, else the gallery's URL. */
   gallery: string;
 }
 
@@ -68,10 +68,10 @@ const text = (value: unknown, max: number) => (typeof value === "string" ? value
 
 /** A mod from untrusted JSON: everything checked and normalized, or why it isn't a mod. */
 export function parseMod(json: unknown): { mod: Mod } | { error: string } {
-  if (!json || typeof json !== "object" || Array.isArray(json)) return { error: "That isn't a NathApp mod." };
+  if (!json || typeof json !== "object" || Array.isArray(json)) return { error: "That isn't a Rune Browser mod." };
   const raw = json as Record<string, unknown>;
-  if (raw.format !== MOD_FORMAT) return { error: "That isn't a NathApp mod (its format isn't nathapp-mod)." };
-  if (raw.version !== 1) return { error: "This mod was made by a newer NathApp. Update NathApp to install it." };
+  if (raw.format !== MOD_FORMAT) return { error: "That isn't a Rune Browser mod (its format isn't rune-mod)." };
+  if (raw.version !== 1) return { error: "This mod was made by a newer Rune Browser. Update Rune Browser to install it." };
   const id = text(raw.id, 64).toLowerCase();
   if (!MOD_ID.test(id)) return { error: "The mod's id is missing or invalid." };
   const name = text(raw.name, 80);
@@ -186,7 +186,7 @@ export function reviewMod(mod: Mod): ModReview {
   }
   const lookWhere = [...new Set(mod.pageChanges.filter((c) => !runsCode(c)).map((c) => scopeLabel(c.scope)))];
   if (lookWhere.length) permissions.push({ level: "info", text: `Changes how ${list(lookWhere)} ${lookWhere.length === 1 ? "looks" : "look"}.` });
-  if (mod.theme) permissions.push({ level: "info", text: "Changes NathApp's theme. Turning the mod off or removing it brings yours back." });
+  if (mod.theme) permissions.push({ level: "info", text: "Changes Rune Browser's theme. Turning the mod off or removing it brings yours back." });
   return { changes, permissions };
 }
 
@@ -222,7 +222,7 @@ async function pipeThrough(bytes: Uint8Array, stream: CompressionStream | Decomp
   return out;
 }
 
-/** A share code for a mod: "NATHAPP-MOD:" and the compressed JSON. */
+/** A share code for a mod: "RUNE-MOD:" and the compressed JSON. */
 export async function encodeShareCode(mod: Mod) {
   const bytes = await pipeThrough(new TextEncoder().encode(JSON.stringify(mod)), new CompressionStream("deflate-raw"));
   return `${SHARE_CODE_PREFIX}${toBase64Url(bytes)}`;

@@ -16,7 +16,7 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const pngUrl = `data:image/png;base64,${PNG.toString("base64")}`;
 
 describe("icon files from the project", () => {
-  const dir = mkdtempSync(join(tmpdir(), "nathapp-icons-"));
+  const dir = mkdtempSync(join(tmpdir(), "rune-icons-"));
   const project = join(dir, "project");
   beforeAll(() => {
     mkdirSync(join(project, "public"), { recursive: true });
@@ -46,8 +46,8 @@ describe("icon files from the project", () => {
 });
 
 describe("the agent and the user's icon", () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "nathapp-icons-db-"));
-  const runtime = ManagedRuntime.make(core(readConfig({ NATHAPP_DATA_DIR: dataDir, PORT: "1" })));
+  const dataDir = mkdtempSync(join(tmpdir(), "rune-icons-db-"));
+  const runtime = ManagedRuntime.make(core(readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" })));
   afterAll(async () => {
     await runtime.dispose();
     rmSync(dataDir, { recursive: true, force: true });

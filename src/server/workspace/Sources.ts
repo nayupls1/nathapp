@@ -1,6 +1,6 @@
 // Code attached to a tab for its agent: folders of the user's (used in place)
-// and Git repositories (cloned by NathApp into <data>/sources/<id>, pulled
-// again on request). The agent reads and searches them with NathApp's tools
+// and Git repositories (cloned by Rune Browser into <data>/sources/<id>, pulled
+// again on request). The agent reads and searches them with Rune Browser's tools
 // (agent/sourceTools.ts) and changes them only with the user's OK, one diff at
 // a time. Files that hold credentials (.env, keys, .npmrc…) and .git's
 // internals are never read or written, whatever the agent asks.
@@ -52,7 +52,7 @@ const toSource = (r: Row): ContextSource => ({
 const SECRET_FILE =
   /^(\.env(\.(?!example$|sample$|template$|dist$)[\w.-]+)?|.*\.(pem|key|p12|pfx|keystore|jks|kdbx)|id_(rsa|ed25519|ecdsa|dsa)(\.pub)?|\.npmrc|\.pypirc|\.netrc|\.git-credentials|credentials(\.json)?|secrets?\.(json|ya?ml|toml)|\.htpasswd)$/i;
 /** Not worth listing or searching. */
-const SKIPPED_DIRS = new Set([".git", "node_modules", ".nathapp", "dist", "build", ".next", ".turbo", ".cache", "target", "__pycache__", ".venv", "venv", "coverage"]);
+const SKIPPED_DIRS = new Set([".git", "node_modules", ".rune", "dist", "build", ".next", ".turbo", ".cache", "target", "__pycache__", ".venv", "venv", "coverage"]);
 export const isSecretPath = (rel: string) => rel.split(/[\\/]/).some((part, i, all) => part === ".git" || (i === all.length - 1 && SECRET_FILE.test(part)));
 
 const MAX_FILE = 2 * 1024 * 1024;
@@ -97,7 +97,7 @@ export interface SourcesShape {
   readonly writeText: (source: ContextSource, rel: string, text: string) => Effect.Effect<void, SourceError>;
 }
 
-export class Sources extends Context.Service<Sources, SourcesShape>()("nathapp/Sources") {}
+export class Sources extends Context.Service<Sources, SourcesShape>()("rune/Sources") {}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -133,7 +133,8 @@ export const make = Effect.gen(function* () {
       let existing = wanted;
       while (!existsSync(existing) && dirname(existing) !== existing) existing = dirname(existing);
       const real = join(realpathSync(existing), relative(existing, wanted));
-      const rel = relative(root, real);
+      // With forward slashes on every OS, like the listings.
+      const rel = relative(root, real).split(sep).join("/");
       if (rel.startsWith("..") || isAbsolute(rel)) return yield* fail(`${path} isn't inside ${source.name}.`);
       if (isSecretPath(rel)) return yield* fail(`${rel} may hold credentials or is git's own data: it's never read or changed.`);
       return { abs: real, rel: rel || "." };
@@ -180,7 +181,7 @@ export const make = Effect.gen(function* () {
         const info = yield* Effect.sync(() => (existsSync(abs) ? statSync(abs) : null));
         if (!info?.isDirectory()) return yield* fail(`${path} isn't a folder.`);
         if (abs === sep || abs === homedir() || /^[A-Za-z]:\\?$/.test(abs)) return yield* fail("That's too much: pick a project folder, not your whole disk or home folder.");
-        if (under(config.dataDir, abs) || under(abs, config.dataDir)) return yield* fail("That folder is NathApp's own data.");
+        if (under(config.dataDir, abs) || under(abs, config.dataDir)) return yield* fail("That folder is Rune Browser's own data.");
         const existing = (yield* db.list(tabId)).find((s) => s.path === abs);
         if (existing) return existing;
         const id = crypto.randomUUID().slice(0, 8);
@@ -221,7 +222,7 @@ export const make = Effect.gen(function* () {
         if (!source) return false;
         cancelGit(`source:${id}`);
         yield* db.remove(id);
-        // NathApp's clone goes; the user's own folder is theirs.
+        // Rune Browser's clone goes; the user's own folder is theirs.
         if (source.kind === "git" && under(source.path, clonesDir)) yield* Effect.promise(() => rm(source.path, { recursive: true, force: true }));
         yield* publish(source.tabId);
         return true;
