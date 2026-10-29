@@ -2,7 +2,7 @@
 // and its database, settings and site customizations. No model is called.
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppSummary, HistoryDetail, HistoryEntry, SiteOverride } from "../src/shared/api";
 import type { Settings } from "../src/shared/settings";
@@ -129,7 +129,9 @@ describe("history", () => {
 
     await server.api(`/api/history/${withThreeNotes.id}/restore`, { method: "POST", json: { data: true } });
     expect(rows()).toBe(3);
-    expect(existsSync(join(dataDir, "data.sqlite-wal"))).toBe(false);
+    // No stale WAL left to replay over it (macOS's SQLite keeps an empty one after reads).
+    const wal = join(dataDir, "data.sqlite-wal");
+    expect(existsSync(wal) ? statSync(wal).size : 0).toBe(0);
 
     // The very first version had no database at all.
     const first = (await list()).at(-1)!;

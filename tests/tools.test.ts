@@ -8,6 +8,7 @@ import { join } from "node:path";
 import type { AppSummary, AppTool, AppToolsInfo, AuditEntry, PermissionRequest, ToolResult } from "../src/shared/api";
 import { checkParams, dataTools } from "../src/server/workspace/AppTools";
 import { startServer } from "./lib/server";
+import { writesVariable } from "./lib/apps";
 
 const waitFor = async <T,>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
   const deadline = Date.now() + ms;
@@ -120,7 +121,7 @@ describe("tool registry", () => {
 
     other = await server.api<AppSummary>("/api/apps", { method: "POST" });
     await server.api(`/api/apps/${other.id}/project`, { method: "POST", json: { preset: "api" } });
-    writeFileSync(join(projectOf(other), "rune.json"), JSON.stringify({ install: "true", dev: 'printf %s "$RUNE_API_TOKEN" > token.txt; sleep 600', start: "sleep 600" }));
+    writesVariable(projectOf(other), "RUNE_API_TOKEN", "token.txt");
     await server.api(`/api/apps/${other.id}/runtime`, { method: "POST", json: { action: "restart" } });
     const file = join(projectOf(other), "token.txt");
     otherToken = await waitFor(() => (existsSync(file) && readFileSync(file, "utf8")) || undefined);

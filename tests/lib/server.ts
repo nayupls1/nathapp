@@ -57,7 +57,13 @@ export async function startServer(options: { dataDir?: string } = {}) {
     async stop() {
       proc.kill();
       await proc.exited;
-      rmSync(dataDir, { recursive: true, force: true });
+      // Windows keeps files locked a moment after their processes end (or, for app
+      // processes the killed server couldn't stop, longer): best effort there.
+      try {
+        rmSync(dataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch (err) {
+        if (process.platform !== "win32") throw err;
+      }
     },
   };
 }

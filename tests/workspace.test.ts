@@ -70,7 +70,7 @@ describe.if(hasBwrap)("sandbox", () => {
     // Only the bun binary is bound from outside; the user's files aren't there.
     const outside = await exec(`cat ${JSON.stringify(join(process.cwd(), "package.json"))} 2>&1; ls -A ${JSON.stringify(homedir())}`);
     expect(outside.output).toContain("No such file");
-    expect(outside.output).not.toContain("rune");
+    expect(outside.output).not.toContain("devDependencies");
     const otherApp = await exec(`ls ${JSON.stringify(config.appsDir)} 2>&1`);
     expect(otherApp.output.trim().split("\n")).toEqual([app.id]);
     expect((await exec("touch /usr/x 2>&1; echo code=$?")).output).toContain("code=1");

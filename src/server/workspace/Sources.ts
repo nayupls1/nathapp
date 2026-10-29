@@ -133,7 +133,8 @@ export const make = Effect.gen(function* () {
       let existing = wanted;
       while (!existsSync(existing) && dirname(existing) !== existing) existing = dirname(existing);
       const real = join(realpathSync(existing), relative(existing, wanted));
-      const rel = relative(root, real);
+      // With forward slashes on every OS, like the listings.
+      const rel = relative(root, real).split(sep).join("/");
       if (rel.startsWith("..") || isAbsolute(rel)) return yield* fail(`${path} isn't inside ${source.name}.`);
       if (isSecretPath(rel)) return yield* fail(`${rel} may hold credentials or is git's own data: it's never read or changed.`);
       return { abs: real, rel: rel || "." };

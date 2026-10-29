@@ -2,11 +2,12 @@
 // against the real server and real (sandboxed) app processes. No model is called.
 import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_WORKSPACE, type AppSummary, type AuditEntry, type PermissionGrant, type WorkspaceInfo } from "../src/shared/api";
 import { startServer } from "./lib/server";
+import { devScript } from "./lib/apps";
 
 const waitFor = async <T>(fn: () => T | undefined, ms = 15_000): Promise<T> => {
   const deadline = Date.now() + ms;
@@ -31,10 +32,7 @@ describe("workspaces", () => {
   };
   /** From now on, the app's dev "server" writes the secrets it got (for `step`) and stays up. */
   const report = (app: AppSummary, step: string) =>
-    writeFileSync(
-      join(dirOf(app), "rune.json"),
-      JSON.stringify({ install: "true", dev: `printf %s "\${SHARED:-unset} \${GLOBAL_KEY:-unset}" > seen-${step}.txt; sleep 600`, start: "sleep 600" }),
-    );
+    devScript(dirOf(app), `await Bun.write("seen-${step}.txt", [process.env.SHARED || "unset", process.env.GLOBAL_KEY || "unset"].join(" "));`);
   const restart = (app: AppSummary) => server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
   const newApp = async (workspaceId?: string) => {
     const app = await server.api<AppSummary>("/api/apps", { method: "POST", json: workspaceId ? { workspaceId } : {} });

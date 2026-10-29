@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppSummary, AuditEntry, DataOverview, DataRows, HistoryEntry, PermissionRequest, WorkspaceInfo } from "../src/shared/api";
 import { startServer } from "./lib/server";
+import { devScript } from "./lib/apps";
 
 const waitFor = async <T,>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
   const deadline = Date.now() + ms;
@@ -30,7 +31,7 @@ describe("managed app data", () => {
   const create = async (workspaceId?: string) => {
     const app = await server.api<AppSummary>("/api/apps", { method: "POST", json: workspaceId ? { workspaceId } : {} });
     await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
-    writeFileSync(join(projectOf(app), "rune.json"), JSON.stringify({ install: "true", dev: "env > env.txt; sleep 600", start: "sleep 600" }));
+    devScript(projectOf(app), 'await Bun.write("env.txt", Object.entries(process.env).map(([k, v]) => `${k}=${v}`).join("\\n"));');
     return app;
   };
   const envOf = async (app: AppSummary) => {
@@ -47,6 +48,8 @@ describe("managed app data", () => {
     notes = await create();
     mkdirSync(dataOf(notes), { recursive: true });
     const db = new Database(join(dataOf(notes), "data.sqlite"));
+    // Rune Browser may be reading it (History) while this writes.
+    db.run("PRAGMA busy_timeout = 5000");
     db.run("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT, done INTEGER)");
     for (let i = 1; i <= 120; i++) db.run("INSERT INTO notes (title, done) VALUES (?, ?)", [i === 7 ? "100% sure" : `note ${i}`, i % 2]);
     db.close();

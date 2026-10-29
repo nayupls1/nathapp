@@ -94,7 +94,8 @@ describe("scheduler", () => {
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "stop" } });
     writeFileSync(
       join(dir(), "action.ts"),
-      `Bun.serve({
+      `await Bun.write("token.txt", process.env.RUNE_API_TOKEN ?? "");
+Bun.serve({
   hostname: "127.0.0.1",
   port: Number(process.env.PORT),
   async fetch(req) {
@@ -107,7 +108,7 @@ describe("scheduler", () => {
       join(dir(), "rune.json"),
       JSON.stringify({
         install: "true",
-        dev: 'printf %s "$RUNE_API_TOKEN" > token.txt; exec bun action.ts',
+        dev: "bun action.ts",
         start: "bun action.ts",
         actions: [{ id: "digest", title: "Send digest", endpoint: "/api/digest" }],
       }),
@@ -136,11 +137,11 @@ describe("scheduler", () => {
     expect(done).toMatchObject({ status: "ok", trigger: "manual", message: "Done" });
     expect(done!.output).toContain("hello from");
 
-    const failing = await create({ name: "Broken", task: { type: "command", appId: app.id, command: "echo nope >&2; exit 3" } });
+    const failing = await create({ name: "Broken", task: { type: "command", appId: app.id, command: "echo nope 1>&2; exit 3" } });
     await server.api(`/api/schedules/${failing.id}/run`, { method: "POST" });
     expect((await finished(failing.id))[0]).toMatchObject({ status: "error", message: "Exited with code 3" });
 
-    const slow = await create({ name: "Slow", timeoutSec: 5, task: { type: "command", appId: app.id, command: "sleep 30" } });
+    const slow = await create({ name: "Slow", timeoutSec: 5, task: { type: "command", appId: app.id, command: 'bun -e "await Bun.sleep(30000)"' } });
     await server.api(`/api/schedules/${slow.id}/run`, { method: "POST" });
     // It never runs twice at once.
     const second = await server.api<ScheduleRun>(`/api/schedules/${slow.id}/run`, { method: "POST" });
