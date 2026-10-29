@@ -53,6 +53,8 @@ interface StoredState {
   version?: string;
   menus?: MenuItem[];
   seeded?: boolean;
+  /** chrome.sidePanel: the page it set, and whether its toolbar button opens it (shown as its popup). */
+  sidePanel?: { path?: string; openOnAction?: boolean };
 }
 
 /** What Rune Browser keeps for one extension in one workspace's session. */

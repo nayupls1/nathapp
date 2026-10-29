@@ -3,7 +3,7 @@
 // get the missing chrome.* APIs (see shim.ts), talking to the main process
 // over IPC.
 import { contextBridge, ipcRenderer } from "electron";
-import { BUILTIN_EXTENSION_ID, extensionIdOf } from "../shared/extensions";
+import { BUILTIN_EXTENSION_ID, extensionIdOf, PERMISSIONS_WITHOUT_API } from "../shared/extensions";
 import { shim, type ShimBridge } from "./shim";
 
 const worker = process.type === "service-worker";
@@ -41,5 +41,5 @@ if (id) {
       ipcRenderer.on("crx:event", (_event, name: string, args: unknown[]) => fn(name, args));
     },
   };
-  contextBridge.executeInMainWorld({ func: shim, args: [bridge, { id, worker, builtin: id === BUILTIN_EXTENSION_ID }] });
+  contextBridge.executeInMainWorld({ func: shim, args: [bridge, { id, worker, builtin: id === BUILTIN_EXTENSION_ID, withoutApi: [...PERMISSIONS_WITHOUT_API] }] });
 }

@@ -10,7 +10,6 @@ import { cpSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import {
-  extensionIdFromHash,
   iconPath,
   profileCommands,
   profileExtensions,
@@ -20,7 +19,7 @@ import {
   type ImportCandidate,
   type ProfileExtensionEntry,
 } from "../../shared/extensions";
-import { extensionsDir, imageDataUrl, platform, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
+import { extensionsDir, idForPath, imageDataUrl, platform, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
 
 export { platform };
 
@@ -191,9 +190,6 @@ export function detectBrowsers(registry: Registry): BrowserProfile[] {
     }))
     .filter((p) => p.extensions.length > 0);
 }
-
-/** Chromium's ID for an extension without a key: from the folder it's loaded from. */
-const idForPath = (path: string) => extensionIdFromHash(createHash("sha256").update(path).digest("hex"));
 
 /** Copies an extension's chrome.storage data aside, to go into each workspace. */
 function copySeed(profileDir: string, id: string): string | undefined {

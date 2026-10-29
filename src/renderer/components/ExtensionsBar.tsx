@@ -75,7 +75,7 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
             anchor={anchor()}
             actions={actions()}
             onActivate={(a) => void activate(a, anchor())}
-            onActionMenu={(a) => void bridge.actionMenu(props.workspaceId, a.extensionId)}
+            onActionMenu={(id) => void bridge.actionMenu(props.workspaceId, id)}
             onImport={() => {
               setMenu(null);
               props.onImport();
@@ -108,6 +108,15 @@ function ActionIcon(props: { action: ExtensionAction; size?: number }) {
   );
 }
 
+/** Its menu, like Chrome's ⋮: its own items, pin, options, manage. */
+function MoreButton(props: { extensionId: string; onActionMenu: (extensionId: string) => void }) {
+  return (
+    <button type="button" title="More: options, pin, manage" onClick={() => props.onActionMenu(props.extensionId)} {...stylex.attrs(styles.pin)} data-extension-more={props.extensionId}>
+      <Icon name="ellipsis-vertical" size={14} />
+    </button>
+  );
+}
+
 /** Closes a popover on Escape, a click elsewhere, or focus moving away (into a page). */
 function useDismiss(el: () => HTMLElement, onClose: () => void, ignore?: () => HTMLElement | undefined) {
   onMount(() => {
@@ -128,7 +137,7 @@ function useDismiss(el: () => HTMLElement, onClose: () => void, ignore?: () => H
   });
 }
 
-function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; onActivate: (a: ExtensionAction) => void; onActionMenu: (a: ExtensionAction) => void; onImport: () => void; onClose: () => void }) {
+function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; onActivate: (a: ExtensionAction) => void; onActionMenu: (extensionId: string) => void; onImport: () => void; onClose: () => void }) {
   let el!: HTMLDivElement;
   useDismiss(() => el, props.onClose);
   const left = () => Math.max(8, Math.min(props.anchor.left, window.innerWidth - 308));
@@ -162,7 +171,7 @@ function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; on
                     // Its own menu items (chrome.contextMenus, "action" context).
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      props.onActionMenu(action);
+                      props.onActionMenu(action.extensionId);
                     }}
                     {...stylex.attrs(styles.itemMain)}
                     data-extension-item={action.extensionId}
@@ -180,6 +189,7 @@ function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; on
                   >
                     <Icon name="pin" size={14} />
                   </button>
+                  <MoreButton extensionId={action.extensionId} onActionMenu={props.onActionMenu} />
                 </div>
               );
             }}
@@ -193,6 +203,7 @@ function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; on
                   </Show>
                   <span {...stylex.attrs(styles.itemName)}>{info.name}</span>
                 </span>
+                <MoreButton extensionId={info.id} onActionMenu={props.onActionMenu} />
               </div>
             )}
           </For>

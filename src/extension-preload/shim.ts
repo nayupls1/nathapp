@@ -15,9 +15,13 @@ export interface ShimInfo {
   worker: boolean;
   /** Rune Browser's own network-rules extension. */
   builtin: boolean;
+  /** Permissions that only allow something (no namespace of their own to stand in for). */
+  withoutApi: string[];
 }
 
 export function shim(bridge: ShimBridge, info: ShimInfo) {
+  // Runs on its own in the extension's world: only what's defined in here exists.
+  const PERMISSIONS_WITHOUT_API = new Set(info.withoutApi);
   const g: any = globalThis;
   const c: any = g.chrome;
   if (!c?.runtime || g.__runeShim) return;
@@ -162,7 +166,34 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     }
   };
 
-  void call("hello").catch(() => {});
+  // A namespace of chrome.*. Chromium puts its own back on `chrome` whenever
+  // the bindings are updated (another extension loading does that), so one
+  // Electron has gets extended (Chromium keeps that object and hands it out
+  // again), and only a missing one is added.
+  const apiNames = new Map<object, string>();
+  const defineApi = (name: string, value: Record<string, unknown>) => {
+    let native: any;
+    try {
+      native = c[name];
+    } catch {
+      native = undefined;
+    }
+    if (!native || typeof native !== "object" || native === value) {
+      define(c, name, value);
+      return value;
+    }
+    apiNames.set(native, name);
+    for (const key of Object.keys(value)) define(native, key, value[key]);
+    return native;
+  };
+
+  // The permissions the user blocked come with the first answer (Rune Browser's
+  // side refuses their calls until then too).
+  let denied = new Set<string>();
+  void call("hello").then(
+    (r: any) => (denied = new Set(Array.isArray(r?.denied) ? r.denied : [])),
+    () => {},
+  );
 
   // --- Rune Browser's network rules extension ------------------------------------------------
 
@@ -295,9 +326,9 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     onClicked: actionOnClicked,
     onUserSettingsChanged: ev("action.onUserSettingsChanged"),
   };
-  if (manifest.action || manifest.manifest_version === 3) define(c, "action", action);
-  if (manifest.browser_action) define(c, "browserAction", action);
-  if (manifest.page_action) define(c, "pageAction", action);
+  if (manifest.action || manifest.manifest_version === 3) defineApi("action", action);
+  if (manifest.browser_action) defineApi("browserAction", action);
+  if (manifest.page_action) defineApi("pageAction", action);
 
   // --- chrome.tabs ---------------------------------------------------------------------------
 
@@ -349,11 +380,11 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     onDetached: ev("tabs.onDetached"),
     onZoomChange: nativeTabs.onZoomChange ?? ev("tabs.onZoomChange"),
   };
-  define(c, "tabs", tabs);
+  defineApi("tabs", tabs);
 
   // --- chrome.windows ---------------------------------------------------------------------------
 
-  define(c, "windows", {
+  defineApi("windows", {
     WINDOW_ID_NONE: -1,
     WINDOW_ID_CURRENT: -2,
     get: api("windows.get", ([id, opts]) => [id, opts ?? {}]),
@@ -371,7 +402,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
 
   // --- chrome.commands ---------------------------------------------------------------------------
 
-  define(c, "commands", { getAll: api("commands.getAll"), onCommand: ev("commands.onCommand"), onChanged: ev("commands.onChanged") });
+  defineApi("commands", { getAll: api("commands.getAll"), onCommand: ev("commands.onCommand"), onChanged: ev("commands.onChanged") });
 
   // --- chrome.contextMenus / chrome.menus ----------------------------------------------------------
 
@@ -433,13 +464,13 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       onShown: ev("contextMenus.onShown"),
       onHidden: ev("contextMenus.onHidden"),
     };
-    define(c, "contextMenus", menus);
-    if (has("menus")) define(c, "menus", menus);
+    defineApi("contextMenus", menus);
+    if (has("menus")) defineApi("menus", menus);
   }
 
   // --- chrome.permissions ------------------------------------------------------------------------
 
-  define(c, "permissions", {
+  defineApi("permissions", {
     contains: api("permissions.contains", ([p]) => [p ?? {}]),
     getAll: api("permissions.getAll"),
     request: api("permissions.request", ([p]) => [p ?? {}]),
@@ -598,13 +629,13 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     const names = ["onBeforeNavigate", "onCommitted", "onDOMContentLoaded", "onCompleted", "onErrorOccurred", "onCreatedNavigationTarget", "onReferenceFragmentUpdated", "onHistoryStateUpdated", "onTabReplaced"];
     const nav: any = { getFrame: api("nav.getFrame"), getAllFrames: api("nav.getAllFrames") };
     for (const n of names) nav[n] = ev(`webNavigation.${n}`, byUrl);
-    define(c, "webNavigation", nav);
+    defineApi("webNavigation", nav);
   }
 
   // --- chrome.cookies -------------------------------------------------------------------------------------
 
   if (has("cookies")) {
-    define(c, "cookies", {
+    defineApi("cookies", {
       get: api("cookies.get"),
       getAll: api("cookies.getAll", ([d]) => [d ?? {}]),
       set: api("cookies.set"),
@@ -624,7 +655,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       imageUrl: undefined,
       buttons: Array.isArray(o?.buttons) ? o.buttons.map((b: any) => ({ title: String(b?.title ?? "") })) : undefined,
     });
-    define(c, "notifications", {
+    defineApi("notifications", {
       create: api("notifications.create", (args) => (typeof args[0] === "string" || args[0] == null ? [args[0] ?? "", options(args[1])] : ["", options(args[0])])),
       update: api("notifications.update", ([id, o]) => [id, options(o)]),
       clear: api("notifications.clear"),
@@ -643,7 +674,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   // --- The rest: small ones -------------------------------------------------------------------------------------
 
   if (has("idle")) {
-    define(c, "idle", {
+    defineApi("idle", {
       queryState: api("idle.queryState"),
       setDetectionInterval: () => {},
       getAutoLockDelay: resolved(0),
@@ -652,7 +683,7 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   }
 
   if (!c.management?.getSelf || !c.management?.getAll) {
-    define(c, "management", {
+    defineApi("management", {
       ...(c.management ?? {}),
       getSelf: api("management.getSelf"),
       get: api("management.get"),
@@ -667,21 +698,338 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     });
   }
 
-  // The side panel isn't there; its calls fail instead of crashing the extension.
-  if (has("sidePanel") && !c.sidePanel) {
-    define(c, "sidePanel", {
-      setOptions: resolved(undefined),
-      getOptions: resolved({ enabled: false }),
-      setPanelBehavior: resolved(undefined),
-      getPanelBehavior: resolved({ openPanelOnActionClick: false }),
-      open: api("unsupported", () => ["sidePanel.open"]),
+  // --- What Rune Browser doesn't have ------------------------------------------------------------
+  // Stand-ins, so an extension that asks for these keeps working (calls
+  // answer empty or fail with lastError, events never come) instead of its
+  // worker failing to start on `chrome.history.onVisited` and the like.
+
+  const unavailable = (name: string) => api("unsupported", () => [name]);
+  const quietEvents = (...names: string[]) => Object.fromEntries(names.map((n) => [n, localEv()]));
+  const missing = (name: string) => {
+    try {
+      return has(name) && c[name] === undefined;
+    } catch {
+      return false;
+    }
+  };
+
+  // There's no side panel: its page shows as the popup of its toolbar button (or in a tab).
+  if (has("sidePanel")) {
+    let behavior = { openPanelOnActionClick: false };
+    let panel: any = { enabled: true, path: manifest.side_panel?.default_path };
+    defineApi("sidePanel", {
+      setOptions: api("sidePanel.set", ([o]) => {
+        if (!o?.tabId) panel = { ...panel, ...o };
+        return [{ path: o?.tabId ? undefined : o?.path }];
+      }),
+      getOptions: (...args: any[]) => resolved({ ...panel })(...args.slice(1)),
+      setPanelBehavior: api("sidePanel.set", ([b]) => {
+        behavior = { openPanelOnActionClick: !!b?.openPanelOnActionClick };
+        return [{ openOnAction: behavior.openPanelOnActionClick }];
+      }),
+      getPanelBehavior: (...args: any[]) => resolved({ ...behavior })(...args),
+      getLayout: resolved({ side: "right" }),
+      open: api("sidePanel.open", () => []),
+      close: resolved(undefined),
+      ...quietEvents("onClosed", "onOpened"),
     });
   }
 
+  if (missing("bookmarks")) {
+    const tree = [{ id: "0", title: "", children: [{ id: "1", parentId: "0", index: 0, title: "Bookmarks bar", children: [] }, { id: "2", parentId: "0", index: 1, title: "Other bookmarks", children: [] }] }];
+    defineApi("bookmarks", {
+      MAX_WRITE_OPERATIONS_PER_HOUR: 1000000,
+      MAX_SUSTAINED_WRITE_OPERATIONS_PER_MINUTE: 1000000,
+      getTree: resolved(tree),
+      getSubTree: resolved(tree),
+      getChildren: resolved([]),
+      getRecent: resolved([]),
+      get: unavailable("bookmarks.get"),
+      search: resolved([]),
+      create: unavailable("bookmarks.create"),
+      move: unavailable("bookmarks.move"),
+      update: unavailable("bookmarks.update"),
+      remove: unavailable("bookmarks.remove"),
+      removeTree: unavailable("bookmarks.removeTree"),
+      ...quietEvents("onCreated", "onRemoved", "onChanged", "onMoved", "onChildrenReordered", "onImportBegan", "onImportEnded"),
+    });
+  }
+  if (missing("history")) {
+    defineApi("history", {
+      search: resolved([]),
+      getVisits: resolved([]),
+      addUrl: resolved(undefined),
+      deleteUrl: resolved(undefined),
+      deleteRange: resolved(undefined),
+      deleteAll: resolved(undefined),
+      ...quietEvents("onVisited", "onVisitRemoved"),
+    });
+  }
+  if (missing("sessions")) {
+    defineApi("sessions", {
+      MAX_SESSION_RESULTS: 25,
+      getRecentlyClosed: resolved([]),
+      getDevices: resolved([]),
+      restore: unavailable("sessions.restore"),
+      getTabValue: resolved(undefined),
+      setTabValue: resolved(undefined),
+      removeTabValue: resolved(undefined),
+      getWindowValue: resolved(undefined),
+      setWindowValue: resolved(undefined),
+      removeWindowValue: resolved(undefined),
+      ...quietEvents("onChanged"),
+    });
+  }
+  if (missing("topSites")) defineApi("topSites", { get: resolved([]) });
+  if (missing("tabGroups")) {
+    defineApi("tabGroups", {
+      TAB_GROUP_ID_NONE: -1,
+      Color: { GREY: "grey", BLUE: "blue", RED: "red", YELLOW: "yellow", GREEN: "green", PINK: "pink", PURPLE: "purple", CYAN: "cyan", ORANGE: "orange" },
+      get: unavailable("tabGroups.get"),
+      query: resolved([]),
+      update: unavailable("tabGroups.update"),
+      move: unavailable("tabGroups.move"),
+      ...quietEvents("onCreated", "onUpdated", "onMoved", "onRemoved"),
+    });
+  }
+  if (missing("fontSettings")) {
+    const size = (pixelSize: number) => resolved({ pixelSize, levelOfControl: "not_controllable" });
+    defineApi("fontSettings", {
+      getFontList: resolved([]),
+      getFont: resolved({ fontId: "", levelOfControl: "not_controllable" }),
+      setFont: resolved(undefined),
+      clearFont: resolved(undefined),
+      getDefaultFontSize: size(16),
+      setDefaultFontSize: resolved(undefined),
+      clearDefaultFontSize: resolved(undefined),
+      getDefaultFixedFontSize: size(13),
+      setDefaultFixedFontSize: resolved(undefined),
+      clearDefaultFixedFontSize: resolved(undefined),
+      getMinimumFontSize: size(0),
+      setMinimumFontSize: resolved(undefined),
+      clearMinimumFontSize: resolved(undefined),
+      ...quietEvents("onFontChanged", "onDefaultFontSizeChanged", "onDefaultFixedFontSizeChanged", "onMinimumFontSizeChanged"),
+    });
+  }
+  if (missing("privacy")) {
+    // Every setting reads as off and can't be changed (like one a policy controls).
+    const setting = (value: unknown) => ({ get: resolved({ value, levelOfControl: "not_controllable" }), set: resolved(undefined), clear: resolved(undefined), onChange: localEv() });
+    const group = (values: Record<string, unknown>) => new Proxy({} as Record<string, unknown>, { get: (t, k) => (typeof k === "string" ? (t[k] ??= setting(values[k] ?? false)) : undefined) });
+    defineApi("privacy", {
+      network: group({ webRTCIPHandlingPolicy: "default" }),
+      services: group({}),
+      websites: group({ thirdPartyCookiesAllowed: true, hyperlinkAuditingEnabled: true, referrersEnabled: true, protectedContentEnabled: true }),
+      IPHandlingPolicy: { DEFAULT: "default", DEFAULT_PUBLIC_AND_PRIVATE_INTERFACES: "default_public_and_private_interfaces", DEFAULT_PUBLIC_INTERFACE_ONLY: "default_public_interface_only", DISABLE_NON_PROXIED_UDP: "disable_non_proxied_udp" },
+    });
+  }
+  if (missing("identity")) {
+    defineApi("identity", {
+      getRedirectURL: (path?: string) => `https://${info.id}.chromiumapp.org/${String(path ?? "").replace(/^\/+/, "")}`,
+      launchWebAuthFlow: unavailable("identity.launchWebAuthFlow"),
+      getAuthToken: unavailable("identity.getAuthToken"),
+      removeCachedAuthToken: resolved(undefined),
+      clearAllCachedAuthTokens: resolved(undefined),
+      getProfileUserInfo: resolved({ email: "", id: "" }),
+      getAccounts: resolved([]),
+      ...quietEvents("onSignInChanged"),
+    });
+  }
+  if (missing("downloads")) {
+    defineApi("downloads", {
+      download: api("downloads.download", ([o]) => [{ url: String(o?.url ?? "") }]),
+      search: resolved([]),
+      pause: resolved(undefined),
+      resume: resolved(undefined),
+      cancel: resolved(undefined),
+      erase: resolved([]),
+      getFileIcon: resolved(undefined),
+      open: unavailable("downloads.open"),
+      show: unavailable("downloads.show"),
+      showDefaultFolder: () => {},
+      removeFile: unavailable("downloads.removeFile"),
+      acceptDanger: unavailable("downloads.acceptDanger"),
+      setShelfEnabled: () => {},
+      setUiOptions: resolved(undefined),
+      ...quietEvents("onCreated", "onErased", "onChanged", "onDeterminingFilename"),
+    });
+  }
+  if (missing("search")) defineApi("search", { query: api("search.query", ([q]) => [q ?? {}]) });
+  if (["system.cpu", "system.memory", "system.display", "system.storage"].some(has)) {
+    const system: any = c.system ?? defineApi("system", {});
+    if (has("system.cpu") && !system.cpu) defineOn(system, "cpu", { getInfo: api("system.cpu") });
+    if (has("system.memory") && !system.memory) defineOn(system, "memory", { getInfo: api("system.memory") });
+    if (has("system.display") && !system.display) {
+      defineOn(system, "display", { getInfo: api("system.display", () => []), getDisplayLayout: resolved([]), ...quietEvents("onDisplayChanged") });
+    }
+    if (has("system.storage") && !system.storage) {
+      defineOn(system, "storage", { getInfo: resolved([]), ejectDevice: unavailable("system.storage.ejectDevice"), getAvailableCapacity: unavailable("system.storage.getAvailableCapacity"), ...quietEvents("onAttached", "onDetached") });
+    }
+  }
+  if (missing("tabCapture")) {
+    defineApi("tabCapture", {
+      capture: (_options: unknown, cb?: (stream: null) => void) => withLastError("tabCapture isn't available in Rune Browser", () => cb?.(null)),
+      getMediaStreamId: unavailable("tabCapture.getMediaStreamId"),
+      getCapturedTabs: resolved([]),
+      ...quietEvents("onStatusChanged"),
+    });
+  }
+  if (missing("desktopCapture")) {
+    // Like the user cancelling the picker.
+    defineApi("desktopCapture", {
+      chooseDesktopMedia: (...args: any[]) => {
+        const cb = args.find((a) => typeof a === "function");
+        queueMicrotask(() => cb?.("", { canRequestAudioTrack: false }));
+        return 0;
+      },
+      cancelChooseDesktopMedia: () => {},
+    });
+  }
+  if (missing("gcm")) {
+    defineApi("gcm", { MAX_MESSAGE_SIZE: 4096, register: unavailable("gcm.register"), unregister: resolved(undefined), send: unavailable("gcm.send"), ...quietEvents("onMessage", "onMessagesDeleted", "onSendError") });
+  }
+  // Anything else it asks for that isn't there: functions fail, events never come.
+  for (const name of permissions) {
+    if (PERMISSIONS_WITHOUT_API.has(name) || name.includes(".") || !missing(name)) continue;
+    defineApi(
+      name,
+      new Proxy({} as Record<string, unknown>, {
+        get: (t, k) => {
+          if (typeof k !== "string" || k === "then") return undefined;
+          if (!(k in t)) t[k] = /^on[A-Z]/.test(k) ? localEv() : /^[A-Z_]+$/.test(k) ? undefined : unavailable(`${name}.${k}`);
+          return t[k];
+        },
+      }),
+    );
+  }
+
+  // chrome.extension: what Chrome still has of it.
+  if (c.extension) {
+    const ext = c.extension;
+    if (typeof ext.isAllowedIncognitoAccess !== "function") define(ext, "isAllowedIncognitoAccess", resolved(false));
+    if (typeof ext.isAllowedFileSchemeAccess !== "function") define(ext, "isAllowedFileSchemeAccess", resolved(false));
+    if (typeof ext.setUpdateUrlData !== "function") define(ext, "setUpdateUrlData", () => {});
+    if (typeof ext.getViews !== "function") define(ext, "getViews", () => []);
+  }
+
+  // storage.managed: what an administrator set (policies): nothing.
+  if (c.storage) {
+    defineOn(c.storage, "managed", {
+      get: resolved({}),
+      getKeys: resolved([]),
+      getBytesInUse: resolved(0),
+      set: unavailable("storage.managed.set"),
+      remove: unavailable("storage.managed.remove"),
+      clear: unavailable("storage.managed.clear"),
+      onChanged: localEv(),
+    });
+  }
+
+  // --- Blocked permissions ---------------------------------------------------------------------------
+  // What the user blocked in its details: those namespaces' calls fail and
+  // their events don't come. Rune Browser's own side checks too (tabs' URLs,
+  // native messaging…).
+
+  const blockedMessage = (permission: string) => `The '${permission}' permission is blocked for this extension in Rune Browser.`;
+  const blockedOf = (perms: string[]) => (perms.every((p) => denied.has(p)) ? perms[0]! : null);
+  const gated = new WeakSet<object>();
+  const listenerWrappers = new WeakMap<(...args: any[]) => any, (...args: any[]) => any>();
+
+  const gateFunction = (fn: (...args: any[]) => any, self: any, perms: string[]) =>
+    function (this: any, ...args: any[]) {
+      const blocked = blockedOf(perms);
+      if (!blocked) return fn.apply(this ?? self, args);
+      const cb = typeof args[args.length - 1] === "function" ? args[args.length - 1] : null;
+      if (cb) return void queueMicrotask(() => withLastError(blockedMessage(blocked), () => cb()));
+      return Promise.reject(new Error(blockedMessage(blocked)));
+    };
+
+  const gateEvent = (event: any, perms: string[]) => {
+    if (gated.has(event)) return;
+    gated.add(event);
+    const add = event.addListener?.bind(event);
+    const remove = event.removeListener?.bind(event);
+    const hasOne = event.hasListener?.bind(event);
+    if (!add) return;
+    const wrap = (fn: (...args: any[]) => any) => {
+      if (typeof fn !== "function") return fn;
+      let w = listenerWrappers.get(fn);
+      if (!w) {
+        w = function (this: any, ...a: any[]) {
+          return blockedOf(perms) ? undefined : fn.apply(this, a);
+        };
+        listenerWrappers.set(fn, w);
+      }
+      return w;
+    };
+    defineOn(event, "addListener", (fn: (...args: any[]) => any, ...rest: any[]) => add(wrap(fn), ...rest));
+    if (remove) defineOn(event, "removeListener", (fn: (...args: any[]) => any) => remove(listenerWrappers.get(fn) ?? fn));
+    if (hasOne) defineOn(event, "hasListener", (fn: (...args: any[]) => any) => hasOne(listenerWrappers.get(fn) ?? fn));
+  };
+
+  const gate = (target: any, perms: string[]) => {
+    if (!target || typeof target !== "object" || gated.has(target)) return;
+    gated.add(target);
+    const keys = new Set<string>();
+    for (let o = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) for (const k of Object.getOwnPropertyNames(o)) keys.add(k);
+    for (const key of keys) {
+      if (key === "constructor" || /^[A-Z]/.test(key)) continue;
+      let value: any;
+      try {
+        value = target[key];
+      } catch {
+        continue;
+      }
+      if (typeof value === "function") defineOn(target, key, gateFunction(value, target, perms));
+      else if (value && typeof value === "object" && typeof value.addListener === "function") gateEvent(value, perms);
+      else if (value && typeof value === "object") gate(value, perms);
+    }
+  };
+
+  // Namespaces and the permissions that give them (any one of them will do).
+  const GATED: [string, string[]][] = [
+    ["storage", ["storage"]],
+    ["alarms", ["alarms"]],
+    ["scripting", ["scripting"]],
+    ["offscreen", ["offscreen"]],
+    ["declarativeNetRequest", ["declarativeNetRequest", "declarativeNetRequestWithHostAccess"]],
+    ["webRequest", ["webRequest"]],
+    ["webNavigation", ["webNavigation"]],
+    ["cookies", ["cookies"]],
+    ["notifications", ["notifications"]],
+    ["idle", ["idle"]],
+    ["contextMenus", ["contextMenus", "menus"]],
+    ["menus", ["menus", "contextMenus"]],
+    ["sidePanel", ["sidePanel"]],
+    ["bookmarks", ["bookmarks"]],
+    ["history", ["history"]],
+    ["sessions", ["sessions"]],
+    ["topSites", ["topSites"]],
+    ["tabGroups", ["tabGroups"]],
+    ["fontSettings", ["fontSettings"]],
+    ["privacy", ["privacy"]],
+    ["identity", ["identity"]],
+    ["downloads", ["downloads"]],
+    ["search", ["search"]],
+    ["tabCapture", ["tabCapture"]],
+    ["desktopCapture", ["desktopCapture"]],
+    ["gcm", ["gcm"]],
+  ];
   const b: any = g.browser;
+  for (const [name, perms] of GATED) {
+    const asked = perms.filter(has);
+    if (!asked.length) continue;
+    for (const root of b && b !== c ? [c, b] : [c]) {
+      try {
+        gate(root[name], asked);
+      } catch {
+        // leave it as it is
+      }
+    }
+  }
+
   if (b && b !== c) {
     for (const [target, name, value] of defined) {
-      const key = target === c ? null : ["runtime", "storage", "declarativeNetRequest"].find((k) => c[k] === target);
+      const key = target === c ? null : (apiNames.get(target) ?? ["runtime", "storage", "declarativeNetRequest", "extension"].find((k) => c[k] === target));
       const other = key === null ? b : key ? b[key] : undefined;
       if (other && other !== target) defineOn(other, name, value);
     }

@@ -3,16 +3,21 @@
 // Unpacked ones stay where they are. What a manifest says (localized name,
 // icons, options page…) is read from disk and cached.
 import { app } from "electron";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { extname, join, normalize, sep } from "node:path";
 import {
   actionOf,
+  extensionIdFromHash,
   hostPermissionsOf,
+  idSourceForPath,
   iconPath,
   isExtensionId,
   localeCandidates,
   localize,
+  optionalPermissionsOf,
   optionsPageOf,
+  permissionAbout,
   permissionsOf,
   suggestedKey,
   unsupportedPermissions,
@@ -34,8 +39,10 @@ export interface InstalledExtension {
   installedAt: number;
   /** Keyboard shortcuts changed from the manifest's (command → "Ctrl+Shift+Y"). */
   commands?: Record<string, string>;
-  /** Optional permissions and origins the user granted (chrome.permissions.request). */
+  /** Optional permissions and origins the user granted (chrome.permissions.request, or in its details). */
   granted?: { permissions: string[]; origins: string[] };
+  /** Permissions it asks for that the user blocked (in its details). */
+  denied?: string[];
   /** chrome.storage.local data imported from another browser, copied into each workspace before its first start. */
   seed?: string;
 }
@@ -205,6 +212,12 @@ export class Registry {
   }
 }
 
+/** Chromium's ID for an extension without a key: from the folder it's loaded from. */
+export function idForPath(path: string) {
+  const { text, encoding } = idSourceForPath(path, platform);
+  return extensionIdFromHash(createHash("sha256").update(Buffer.from(text, encoding)).digest("hex"));
+}
+
 export const platform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
 
 /** An extension's commands and their keys on this platform (the user's own, else the manifest's suggestion; "" if none). */
@@ -239,7 +252,12 @@ export function describe(entry: InstalledExtension, error: string | null, hasNat
     hasAction: !!actionOf(m),
     optionsUrl: options ? `chrome-extension://${entry.id}/${options.replace(/^\/+/, "")}` : null,
     unsupported: unsupportedPermissions(m),
-    permissions: permissionsOf(m).sort(),
+    permissions: [
+      ...permissionsOf(m).map((name) => ({ name, ...permissionAbout(name), optional: false, allowed: !entry.denied?.includes(name) })),
+      ...optionalPermissionsOf(m)
+        .filter((name) => !permissionsOf(m).includes(name))
+        .map((name) => ({ name, ...permissionAbout(name), optional: true, allowed: !!entry.granted?.permissions.includes(name) && !entry.denied?.includes(name) })),
+    ].sort((a, b) => a.name.localeCompare(b.name)),
     // Its host permissions and where its content scripts run.
     siteAccess: [
       ...new Set([

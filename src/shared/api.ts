@@ -96,6 +96,8 @@ export interface RuneBridge {
     /** Asks for a folder; null when none was picked. */
     loadUnpacked: () => Promise<InstallResult | null>;
     setEnabled: (id: string, enabled: boolean) => Promise<void>;
+    /** Allows or blocks one of its permissions (the extension restarts with it). */
+    setPermission: (id: string, permission: string, allowed: boolean) => Promise<void>;
     setPinned: (id: string, pinned: boolean) => Promise<void>;
     remove: (id: string) => Promise<void>;
     setAutoUpdate: (enabled: boolean) => Promise<void>;

@@ -440,9 +440,11 @@ An imported extension gets `runtime.onInstalled` with `reason: "update"`, so it 
 - toolbar buttons (`action`, `browserAction`, `pageAction`: badges, popups, per-tab state);
 - `tabs`/`windows` (tabs open, select and close through Rune Browser's tab list);
 - `commands`, `contextMenus`, `permissions` (optional ones ask first);
-- `storage.sync`, `webNavigation`, `cookies`, `notifications`, `idle`, `management`;
+- `storage.sync`, `webNavigation`, `cookies`, `notifications`, `idle`, `management`, `downloads.download`, `search`, `system.cpu`/`memory`/`display`;
 - `runtime.onInstalled`/`onStartup`/`openOptionsPage`;
 - native messaging.
+
+Chromium puts its own namespaces back on `chrome` whenever bindings update (another extension loading does that), so the shim extends the namespaces Electron has instead of replacing them.
 
 Stopped service workers are started again for the events they listened to. Electron doesn't enable static `declarativeNetRequest` rulesets by itself, so the shim enables the manifest's defaults on install and update.
 
@@ -450,7 +452,8 @@ Stopped service workers are started again for the events they listened to. Elect
 
 **Caveats:**
 
-- Not provided: `userScripts`, `privacy`, `sidePanel`, `tabGroups`, `debugger`. Import and Settings show what an extension asks for that's missing.
+- **Limited permissions** (`shared/extensions.ts`, `permissionAbout`): what Rune Browser doesn't have gets a stand-in, so the extension keeps working: `history`, `bookmarks`, `sessions`, `tabGroups`, `topSites` are empty, `privacy` and `fontSettings` read as defaults and change nothing, `identity`, `tabCapture`, `gcm` and anything unknown fail with `lastError`, `desktopCapture` acts cancelled. A side panel (`sidePanel`) shows as the popup of its toolbar button, or in a tab. `userScripts` stays missing, like in Chrome with "Allow user scripts" off. Import and the extension's details say what's different for each.
+- **Allowing and blocking permissions:** an extension's details list every permission it asks for with a switch. Blocking one restarts the extension; its calls then fail (in the shim and in the main process) and its events don't come. Optional permissions are granted or taken back there too.
 - `chrome.storage.sync` data isn't imported (Chrome keeps it in a LevelDB that Rune Browser doesn't parse).
 - Settings are imported into each workspace once, when the extension first loads there; later changes stay per workspace.
 

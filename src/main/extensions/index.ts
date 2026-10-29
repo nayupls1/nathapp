@@ -19,6 +19,8 @@ import {
   isExtensionId,
   localize,
   networkRulesToDnr,
+  optionalPermissionsOf,
+  permissionsOf,
   parseShortcut,
   shortcutMatches,
   webStoreId,
@@ -35,7 +37,7 @@ import { builtinExtensionDir } from "./builtin";
 import { detectBrowsers, importExtensions, platform, storageFolders } from "./browsers";
 import { Contexts, dispatch, ExtensionState, STATE_FOLDER, stateFile, workerStatus, type ActionState } from "./host";
 import { hasHostsFor } from "./native";
-import { commandsOf as registryCommandsOf, describe, extensionsDir, forgetIcons, imageDataUrl, readManifest, Registry, type InstalledExtension } from "./registry";
+import { commandsOf as registryCommandsOf, describe, extensionsDir, forgetIcons, idForPath, imageDataUrl, readManifest, Registry, type InstalledExtension } from "./registry";
 import { checkUpdates, downloadFromWebStore, downloadUpdate, WEB_STORE_UPDATE_URL } from "./webstore";
 
 export interface ExtensionsOptions {
@@ -49,8 +51,8 @@ const UPDATE_INTERVAL = 5 * 60 * 60 * 1000;
 
 /** Chromium's ID for an extension folder: from its key, or else from the path. */
 function idForDir(dir: string, key: unknown) {
-  const source = typeof key === "string" && key ? Buffer.from(key, "base64") : Buffer.from(dir);
-  return extensionIdFromHash(createHash("sha256").update(source).digest("hex"));
+  if (typeof key !== "string" || !key) return idForPath(dir);
+  return extensionIdFromHash(createHash("sha256").update(Buffer.from(key, "base64")).digest("hex"));
 }
 
 export function setupExtensions(options: ExtensionsOptions) {
@@ -139,7 +141,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     window: getWindow,
     tabs: tabsOf,
     active: activeOf,
-    hasActiveTab: (s, id, tabId) => grants.get(grantKey(s, id))?.has(tabId) ?? false,
+    hasActiveTab: (s, id, tabId) => !registry.get(id)?.denied?.includes("activeTab") && (grants.get(grantKey(s, id))?.has(tabId) ?? false),
     grantActiveTab,
     requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) => ask<number | null>("rune:extensions-tab", request, null, 15_000),
     requestPermission: (s, id, permissions, origins) => {
@@ -151,7 +153,7 @@ export function setupExtensions(options: ExtensionsOptions) {
       }
       return ask<boolean>("rune:extensions-permission", { extensionId: id, name, permissions, origins }, false, 5 * 60_000);
     },
-    openPopup: (s, id) => openPopup(s, id),
+    openPopup: (s, id, url) => openPopup(s, id, url),
     actionsChanged,
     commandsOf,
     // Electron's own user agent, without Rune Browser's name.
@@ -160,7 +162,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     reload: (s, id) => {
       const entry = registry.get(id);
       if (!entry) return;
-      s.extensions.removeExtension(id);
+      void unloadFrom(s, id);
       void loadInto(s, entry);
     },
   });
@@ -219,7 +221,15 @@ export function setupExtensions(options: ExtensionsOptions) {
   function hookWorkers(s: Session) {
     const hooked = new WeakSet<Electron.ServiceWorkerMain>();
     const byVersion = new Map<number, Electron.ServiceWorkerMain>();
-    s.serviceWorkers.on("running-status-changed", ({ versionId, runningStatus }) => {
+    s.serviceWorkers.on("running-status-changed", (details) => {
+      // A worker that's gone by now (they come and go quickly) is no reason to take the app down.
+      try {
+        onStatus(details);
+      } catch (err) {
+        console.warn("Following an extension's service worker failed:", err);
+      }
+    });
+    function onStatus({ versionId, runningStatus }: { versionId: number; runningStatus: string }) {
       const key = `w:${stateKey(s, "")}:${versionId}`;
       const known = byVersion.get(versionId) ?? s.serviceWorkers.getWorkerFromVersionID(versionId);
       if (known) workerStatus(known, runningStatus);
@@ -254,7 +264,7 @@ export function setupExtensions(options: ExtensionsOptions) {
           });
         return apis.handle(ctx, method, Array.isArray(args) ? args : []);
       });
-    });
+    }
   }
 
   // --- Loading ---------------------------------------------------------------------------------------
@@ -298,7 +308,22 @@ export function setupExtensions(options: ExtensionsOptions) {
     st.stored.seeded = true;
   }
 
-  async function loadInto(s: Session, entry: InstalledExtension) {
+  // Loading and unloading an extension in a session happen one after the other:
+  // Electron mustn't load an extension that's still loading or being removed
+  // (importing or updating while the workspace starts, toggling it quickly…).
+  const queues = new Map<string, Promise<void>>();
+  function queued(key: string, fn: () => Promise<void> | void) {
+    const next = (queues.get(key) ?? Promise.resolve()).then(fn).catch((err) => console.error("Loading an extension failed:", err));
+    queues.set(key, next);
+    void next.then(() => queues.get(key) === next && queues.delete(key));
+    return next;
+  }
+
+  function loadInto(s: Session, entry: InstalledExtension) {
+    return queued(stateKey(s, entry.id), () => load(s, entry));
+  }
+
+  async function load(s: Session, entry: InstalledExtension) {
     if (!entry.enabled || loaded(s, entry.id)) return;
     const key = stateKey(s, entry.id);
     let st = states.get(key);
@@ -359,11 +384,13 @@ export function setupExtensions(options: ExtensionsOptions) {
   }
 
   function unloadFrom(s: Session, id: string) {
-    if (loaded(s, id)) s.extensions.removeExtension(id);
-    contexts.removeWhere((c) => c.session === s && c.extensionId === id);
-    const st = state(s, id);
-    if (st) st.tabActions.clear();
-    actionsChanged(s);
+    return queued(stateKey(s, id), () => {
+      if (loaded(s, id)) s.extensions.removeExtension(id);
+      contexts.removeWhere((c) => c.session === s && c.extensionId === id);
+      const st = state(s, id);
+      if (st) st.tabActions.clear();
+      actionsChanged(s);
+    });
   }
 
   /** Runs extensions in a web tab session (once). Resolves when they're loaded. */
@@ -390,7 +417,7 @@ export function setupExtensions(options: ExtensionsOptions) {
     if (!ready) return;
     attached.delete(s);
     await ready.catch(() => {});
-    for (const e of s.extensions.getAllExtensions()) unloadFrom(s, e.id);
+    await Promise.all(s.extensions.getAllExtensions().map((e) => unloadFrom(s, e.id)));
     const prefix = stateKey(s, "");
     for (const key of [...states.keys()]) if (key.startsWith(prefix)) states.delete(key);
   }
@@ -427,6 +454,12 @@ export function setupExtensions(options: ExtensionsOptions) {
 
   const cssColor = (c: [number, number, number, number] | null) => (c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${(c[3] / 255).toFixed(3)})` : null);
 
+  /** What its toolbar button opens: its popup, or its side panel when it asked for that. */
+  function popupOf(s: Session, id: string, a: ActionState) {
+    if (a.popup) return a.popup;
+    return state(s, id)?.stored.sidePanel?.openOnAction ? (apis.sidePanelUrl(s, id) ?? "") : "";
+  }
+
   function actionsFor(workspaceId: string, tabId: number | null): ExtensionAction[] {
     const s = options.webSession(workspaceId);
     const out: ExtensionAction[] = [];
@@ -447,17 +480,18 @@ export function setupExtensions(options: ExtensionsOptions) {
         badge: a.badge,
         badgeColor: a.badgeColor[3] === 0 ? "" : cssColor(a.badgeColor)!,
         badgeTextColor: cssColor(a.badgeTextColor),
-        popup: a.popup || null,
+        popup: popupOf(s, entry.id, a) || null,
         enabled: a.enabled,
       });
     }
     return out;
   }
 
-  function openPopup(s: Session, id: string) {
+  function openPopup(s: Session, id: string, url?: string) {
     const workspaceId = options.workspaceOf(s);
     if (!workspaceId) return false;
-    const popup = state(s, id)?.actionFor(activeOf(workspaceId)).popup;
+    const a = state(s, id)?.actionFor(activeOf(workspaceId));
+    const popup = url ?? (a ? popupOf(s, id, a) : "");
     if (!popup) return false;
     send("rune:extensions-popup", { workspaceId, extensionId: id, url: popup });
     return true;
@@ -478,7 +512,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     grantActiveTab(s, id, tabId);
     const a = state(s, id)?.actionFor(tabId);
     if (!a?.enabled) return null;
-    if (a.popup) return a.popup;
+    const popup = popupOf(s, id, a);
+    if (popup) return popup;
     void dispatch(contexts, state(s, id), s, id, "action.onClicked", [activeTabObject(s, id)]);
     return null;
   }
@@ -556,8 +591,7 @@ export function setupExtensions(options: ExtensionsOptions) {
   function allowsPermission(s: Session, permission: string, url: string | undefined) {
     const id = extensionIdOf(url);
     if (!id || !loaded(s, id)) return false;
-    const perms = (s.extensions.getExtension(id)!.manifest as { permissions?: unknown[] }).permissions ?? [];
-    const asks = (p: string) => perms.includes(p);
+    const asks = (p: string) => apis.hasPermission(s, id, p);
     if (permission === "clipboard-read") return asks("clipboardRead");
     if (permission === "notifications") return asks("notifications");
     if (permission === "persistent-storage") return asks("unlimitedStorage");
@@ -657,8 +691,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     return [...dirs];
   }
 
-  function remove(id: string) {
-    for (const s of sessions()) unloadFrom(s, id);
+  async function remove(id: string) {
+    await Promise.all(sessions().map((s) => unloadFrom(s, id)));
     registry.remove(id);
     for (const dir of sessionFolders()) {
       for (const folder of storageFolders(id)) rmSync(join(dir, folder), { recursive: true, force: true });
@@ -669,6 +703,32 @@ export function setupExtensions(options: ExtensionsOptions) {
     apis.forgetSync(id);
     errors.delete(id);
     rebind();
+    listChanged();
+  }
+
+  /** Allows or blocks one of its permissions: optional ones are granted or taken back, required ones blocked or unblocked. */
+  function setPermission(id: string, permission: string, allowed: boolean) {
+    const entry = registry.get(id);
+    if (!entry) return;
+    let manifest;
+    try {
+      manifest = readManifest(entry.path).manifest;
+    } catch {
+      return;
+    }
+    const required = permissionsOf(manifest).includes(permission);
+    if (!required && !optionalPermissionsOf(manifest).includes(permission)) return;
+    const denied = new Set(entry.denied ?? []);
+    if (allowed) denied.delete(permission);
+    else denied.add(permission);
+    const granted = entry.granted ?? { permissions: [], origins: [] };
+    const grantedNow = required ? granted.permissions : allowed ? [...new Set([...granted.permissions, permission])] : granted.permissions.filter((p) => p !== permission);
+    registry.update(id, { denied: [...denied], granted: { ...granted, permissions: grantedNow } });
+    // It starts over with what it may use now (its pages and worker learn it as they start).
+    for (const s of sessions()) {
+      void unloadFrom(s, id);
+      void loadInto(s, entry);
+    }
     listChanged();
   }
 
@@ -765,7 +825,10 @@ export function setupExtensions(options: ExtensionsOptions) {
     listChanged();
     for (const s of sessions()) void dispatch(contexts, state(s, id), s, id, "action.onUserSettingsChanged", [{ isOnToolbar: pinned === true }]);
   });
-  handle("rune:extensions-remove", (id: unknown) => isExtensionId(id) && remove(id));
+  handle("rune:extensions-remove", (id: unknown) => (isExtensionId(id) ? remove(id) : undefined));
+  handle("rune:extensions-set-permission", (id: unknown, permission: unknown, allowed: unknown) => {
+    if (isExtensionId(id) && typeof permission === "string") setPermission(id, permission, allowed === true);
+  });
   handle("rune:extensions-set-auto-update", (value: unknown) => {
     registry.autoUpdate = value === true;
     listChanged();

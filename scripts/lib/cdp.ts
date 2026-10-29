@@ -38,7 +38,9 @@ export class Page {
           url: string;
           webSocketDebuggerUrl: string;
         }[];
-        const target = targets.find((t) => t.type === "page" && !t.url.startsWith("devtools://"));
+        // Extensions' offscreen documents are pages too: the app's own comes first.
+        const pages = targets.filter((t) => t.type === "page" && !t.url.startsWith("devtools://") && !t.url.startsWith("chrome-extension://"));
+        const target = pages.find((t) => t.url.startsWith("app://")) ?? pages[0];
         if (target) {
           const ws = new WebSocket(target.webSocketDebuggerUrl);
           await new Promise((resolve, reject) => {

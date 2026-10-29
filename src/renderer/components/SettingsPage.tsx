@@ -994,7 +994,9 @@ function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetai
             <span {...stylex.attrs(styles.extBad)}>{info().error}</span>
           </Show>
           <Show when={info().unsupported.length}>
-            <span {...stylex.attrs(styles.extWarn)}>Parts may not work: {info().unsupported.join(", ")}</span>
+            <button type="button" onClick={props.onDetails} title="What's different, in its details" {...stylex.attrs(styles.extLimited)} data-extension-limited>
+              Limited in Rune Browser: {info().unsupported.join(", ")}
+            </button>
           </Show>
         </div>
       </div>
@@ -1047,18 +1049,34 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
         <Row label="Source" description={info().source.kind === "unpacked" ? info().path : info().updates ? "Updated from the Chrome Web Store" : undefined}>
           <span>{extensionSource(info())}</span>
         </Row>
-        <Row label="Permissions" description={info().permissions.length ? undefined : "None"} wide={info().permissions.length > 0}>
+        <Row
+          label="Permissions"
+          description={info().permissions.length ? "What it may use. Changing one restarts the extension." : "None"}
+          wide={info().permissions.length > 0}
+        >
           <Show when={info().permissions.length}>
-            <div {...stylex.attrs(styles.extChips)}>
+            <div {...stylex.attrs(styles.extPermissions)} data-extension-permissions>
               <For each={info().permissions}>
-                {(p) => {
-                  const missing = () => info().unsupported.includes(p);
-                  return (
-                    <span {...stylex.attrs(styles.extChip, missing() && styles.extChipWarn)} title={missing() ? "Not available in Rune Browser" : undefined}>
-                      {p}
-                    </span>
-                  );
-                }}
+                {(p) => (
+                  <div {...stylex.attrs(styles.extPermission)} data-extension-permission={p.name}>
+                    <div {...stylex.attrs(styles.extPermissionText)}>
+                      <span {...stylex.attrs(styles.extPermissionName)}>
+                        {p.description}
+                        <span {...stylex.attrs(styles.extChip, styles.mono)}>{p.name}</span>
+                        <Show when={p.optional}>
+                          <span {...stylex.attrs(styles.extChip)}>Optional</span>
+                        </Show>
+                      </span>
+                      <Show when={p.limited}>
+                        <span {...stylex.attrs(styles.extPermissionNote)} data-permission-limited>
+                          <Icon name="info" size={13} {...stylex.attrs(styles.extNoteIcon)} />
+                          {p.limited}
+                        </span>
+                      </Show>
+                    </div>
+                    <Toggle checked={p.allowed} onChange={(on) => void ext.setPermission(info().id, p.name, on)} />
+                  </div>
+                )}
               </For>
             </div>
           </Show>
@@ -1657,11 +1675,26 @@ const styles = stylex.create({
   },
   extChips: { display: "flex", flexWrap: "wrap", gap: 6 },
   extChip: { paddingBlock: 2, paddingInline: 8, borderRadius: radius.full, backgroundColor: colors.surfaceHover, fontSize: font.xs },
-  extChipWarn: { color: colors.warning },
+  extPermissions: { display: "flex", flexDirection: "column", gap: space.sm, width: "100%" },
+  extPermission: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md },
+  extPermissionText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
+  extPermissionName: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, fontSize: font.sm },
+  extPermissionNote: { display: "flex", alignItems: "flex-start", gap: 4, color: colors.muted, fontSize: font.xs },
+  extNoteIcon: { flexShrink: 0, marginTop: 1 },
+  extLimited: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: colors.muted,
+    fontFamily: "inherit",
+    fontSize: font.xs,
+    textAlign: "left",
+    cursor: "pointer",
+    textDecoration: { default: "none", ":hover": "underline" },
+  },
   extShortcuts: { display: "flex", flexDirection: "column", gap: 6, width: "100%" },
   extShortcut: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md, fontSize: font.sm },
   extIcon: { flexShrink: 0, marginTop: 2, objectFit: "contain" },
-  extWarn: { color: colors.warning, fontSize: font.xs },
   extBad: { color: colors.danger, fontSize: font.xs, overflowWrap: "anywhere" },
   plainButton: { color: { default: colors.muted, ":hover": colors.text } },
   iconButton: {

@@ -1597,6 +1597,16 @@ try {
     const details = await page!.eval<string>(`document.querySelector('[data-extension-details-page="${id}"]').innerText`);
     if (!details.includes("Permissions") || !details.includes("Site access") || !details.includes(id) || !/Bump\s*Alt\+Shift\+U/.test(details)) throw new Error(`details: ${details.slice(0, 400)}`);
     await shot("extension-details.png");
+    // Every permission can be blocked; a limited one says what's different.
+    const permission = (name: string) => `[data-extension-details-page="${id}"] [data-extension-permission="${name}"]`;
+    const note = await page!.eval<string>(`document.querySelector('${permission("history")} [data-permission-limited]')?.textContent ?? ""`);
+    if (!note.includes("history")) throw new Error(`history permission note: ${note}`);
+    const allowed = (name: string) => `window.rune.extensions.list().then((r) => r.extensions.find((e) => e.id === "${id}").permissions.find((p) => p.name === "${name}").allowed)`;
+    await click(`${permission("history")} [role="switch"]`);
+    await page!.waitFor(`${allowed("history")}.then((a) => a === false)`, { label: "history blocked" });
+    await page!.waitFor(`document.querySelector('${permission("history")} [role="switch"]').getAttribute("aria-checked") === "false"`, { label: "switch off" });
+    await click(`${permission("history")} [role="switch"]`);
+    await page!.waitFor(`${allowed("history")}.then((a) => a === true)`, { label: "history allowed again" });
     await click(`[data-extension-details-page="${id}"] button`, "All extensions");
     await page!.waitFor(`!!document.querySelector('[data-extension="${id}"]')`, { label: "back to the list" });
 

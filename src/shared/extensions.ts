@@ -27,10 +27,10 @@ export interface ExtensionInfo {
   hasAction: boolean;
   /** Its options page, opened in a web tab. */
   optionsUrl: string | null;
-  /** Permissions it asks for that Rune Browser doesn't implement: those features may not work. */
+  /** Permissions it asks for that are limited in Rune Browser (see `permissionAbout`). */
   unsupported: string[];
   /** What it asks for (Details on the extensions page): API permissions, and the sites it can read and change. */
-  permissions: string[];
+  permissions: ExtensionPermission[];
   siteAccess: string[];
   /** Its commands that have a key on this platform (`_execute_action` opens its popup). */
   shortcuts: { name: string; description: string; shortcut: string }[];
@@ -40,6 +40,18 @@ export interface ExtensionInfo {
   updates: boolean;
   /** Didn't load, and why. */
   error: string | null;
+}
+
+/** One of an extension's API permissions, and whether it has it. */
+export interface ExtensionPermission {
+  name: string;
+  description: string;
+  /** What's different in Rune Browser, or null. */
+  limited: string | null;
+  /** Optional: the extension asks for it when it needs it (chrome.permissions.request). */
+  optional: boolean;
+  /** Required ones are allowed unless blocked; optional ones once granted. */
+  allowed: boolean;
 }
 
 /** The toolbar button of an extension, for one tab. */
@@ -105,9 +117,9 @@ export interface ExtensionTabs {
   showing: number | null;
 }
 
-/** An extension wants a tab opened (chrome.tabs.create, its options page…), selected or closed. */
+/** An extension wants a tab opened (chrome.tabs.create, its options page, `search` with the search engine…), selected or closed. */
 export type ExtensionTabRequest =
-  | { requestId: string; action: "open"; workspaceId: string; url: string; active: boolean }
+  | { requestId: string; action: "open"; workspaceId: string; url: string; active: boolean; search?: string }
   | { requestId: string; action: "select" | "close"; workspaceId: string; tabId: number };
 
 /** An extension asks for optional permissions (chrome.permissions.request). */
@@ -196,43 +208,118 @@ export function iconPath(icons: string | Record<string, string> | undefined, siz
 export const actionOf = (m: Manifest) => m.action ?? m.browser_action ?? m.page_action;
 export const optionsPageOf = (m: Manifest) => m.options_ui?.page ?? m.options_page ?? null;
 
-/** Permissions Rune Browser provides, natively in Electron or through its own shims. */
-const SUPPORTED_PERMISSIONS = new Set([
+/** What a permission lets an extension do, and what's different about it in Rune Browser (null: works like in Chrome). */
+export interface PermissionAbout {
+  description: string;
+  limited: string | null;
+}
+
+const full = (description: string): PermissionAbout => ({ description, limited: null });
+const limited = (description: string, note: string): PermissionAbout => ({ description, limited: note });
+
+/** The permissions extensions ask for, natively in Electron, through Rune Browser's shims, or stand-ins that keep the extension working. */
+const PERMISSIONS: Record<string, PermissionAbout> = {
+  activeTab: full("Use the page you're on when you invoke it"),
+  alarms: full("Run tasks on a schedule"),
+  background: full("Keep running in the background"),
+  bookmarks: limited("Read and change your bookmarks", "Rune Browser has no bookmarks: it sees none and can't add any."),
+  browsingData: limited("Clear your browsing data", "Clearing browsing data isn't available to extensions: those requests fail."),
+  clipboardRead: full("Read what you copy"),
+  clipboardWrite: full("Copy to the clipboard"),
+  contentSettings: limited("Change site settings (cookies, camera…)", "Extensions can't change site settings in Rune Browser: those requests fail."),
+  contextMenus: full("Add items to the right-click menu"),
+  cookies: full("Read and change websites' cookies"),
+  debugger: limited("Debug pages", "Debugging pages isn't available to extensions: those requests fail."),
+  declarativeContent: limited("Show its button only on some pages", "Its button shows on every page."),
+  declarativeNetRequest: full("Block or change network requests"),
+  declarativeNetRequestFeedback: full("See which requests its rules matched"),
+  declarativeNetRequestWithHostAccess: full("Block or change network requests on the sites it can access"),
+  desktopCapture: limited("Record your screen", "Recording the screen isn't available: it's as if you cancelled."),
+  downloads: limited("Download files and manage downloads", "It can download files, but doesn't see the list of downloads."),
+  "downloads.open": limited("Open downloaded files", "Opening downloaded files isn't available to extensions."),
+  "downloads.shelf": limited("Hide the downloads bar", "There's no downloads bar to hide."),
+  "downloads.ui": limited("Hide the downloads bar", "There's no downloads bar to hide."),
+  favicon: limited("Show websites' icons", "Websites' icons don't show in its pages."),
+  fileSystem: limited("Use files (Chrome apps)", "Only for Chrome apps: extensions don't use it."),
+  fontSettings: limited("Change font settings", "Font settings aren't available: it sees no fonts and changes nothing."),
+  gcm: limited("Get push messages from its servers", "Push messages (Google Cloud Messaging) aren't available: it doesn't get them."),
+  geolocation: limited("Know your location", "Your location isn't shared with extensions."),
+  history: limited("Read and change your browsing history", "Rune Browser's history isn't shared with extensions: it sees an empty one."),
+  i18n: full("Show itself in your language"),
+  identity: limited("Sign in with your browser's Google account", "Rune Browser has no browser account: sign in on the extension's own page instead."),
+  "identity.email": limited("Know your browser account's email", "Rune Browser has no browser account: it sees no email."),
+  idle: full("Know when you're away from the computer"),
+  management: full("See your other extensions"),
+  menus: full("Add items to the right-click menu"),
+  nativeMessaging: full("Talk to programs installed on this computer"),
+  notifications: full("Show notifications"),
+  offscreen: full("Run hidden pages for its own work"),
+  pageCapture: limited("Save pages as MHTML", "Saving pages as MHTML isn't available: those requests fail."),
+  power: limited("Keep the computer awake", "Keeping the computer awake isn't available to extensions."),
+  privacy: limited("Change privacy settings", "Extensions can't change Rune Browser's privacy settings: it reads them as off, and its changes do nothing."),
+  proxy: limited("Change proxy settings", "Extensions can't change the proxy settings: those requests fail."),
+  scripting: full("Run scripts in pages"),
+  search: full("Search with your search engine"),
+  sessions: limited("See recently closed tabs and your other devices", "Recently closed tabs and other devices aren't shared with extensions: it sees none."),
+  sidePanel: limited("Show a side panel", "Its side panel opens as a popup from its button, or as a tab."),
+  storage: full("Store its settings and data"),
+  "system.cpu": full("See the processor"),
+  "system.display": full("See your displays"),
+  "system.memory": full("See the memory"),
+  "system.storage": limited("See storage devices", "It sees no storage devices."),
+  tabCapture: limited("Record a tab's video or sound", "Recording tabs isn't available: those requests fail."),
+  tabGroups: limited("Use tab groups", "Rune Browser has no tab groups: it sees none."),
+  tabs: full("See your tabs' addresses and titles"),
+  topSites: limited("See your most visited sites", "It sees no most visited sites."),
+  tts: limited("Read text aloud", "Text to speech isn't available to extensions: those requests fail."),
+  ttsEngine: limited("Provide a voice for reading text aloud", "Its voice isn't offered to pages."),
+  unlimitedStorage: full("Store lots of data"),
+  userScripts: limited("Run your user scripts on websites", "User scripts can't run, like in Chrome with “Allow user scripts” off. The rest of the extension works."),
+  webNavigation: full("Follow how tabs navigate"),
+  webRequest: full("See and change network requests"),
+  webRequestBlocking: full("Block network requests"),
+  webRequestAuthProvider: limited("Answer websites' sign-in prompts", "Answering websites' sign-in prompts (HTTP authentication) may not work."),
+};
+
+/** Permissions that only allow something (no chrome.* namespace of their own). */
+export const PERMISSIONS_WITHOUT_API = new Set([
   "activeTab",
-  "alarms",
   "background",
   "clipboardRead",
   "clipboardWrite",
-  "contextMenus",
-  "cookies",
-  "declarativeNetRequest",
   "declarativeNetRequestFeedback",
   "declarativeNetRequestWithHostAccess",
-  "i18n",
-  "idle",
-  "management",
-  "menus",
-  "nativeMessaging",
-  "notifications",
-  "offscreen",
-  "scripting",
-  "storage",
-  "tabs",
+  "downloads.open",
+  "downloads.shelf",
+  "downloads.ui",
+  "favicon",
+  "fileSystem",
+  "geolocation",
+  "identity.email",
   "unlimitedStorage",
-  "webNavigation",
-  "webRequest",
+  "webRequestAuthProvider",
   "webRequestBlocking",
 ]);
 
+export function permissionAbout(permission: string): PermissionAbout {
+  return (
+    PERMISSIONS[permission] ??
+    (permission.startsWith("fileSystem.")
+      ? PERMISSIONS.fileSystem!
+      : limited(permission, "Rune Browser doesn't have this: what the extension does with it fails, the rest of it keeps working."))
+  );
+}
+
 const isHostPattern = (p: string) => p === "<all_urls>" || p.includes("://");
 
-/** Permissions (required ones) that Rune Browser doesn't implement. */
+/** Permissions it asks for that are limited in Rune Browser (see `permissionAbout`). */
 export function unsupportedPermissions(m: Manifest) {
   const asked = (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
-  return asked.filter((p) => !SUPPORTED_PERMISSIONS.has(p)).sort();
+  return asked.filter((p) => permissionAbout(p).limited !== null).sort();
 }
 
 export const permissionsOf = (m: Manifest) => (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
+export const optionalPermissionsOf = (m: Manifest) => (m.optional_permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
 
 /** Host permissions: MV3's host_permissions, or MV2's permissions that are patterns. */
 export const hostPermissionsOf = (m: Manifest) =>
@@ -587,6 +674,17 @@ export function compareVersions(a: string, b: string) {
 /** The extension ID belonging to a public key (what Chrome derives from the manifest's `key`). */
 export function extensionIdFromHash(sha256Hex: string) {
   return [...sha256Hex.slice(0, 32)].map((c) => String.fromCharCode(97 + Number.parseInt(c, 16))).join("");
+}
+
+/**
+ * What Chromium hashes for the ID of an extension without a key: its folder's
+ * path, as the platform stores paths. On Windows that's UTF-16 with the drive
+ * letter upper-cased (UTF-8 bytes would give another ID, and the extension
+ * would load under an ID Rune Browser doesn't know).
+ */
+export function idSourceForPath(path: string, platform: ShortcutPlatform): { text: string; encoding: "utf8" | "utf16le" } {
+  if (platform !== "windows") return { text: path, encoding: "utf8" };
+  return { text: path.replace(/^([a-z]):/, (_all, drive: string) => `${drive.toUpperCase()}:`), encoding: "utf16le" };
 }
 
 /** A Chrome Web Store link or a bare ID → the ID. */
