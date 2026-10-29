@@ -12,7 +12,7 @@
     "url": "https://github.com/nayupls1/rune-browser.git"
   },
   "bugs": "https://github.com/nayupls1/rune-browser/issues",
-  "packageManager": "bun@1.4.3",
+  "packageManager": "bun@1.4.4",
   "private": true,
   "type": "module",
   "main": "dist/electron/main.cjs",
@@ -35,7 +35,7 @@
     "@electron/fuses": "1.8.0",
     "@stylexjs/stylex": "^0.19.1",
     "@stylexjs/unplugin": "^0.19.1",
-    "@types/bun": "^1.4.3",
+    "@types/bun": "^1.4.4",
     "effect": "4.0.5",
     "electron": "^44.7.2",
     "electron-builder": "^26.15.3",
