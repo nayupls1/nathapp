@@ -15,7 +15,11 @@ const receive = (next: UpdateInfo | null) => {
   const was = info()?.status;
   setInfo(next);
   if (next.status.state === "ready" && was?.state !== "ready" && !window.rune.offscreen) {
-    toast({ title: `Rune Browser ${next.status.version} is ready`, message: "It's installed when Rune Browser restarts (Settings → About).", kind: "success" });
+    toast({
+      title: `Rune Browser ${next.status.version} is ready`,
+      message: "It's installed when Rune Browser restarts (Settings → About).",
+      kind: "success",
+    });
   }
 };
 

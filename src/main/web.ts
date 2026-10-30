@@ -20,7 +20,14 @@ import {
   type MenuItemConstructorOptions,
   type WebContents,
 } from "electron";
-import { APP_PARTITION_PATTERN, DEFAULT_WORKSPACE, WEB_PARTITION, WEB_PARTITION_PATTERN, webPartition, type WebShortcut } from "../shared/api";
+import {
+  APP_PARTITION_PATTERN,
+  DEFAULT_WORKSPACE,
+  WEB_PARTITION,
+  WEB_PARTITION_PATTERN,
+  webPartition,
+  type WebShortcut,
+} from "../shared/api";
 import { setupExtensions } from "./extensions";
 import { setupDevtools } from "./devtools";
 import { setupNetwork } from "./network";
@@ -84,7 +91,8 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       const src = params.src ?? "";
       const partition = params.partition ?? "";
       const isWeb = WEB_PARTITION_PATTERN.test(partition);
-      const web = isWeb && (isWebUrl(src) || src === "about:blank" || extensions.isExtensionPage(webSession(partition), src));
+      const web =
+        isWeb && (isWebUrl(src) || src === "about:blank" || extensions.isExtensionPage(webSession(partition), src));
       const preview = APP_PARTITION_PATTERN.test(partition) && (isAppUrl(src) || src === "about:blank");
       if (!web && !preview) return event.preventDefault();
       if (web) {
@@ -174,8 +182,11 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     if (lockedDown.has(s)) return;
     lockedDown.add(s);
     // Extension pages also get what their manifest asks for (clipboardRead, notifications).
-    const allowed = (permission: string, url: string | undefined) => allowedPermissions.has(permission) || (webSessions.has(s) && extensions.allowsPermission(s, permission, url));
-    s.setPermissionRequestHandler((_contents, permission, callback, details) => callback(allowed(permission, details.requestingUrl)));
+    const allowed = (permission: string, url: string | undefined) =>
+      allowedPermissions.has(permission) || (webSessions.has(s) && extensions.allowsPermission(s, permission, url));
+    s.setPermissionRequestHandler((_contents, permission, callback, details) =>
+      callback(allowed(permission, details.requestingUrl)),
+    );
     s.setPermissionCheckHandler((_contents, permission, requestingOrigin) => allowed(permission, requestingOrigin));
   }
 
@@ -216,7 +227,14 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       const typed = await new Promise<{ username: string; password: string } | null>((resolve) => {
         authPrompts.set(requestId, resolve);
         contents.once("destroyed", () => resolve(null));
-        send("rune:auth-prompt", { requestId, url: details.url, host: authInfo.host, realm: authInfo.realm, isProxy: authInfo.isProxy, contentsId: contents.id });
+        send("rune:auth-prompt", {
+          requestId,
+          url: details.url,
+          host: authInfo.host,
+          realm: authInfo.realm,
+          isProxy: authInfo.isProxy,
+          contentsId: contents.id,
+        });
       });
       authPrompts.delete(requestId);
       if (typed) callback(typed.username, typed.password);
@@ -226,12 +244,17 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   ipcMain.on("rune:auth-reply", (event, requestId: unknown, value: unknown) => {
     if (event.sender !== getWindow()?.webContents || typeof requestId !== "string") return;
     const v = value as { username?: unknown; password?: unknown } | null;
-    authPrompts.get(requestId)?.(v && typeof v.username === "string" && typeof v.password === "string" ? { username: v.username, password: v.password } : null);
+    authPrompts.get(requestId)?.(
+      v && typeof v.username === "string" && typeof v.password === "string"
+        ? { username: v.username, password: v.password }
+        : null,
+    );
   });
 
   // A deleted workspace's cookies, logins and cache go with it.
   ipcMain.handle("rune:clear-workspace", async (event, workspaceId: unknown) => {
-    if (event.sender !== getWindow()?.webContents || typeof workspaceId !== "string" || !/^[\w-]+$/.test(workspaceId)) return;
+    if (event.sender !== getWindow()?.webContents || typeof workspaceId !== "string" || !/^[\w-]+$/.test(workspaceId))
+      return;
     const s = session.fromPartition(webPartition(workspaceId));
     await extensions.detach(s);
     await s.clearStorageData();

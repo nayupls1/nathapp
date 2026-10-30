@@ -122,7 +122,16 @@ export function extensionFile(dir: string, path: string) {
   return file.startsWith(normalize(dir) + sep) ? file : null;
 }
 
-const MIME: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp", ".ico": "image/x-icon", ".bmp": "image/bmp" };
+const MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".bmp": "image/bmp",
+};
 const iconCache = new Map<string, string | null>();
 
 /** An image file of the extension as a data: URL (cached). */
@@ -218,7 +227,8 @@ export function idForPath(path: string) {
   return extensionIdFromHash(createHash("sha256").update(Buffer.from(text, encoding)).digest("hex"));
 }
 
-export const platform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
+export const platform: ShortcutPlatform =
+  process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
 
 /** An extension's commands and their keys on this platform (the user's own, else the manifest's suggestion; "" if none). */
 export function commandsOf(entry: InstalledExtension, info: ManifestInfo) {
@@ -253,16 +263,28 @@ export function describe(entry: InstalledExtension, error: string | null, hasNat
     optionsUrl: options ? `chrome-extension://${entry.id}/${options.replace(/^\/+/, "")}` : null,
     unsupported: unsupportedPermissions(m),
     permissions: [
-      ...permissionsOf(m).map((name) => ({ name, ...permissionAbout(name), optional: false, allowed: !entry.denied?.includes(name) })),
+      ...permissionsOf(m).map((name) => ({
+        name,
+        ...permissionAbout(name),
+        optional: false,
+        allowed: !entry.denied?.includes(name),
+      })),
       ...optionalPermissionsOf(m)
         .filter((name) => !permissionsOf(m).includes(name))
-        .map((name) => ({ name, ...permissionAbout(name), optional: true, allowed: !!entry.granted?.permissions.includes(name) && !entry.denied?.includes(name) })),
+        .map((name) => ({
+          name,
+          ...permissionAbout(name),
+          optional: true,
+          allowed: !!entry.granted?.permissions.includes(name) && !entry.denied?.includes(name),
+        })),
     ].sort((a, b) => a.name.localeCompare(b.name)),
     // Its host permissions and where its content scripts run.
     siteAccess: [
       ...new Set([
         ...hostPermissionsOf(m),
-        ...(((m as { content_scripts?: { matches?: unknown[] }[] }).content_scripts ?? []).flatMap((c) => (c.matches ?? []).filter((x): x is string => typeof x === "string"))),
+        ...((m as { content_scripts?: { matches?: unknown[] }[] }).content_scripts ?? []).flatMap((c) =>
+          (c.matches ?? []).filter((x): x is string => typeof x === "string"),
+        ),
       ]),
     ].sort(),
     shortcuts: info ? commandsOf(entry, info).filter((c) => c.shortcut) : [],

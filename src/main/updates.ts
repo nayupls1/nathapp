@@ -19,7 +19,11 @@ const CHECK_EVERY_MS = 4 * 60 * 60_000;
 /** Why this copy can't update itself, or null if it can. */
 function unsupportedReason(): string | null {
   if (!app.isPackaged) return "Updates work in installed builds, not when running from source.";
-  if (process.platform === "linux" && !process.env.APPIMAGE && !existsSync(join(process.resourcesPath, "package-type"))) {
+  if (
+    process.platform === "linux" &&
+    !process.env.APPIMAGE &&
+    !existsSync(join(process.resourcesPath, "package-type"))
+  ) {
     return "This build can't update itself. Get the AppImage or a package from the releases page.";
   }
   return null;
@@ -48,7 +52,8 @@ export function setupUpdates(getWindow: () => BrowserWindow | undefined) {
   };
 
   const check = async () => {
-    if (reason || status.state === "checking" || status.state === "downloading" || status.state === "ready") return info();
+    if (reason || status.state === "checking" || status.state === "downloading" || status.state === "ready")
+      return info();
     autoUpdater.allowPrerelease = channel === "beta";
     try {
       await autoUpdater.checkForUpdates();
@@ -64,7 +69,11 @@ export function setupUpdates(getWindow: () => BrowserWindow | undefined) {
     autoUpdater.on("checking-for-update", () => set({ state: "checking" }));
     autoUpdater.on("update-not-available", () => set({ state: "idle" }));
     autoUpdater.on("update-available", (update) =>
-      set(manual ? { state: "available", version: update.version, url: `${RELEASES_URL}/tag/v${update.version}` } : { state: "downloading", version: update.version, percent: 0 }),
+      set(
+        manual
+          ? { state: "available", version: update.version, url: `${RELEASES_URL}/tag/v${update.version}` }
+          : { state: "downloading", version: update.version, percent: 0 },
+      ),
     );
     autoUpdater.on("download-progress", (progress) => {
       if (status.state === "downloading") set({ ...status, percent: Math.round(progress.percent) });

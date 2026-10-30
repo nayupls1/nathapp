@@ -65,7 +65,11 @@ export function Chat(props: { appId: string }) {
           type="button"
           title="New chat (this one is kept in the chat history)"
           disabled={state().running || !state().messages.length}
-          onClick={() => void newChat(props.appId).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }))}
+          onClick={() =>
+            void newChat(props.appId).catch((err) =>
+              toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }),
+            )
+          }
           {...stylex.attrs(styles.headerButton)}
           data-new-chat
         >
@@ -83,10 +87,14 @@ export function Chat(props: { appId: string }) {
         >
           <Icon name="clock" size={16} />
         </button>
-        <Show when={history()}>{(at) => <ChatHistory appId={props.appId} position={at()} onClose={() => setHistory()} />}</Show>
+        <Show when={history()}>
+          {(at) => <ChatHistory appId={props.appId} position={at()} onClose={() => setHistory()} />}
+        </Show>
         <button
           type="button"
-          title={editsApp(props.appId) ? "Done: hide the agent and run the finished app (Ctrl+J)" : "Hide agent (Ctrl+J)"}
+          title={
+            editsApp(props.appId) ? "Done: hide the agent and run the finished app (Ctrl+J)" : "Hide agent (Ctrl+J)"
+          }
           onClick={() => setAgentCollapsed(props.appId, true)}
           {...stylex.attrs(styles.headerButton)}
           data-agent-hide
@@ -97,8 +105,8 @@ export function Chat(props: { appId: string }) {
       <div ref={scroller} {...stylex.attrs(styles.messages)}>
         <Show when={web() && !state().messages.length && !state().running}>
           <p {...stylex.attrs(styles.hint)}>
-            Ask about this page, or pick elements with the crosshair and say how they should look or work. Changes are saved
-            as customizations for the site.
+            Ask about this page, or pick elements with the crosshair and say how they should look or work. Changes are
+            saved as customizations for the site.
           </p>
         </Show>
         <For each={state().messages.filter((m) => m.role !== "tool" || settings().agent.showToolMessages)}>
@@ -114,39 +122,49 @@ export function Chat(props: { appId: string }) {
         <Composer
           appId={props.appId}
           running={state().running}
-          placeholder={web() ? "Ask about or change this page…" : state().project ? undefined : "Describe the app you want…"}
+          placeholder={
+            web() ? "Ask about or change this page…" : state().project ? undefined : "Describe the app you want…"
+          }
           top={
             <>
-            <SourcesBar tabId={props.appId} adding={addingRepository()} onDone={() => setAddingRepository(false)} />
-            <Show when={picksOf(props.appId).length}>
-              <div {...stylex.attrs(styles.chips)}>
-                <For each={picksOf(props.appId)}>
-                  {(el) => (
-                    <Chip
-                      label={el.text ? `${el.tag} “${el.text.slice(0, 24)}${el.text.length > 24 ? "…" : ""}”` : el.selector}
-                      title={el.selector}
-                      onRemove={() => page()?.unpick(el.selector)}
-                    />
-                  )}
-                </For>
-              </div>
-            </Show>
+              <SourcesBar tabId={props.appId} adding={addingRepository()} onDone={() => setAddingRepository(false)} />
+              <Show when={picksOf(props.appId).length}>
+                <div {...stylex.attrs(styles.chips)}>
+                  <For each={picksOf(props.appId)}>
+                    {(el) => (
+                      <Chip
+                        label={
+                          el.text ? `${el.tag} “${el.text.slice(0, 24)}${el.text.length > 24 ? "…" : ""}”` : el.selector
+                        }
+                        title={el.selector}
+                        onRemove={() => page()?.unpick(el.selector)}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
             </>
           }
           tools={
             <>
-            <SourcesButton tabId={props.appId} onAddRepository={() => setAddingRepository(true)} />
-            <Show when={page()}>
-              <button
-                type="button"
-                title={isPicking(props.appId) ? "Cancel picking (Esc)" : web() ? "Pick elements on the page for the agent" : "Pick elements in the app for the agent"}
-                onClick={() => void page()?.pick()}
-                {...stylex.attrs(styles.pick, isPicking(props.appId) && styles.pickOn)}
-                data-pick-element
-              >
-                <Icon name="crosshair" size={15} />
-              </button>
-            </Show>
+              <SourcesButton tabId={props.appId} onAddRepository={() => setAddingRepository(true)} />
+              <Show when={page()}>
+                <button
+                  type="button"
+                  title={
+                    isPicking(props.appId)
+                      ? "Cancel picking (Esc)"
+                      : web()
+                        ? "Pick elements on the page for the agent"
+                        : "Pick elements in the app for the agent"
+                  }
+                  onClick={() => void page()?.pick()}
+                  {...stylex.attrs(styles.pick, isPicking(props.appId) && styles.pickOn)}
+                  data-pick-element
+                >
+                  <Icon name="crosshair" size={15} />
+                </button>
+              </Show>
             </>
           }
           onSend={(prompt) => {
@@ -211,7 +229,12 @@ function SentAttachments(props: { appId: string; content: string }) {
               </span>
             }
           >
-            <img src={attachmentUrl(props.appId, file.id)} alt={file.name} title={file.name} {...stylex.attrs(styles.sentImage)} />
+            <img
+              src={attachmentUrl(props.appId, file.id)}
+              alt={file.name}
+              title={file.name}
+              {...stylex.attrs(styles.sentImage)}
+            />
           </Show>
         )}
       </For>
@@ -297,7 +320,17 @@ function PickedContext(props: { content: string }) {
     <div {...stylex.attrs(styles.context)}>
       <For each={parsed().shared ?? []}>
         {(tab) => (
-          <span {...stylex.attrs(styles.chip)} title={tab.what === "reply" ? "A reply of its agent" : tab.kind === "web" ? "What the page showed" : "What the app can do and how its data is laid out"} data-shared-context>
+          <span
+            {...stylex.attrs(styles.chip)}
+            title={
+              tab.what === "reply"
+                ? "A reply of its agent"
+                : tab.kind === "web"
+                  ? "What the page showed"
+                  : "What the app can do and how its data is laid out"
+            }
+            data-shared-context
+          >
             <Icon name={tab.what === "reply" ? "reply" : "at-sign"} size={12} />
             {tab.name}
           </span>
@@ -360,7 +393,15 @@ const styles = stylex.create({
   },
   headerIcon: { color: colors.accent },
   headerTitle: { flexShrink: 0, fontSize: font.sm, fontWeight: 600 },
-  headerTab: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm, fontWeight: 600 },
+  headerTab: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: font.sm,
+    fontWeight: 600,
+  },
   chips: { display: "flex", flexWrap: "wrap", gap: 4, paddingInline: 4, paddingTop: 2 },
   // A small red shield while agents don't ask (click to make them ask again).
   fullAccess: {
@@ -372,7 +413,10 @@ const styles = stylex.create({
     padding: 0,
     borderWidth: 0,
     borderRadius: radius.full,
-    backgroundColor: { default: "color-mix(in oklab, transparent, #dc2626 14%)", ":hover": "color-mix(in oklab, transparent, #dc2626 24%)" },
+    backgroundColor: {
+      default: "color-mix(in oklab, transparent, #dc2626 14%)",
+      ":hover": "color-mix(in oklab, transparent, #dc2626 24%)",
+    },
     color: colors.danger,
     cursor: "pointer",
   },
@@ -413,7 +457,14 @@ const styles = stylex.create({
     textAlign: "left",
     cursor: { default: "pointer", ":disabled": "default" },
   },
-  historyName: { width: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm, fontWeight: 500 },
+  historyName: {
+    width: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: font.sm,
+    fontWeight: 500,
+  },
   historyMeta: { color: colors.muted, fontSize: font.xs },
   pick: {
     display: "grid",
@@ -428,7 +479,10 @@ const styles = stylex.create({
     color: { default: colors.muted, ":hover": colors.text },
     cursor: "pointer",
   },
-  pickOn: { backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft }, color: { default: colors.accent, ":hover": colors.accent } },
+  pickOn: {
+    backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft },
+    color: { default: colors.accent, ":hover": colors.accent },
+  },
   headerButton: {
     display: "grid",
     placeItems: "center",
@@ -490,8 +544,24 @@ const styles = stylex.create({
     backgroundColor: colors.accentSoft,
   },
   assistant: { ...bubble },
-  sentFiles: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 6, alignSelf: "flex-end", maxWidth: "85%" },
-  sentImage: { display: "block", maxHeight: 140, maxWidth: 220, borderRadius: radius.md, borderWidth: 1, borderStyle: "solid", borderColor: colors.border, objectFit: "cover" },
+  sentFiles: {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 6,
+    alignSelf: "flex-end",
+    maxWidth: "85%",
+  },
+  sentImage: {
+    display: "block",
+    maxHeight: 140,
+    maxWidth: 220,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    objectFit: "cover",
+  },
   sentFile: {
     display: "inline-flex",
     alignItems: "center",
@@ -593,7 +663,14 @@ function ChatHistory(props: { appId: string; position: MenuPosition; onClose: ()
         data-chat-history
       >
         <div {...stylex.attrs(styles.historyTitle)}>Earlier chats</div>
-        <For each={chats() ?? []} fallback={<p {...stylex.attrs(styles.historyEmpty)}>{chats.loading ? "Loading…" : "No earlier chats. “New chat” keeps the current one here."}</p>}>
+        <For
+          each={chats() ?? []}
+          fallback={
+            <p {...stylex.attrs(styles.historyEmpty)}>
+              {chats.loading ? "Loading…" : "No earlier chats. “New chat” keeps the current one here."}
+            </p>
+          }
+        >
           {(chat) => (
             <div {...stylex.attrs(styles.historyRow)} data-chat={chat.id}>
               <button
@@ -614,7 +691,9 @@ function ChatHistory(props: { appId: string; position: MenuPosition; onClose: ()
                 title="Delete this chat"
                 onClick={() =>
                   void act(async () => {
-                    if (await confirmDialog(`Delete the chat “${chat.title}”?`, { confirmLabel: "Delete", danger: true })) {
+                    if (
+                      await confirmDialog(`Delete the chat “${chat.title}”?`, { confirmLabel: "Delete", danger: true })
+                    ) {
                       await api.deleteChat(props.appId, chat.id);
                       await refetch();
                     }

@@ -85,7 +85,10 @@ describe("app actions", () => {
   });
 
   test("an endpoint action starts the app, posts the input and shows its message", async () => {
-    const result = await server.api<AppActionResult>(`/api/apps/${app.id}/actions/add`, { method: "POST", json: { input: "lunch 12" } });
+    const result = await server.api<AppActionResult>(`/api/apps/${app.id}/actions/add`, {
+      method: "POST",
+      json: { input: "lunch 12" },
+    });
     expect(result).toEqual({ ok: true, status: 200, message: "Added lunch 12" });
     const failed = await server.api<AppActionResult>(`/api/apps/${app.id}/actions/fail`, { method: "POST", json: {} });
     expect(failed).toEqual({ ok: false, status: 400, message: "No budget set" });

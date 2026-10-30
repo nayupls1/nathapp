@@ -23,7 +23,10 @@ export const make = Effect.gen(function* () {
     get: () => read,
     save: (settings: SettingsValue) =>
       sql`INSERT INTO settings (id, value) VALUES (1, ${JSON.stringify(settings)})
-          ON CONFLICT (id) DO UPDATE SET value = excluded.value`.pipe(Effect.andThen(PubSub.publish(changes, settings)), Effect.asVoid),
+          ON CONFLICT (id) DO UPDATE SET value = excluded.value`.pipe(
+        Effect.andThen(PubSub.publish(changes, settings)),
+        Effect.asVoid,
+      ),
     /** Emits the settings whenever they're saved. */
     changes: () => Effect.succeed(Stream.fromPubSub(changes)),
   };

@@ -41,7 +41,8 @@ const PAYMENT_FIELD = /^cc-|card|cvc|cvv|iban|expir/i;
 
 const isPassword = (t: Target) => t.type === "password" || /current-password|new-password/.test(t.autocomplete);
 const isPaymentField = (t: Target) => PAYMENT_FIELD.test(t.autocomplete) || PAYMENT_FIELD.test(t.name);
-const describeTarget = (t: Target) => `${t.label ? `“${t.label.slice(0, 80)}”` : t.name ? `the ${t.name} field` : "an element"} (${t.type || t.tag})`;
+const describeTarget = (t: Target) =>
+  `${t.label ? `“${t.label.slice(0, 80)}”` : t.name ? `the ${t.name} field` : "an element"} (${t.type || t.tag})`;
 
 /**
  * Why acting on `target` needs the user's confirmation each time, or null.
@@ -50,22 +51,35 @@ const describeTarget = (t: Target) => `${t.label ? `“${t.label.slice(0, 80)}�
  */
 export function needsConfirmation(target: Target, action: "click" | "type" | "submit"): string | null {
   if (action === "type") return isPaymentField(target) ? `enter payment details into ${describeTarget(target)}` : null;
-  const words = [target.label, target.name, target.href, action === "submit" ? (target.form?.label ?? "") : "", action === "submit" ? (target.form?.action ?? "") : ""].join(" ");
-  if (CONSEQUENTIAL.test(words)) return action === "submit" ? `submit the form “${target.form?.label || target.label || "on the page"}”` : `click ${describeTarget(target)}`;
-  if (target.form?.payment && (action === "submit" || /submit|button/.test(target.type))) return `submit a form with payment details (${describeTarget(target)})`;
+  const words = [
+    target.label,
+    target.name,
+    target.href,
+    action === "submit" ? (target.form?.label ?? "") : "",
+    action === "submit" ? (target.form?.action ?? "") : "",
+  ].join(" ");
+  if (CONSEQUENTIAL.test(words))
+    return action === "submit"
+      ? `submit the form “${target.form?.label || target.label || "on the page"}”`
+      : `click ${describeTarget(target)}`;
+  if (target.form?.payment && (action === "submit" || /submit|button/.test(target.type)))
+    return `submit a form with payment details (${describeTarget(target)})`;
   return null;
 }
 
 const Locator = {
   selector: Schema.optionalKey(Schema.String.annotate({ description: "CSS selector of the element" })),
-  text: Schema.optionalKey(Schema.String.annotate({ description: "Or: visible text of a button, link or label to find it by" })),
+  text: Schema.optionalKey(
+    Schema.String.annotate({ description: "Or: visible text of a button, link or label to find it by" }),
+  ),
   index: Schema.optionalKey(Schema.Finite.annotate({ description: "Which match, when several (0 = first)" })),
 };
 
 export const browseTools = Effect.fn(function* (env: ToolEnv) {
   const hub = yield* Hub;
   const permissions = yield* Permissions;
-  const call = <T>(method: string, params: object = {}, timeoutMs?: number) => hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
+  const call = <T>(method: string, params: object = {}, timeoutMs?: number) =>
+    hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
 
   const find = (locator: { selector?: string; text?: string; index?: number; x?: number; y?: number }) =>
     call<Target | { error: string }>("page.target", locator);
@@ -101,16 +115,24 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
     });
 
   /** Checks a target (site permission, confirmation, passwords) and runs the action. */
-  const act = (target: Target | { error: string }, action: "click" | "type" | "submit", run: (t: Target) => Effect.Effect<string, unknown>) =>
+  const act = (
+    target: Target | { error: string },
+    action: "click" | "type" | "submit",
+    run: (t: Target) => Effect.Effect<string, unknown>,
+  ) =>
     Effect.gen(function* () {
       if ("error" in target) return text(target.error, true);
       if (action === "type" && isPassword(target)) {
-        return text("Rune Browser doesn't let agents type passwords. Ask the user to sign in themselves, then go on.", true);
+        return text(
+          "Rune Browser doesn't let agents type passwords. Ask the user to sign in themselves, then go on.",
+          true,
+        );
       }
       const refused = yield* allowSite(target.url);
       if (refused) return text(refused, true);
       const why = needsConfirmation(target, action);
-      if (why && !(yield* confirm(why, target.url))) return text(`The user didn't confirm: ${why}. Don't try another way; ask them what to do.`, true);
+      if (why && !(yield* confirm(why, target.url)))
+        return text(`The user didn't confirm: ${why}. Don't try another way; ask them what to do.`, true);
       return yield* run(target);
     });
 
@@ -141,7 +163,12 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
     tool(
       "type_text",
       "Type into a field of the page (focuses it, types like a keyboard). clear replaces what's in it; submit presses Enter afterwards. Never for passwords: the user signs in themselves.",
-      Schema.Struct({ ...Locator, value: Schema.String, clear: Schema.optionalKey(Schema.Boolean), submit: Schema.optionalKey(Schema.Boolean) }),
+      Schema.Struct({
+        ...Locator,
+        value: Schema.String,
+        clear: Schema.optionalKey(Schema.Boolean),
+        submit: Schema.optionalKey(Schema.Boolean),
+      }),
       ({ value, clear, submit, ...locator }) =>
         Effect.gen(function* () {
           const target = yield* find(locator);
@@ -152,15 +179,19 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
             ),
           );
           if (typeof typed !== "string" || !submit) return typed;
-          return yield* act(target, "submit", () => call("page.act", { kind: "key", key: "Enter" }).pipe(Effect.andThen(after(`${typed} and pressed Enter`))));
+          return yield* act(target, "submit", () =>
+            call("page.act", { kind: "key", key: "Enter" }).pipe(Effect.andThen(after(`${typed} and pressed Enter`))),
+          );
         }),
     ),
 
     tool(
       "fill_form",
-      "Fill in several fields at once (text fields, selects, checkboxes: value \"true\"/\"false\", radio buttons: \"true\"). Doesn't submit: click the form's button afterwards.",
+      'Fill in several fields at once (text fields, selects, checkboxes: value "true"/"false", radio buttons: "true"). Doesn\'t submit: click the form\'s button afterwards.',
       Schema.Struct({
-        fields: Schema.Array(Schema.Struct({ selector: Schema.String, value: Schema.String })).annotate({ description: "Each field's CSS selector and value" }),
+        fields: Schema.Array(Schema.Struct({ selector: Schema.String, value: Schema.String })).annotate({
+          description: "Each field's CSS selector and value",
+        }),
       }),
       ({ fields }) =>
         Effect.gen(function* () {
@@ -168,9 +199,17 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
           for (const field of fields.slice(0, 40)) {
             const target = yield* find({ selector: field.selector });
             const result = yield* act(target, "type", (t) =>
-              call("page.act", { kind: "fill", selector: field.selector, x: t.x, y: t.y, value: field.value }).pipe(Effect.as(describeTarget(t))),
+              call("page.act", { kind: "fill", selector: field.selector, x: t.x, y: t.y, value: field.value }).pipe(
+                Effect.as(describeTarget(t)),
+              ),
             );
-            if (typeof result !== "string") return done.length ? text(`Filled ${done.join(", ")}; then: ${result.content[0]?.type === "text" ? result.content[0].text : "failed"}`, true) : result;
+            if (typeof result !== "string")
+              return done.length
+                ? text(
+                    `Filled ${done.join(", ")}; then: ${result.content[0]?.type === "text" ? result.content[0].text : "failed"}`,
+                    true,
+                  )
+                : result;
             done.push(result);
           }
           yield* env.log(`Filled in ${done.length} field${done.length === 1 ? "" : "s"}`);
@@ -197,29 +236,46 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
             if (refused) return text(refused, true);
             return yield* call("page.act", { kind: "key", key }).pipe(Effect.andThen(after(`Pressed ${key}`)));
           }
-          return yield* act(focused, key === "Enter" && focused.form ? "submit" : "click", () => call("page.act", { kind: "key", key }).pipe(Effect.andThen(after(`Pressed ${key}`))));
+          return yield* act(focused, key === "Enter" && focused.form ? "submit" : "click", () =>
+            call("page.act", { kind: "key", key }).pipe(Effect.andThen(after(`Pressed ${key}`))),
+          );
         }),
     ),
 
     tool(
       "scroll",
       "Scroll the page: down or up by about a screen (or `pixels`), or to an element.",
-      Schema.Struct({ direction: Schema.optionalKey(Schema.Literals(["down", "up"])), pixels: Schema.optionalKey(Schema.Finite), selector: Schema.optionalKey(Schema.String) }),
+      Schema.Struct({
+        direction: Schema.optionalKey(Schema.Literals(["down", "up"])),
+        pixels: Schema.optionalKey(Schema.Finite),
+        selector: Schema.optionalKey(Schema.String),
+      }),
       ({ direction, pixels, selector }) =>
-        call<{ scrollY: number; pageHeight: number }>("page.act", { kind: "scroll", direction: direction ?? "down", pixels: pixels ?? null, selector: selector ?? null }).pipe(
-          Effect.map((r) => `Scrolled to ${Math.round(r.scrollY)} of ${Math.round(r.pageHeight)} px.`),
-        ),
+        call<{ scrollY: number; pageHeight: number }>("page.act", {
+          kind: "scroll",
+          direction: direction ?? "down",
+          pixels: pixels ?? null,
+          selector: selector ?? null,
+        }).pipe(Effect.map((r) => `Scrolled to ${Math.round(r.scrollY)} of ${Math.round(r.pageHeight)} px.`)),
     ),
 
     tool(
       "wait_for",
       "Wait until the page shows some text or an element matching a selector (e.g. after a click that loads something), up to timeout_seconds (default 10).",
-      Schema.Struct({ text: Schema.optionalKey(Schema.String), selector: Schema.optionalKey(Schema.String), timeout_seconds: Schema.optionalKey(Schema.Finite) }),
+      Schema.Struct({
+        text: Schema.optionalKey(Schema.String),
+        selector: Schema.optionalKey(Schema.String),
+        timeout_seconds: Schema.optionalKey(Schema.Finite),
+      }),
       ({ text: wanted, selector, timeout_seconds }) =>
         Effect.gen(function* () {
           if (!wanted && !selector) return text("Give text or selector.", true);
           const seconds = Math.min(Math.max(timeout_seconds ?? 10, 1), 60);
-          const found = yield* call<boolean>("page.waitFor", { text: wanted ?? null, selector: selector ?? null, timeoutMs: seconds * 1000 }, (seconds + 5) * 1000);
+          const found = yield* call<boolean>(
+            "page.waitFor",
+            { text: wanted ?? null, selector: selector ?? null, timeoutMs: seconds * 1000 },
+            (seconds + 5) * 1000,
+          );
           return found ? "It's there." : text(`Not there after ${seconds} s.`, true);
         }),
     ),
@@ -227,13 +283,16 @@ export const browseTools = Effect.fn(function* (env: ToolEnv) {
     tool(
       "confirm_action",
       "Ask the user to confirm something with consequences before you do it (buying, booking, sending a message, deleting, changing an account setting), when Rune Browser might not notice on its own. Returns whether they agreed.",
-      Schema.Struct({ action: Schema.String.annotate({ description: "What you're about to do, e.g. “order 2 tickets for 34 €”" }) }),
+      Schema.Struct({
+        action: Schema.String.annotate({ description: "What you're about to do, e.g. “order 2 tickets for 34 €”" }),
+      }),
       ({ action }) =>
         Effect.gen(function* () {
           const { url } = yield* call<{ url: string }>("page.info");
-          return (yield* confirm(action.slice(0, 200), url)) ? "The user agreed. Go ahead." : text("The user said no. Don't do it.", true);
+          return (yield* confirm(action.slice(0, 200), url))
+            ? "The user agreed. Go ahead."
+            : text("The user said no. Don't do it.", true);
         }),
     ),
-
   ];
 });

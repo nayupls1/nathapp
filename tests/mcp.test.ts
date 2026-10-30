@@ -13,9 +13,7 @@ import { core } from "../src/server/services";
 
 const dataDir = mkdtempSync(join(tmpdir(), "rune-mcp-test-"));
 const config = readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" });
-const runtime = ManagedRuntime.make(
-  core(config),
-);
+const runtime = ManagedRuntime.make(core(config));
 
 afterAll(async () => {
   await runtime.dispose();
@@ -30,7 +28,8 @@ async function session(tools: Tool[]) {
   const url = await Effect.runPromise(mcp.register(tools).pipe(Scope.provide(scope)));
   const token = url.split("/").pop()!;
   let id = 0;
-  const rpc = (method: string, params?: unknown) => Effect.runPromise(mcp.handle(token, { jsonrpc: "2.0", id: ++id, method, params })) as Promise<any>;
+  const rpc = (method: string, params?: unknown) =>
+    Effect.runPromise(mcp.handle(token, { jsonrpc: "2.0", id: ++id, method, params })) as Promise<any>;
   return { mcp, url, token, rpc, close: () => Effect.runPromise(Scope.close(scope, Exit.void)) };
 }
 
@@ -41,9 +40,15 @@ describe("mcp", () => {
       tool("boom", "Fails", Schema.Struct({}), () => Effect.fail(new Error("kaputt"))),
     ]);
     expect(s.url).toStartWith("http://rune/mcp/");
-    const init = await s.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } });
+    const init = await s.rpc("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: { name: "t", version: "1" },
+    });
     expect(init.result).toMatchObject({ protocolVersion: "2025-06-18", capabilities: { tools: {} } });
-    expect(await Effect.runPromise(s.mcp.handle(s.token, { jsonrpc: "2.0", method: "notifications/initialized" }))).toBeNull();
+    expect(
+      await Effect.runPromise(s.mcp.handle(s.token, { jsonrpc: "2.0", method: "notifications/initialized" })),
+    ).toBeNull();
 
     const list = await s.rpc("tools/list");
     expect(list.result.tools.map((t: { name: string }) => t.name)).toEqual(["echo", "boom"]);
@@ -62,7 +67,9 @@ describe("mcp", () => {
     expect((await s.rpc("resources/list")).error.code).toBe(-32601);
 
     await s.close();
-    await expect(Effect.runPromise(s.mcp.handle(s.token, { jsonrpc: "2.0", id: 1, method: "ping" }))).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(s.mcp.handle(s.token, { jsonrpc: "2.0", id: 1, method: "ping" })),
+    ).rejects.toBeDefined();
   });
 
   test("every Rune Browser tool has an object input schema", async () => {
@@ -85,7 +92,8 @@ describe("mcp", () => {
     for (const t of list.result.tools) {
       expect(t.inputSchema.type).toBe("object");
       // Numbers are plain numbers (not "number or the string NaN").
-      for (const prop of Object.values(t.inputSchema.properties ?? {}) as { anyOf?: unknown }[]) expect(prop.anyOf).toBeUndefined();
+      for (const prop of Object.values(t.inputSchema.properties ?? {}) as { anyOf?: unknown }[])
+        expect(prop.anyOf).toBeUndefined();
     }
     await s.close();
   });

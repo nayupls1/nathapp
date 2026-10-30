@@ -20,7 +20,12 @@ const query = (params: Record<string, string>) =>
 /** Downloads, checks and unpacks a CRX into the extension's folder. Returns the folder and version. */
 async function downloadCrx(id: string, url: string) {
   const res = await net.fetch(url, { signal: AbortSignal.timeout(120_000) });
-  if (!res.ok) throw new Error(res.status === 204 || res.status === 404 ? "Not found in the Chrome Web Store" : `Download failed (${res.status})`);
+  if (!res.ok)
+    throw new Error(
+      res.status === 204 || res.status === 404
+        ? "Not found in the Chrome Web Store"
+        : `Download failed (${res.status})`,
+    );
   const file = Buffer.from(await res.arrayBuffer());
   if (!file.length) throw new Error("Not found in the Chrome Web Store");
   const crx = parseCrx(file);
@@ -50,7 +55,10 @@ async function downloadCrx(id: string, url: string) {
 /** Installs the current version of a Chrome Web Store extension. */
 export function downloadFromWebStore(id: string) {
   const x = query({ id, installsource: "ondemand", uc: "" });
-  return downloadCrx(id, `${WEB_STORE_UPDATE_URL}?response=redirect&prodversion=${chromeVersion()}&acceptformat=crx2,crx3&x=${encodeURIComponent(x)}`);
+  return downloadCrx(
+    id,
+    `${WEB_STORE_UPDATE_URL}?response=redirect&prodversion=${chromeVersion()}&acceptformat=crx2,crx3&x=${encodeURIComponent(x)}`,
+  );
 }
 
 export interface UpdateInfo {
@@ -60,11 +68,19 @@ export interface UpdateInfo {
 }
 
 /** Asks an update server which of these extensions have a newer version. */
-export async function checkUpdates(updateUrl: string, extensions: { id: string; version: string }[]): Promise<UpdateInfo[]> {
+export async function checkUpdates(
+  updateUrl: string,
+  extensions: { id: string; version: string }[],
+): Promise<UpdateInfo[]> {
   if (!extensions.length || !/^https:\/\//i.test(updateUrl)) return [];
-  const params = extensions.map((e) => `x=${encodeURIComponent(query({ id: e.id, v: e.version, installsource: "", uc: "" }))}`).join("&");
+  const params = extensions
+    .map((e) => `x=${encodeURIComponent(query({ id: e.id, v: e.version, installsource: "", uc: "" }))}`)
+    .join("&");
   const sep = updateUrl.includes("?") ? "&" : "?";
-  const res = await net.fetch(`${updateUrl}${sep}response=updatecheck&prodversion=${chromeVersion()}&acceptformat=crx2,crx3&${params}`, { signal: AbortSignal.timeout(60_000) });
+  const res = await net.fetch(
+    `${updateUrl}${sep}response=updatecheck&prodversion=${chromeVersion()}&acceptformat=crx2,crx3&${params}`,
+    { signal: AbortSignal.timeout(60_000) },
+  );
   if (!res.ok) return [];
   const xml = await res.text();
   const found: UpdateInfo[] = [];
@@ -75,7 +91,8 @@ export async function checkUpdates(updateUrl: string, extensions: { id: string; 
     const codebase = attr("codebase")?.replace(/&amp;/g, "&");
     const current = extensions.find((e) => e.id === m[1]);
     if (!current || attr("status") === "noupdate" || !version || !codebase) continue;
-    if (compareVersions(version, current.version) > 0 && /^https:\/\//i.test(codebase)) found.push({ id: m[1]!, version, codebase });
+    if (compareVersions(version, current.version) > 0 && /^https:\/\//i.test(codebase))
+      found.push({ id: m[1]!, version, codebase });
   }
   return found;
 }

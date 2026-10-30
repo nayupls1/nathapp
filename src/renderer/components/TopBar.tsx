@@ -9,7 +9,18 @@ import { searchEngines } from "../../shared/settings";
 import { normalizeUrl } from "../../shared/web";
 import { isExtensionUrl } from "../../shared/extensions";
 import { settings } from "../lib/settings";
-import { appById, apps, isAgentCollapsed, isTab, newWebTab, selectApp, selectedId, states, toggleAgent, workspaces } from "../lib/store";
+import {
+  appById,
+  apps,
+  isAgentCollapsed,
+  isTab,
+  newWebTab,
+  selectApp,
+  selectedId,
+  states,
+  toggleAgent,
+  workspaces,
+} from "../lib/store";
 import { chromeOf, focusRequest } from "../lib/tabChrome";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Icon } from "./Icon";
@@ -58,16 +69,37 @@ export function NavRow(props: { compact: boolean }) {
           {(extensions) => extensions()}
         </Show>
         <span {...stylex.attrs(styles.spacer)} />
-        <button type="button" title="Back (Alt+←)" disabled={!chrome()?.canBack()} onClick={() => chrome()?.back()} {...stylex.attrs(styles.navButton)} data-back>
+        <button
+          type="button"
+          title="Back (Alt+←)"
+          disabled={!chrome()?.canBack()}
+          onClick={() => chrome()?.back()}
+          {...stylex.attrs(styles.navButton)}
+          data-back
+        >
           <Icon name="arrow-left" size={16} />
         </button>
-        <button type="button" title="Forward (Alt+→)" disabled={!chrome()?.canForward()} onClick={() => chrome()?.forward()} {...stylex.attrs(styles.navButton)} data-forward>
+        <button
+          type="button"
+          title="Forward (Alt+→)"
+          disabled={!chrome()?.canForward()}
+          onClick={() => chrome()?.forward()}
+          {...stylex.attrs(styles.navButton)}
+          data-forward
+        >
           <Icon name="arrow-right" size={16} />
         </button>
         <Show
           when={chrome()?.loading() && chrome()?.stop}
           fallback={
-            <button type="button" title="Reload (Ctrl+R)" disabled={!chrome()} onClick={() => chrome()?.reload()} {...stylex.attrs(styles.navButton)} data-reload>
+            <button
+              type="button"
+              title="Reload (Ctrl+R)"
+              disabled={!chrome()}
+              onClick={() => chrome()?.reload()}
+              {...stylex.attrs(styles.navButton)}
+              data-reload
+            >
               <Icon name="rotate-cw" size={15} />
             </button>
           }
@@ -99,7 +131,12 @@ export function AddressBar() {
   // Another tab on screen: what was being typed for the last one goes (a new blank tab takes the focus again below).
   createEffect(on(selectedId, () => editing() && finish(), { defer: true }));
   // A new web tab starts here.
-  createEffect(on(() => [selectedId(), chrome()?.blank?.()] as const, ([, blank]) => blank && queueMicrotask(focus)));
+  createEffect(
+    on(
+      () => [selectedId(), chrome()?.blank?.()] as const,
+      ([, blank]) => blank && queueMicrotask(focus),
+    ),
+  );
 
   function focus() {
     input.focus();
@@ -114,11 +151,23 @@ export function AddressBar() {
     const lower = q.toLowerCase();
     const out: Suggestion[] = [];
     const target = isExtensionUrl(q) ? q : normalizeUrl(q, settings().web.searchEngine);
-    const searching = target.startsWith(searchEngines[settings().web.searchEngine].url.split("%s")[0]!) && !/^https?:\/\//i.test(q);
-    if (!searching) out.push({ key: "go", icon: () => <Icon name="globe" size={14} />, title: target, detail: "Open", run: () => open(target) });
+    const searching =
+      target.startsWith(searchEngines[settings().web.searchEngine].url.split("%s")[0]!) && !/^https?:\/\//i.test(q);
+    if (!searching)
+      out.push({
+        key: "go",
+        icon: () => <Icon name="globe" size={14} />,
+        title: target,
+        detail: "Open",
+        run: () => open(target),
+      });
     // Open tabs, in every workspace.
     const tabs = apps
-      .filter((t) => t.id !== selectedId() && (t.name.toLowerCase().includes(lower) || (t.url ?? "").toLowerCase().includes(lower)))
+      .filter(
+        (t) =>
+          t.id !== selectedId() &&
+          (t.name.toLowerCase().includes(lower) || (t.url ?? "").toLowerCase().includes(lower)),
+      )
       .sort((a, b) => Number(!a.name.toLowerCase().startsWith(lower)) - Number(!b.name.toLowerCase().startsWith(lower)))
       .slice(0, 6);
     for (const tab of tabs) {
@@ -177,8 +226,22 @@ export function AddressBar() {
       data-address-bar
     >
       {/* While the page loads, a spinner in place of its icon (the address bar is the toolbar). */}
-      <Show when={loadingShown()} fallback={<Icon name={editing() ? "search" : (chrome()?.icon() ?? "search")} size={13} {...stylex.attrs(styles.addressIcon)} />}>
-        <Icon name="loader-circle" size={13} {...stylex.attrs(styles.addressIcon, styles.spinning)} data-address-loading />
+      <Show
+        when={loadingShown()}
+        fallback={
+          <Icon
+            name={editing() ? "search" : (chrome()?.icon() ?? "search")}
+            size={13}
+            {...stylex.attrs(styles.addressIcon)}
+          />
+        }
+      >
+        <Icon
+          name="loader-circle"
+          size={13}
+          {...stylex.attrs(styles.addressIcon, styles.spinning)}
+          data-address-loading
+        />
       </Show>
       <input
         ref={input}
@@ -221,7 +284,11 @@ export function AddressBar() {
           <div
             role="listbox"
             {...stylex.attrs(styles.suggestions)}
-            style={{ left: `${rect()!.left}px`, top: `${rect()!.bottom + 4}px`, width: `${Math.max(rect()!.width, 380)}px` }}
+            style={{
+              left: `${rect()!.left}px`,
+              top: `${rect()!.bottom + 4}px`,
+              width: `${Math.max(rect()!.width, 380)}px`,
+            }}
             data-suggestions
           >
             <For each={list()}>
@@ -297,7 +364,18 @@ const styles = stylex.create({
   },
   agentButton: { color: { default: colors.muted, ":hover": colors.text } },
   agentOn: { color: { default: colors.accent, ":hover": colors.accent } },
-  workingDot: { position: "absolute", top: 5, right: 5, width: 6, height: 6, borderRadius: radius.full, backgroundColor: colors.accent, animationName: pulse, animationDuration: "1.2s", animationIterationCount: "infinite" },
+  workingDot: {
+    position: "absolute",
+    top: 5,
+    right: 5,
+    width: 6,
+    height: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+    animationName: pulse,
+    animationDuration: "1.2s",
+    animationIterationCount: "infinite",
+  },
   spacer: { flex: 1 },
   address: {
     position: "relative",
@@ -315,7 +393,13 @@ const styles = stylex.create({
     boxShadow: `0 0 0 1px ${colors.border}`,
   },
   addressIcon: { flexShrink: 0, color: colors.muted },
-  spinning: { color: colors.accent, animationName: spin, animationDuration: "0.8s", animationIterationCount: "infinite", animationTimingFunction: "linear" },
+  spinning: {
+    color: colors.accent,
+    animationName: spin,
+    animationDuration: "0.8s",
+    animationIterationCount: "infinite",
+    animationTimingFunction: "linear",
+  },
   addressInput: {
     flex: 1,
     minWidth: 0,
@@ -359,7 +443,22 @@ const styles = stylex.create({
   },
   suggestionOn: { backgroundColor: colors.surfaceHover },
   suggestionIcon: { display: "grid", placeItems: "center", width: 18, flexShrink: 0, color: colors.muted },
-  suggestionTitle: { flexShrink: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 },
-  suggestionDetail: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: colors.muted, fontSize: font.xs },
+  suggestionTitle: {
+    flexShrink: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontWeight: 500,
+  },
+  suggestionDetail: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    color: colors.muted,
+    fontSize: font.xs,
+  },
   tools: { display: "flex", alignItems: "center", flexWrap: "wrap", gap: 2, flexShrink: 0, minHeight: 30 },
 });

@@ -40,28 +40,32 @@ const devices: Record<string, { width: number; height: number; scale: number; mo
     height: 852,
     scale: 3,
     mobile: true,
-    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
   },
   "iphone-se": {
     width: 375,
     height: 667,
     scale: 2,
     mobile: true,
-    userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    userAgent:
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
   },
   "pixel-8": {
     width: 412,
     height: 915,
     scale: 2.625,
     mobile: true,
-    userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
+    userAgent:
+      "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36",
   },
   ipad: {
     width: 820,
     height: 1180,
     scale: 2,
     mobile: true,
-    userAgent: "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    userAgent:
+      "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
   },
   laptop: { width: 1366, height: 768, scale: 1, mobile: false },
   desktop: { width: 1920, height: 1080, scale: 1, mobile: false },
@@ -104,8 +108,12 @@ function remoteText(arg: any): string {
   if ("value" in arg && arg.type !== "object") return String(arg.value);
   const preview = arg.preview;
   if (preview?.properties) {
-    const props = preview.properties.map((p: any) => `${p.name}: ${p.type === "string" ? JSON.stringify(p.value) : p.value}`).join(", ");
-    return preview.subtype === "array" ? `[${props}${preview.overflow ? ", …" : ""}]` : `{${props}${preview.overflow ? ", …" : ""}}`;
+    const props = preview.properties
+      .map((p: any) => `${p.name}: ${p.type === "string" ? JSON.stringify(p.value) : p.value}`)
+      .join(", ");
+    return preview.subtype === "array"
+      ? `[${props}${preview.overflow ? ", …" : ""}]`
+      : `{${props}${preview.overflow ? ", …" : ""}}`;
   }
   return arg.description ?? arg.className ?? arg.type;
 }
@@ -132,25 +140,46 @@ export function setupDevtools(options: DevtoolsOptions) {
     const log: ConsoleLog = { entries: [], since: Date.now() };
     consoles.set(contents.id, log);
     const add = (entry: ConsoleEntry) => {
-      log.entries.push({ ...entry, text: clip(safe(contents, entry.text)), ...(entry.source ? { source: safeUrl(contents, entry.source) } : {}) });
+      log.entries.push({
+        ...entry,
+        text: clip(safe(contents, entry.text)),
+        ...(entry.source ? { source: safeUrl(contents, entry.source) } : {}),
+      });
       if (log.entries.length > MAX_CONSOLE) log.entries.splice(0, log.entries.length - MAX_CONSOLE);
     };
-    const where = (url?: string, line?: number) => (url ? `${url}${typeof line === "number" ? `:${line + 1}` : ""}` : undefined);
+    const where = (url?: string, line?: number) =>
+      url ? `${url}${typeof line === "number" ? `:${line + 1}` : ""}` : undefined;
     const onMessage = (_event: unknown, method: string, p: any) => {
       if (method === "Runtime.consoleAPICalled") {
         const frame = p.stackTrace?.callFrames?.[0];
         const level = p.type === "warning" ? "warn" : p.type === "assert" ? "error" : p.type;
-        add({ at: Math.round(p.timestamp ?? Date.now()), level, text: (p.args ?? []).map(remoteText).join(" "), source: where(frame?.url, frame?.lineNumber) });
+        add({
+          at: Math.round(p.timestamp ?? Date.now()),
+          level,
+          text: (p.args ?? []).map(remoteText).join(" "),
+          source: where(frame?.url, frame?.lineNumber),
+        });
       } else if (method === "Runtime.exceptionThrown") {
         const d = p.exceptionDetails ?? {};
         const description = d.exception?.description ?? d.text ?? "Uncaught error";
-        add({ at: Math.round(p.timestamp ?? Date.now()), level: "exception", text: description, source: where(d.url, d.lineNumber) });
+        add({
+          at: Math.round(p.timestamp ?? Date.now()),
+          level: "exception",
+          text: description,
+          source: where(d.url, d.lineNumber),
+        });
       } else if (method === "Log.entryAdded") {
         const e = p.entry ?? {};
-        add({ at: Math.round(e.timestamp ?? Date.now()), level: e.level === "warning" ? "warn" : e.level, text: `[${e.source}] ${e.text}`, source: where(e.url, e.lineNumber) });
+        add({
+          at: Math.round(e.timestamp ?? Date.now()),
+          level: e.level === "warning" ? "warn" : e.level,
+          text: `[${e.source}] ${e.text}`,
+          source: where(e.url, e.lineNumber),
+        });
       }
     };
-    const navigated = (_event: unknown, url: string) => add({ at: Date.now(), level: "info", text: `— Navigated to ${url}` });
+    const navigated = (_event: unknown, url: string) =>
+      add({ at: Date.now(), level: "info", text: `— Navigated to ${url}` });
     contents.debugger.on("message", onMessage);
     contents.on("did-navigate", navigated);
     const stop = () => {
@@ -167,7 +196,12 @@ export function setupDevtools(options: DevtoolsOptions) {
 
   /** Runs JavaScript in the page and returns its value (awaited). */
   const evaluate = async <T>(contents: WebContents, expression: string): Promise<T> => {
-    const r = await cdp.send(contents, "Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true, timeout: 10_000 });
+    const r = await cdp.send(contents, "Runtime.evaluate", {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      timeout: 10_000,
+    });
     if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
     return r.result?.value as T;
   };
@@ -201,21 +235,51 @@ export function setupDevtools(options: DevtoolsOptions) {
       captureConsole(contents);
       const log = consoles.get(contents.id);
       if (!log) throw new Error("Can't read this page's console");
-      const levels = params.level === "errors" ? ["error", "exception"] : params.level === "warnings" ? ["error", "exception", "warn"] : null;
-      const entries = log.entries.filter((e) => !levels || levels.includes(e.level)).slice(-Math.min(Math.max(params.limit ?? 100, 1), MAX_CONSOLE));
+      const levels =
+        params.level === "errors"
+          ? ["error", "exception"]
+          : params.level === "warnings"
+            ? ["error", "exception", "warn"]
+            : null;
+      const entries = log.entries
+        .filter((e) => !levels || levels.includes(e.level))
+        .slice(-Math.min(Math.max(params.limit ?? 100, 1), MAX_CONSOLE));
       if (params.clear) log.entries = [];
       return { startedNow: started, since: log.since, entries };
     },
 
     async metrics(contents) {
       await cdp.send(contents, "Performance.enable");
-      const { metrics } = await cdp.send<{ metrics: { name: string; value: number }[] }>(contents, "Performance.getMetrics");
+      const { metrics } = await cdp.send<{ metrics: { name: string; value: number }[] }>(
+        contents,
+        "Performance.getMetrics",
+      );
       await cdp.send(contents, "Performance.disable").catch(() => {});
-      const wanted = ["Documents", "Frames", "JSEventListeners", "Nodes", "LayoutCount", "RecalcStyleCount", "LayoutDuration", "RecalcStyleDuration", "ScriptDuration", "TaskDuration", "JSHeapUsedSize", "JSHeapTotalSize"];
+      const wanted = [
+        "Documents",
+        "Frames",
+        "JSEventListeners",
+        "Nodes",
+        "LayoutCount",
+        "RecalcStyleCount",
+        "LayoutDuration",
+        "RecalcStyleDuration",
+        "ScriptDuration",
+        "TaskDuration",
+        "JSHeapUsedSize",
+        "JSHeapTotalSize",
+      ];
       const runtime = Object.fromEntries(
         metrics
           .filter((m) => wanted.includes(m.name))
-          .map((m) => [m.name, /Duration$/.test(m.name) ? `${Math.round(m.value * 1000)} ms` : /Size$/.test(m.name) ? `${(m.value / 1048576).toFixed(1)} MB` : m.value]),
+          .map((m) => [
+            m.name,
+            /Duration$/.test(m.name)
+              ? `${Math.round(m.value * 1000)} ms`
+              : /Size$/.test(m.name)
+                ? `${(m.value / 1048576).toFixed(1)} MB`
+                : m.value,
+          ]),
       );
       // Web vitals and timing as the page saw them (buffered entries, so a load that's over still counts).
       const page = await evaluate<Record<string, unknown>>(
@@ -272,12 +336,18 @@ export function setupDevtools(options: DevtoolsOptions) {
       try {
         await cdp.send(contents, "Tracing.start", {
           transferMode: "ReportEvents",
-          traceConfig: { recordMode: "recordAsMuchAsPossible", includedCategories: TRACE_CATEGORIES.filter((c) => c !== "-*"), excludedCategories: ["*"] },
+          traceConfig: {
+            recordMode: "recordAsMuchAsPossible",
+            includedCategories: TRACE_CATEGORIES.filter((c) => c !== "-*"),
+            excludedCategories: ["*"],
+          },
         });
         if (params.reload) await reloadAndWait(contents);
         // What the agent wants to measure: it runs inside the recording, as the user's action would.
         if (params.interaction) {
-          await evaluate(contents, `(async () => {\n${params.interaction}\n})()`).catch((err: Error) => void (interactionError = clip(safe(contents, err.message), 500)));
+          await evaluate(contents, `(async () => {\n${params.interaction}\n})()`).catch(
+            (err: Error) => void (interactionError = clip(safe(contents, err.message), 500)),
+          );
         }
         await sleep(seconds * 1000);
         await cdp.send(contents, "Tracing.end");
@@ -296,10 +366,26 @@ export function setupDevtools(options: DevtoolsOptions) {
         host = new URL(url).host.replace(/[^\w.-]+/g, "_") || "page";
       } catch {}
       const file = join(tracesDir, `trace-${new Date(startedAt).toISOString().replace(/[:.]/g, "-")}-${host}.json`);
-      writeFileSync(file, JSON.stringify({ traceEvents: events, metadata: { source: "Rune Browser", startTime: new Date(startedAt).toISOString() } }));
-      const traces = readdirSync(tracesDir).filter((f) => f.startsWith("trace-")).sort();
-      for (const old of traces.slice(0, Math.max(0, traces.length - KEEP_TRACES))) rmSync(join(tracesDir, old), { force: true });
-      return { analysis, summary: describeTrace(analysis), file, events: events.length, seconds, ...(interactionError ? { interactionError } : {}) };
+      writeFileSync(
+        file,
+        JSON.stringify({
+          traceEvents: events,
+          metadata: { source: "Rune Browser", startTime: new Date(startedAt).toISOString() },
+        }),
+      );
+      const traces = readdirSync(tracesDir)
+        .filter((f) => f.startsWith("trace-"))
+        .sort();
+      for (const old of traces.slice(0, Math.max(0, traces.length - KEEP_TRACES)))
+        rmSync(join(tracesDir, old), { force: true });
+      return {
+        analysis,
+        summary: describeTrace(analysis),
+        file,
+        events: events.length,
+        seconds,
+        ...(interactionError ? { interactionError } : {}),
+      };
     },
 
     async accessibility(contents, params: { selector?: string; limit?: number }) {
@@ -324,12 +410,27 @@ export function setupDevtools(options: DevtoolsOptions) {
           const name = n.name?.value ?? "";
           const show = !n.ignored && !(role === "generic" && !name) && role !== "none" && role !== "InlineTextBox";
           if (show) {
-            const flags = ["focused", "checked", "selected", "expanded", "disabled", "required", "invalid", "pressed", "level", "url"]
+            const flags = [
+              "focused",
+              "checked",
+              "selected",
+              "expanded",
+              "disabled",
+              "required",
+              "invalid",
+              "pressed",
+              "level",
+              "url",
+            ]
               .map((p) => [p, prop(n, p)] as const)
               .filter(([, v]) => v !== undefined && v !== false && v !== "false")
-              .map(([p, v]) => (v === true || v === "true" ? p : `${p}=${p === "url" ? safeUrl(contents, String(v)) : v}`));
+              .map(([p, v]) =>
+                v === true || v === "true" ? p : `${p}=${p === "url" ? safeUrl(contents, String(v)) : v}`,
+              );
             const value = n.value?.value;
-            lines.push(`${"  ".repeat(depth)}${role}${name ? ` "${clip(safe(contents, String(name)), 200)}"` : ""}${value !== undefined && value !== "" ? ` value="${clip(safe(contents, String(value)), 100)}"` : ""}${flags.length ? ` [${flags.join(", ")}]` : ""}`);
+            lines.push(
+              `${"  ".repeat(depth)}${role}${name ? ` "${clip(safe(contents, String(name)), 200)}"` : ""}${value !== undefined && value !== "" ? ` value="${clip(safe(contents, String(value)), 100)}"` : ""}${flags.length ? ` [${flags.join(", ")}]` : ""}`,
+            );
           }
           for (const id of n.childIds ?? []) {
             const child = byId.get(id);
@@ -347,7 +448,11 @@ export function setupDevtools(options: DevtoolsOptions) {
     async styles(contents, params: { selector: string; properties?: string[] }) {
       const sheets = new Map<string, { url: string; line: number }>();
       const onMessage = (_event: unknown, method: string, p: any) => {
-        if (method === "CSS.styleSheetAdded") sheets.set(p.header.styleSheetId, { url: p.header.sourceURL || (p.header.isInline ? "inline <style>" : ""), line: p.header.startLine ?? 0 });
+        if (method === "CSS.styleSheetAdded")
+          sheets.set(p.header.styleSheetId, {
+            url: p.header.sourceURL || (p.header.isInline ? "inline <style>" : ""),
+            line: p.header.startLine ?? 0,
+          });
       };
       contents.debugger.on("message", onMessage);
       try {
@@ -357,7 +462,9 @@ export function setupDevtools(options: DevtoolsOptions) {
         const [{ node }, matched, { computedStyle }, box] = await Promise.all([
           cdp.send(contents, "DOM.describeNode", { nodeId }),
           cdp.send(contents, "CSS.getMatchedStylesForNode", { nodeId }),
-          cdp.send<{ computedStyle: { name: string; value: string }[] }>(contents, "CSS.getComputedStyleForNode", { nodeId }),
+          cdp.send<{ computedStyle: { name: string; value: string }[] }>(contents, "CSS.getComputedStyleForNode", {
+            nodeId,
+          }),
           cdp.send(contents, "DOM.getBoxModel", { nodeId }).catch(() => null),
         ]);
         const attrs: string[] = node.attributes ?? [];
@@ -366,9 +473,13 @@ export function setupDevtools(options: DevtoolsOptions) {
         const declarations = (style: any) =>
           (style?.cssProperties ?? [])
             .filter((p: any) => p.value !== undefined && !p.implicit && (p.text || style.cssText !== undefined))
-            .map((p: any) => `${p.name}: ${p.value}${p.important ? " !important" : ""}${p.disabled ? " (disabled)" : ""}`);
+            .map(
+              (p: any) => `${p.name}: ${p.value}${p.important ? " !important" : ""}${p.disabled ? " (disabled)" : ""}`,
+            );
         const rules = [
-          ...(matched.inlineStyle ? [{ selector: "element.style", origin: "inline", source: "", props: declarations(matched.inlineStyle) }] : []),
+          ...(matched.inlineStyle
+            ? [{ selector: "element.style", origin: "inline", source: "", props: declarations(matched.inlineStyle) }]
+            : []),
           ...[...(matched.matchedCSSRules ?? [])].reverse().map((m: any) => {
             const sheet = sheets.get(m.rule.styleSheetId);
             const line = m.rule.style?.range ? m.rule.style.range.startLine + 1 : null;
@@ -376,20 +487,71 @@ export function setupDevtools(options: DevtoolsOptions) {
               selector: m.rule.selectorList?.text ?? "",
               origin: m.rule.origin,
               media: (m.rule.media ?? []).map((q: any) => q.text).join(", "),
-              source: sheet?.url ? `${safeUrl(contents, sheet.url)}${line ? `:${line}` : ""}` : m.rule.origin === "user-agent" ? "browser default" : "",
+              source: sheet?.url
+                ? `${safeUrl(contents, sheet.url)}${line ? `:${line}` : ""}`
+                : m.rule.origin === "user-agent"
+                  ? "browser default"
+                  : "",
               props: declarations(m.rule.style),
             };
           }),
         ].filter((r) => r.props.length);
-        const defaults = ["display", "position", "box-sizing", "width", "height", "margin", "padding", "border", "color", "background-color", "font-family", "font-size", "font-weight", "line-height", "z-index", "overflow", "opacity", "visibility", "transform", "flex", "flex-direction", "align-items", "justify-content", "gap", "grid-template-columns", "top", "left", "right", "bottom"];
+        const defaults = [
+          "display",
+          "position",
+          "box-sizing",
+          "width",
+          "height",
+          "margin",
+          "padding",
+          "border",
+          "color",
+          "background-color",
+          "font-family",
+          "font-size",
+          "font-weight",
+          "line-height",
+          "z-index",
+          "overflow",
+          "opacity",
+          "visibility",
+          "transform",
+          "flex",
+          "flex-direction",
+          "align-items",
+          "justify-content",
+          "gap",
+          "grid-template-columns",
+          "top",
+          "left",
+          "right",
+          "bottom",
+        ];
         const want = params.properties?.length ? params.properties : defaults;
-        const computed = Object.fromEntries(computedStyle.filter((c) => want.includes(c.name)).map((c) => [c.name, c.value]));
+        const computed = Object.fromEntries(
+          computedStyle.filter((c) => want.includes(c.name)).map((c) => [c.name, c.value]),
+        );
         // The box model: content, padding, border and margin edges (quads: x1,y1 … x4,y4).
-        const size = (quad?: number[]) => (quad ? { x: Math.round(quad[0]!), y: Math.round(quad[1]!), width: Math.round(quad[2]! - quad[0]!), height: Math.round(quad[5]! - quad[1]!) } : null);
+        const size = (quad?: number[]) =>
+          quad
+            ? {
+                x: Math.round(quad[0]!),
+                y: Math.round(quad[1]!),
+                width: Math.round(quad[2]! - quad[0]!),
+                height: Math.round(quad[5]! - quad[1]!),
+              }
+            : null;
         const model = box?.model;
         return {
           element,
-          box: model ? { content: size(model.content), padding: size(model.padding), border: size(model.border), margin: size(model.margin) } : "not rendered (display: none, or not in the layout)",
+          box: model
+            ? {
+                content: size(model.content),
+                padding: size(model.padding),
+                border: size(model.border),
+                margin: size(model.margin),
+              }
+            : "not rendered (display: none, or not in the layout)",
           rules,
           computed,
         };
@@ -404,8 +566,15 @@ export function setupDevtools(options: DevtoolsOptions) {
       const web = options.isWebTab(contents);
       const url = contents.getURL();
       const { cookies } = await cdp.send<{ cookies: any[] }>(contents, "Network.getCookies", { urls: [url] });
-      const value = (name: string, v: string) => (web && (isSensitiveName(name, true) || v.length > 40) ? REDACTED : clip(safe(contents, v), 200));
-      const stores = await evaluate<{ local: [string, string][]; session: [string, string][]; indexedDB: unknown; caches: string[]; serviceWorkers: string[] }>(
+      const value = (name: string, v: string) =>
+        web && (isSensitiveName(name, true) || v.length > 40) ? REDACTED : clip(safe(contents, v), 200);
+      const stores = await evaluate<{
+        local: [string, string][];
+        session: [string, string][];
+        indexedDB: unknown;
+        caches: string[];
+        serviceWorkers: string[];
+      }>(
         contents,
         `(async () => {
           const entries = (s) => { try { return Object.keys(s).slice(0, 200).map((k) => [k, String(s.getItem(k))]); } catch { return []; } };
@@ -438,7 +607,8 @@ export function setupDevtools(options: DevtoolsOptions) {
           return { local: entries(localStorage), session: entries(sessionStorage), indexedDB: indexed, caches: cacheNames, serviceWorkers: workers };
         })()`,
       );
-      const storage = (list: [string, string][]) => list.map(([k, v]) => ({ key: k, size: v.length, value: value(k, v) }));
+      const storage = (list: [string, string][]) =>
+        list.map(([k, v]) => ({ key: k, size: v.length, value: value(k, v) }));
       return {
         url: safeUrl(contents, url),
         valuesHidden: web,
@@ -466,7 +636,11 @@ export function setupDevtools(options: DevtoolsOptions) {
       const sheets = new Map<string, { url: string; length: number }>();
       const onMessage = (_event: unknown, method: string, p: any) => {
         if (method === "Debugger.scriptParsed" && p.url) scripts.set(p.scriptId, { url: p.url, length: p.length ?? 0 });
-        else if (method === "CSS.styleSheetAdded") sheets.set(p.header.styleSheetId, { url: p.header.sourceURL || "inline <style>", length: p.header.length ?? 0 });
+        else if (method === "CSS.styleSheetAdded")
+          sheets.set(p.header.styleSheetId, {
+            url: p.header.sourceURL || "inline <style>",
+            length: p.header.length ?? 0,
+          });
       };
       contents.debugger.on("message", onMessage);
       try {
@@ -478,32 +652,67 @@ export function setupDevtools(options: DevtoolsOptions) {
         await cdp.send(contents, "CSS.startRuleUsageTracking");
         if (params.reload ?? true) await reloadAndWait(contents);
         await sleep(Math.min(Math.max(params.seconds ?? 2, 0), 30) * 1000);
-        const { result } = await cdp.send<{ result: { scriptId: string; url: string; functions: { ranges: { startOffset: number; endOffset: number; count: number }[] }[] }[] }>(contents, "Profiler.takePreciseCoverage");
-        const { ruleUsage } = await cdp.send<{ ruleUsage: { styleSheetId: string; startOffset: number; endOffset: number; used: boolean }[] }>(contents, "CSS.stopRuleUsageTracking");
-        const files: { url: string; type: "js" | "css"; totalKb: number; unusedKb: number; unusedPercent: number }[] = [];
+        const { result } = await cdp.send<{
+          result: {
+            scriptId: string;
+            url: string;
+            functions: { ranges: { startOffset: number; endOffset: number; count: number }[] }[];
+          }[];
+        }>(contents, "Profiler.takePreciseCoverage");
+        const { ruleUsage } = await cdp.send<{
+          ruleUsage: { styleSheetId: string; startOffset: number; endOffset: number; used: boolean }[];
+        }>(contents, "CSS.stopRuleUsageTracking");
+        const files: { url: string; type: "js" | "css"; totalKb: number; unusedKb: number; unusedPercent: number }[] =
+          [];
         const add = (url: string, type: "js" | "css", total: number, used: number) => {
           if (!total) return;
           const unused = Math.max(0, total - used);
-          files.push({ url: safeUrl(contents, url), type, totalKb: Math.round(total / 102.4) / 10, unusedKb: Math.round(unused / 102.4) / 10, unusedPercent: Math.round((unused / total) * 100) });
+          files.push({
+            url: safeUrl(contents, url),
+            type,
+            totalKb: Math.round(total / 102.4) / 10,
+            unusedKb: Math.round(unused / 102.4) / 10,
+            unusedPercent: Math.round((unused / total) * 100),
+          });
         };
         for (const script of result) {
-          const length = scripts.get(script.scriptId)?.length ?? Math.max(0, ...script.functions.flatMap((f) => f.ranges.map((r) => r.endOffset)));
+          const length =
+            scripts.get(script.scriptId)?.length ??
+            Math.max(0, ...script.functions.flatMap((f) => f.ranges.map((r) => r.endOffset)));
           if (!script.url || !length) continue;
           // Ranges come outermost first; inner ones override (DevTools' way of counting used bytes).
           const used = new Uint8Array(length);
-          for (const fn of script.functions) for (const r of fn.ranges) used.fill(r.count > 0 ? 1 : 0, r.startOffset, Math.min(r.endOffset, length));
-          add(script.url, "js", length, used.reduce((sum, b) => sum + b, 0));
+          for (const fn of script.functions)
+            for (const r of fn.ranges) used.fill(r.count > 0 ? 1 : 0, r.startOffset, Math.min(r.endOffset, length));
+          add(
+            script.url,
+            "js",
+            length,
+            used.reduce((sum, b) => sum + b, 0),
+          );
         }
         const usedCss = new Map<string, number>();
-        for (const r of ruleUsage) if (r.used) usedCss.set(r.styleSheetId, (usedCss.get(r.styleSheetId) ?? 0) + r.endOffset - r.startOffset);
+        for (const r of ruleUsage)
+          if (r.used) usedCss.set(r.styleSheetId, (usedCss.get(r.styleSheetId) ?? 0) + r.endOffset - r.startOffset);
         for (const [id, sheet] of sheets) add(sheet.url, "css", sheet.length, usedCss.get(id) ?? 0);
         files.sort((a, b) => b.unusedKb - a.unusedKb);
         const total = files.reduce((sum, f) => sum + f.totalKb, 0);
         const unused = files.reduce((sum, f) => sum + f.unusedKb, 0);
-        return { totalKb: Math.round(total * 10) / 10, unusedKb: Math.round(unused * 10) / 10, files: files.slice(0, 40) };
+        return {
+          totalKb: Math.round(total * 10) / 10,
+          unusedKb: Math.round(unused * 10) / 10,
+          files: files.slice(0, 40),
+        };
       } finally {
         contents.debugger.removeListener("message", onMessage);
-        for (const command of ["Profiler.stopPreciseCoverage", "Profiler.disable", "Debugger.disable", "CSS.disable", "DOM.disable"]) await cdp.send(contents, command).catch(() => {});
+        for (const command of [
+          "Profiler.stopPreciseCoverage",
+          "Profiler.disable",
+          "Debugger.disable",
+          "CSS.disable",
+          "DOM.disable",
+        ])
+          await cdp.send(contents, command).catch(() => {});
       }
     },
 
@@ -525,11 +734,21 @@ export function setupDevtools(options: DevtoolsOptions) {
         if (rect.width < 1 || rect.height < 1) throw new Error(`${params.selector} isn't visible (it has no size)`);
         // A little room around it.
         const pad = 8;
-        clip = { x: Math.max(0, rect.x - pad), y: Math.max(0, rect.y - pad), width: rect.width + pad * 2, height: Math.min(rect.height + pad * 2, 8000) };
+        clip = {
+          x: Math.max(0, rect.x - pad),
+          y: Math.max(0, rect.y - pad),
+          width: rect.width + pad * 2,
+          height: Math.min(rect.height + pad * 2, 8000),
+        };
       } else if (params.fullPage) {
         clip = { x: 0, y: 0, width: cssContentSize.width, height: Math.min(cssContentSize.height, 12000) };
       } else {
-        clip = { x: cssLayoutViewport.pageX, y: cssLayoutViewport.pageY, width: cssLayoutViewport.clientWidth, height: cssLayoutViewport.clientHeight };
+        clip = {
+          x: cssLayoutViewport.pageX,
+          y: cssLayoutViewport.pageY,
+          width: cssLayoutViewport.clientWidth,
+          height: cssLayoutViewport.clientHeight,
+        };
       }
       // Kept to a size models read well.
       const scale = Math.min(1, (params.maxWidth ?? 1280) / clip.width, 8000 / clip.height);
@@ -539,36 +758,80 @@ export function setupDevtools(options: DevtoolsOptions) {
         captureBeyondViewport: true,
         clip: { ...clip, scale },
       });
-      return { data, width: Math.round(clip.width * scale), height: Math.round(clip.height * scale), truncated: !!params.fullPage && cssContentSize.height > 12000 };
+      return {
+        data,
+        width: Math.round(clip.width * scale),
+        height: Math.round(clip.height * scale),
+        truncated: !!params.fullPage && cssContentSize.height > 12000,
+      };
     },
 
-    async emulate(contents, params: { reset?: boolean; device?: string; width?: number; height?: number; scale?: number; mobile?: boolean; network?: string; cpu?: number; colorScheme?: string; reducedMotion?: string }) {
+    async emulate(
+      contents,
+      params: {
+        reset?: boolean;
+        device?: string;
+        width?: number;
+        height?: number;
+        scale?: number;
+        mobile?: boolean;
+        network?: string;
+        cpu?: number;
+        colorScheme?: string;
+        reducedMotion?: string;
+      },
+    ) {
       const state = { ...(emulated.get(contents.id) ?? {}) };
       if (params.reset) {
         await cdp.send(contents, "Emulation.clearDeviceMetricsOverride").catch(() => {});
         await cdp.send(contents, "Emulation.setTouchEmulationEnabled", { enabled: false }).catch(() => {});
-        await cdp.send(contents, "Emulation.setUserAgentOverride", { userAgent: contents.getUserAgent() }).catch(() => {});
-        await cdp.send(contents, "Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(() => {});
+        await cdp
+          .send(contents, "Emulation.setUserAgentOverride", { userAgent: contents.getUserAgent() })
+          .catch(() => {});
+        await cdp
+          .send(contents, "Network.emulateNetworkConditions", {
+            offline: false,
+            latency: 0,
+            downloadThroughput: -1,
+            uploadThroughput: -1,
+          })
+          .catch(() => {});
         await cdp.send(contents, "Emulation.setCPUThrottlingRate", { rate: 1 }).catch(() => {});
         await cdp.send(contents, "Emulation.setEmulatedMedia", { media: "", features: [] }).catch(() => {});
         emulated.delete(contents.id);
         return { emulating: {} };
       }
       const device = params.device ? devices[params.device] : undefined;
-      if (params.device && !device) throw new Error(`Unknown device ${params.device}. Devices: ${Object.keys(devices).join(", ")}`);
+      if (params.device && !device)
+        throw new Error(`Unknown device ${params.device}. Devices: ${Object.keys(devices).join(", ")}`);
       if (device || params.width || params.height) {
         const width = Math.round(params.width ?? device?.width ?? 0);
         const height = Math.round(params.height ?? device?.height ?? 0);
         const mobile = params.mobile ?? device?.mobile ?? false;
-        await cdp.send(contents, "Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: params.scale ?? device?.scale ?? 0, mobile });
-        await cdp.send(contents, "Emulation.setTouchEmulationEnabled", { enabled: mobile, maxTouchPoints: mobile ? 5 : 1 });
-        await cdp.send(contents, "Emulation.setUserAgentOverride", { userAgent: device?.userAgent ?? contents.getUserAgent() });
+        await cdp.send(contents, "Emulation.setDeviceMetricsOverride", {
+          width,
+          height,
+          deviceScaleFactor: params.scale ?? device?.scale ?? 0,
+          mobile,
+        });
+        await cdp.send(contents, "Emulation.setTouchEmulationEnabled", {
+          enabled: mobile,
+          maxTouchPoints: mobile ? 5 : 1,
+        });
+        await cdp.send(contents, "Emulation.setUserAgentOverride", {
+          userAgent: device?.userAgent ?? contents.getUserAgent(),
+        });
         Object.assign(state, { device: params.device ?? "custom", width, height, mobile });
       }
       if (params.network) {
         const n = networks[params.network];
         if (!n) throw new Error(`Unknown network ${params.network}. Networks: ${Object.keys(networks).join(", ")}`);
-        const conditions = { offline: n.offline, latency: n.latency, downloadThroughput: n.download, uploadThroughput: n.upload };
+        const conditions = {
+          offline: n.offline,
+          latency: n.latency,
+          downloadThroughput: n.download,
+          uploadThroughput: n.upload,
+        };
         await cdp.send(contents, "Network.emulateNetworkConditions", conditions).catch(async () => {
           await cdp.send(contents, "Network.enable");
           await cdp.send(contents, "Network.emulateNetworkConditions", conditions);
@@ -582,8 +845,12 @@ export function setupDevtools(options: DevtoolsOptions) {
       }
       if (params.colorScheme || params.reducedMotion) {
         const features = [
-          ...(params.colorScheme ?? state.colorScheme ? [{ name: "prefers-color-scheme", value: String(params.colorScheme ?? state.colorScheme) }] : []),
-          ...(params.reducedMotion ?? state.reducedMotion ? [{ name: "prefers-reduced-motion", value: String(params.reducedMotion ?? state.reducedMotion) }] : []),
+          ...((params.colorScheme ?? state.colorScheme)
+            ? [{ name: "prefers-color-scheme", value: String(params.colorScheme ?? state.colorScheme) }]
+            : []),
+          ...((params.reducedMotion ?? state.reducedMotion)
+            ? [{ name: "prefers-reduced-motion", value: String(params.reducedMotion ?? state.reducedMotion) }]
+            : []),
         ];
         await cdp.send(contents, "Emulation.setEmulatedMedia", { media: "", features });
         if (params.colorScheme) state.colorScheme = params.colorScheme;
@@ -610,7 +877,8 @@ export function setupDevtools(options: DevtoolsOptions) {
   const fromWindow = (event: Electron.IpcMainInvokeEvent) => event.sender === options.getWindow()?.webContents;
   ipcMain.handle("rune:devtools", (event, id: unknown, command: unknown, params: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;
-    if (!fromWindow(event) || !target || target.getType() !== "webview" || target.hostWebContents !== event.sender) throw new Error("Unknown page");
+    if (!fromWindow(event) || !target || target.getType() !== "webview" || target.hostWebContents !== event.sender)
+      throw new Error("Unknown page");
     return run(target, String(command), params);
   });
 

@@ -19,7 +19,16 @@ import {
   type ImportCandidate,
   type ProfileExtensionEntry,
 } from "../../shared/extensions";
-import { extensionsDir, idForPath, imageDataUrl, platform, readJson, readManifest, Registry, type InstalledExtension } from "./registry";
+import {
+  extensionsDir,
+  idForPath,
+  imageDataUrl,
+  platform,
+  readJson,
+  readManifest,
+  Registry,
+  type InstalledExtension,
+} from "./registry";
 
 export { platform };
 
@@ -130,7 +139,8 @@ function profilesOf({ browser, dir }: BrowserDir): FoundProfile[] {
   return found;
 }
 
-const extensionDirOf = (profile: FoundProfile, entry: ProfileExtensionEntry) => (isAbsolute(entry.path) ? entry.path : join(profile.dir, "Extensions", entry.path));
+const extensionDirOf = (profile: FoundProfile, entry: ProfileExtensionEntry) =>
+  isAbsolute(entry.path) ? entry.path : join(profile.dir, "Extensions", entry.path);
 
 /** Storage of an extension in a profile (or a session's folder), by kind. */
 export const storageFolders = (id: string) => [

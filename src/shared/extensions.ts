@@ -6,9 +6,7 @@ import type { NetworkRule } from "./api";
 
 /** Where an installed extension came from. */
 export type ExtensionSource =
-  | { kind: "browser"; browser: string; profile: string }
-  | { kind: "webstore" }
-  | { kind: "unpacked" };
+  { kind: "browser"; browser: string; profile: string } | { kind: "webstore" } | { kind: "unpacked" };
 
 export interface ExtensionInfo {
   id: string;
@@ -142,7 +140,8 @@ export interface ExtensionPopupRequest {
 export const BUILTIN_EXTENSION_ID = "ikphnmngfgaajbhljcknjgjlhpdmmjpg";
 
 export const EXTENSION_URL_PATTERN = /^chrome-extension:\/\/([a-p]{32})(\/|$)/;
-export const extensionIdOf = (url: string | null | undefined) => (url ? (EXTENSION_URL_PATTERN.exec(url)?.[1] ?? null) : null);
+export const extensionIdOf = (url: string | null | undefined) =>
+  url ? (EXTENSION_URL_PATTERN.exec(url)?.[1] ?? null) : null;
 export const isExtensionUrl = (url: string | null | undefined) => extensionIdOf(url) !== null;
 export const isExtensionId = (id: unknown): id is string => typeof id === "string" && /^[a-p]{32}$/.test(id);
 
@@ -165,7 +164,10 @@ export interface Manifest {
   optional_permissions?: unknown[];
   host_permissions?: unknown[];
   optional_host_permissions?: unknown[];
-  commands?: Record<string, { description?: string; suggested_key?: string | Record<string, string>; global?: boolean }>;
+  commands?: Record<
+    string,
+    { description?: string; suggested_key?: string | Record<string, string>; global?: boolean }
+  >;
   background?: { service_worker?: string; scripts?: string[]; page?: string };
   update_url?: string;
   key?: string;
@@ -181,7 +183,8 @@ export function localize(text: string | undefined, messages: Messages | null): s
   if (!text) return "";
   if (!messages) return text;
   const lower: Record<string, string> = {};
-  for (const [key, value] of Object.entries(messages)) if (typeof value?.message === "string") lower[key.toLowerCase()] = value.message;
+  for (const [key, value] of Object.entries(messages))
+    if (typeof value?.message === "string") lower[key.toLowerCase()] = value.message;
   return text.replace(/__MSG_([\w@]+)__/g, (all, name: string) => lower[name.toLowerCase()] ?? all);
 }
 
@@ -222,11 +225,20 @@ const PERMISSIONS: Record<string, PermissionAbout> = {
   activeTab: full("Use the page you're on when you invoke it"),
   alarms: full("Run tasks on a schedule"),
   background: full("Keep running in the background"),
-  bookmarks: limited("Read and change your bookmarks", "Rune Browser has no bookmarks: it sees none and can't add any."),
-  browsingData: limited("Clear your browsing data", "Clearing browsing data isn't available to extensions: those requests fail."),
+  bookmarks: limited(
+    "Read and change your bookmarks",
+    "Rune Browser has no bookmarks: it sees none and can't add any.",
+  ),
+  browsingData: limited(
+    "Clear your browsing data",
+    "Clearing browsing data isn't available to extensions: those requests fail.",
+  ),
   clipboardRead: full("Read what you copy"),
   clipboardWrite: full("Copy to the clipboard"),
-  contentSettings: limited("Change site settings (cookies, camera…)", "Extensions can't change site settings in Rune Browser: those requests fail."),
+  contentSettings: limited(
+    "Change site settings (cookies, camera…)",
+    "Extensions can't change site settings in Rune Browser: those requests fail.",
+  ),
   contextMenus: full("Add items to the right-click menu"),
   cookies: full("Read and change websites' cookies"),
   debugger: limited("Debug pages", "Debugging pages isn't available to extensions: those requests fail."),
@@ -235,19 +247,37 @@ const PERMISSIONS: Record<string, PermissionAbout> = {
   declarativeNetRequestFeedback: full("See which requests its rules matched"),
   declarativeNetRequestWithHostAccess: full("Block or change network requests on the sites it can access"),
   desktopCapture: limited("Record your screen", "Recording the screen isn't available: it's as if you cancelled."),
-  downloads: limited("Download files and manage downloads", "It can download files, but doesn't see the list of downloads."),
+  downloads: limited(
+    "Download files and manage downloads",
+    "It can download files, but doesn't see the list of downloads.",
+  ),
   "downloads.open": limited("Open downloaded files", "Opening downloaded files isn't available to extensions."),
   "downloads.shelf": limited("Hide the downloads bar", "There's no downloads bar to hide."),
   "downloads.ui": limited("Hide the downloads bar", "There's no downloads bar to hide."),
   favicon: limited("Show websites' icons", "Websites' icons don't show in its pages."),
   fileSystem: limited("Use files (Chrome apps)", "Only for Chrome apps: extensions don't use it."),
-  fontSettings: limited("Change font settings", "Font settings aren't available: it sees no fonts and changes nothing."),
-  gcm: limited("Get push messages from its servers", "Push messages (Google Cloud Messaging) aren't available: it doesn't get them."),
+  fontSettings: limited(
+    "Change font settings",
+    "Font settings aren't available: it sees no fonts and changes nothing.",
+  ),
+  gcm: limited(
+    "Get push messages from its servers",
+    "Push messages (Google Cloud Messaging) aren't available: it doesn't get them.",
+  ),
   geolocation: limited("Know your location", "Your location isn't shared with extensions."),
-  history: limited("Read and change your browsing history", "Rune Browser's history isn't shared with extensions: it sees an empty one."),
+  history: limited(
+    "Read and change your browsing history",
+    "Rune Browser's history isn't shared with extensions: it sees an empty one.",
+  ),
   i18n: full("Show itself in your language"),
-  identity: limited("Sign in with your browser's Google account", "Rune Browser has no browser account: sign in on the extension's own page instead."),
-  "identity.email": limited("Know your browser account's email", "Rune Browser has no browser account: it sees no email."),
+  identity: limited(
+    "Sign in with your browser's Google account",
+    "Rune Browser has no browser account: sign in on the extension's own page instead.",
+  ),
+  "identity.email": limited(
+    "Know your browser account's email",
+    "Rune Browser has no browser account: it sees no email.",
+  ),
   idle: full("Know when you're away from the computer"),
   management: full("See your other extensions"),
   menus: full("Add items to the right-click menu"),
@@ -256,11 +286,17 @@ const PERMISSIONS: Record<string, PermissionAbout> = {
   offscreen: full("Run hidden pages for its own work"),
   pageCapture: limited("Save pages as MHTML", "Saving pages as MHTML isn't available: those requests fail."),
   power: limited("Keep the computer awake", "Keeping the computer awake isn't available to extensions."),
-  privacy: limited("Change privacy settings", "Extensions can't change Rune Browser's privacy settings: it reads them as off, and its changes do nothing."),
+  privacy: limited(
+    "Change privacy settings",
+    "Extensions can't change Rune Browser's privacy settings: it reads them as off, and its changes do nothing.",
+  ),
   proxy: limited("Change proxy settings", "Extensions can't change the proxy settings: those requests fail."),
   scripting: full("Run scripts in pages"),
   search: full("Search with your search engine"),
-  sessions: limited("See recently closed tabs and your other devices", "Recently closed tabs and other devices aren't shared with extensions: it sees none."),
+  sessions: limited(
+    "See recently closed tabs and your other devices",
+    "Recently closed tabs and other devices aren't shared with extensions: it sees none.",
+  ),
   sidePanel: limited("Show a side panel", "Its side panel opens as a popup from its button, or as a tab."),
   storage: full("Store its settings and data"),
   "system.cpu": full("See the processor"),
@@ -274,7 +310,10 @@ const PERMISSIONS: Record<string, PermissionAbout> = {
   tts: limited("Read text aloud", "Text to speech isn't available to extensions: those requests fail."),
   ttsEngine: limited("Provide a voice for reading text aloud", "Its voice isn't offered to pages."),
   unlimitedStorage: full("Store lots of data"),
-  userScripts: limited("Run your user scripts on websites", "User scripts can't run, like in Chrome with “Allow user scripts” off. The rest of the extension works."),
+  userScripts: limited(
+    "Run your user scripts on websites",
+    "User scripts can't run, like in Chrome with “Allow user scripts” off. The rest of the extension works.",
+  ),
   webNavigation: full("Follow how tabs navigate"),
   webRequest: full("See and change network requests"),
   webRequestBlocking: full("Block network requests"),
@@ -306,7 +345,10 @@ export function permissionAbout(permission: string): PermissionAbout {
     PERMISSIONS[permission] ??
     (permission.startsWith("fileSystem.")
       ? PERMISSIONS.fileSystem!
-      : limited(permission, "Rune Browser doesn't have this: what the extension does with it fails, the rest of it keeps working."))
+      : limited(
+          permission,
+          "Rune Browser doesn't have this: what the extension does with it fails, the rest of it keeps working.",
+        ))
   );
 }
 
@@ -318,12 +360,16 @@ export function unsupportedPermissions(m: Manifest) {
   return asked.filter((p) => permissionAbout(p).limited !== null).sort();
 }
 
-export const permissionsOf = (m: Manifest) => (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
-export const optionalPermissionsOf = (m: Manifest) => (m.optional_permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
+export const permissionsOf = (m: Manifest) =>
+  (m.permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
+export const optionalPermissionsOf = (m: Manifest) =>
+  (m.optional_permissions ?? []).filter((p): p is string => typeof p === "string" && !isHostPattern(p));
 
 /** Host permissions: MV3's host_permissions, or MV2's permissions that are patterns. */
 export const hostPermissionsOf = (m: Manifest) =>
-  [...(m.host_permissions ?? []), ...(m.manifest_version === 2 ? (m.permissions ?? []) : [])].filter((p): p is string => typeof p === "string" && isHostPattern(p));
+  [...(m.host_permissions ?? []), ...(m.manifest_version === 2 ? (m.permissions ?? []) : [])].filter(
+    (p): p is string => typeof p === "string" && isHostPattern(p),
+  );
 
 // --- Match patterns ----------------------------------------------------------------
 
@@ -426,14 +472,26 @@ export function parseShortcut(text: string, platform: ShortcutPlatform): Shortcu
 }
 
 /** A command's key on this platform (suggested_key is a string or per platform, with a default). */
-export function suggestedKey(suggested: string | Record<string, string> | undefined, platform: ShortcutPlatform): string | null {
+export function suggestedKey(
+  suggested: string | Record<string, string> | undefined,
+  platform: ShortcutPlatform,
+): string | null {
   if (!suggested) return null;
   if (typeof suggested === "string") return suggested;
   return suggested[platform] ?? suggested.default ?? null;
 }
 
-export function shortcutMatches(s: Shortcut, input: { control: boolean; alt: boolean; shift: boolean; meta: boolean; code: string }) {
-  return s.code === input.code && s.ctrl === input.control && s.alt === input.alt && s.shift === input.shift && s.meta === input.meta;
+export function shortcutMatches(
+  s: Shortcut,
+  input: { control: boolean; alt: boolean; shift: boolean; meta: boolean; code: string },
+) {
+  return (
+    s.code === input.code &&
+    s.ctrl === input.control &&
+    s.alt === input.alt &&
+    s.shift === input.shift &&
+    s.meta === input.meta
+  );
 }
 
 /** "Ctrl+Shift+X" as shown to people. */
@@ -472,11 +530,26 @@ export function parseColor(value: unknown): [number, number, number, number] | n
     return [parseInt(r! + r, 16), parseInt(g! + g, 16), parseInt(b! + b, 16), parseInt(a + a, 16)];
   }
   m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/.exec(v);
-  if (m) return [parseInt(m[1]!.slice(0, 2), 16), parseInt(m[1]!.slice(2, 4), 16), parseInt(m[1]!.slice(4, 6), 16), m[2] ? parseInt(m[2], 16) : 255];
+  if (m)
+    return [
+      parseInt(m[1]!.slice(0, 2), 16),
+      parseInt(m[1]!.slice(2, 4), 16),
+      parseInt(m[1]!.slice(4, 6), 16),
+      m[2] ? parseInt(m[2], 16) : 255,
+    ];
   m = /^rgba?\(([^)]+)\)$/.exec(v);
   if (m) {
-    const parts = m[1]!.split(/[,\s/]+/).filter(Boolean).map(Number);
-    if (parts.length >= 3) return [parts[0]!, parts[1]!, parts[2]!, parts[3] === undefined ? 255 : Math.round(parts[3] <= 1 ? parts[3] * 255 : parts[3])];
+    const parts = m[1]!
+      .split(/[,\s/]+/)
+      .filter(Boolean)
+      .map(Number);
+    if (parts.length >= 3)
+      return [
+        parts[0]!,
+        parts[1]!,
+        parts[2]!,
+        parts[3] === undefined ? 255 : Math.round(parts[3] <= 1 ? parts[3] * 255 : parts[3]),
+      ];
   }
   return null;
 }
@@ -516,11 +589,19 @@ export interface DnrRule {
         requestHeaders?: { header: string; operation: "set" | "remove"; value?: string }[];
         responseHeaders?: { header: string; operation: "set" | "remove"; value?: string }[];
       };
-  condition: { urlFilter?: string; regexFilter?: string; requestDomains?: string[]; resourceTypes: string[]; isUrlFilterCaseSensitive: false };
+  condition: {
+    urlFilter?: string;
+    regexFilter?: string;
+    requestDomains?: string[];
+    resourceTypes: string[];
+    isUrlFilterCaseSensitive: false;
+  };
 }
 
 const headerOps = (headers: Record<string, string | null>) =>
-  Object.entries(headers).map(([header, value]) => (value === null ? { header, operation: "remove" as const } : { header, operation: "set" as const, value }));
+  Object.entries(headers).map(([header, value]) =>
+    value === null ? { header, operation: "remove" as const } : { header, operation: "set" as const, value },
+  );
 
 /**
  * A rule's pattern as a DNR condition. With `*` it matches the whole URL
@@ -542,13 +623,20 @@ export function patternCondition(pattern: string): { urlFilter: string } | { reg
  * changes), and Google's sign-in user agent (see `signInRule`), which the
  * rules can override.
  */
-export function networkRulesToDnr(rules: readonly NetworkRule[], workspaceId: string, signInUserAgent?: string): DnrRule[] {
+export function networkRulesToDnr(
+  rules: readonly NetworkRule[],
+  workspaceId: string,
+  signInUserAgent?: string,
+): DnrRule[] {
   const out: DnrRule[] = [];
   for (const rule of rules) {
     if (!rule.enabled || (rule.workspaceId !== null && rule.workspaceId !== workspaceId)) continue;
     const condition = patternCondition(rule.pattern);
     if (!condition) continue;
-    const base = { id: out.length + 1, condition: { ...condition, resourceTypes: [...ALL_RESOURCE_TYPES], isUrlFilterCaseSensitive: false as const } };
+    const base = {
+      id: out.length + 1,
+      condition: { ...condition, resourceTypes: [...ALL_RESOURCE_TYPES], isUrlFilterCaseSensitive: false as const },
+    };
     if (rule.action === "block") {
       out.push({ ...base, priority: 3, action: { type: "block" } });
       continue;
@@ -581,7 +669,11 @@ export function signInRule(id: number, userAgent: string): DnrRule {
     id,
     priority: 1,
     action: { type: "modifyHeaders", requestHeaders: [{ header: "User-Agent", operation: "set", value: userAgent }] },
-    condition: { requestDomains: ["accounts.google.com"], resourceTypes: [...ALL_RESOURCE_TYPES], isUrlFilterCaseSensitive: false },
+    condition: {
+      requestDomains: ["accounts.google.com"],
+      resourceTypes: [...ALL_RESOURCE_TYPES],
+      isUrlFilterCaseSensitive: false,
+    },
   };
 }
 
@@ -626,7 +718,11 @@ export function profileExtensions(...prefs: unknown[]): ProfileExtensionEntry[] 
       if (e.location !== undefined && BUILT_IN_LOCATIONS.has(e.location)) continue;
       if (e.manifest && (e.manifest.theme || e.manifest.app)) continue;
       const reasons = e.disable_reasons;
-      const disabled = Array.isArray(reasons) ? reasons.length > 0 : typeof reasons === "number" ? reasons !== 0 : e.state === 0;
+      const disabled = Array.isArray(reasons)
+        ? reasons.length > 0
+        : typeof reasons === "number"
+          ? reasons !== 0
+          : e.state === 0;
       const previous = found.get(id);
       found.set(id, {
         id,
@@ -643,11 +739,15 @@ export function profileExtensions(...prefs: unknown[]): ProfileExtensionEntry[] 
 
 /** Chrome's own keyboard shortcuts for extension commands (`extensions.commands`), by extension and command. */
 export function profileCommands(prefs: unknown, platform: ShortcutPlatform): Record<string, Record<string, string>> {
-  const commands = (prefs as { extensions?: { commands?: Record<string, { command_name?: string; extension?: string }> } } | null)?.extensions?.commands;
+  const commands = (
+    prefs as { extensions?: { commands?: Record<string, { command_name?: string; extension?: string }> } } | null
+  )?.extensions?.commands;
   const out: Record<string, Record<string, string>> = {};
   if (!commands || typeof commands !== "object") return out;
   for (const [binding, value] of Object.entries(commands)) {
-    const [plat, key] = binding.includes(":") ? [binding.slice(0, binding.indexOf(":")), binding.slice(binding.indexOf(":") + 1)] : [platform, binding];
+    const [plat, key] = binding.includes(":")
+      ? [binding.slice(0, binding.indexOf(":")), binding.slice(binding.indexOf(":") + 1)]
+      : [platform, binding];
     if (plat !== platform || !value?.extension || !value.command_name || !key) continue;
     (out[value.extension] ??= {})[value.command_name] = key;
   }
@@ -682,7 +782,10 @@ export function extensionIdFromHash(sha256Hex: string) {
  * letter upper-cased (UTF-8 bytes would give another ID, and the extension
  * would load under an ID Rune Browser doesn't know).
  */
-export function idSourceForPath(path: string, platform: ShortcutPlatform): { text: string; encoding: "utf8" | "utf16le" } {
+export function idSourceForPath(
+  path: string,
+  platform: ShortcutPlatform,
+): { text: string; encoding: "utf8" | "utf16le" } {
   if (platform !== "windows") return { text: path, encoding: "utf8" };
   return { text: path.replace(/^([a-z]):/, (_all, drive: string) => `${drive.toUpperCase()}:`), encoding: "utf16le" };
 }

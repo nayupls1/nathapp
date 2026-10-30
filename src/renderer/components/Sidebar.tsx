@@ -31,10 +31,32 @@ import {
   closeTab,
   reopenApp,
 } from "../lib/store";
-import { draggedSplit, draggedTab, isSidebarCollapsed, setDraggedSplit, setDraggedTab, setSidebarCollapsed, TAB_DRAG_TYPE, setSidebarWidth, SIDEBAR_DEFAULT, SIDEBAR_MIN, sidebarWidth, toggleSidebar } from "../lib/layout";
+import {
+  draggedSplit,
+  draggedTab,
+  isSidebarCollapsed,
+  setDraggedSplit,
+  setDraggedTab,
+  setSidebarCollapsed,
+  TAB_DRAG_TYPE,
+  setSidebarWidth,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_MIN,
+  sidebarWidth,
+  toggleSidebar,
+} from "../lib/layout";
 import { canUnload, unloadTab } from "../lib/unload";
 import { fullAccess } from "../lib/access";
-import { evenSplit, placeInSplit, removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "../lib/splits";
+import {
+  evenSplit,
+  placeInSplit,
+  removeFromSplit,
+  rotateSplit,
+  splitOf,
+  splitWith,
+  unsplit,
+  visibleTabs,
+} from "../lib/splits";
 import { colors, font, radius, space } from "../theme.stylex";
 import { AddressBar, NavRow, TabTools } from "./TopBar";
 import { api } from "../lib/api";
@@ -82,7 +104,11 @@ export function Sidebar() {
           "separator" as const,
           ...library()
             .slice(0, 12)
-            .map((app): MenuItem => ({ label: `Open ${app.name}`, icon: "archive-restore", onSelect: () => void reopenApp(app.id) })),
+            .map((app): MenuItem => ({
+              label: `Open ${app.name}`,
+              icon: "archive-restore",
+              onSelect: () => void reopenApp(app.id),
+            })),
         ]
       : []),
   ];
@@ -91,65 +117,68 @@ export function Sidebar() {
   const compact = isSidebarCollapsed;
   return (
     <>
-    <nav
-      {...stylex.attrs(styles.root, compact() && styles.rootCompact)}
-      style={{ width: `${compact() ? RAIL_WIDTH : sidebarWidth()}px` }}
-      data-sidebar={compact() ? "collapsed" : "expanded"}
-    >
-      {/* The tab on screen: its navigation, address and tools (components/TopBar.tsx). */}
-      <div {...stylex.attrs(styles.chrome)} data-tab-chrome={selectedId() ?? ""}>
-        <NavRow compact={compact()} />
-        <Show when={!compact()}>
-          <AddressBar />
-          <TabTools />
-        </Show>
-      </div>
-      <Show when={tiles().length}>
-        <ul {...stylex.attrs(styles.tiles)} data-pinned-tiles>
-          <For each={tiles()}>{(app) => <Item app={app} tile />}</For>
-        </ul>
-      </Show>
-      <ul {...stylex.attrs(styles.list)}>
-        <For each={entries()}>
-          {(key) => (
-            <Show when={key.startsWith("split:")} fallback={<Show when={appById(key)}>{(app) => <Item app={app()} />}</Show>}>
-              <SplitGroup splitId={key.slice(6)} />
-            </Show>
-          )}
-        </For>
-      </ul>
-      <Button
-        onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          setNewMenu({ x: r.left, y: r.bottom + 4 });
-        }}
-        xstyle={compact() ? styles.newButtonCompact : styles.newButton}
-        title={compact() ? "New tab" : undefined}
-        aria-haspopup="menu"
-        data-new-tab
+      <nav
+        {...stylex.attrs(styles.root, compact() && styles.rootCompact)}
+        style={{ width: `${compact() ? RAIL_WIDTH : sidebarWidth()}px` }}
+        data-sidebar={compact() ? "collapsed" : "expanded"}
       >
-        <Icon name="plus" size={15} />
-        <Show when={!compact()}>New tab</Show>
-      </Button>
-      <Show when={newMenu()}>
-        {(position) => <ContextMenu items={newItems()} position={position()} onClose={() => setNewMenu()} />}
+        {/* The tab on screen: its navigation, address and tools (components/TopBar.tsx). */}
+        <div {...stylex.attrs(styles.chrome)} data-tab-chrome={selectedId() ?? ""}>
+          <NavRow compact={compact()} />
+          <Show when={!compact()}>
+            <AddressBar />
+            <TabTools />
+          </Show>
+        </div>
+        <Show when={tiles().length}>
+          <ul {...stylex.attrs(styles.tiles)} data-pinned-tiles>
+            <For each={tiles()}>{(app) => <Item app={app} tile />}</For>
+          </ul>
+        </Show>
+        <ul {...stylex.attrs(styles.list)}>
+          <For each={entries()}>
+            {(key) => (
+              <Show
+                when={key.startsWith("split:")}
+                fallback={<Show when={appById(key)}>{(app) => <Item app={app()} />}</Show>}
+              >
+                <SplitGroup splitId={key.slice(6)} />
+              </Show>
+            )}
+          </For>
+        </ul>
+        <Button
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            setNewMenu({ x: r.left, y: r.bottom + 4 });
+          }}
+          xstyle={compact() ? styles.newButtonCompact : styles.newButton}
+          title={compact() ? "New tab" : undefined}
+          aria-haspopup="menu"
+          data-new-tab
+        >
+          <Icon name="plus" size={15} />
+          <Show when={!compact()}>New tab</Show>
+        </Button>
+        <Show when={newMenu()}>
+          {(position) => <ContextMenu items={newItems()} position={position()} onClose={() => setNewMenu()} />}
+        </Show>
+        <WorkspaceName />
+        {/* At the very bottom: collapse, the workspaces in the middle, Settings (a column when collapsed). */}
+        <div {...stylex.attrs(styles.footer, compact() && styles.footerCompact)} data-sidebar-footer>
+          <Show when={!compact()}>
+            <CollapseButton />
+          </Show>
+          <WorkspaceBar />
+          <SettingsLink />
+          <Show when={compact()}>
+            <CollapseButton />
+          </Show>
+        </div>
+      </nav>
+      <Show when={!compact()}>
+        <Resizer />
       </Show>
-      <WorkspaceName />
-      {/* At the very bottom: collapse, the workspaces in the middle, Settings (a column when collapsed). */}
-      <div {...stylex.attrs(styles.footer, compact() && styles.footerCompact)} data-sidebar-footer>
-        <Show when={!compact()}>
-          <CollapseButton />
-        </Show>
-        <WorkspaceBar />
-        <SettingsLink />
-        <Show when={compact()}>
-          <CollapseButton />
-        </Show>
-      </div>
-    </nav>
-    <Show when={!compact()}>
-      <Resizer />
-    </Show>
     </>
   );
 }
@@ -289,11 +318,29 @@ function WorkspaceBar() {
           const current = () => currentWorkspace()?.id === w.id;
           const isOver = () => over() === w.id;
           const items = (): (MenuItem | "separator")[] => [
-            { label: "Rename", icon: "pencil", onSelect: () => void showWorkspace(w.id).then(() => setNamingRequest((n) => n + 1)) },
+            {
+              label: "Rename",
+              icon: "pencil",
+              onSelect: () => void showWorkspace(w.id).then(() => setNamingRequest((n) => n + 1)),
+            },
             { label: "Change icon…", icon: "shapes", onSelect: () => setIconPicker(menu() ?? { x: 0, y: 0 }) },
-            { label: "Move left", icon: "arrow-left", disabled: i() === 0, onSelect: () => reorderTo(w.id, workspaces[i() - 1]!.id) },
-            { label: "Move right", icon: "arrow-right", disabled: i() === workspaces.length - 1, onSelect: () => reorderTo(w.id, workspaces[i() + 1]!.id) },
-            { label: "Workspace settings", icon: "settings-2", onSelect: () => void showWorkspace(w.id).then(openWorkspaceSettings) },
+            {
+              label: "Move left",
+              icon: "arrow-left",
+              disabled: i() === 0,
+              onSelect: () => reorderTo(w.id, workspaces[i() - 1]!.id),
+            },
+            {
+              label: "Move right",
+              icon: "arrow-right",
+              disabled: i() === workspaces.length - 1,
+              onSelect: () => reorderTo(w.id, workspaces[i() + 1]!.id),
+            },
+            {
+              label: "Workspace settings",
+              icon: "settings-2",
+              onSelect: () => void showWorkspace(w.id).then(openWorkspaceSettings),
+            },
             "separator",
             {
               label: "Delete workspace",
@@ -352,18 +399,32 @@ function WorkspaceBar() {
                     void moveApp(tab, w.id);
                   }
                 }}
-                {...stylex.attrs(styles.workspaceIcon, current() && styles.workspaceIconOn, isOver() && styles.workspaceIconOver)}
+                {...stylex.attrs(
+                  styles.workspaceIcon,
+                  current() && styles.workspaceIconOn,
+                  isOver() && styles.workspaceIconOver,
+                )}
                 data-workspace={w.id}
               >
                 <WorkspaceBadge workspace={w} />
               </button>
-              <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
-              <Show when={iconPicker()}>{(position) => <IconPicker workspace={w} position={position()} onClose={() => setIconPicker()} />}</Show>
+              <Show when={menu()}>
+                {(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}
+              </Show>
+              <Show when={iconPicker()}>
+                {(position) => <IconPicker workspace={w} position={position()} onClose={() => setIconPicker()} />}
+              </Show>
             </>
           );
         }}
       </For>
-      <button type="button" title="New workspace" onClick={() => void newWorkspace()} {...stylex.attrs(styles.workspaceIcon, styles.workspaceAdd)} data-new-workspace>
+      <button
+        type="button"
+        title="New workspace"
+        onClick={() => void newWorkspace()}
+        {...stylex.attrs(styles.workspaceIcon, styles.workspaceAdd)}
+        data-new-workspace
+      >
         <Icon name="plus" size={15} />
       </button>
     </div>
@@ -395,7 +456,11 @@ function openWorkspaceSettings() {
 export function WorkspaceBadge(props: { workspace: WorkspaceInfo }) {
   return (
     <span {...stylex.attrs(styles.badge)} aria-hidden="true">
-      <Icon name={props.workspace.icon} size={13} fallback={<>{props.workspace.icon ?? props.workspace.name.trim().charAt(0).toUpperCase()}</>} />
+      <Icon
+        name={props.workspace.icon}
+        size={13}
+        fallback={<>{props.workspace.icon ?? props.workspace.name.trim().charAt(0).toUpperCase()}</>}
+      />
     </span>
   );
 }
@@ -441,7 +506,11 @@ function SplitGroup(props: { splitId: string }) {
       {(s) => (
         <li {...stylex.attrs(styles.group, isDragged() && styles.dragging)} data-split-group={props.splitId}>
           <div
-            {...stylex.attrs(stylex.defaultMarker(), styles.groupHeader, isSidebarCollapsed() && styles.groupHeaderCompact)}
+            {...stylex.attrs(
+              stylex.defaultMarker(),
+              styles.groupHeader,
+              isSidebarCollapsed() && styles.groupHeaderCompact,
+            )}
             title={isSidebarCollapsed() ? "Split view" : "Drag to move the split view"}
             draggable
             onDragStart={(e) => {
@@ -485,7 +554,9 @@ function SplitGroup(props: { splitId: string }) {
           <ul {...stylex.attrs(styles.list)}>
             <For each={s().tabs}>{(id) => <Show when={appById(id)}>{(app) => <Item app={app()} />}</Show>}</For>
           </ul>
-          <Show when={menu()}>{(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}</Show>
+          <Show when={menu()}>
+            {(position) => <ContextMenu items={items()} position={position()} onClose={() => setMenu()} />}
+          </Show>
         </li>
       )}
     </Show>
@@ -517,7 +588,8 @@ function Item(props: { app: AppSummary; tile?: boolean }) {
   const [editing, setEditing] = createSignal(false);
   const [menu, setMenu] = createSignal<MenuPosition>();
   const [iconPicker, setIconPicker] = createSignal<MenuPosition>();
-  const dropBefore = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "before";
+  const dropBefore = () =>
+    draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "before";
   const dropAfter = () => draggedTab() !== props.app.id && dropAt()?.id === props.app.id && dropAt()?.side === "after";
   const split = () => splitOf(props.app.id);
   // On screen next to the selected tab, in a split view.
@@ -561,25 +633,56 @@ function Item(props: { app: AppSummary; tile?: boolean }) {
     ...(split()
       ? [{ label: "Remove from split view", icon: "square-x", onSelect: () => removeFromSplit(props.app.id) }]
       : current()
-        ? [{ label: `Show beside “${current()!.name}”`, icon: "columns-2", onSelect: () => splitWith(current()!.id, props.app.id, "right") }]
+        ? [
+            {
+              label: `Show beside “${current()!.name}”`,
+              icon: "columns-2",
+              onSelect: () => splitWith(current()!.id, props.app.id, "right"),
+            },
+          ]
         : []),
     props.app.pinned
       ? { label: "Unpin", icon: "pin-off", onSelect: () => void setTabPinned(props.app.id, false) }
-      : { label: "Pin (a tile above the tabs, kept loaded)", icon: "pin", onSelect: () => void setTabPinned(props.app.id, true) },
+      : {
+          label: "Pin (a tile above the tabs, kept loaded)",
+          icon: "pin",
+          onSelect: () => void setTabPinned(props.app.id, true),
+        },
     { label: "Unload", icon: "moon", disabled: !canUnload(props.app.id), onSelect: () => void unloadTab(props.app.id) },
-    { label: "Move up", icon: "arrow-up", disabled: !neighbour(-1), onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before") },
-    { label: "Move down", icon: "arrow-down", disabled: !neighbour(1), onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after") },
+    {
+      label: "Move up",
+      icon: "arrow-up",
+      disabled: !neighbour(-1),
+      onSelect: () => void moveTab(props.app.id, neighbour(-1)!.id, "before"),
+    },
+    {
+      label: "Move down",
+      icon: "arrow-down",
+      disabled: !neighbour(1),
+      onSelect: () => void moveTab(props.app.id, neighbour(1)!.id, "after"),
+    },
     ...workspaces
       .filter((w) => w.id !== props.app.workspaceId)
-      .map((w) => ({ label: `Move to ${w.name}`, icon: "folder-input", onSelect: () => void moveApp(props.app.id, w.id) })),
+      .map((w) => ({
+        label: `Move to ${w.name}`,
+        icon: "folder-input",
+        onSelect: () => void moveApp(props.app.id, w.id),
+      })),
     {
       label: "New chat",
       icon: "message-square-plus",
       disabled: running() || !states[props.app.id]?.messages.length,
-      onSelect: () => void newChat(props.app.id).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" })),
+      onSelect: () =>
+        void newChat(props.app.id).catch((err) =>
+          toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }),
+        ),
     },
     "separator",
-    { label: props.app.kind === "app" ? "Close (the app is kept)" : "Close tab", icon: "x", onSelect: () => void close() },
+    {
+      label: props.app.kind === "app" ? "Close (the app is kept)" : "Close tab",
+      icon: "x",
+      onSelect: () => void close(),
+    },
     ...(props.app.kind === "app"
       ? [
           {
@@ -587,14 +690,20 @@ function Item(props: { app: AppSummary; tile?: boolean }) {
             icon: "trash",
             danger: true,
             onSelect: async () => {
-              const ok = await confirmDialog(`Delete “${props.app.name}” and all its data?`, { confirmLabel: "Delete", danger: true });
+              const ok = await confirmDialog(`Delete “${props.app.name}” and all its data?`, {
+                confirmLabel: "Delete",
+                danger: true,
+              });
               if (ok) deleteApp(props.app.id);
             },
           },
         ]
       : []),
   ];
-  const close = () => closeTab(props.app.id).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }));
+  const close = () =>
+    closeTab(props.app.id).catch((err) =>
+      toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }),
+    );
 
   return (
     <li
@@ -609,7 +718,13 @@ function Item(props: { app: AppSummary; tile?: boolean }) {
         dropBefore() && styles.dropBefore,
         dropAfter() && styles.dropAfter,
       )}
-      title={isSidebarCollapsed() || props.tile ? props.app.name : asleep() ? "Not loaded: opens where you left it" : undefined}
+      title={
+        isSidebarCollapsed() || props.tile
+          ? props.app.name
+          : asleep()
+            ? "Not loaded: opens where you left it"
+            : undefined
+      }
       onClick={() => selectApp(props.app.id)}
       onAuxClick={(e) => {
         // Middle click closes it, like in a browser.
@@ -661,7 +776,10 @@ function Item(props: { app: AppSummary; tile?: boolean }) {
       <span {...stylex.attrs(styles.tabIcon, asleep() && styles.asleep)}>
         <TabIcon tab={props.app} />
       </span>
-      <Show when={editing()} fallback={<span {...stylex.attrs(styles.name, hideName() && styles.hiddenText)}>{props.app.name}</span>}>
+      <Show
+        when={editing()}
+        fallback={<span {...stylex.attrs(styles.name, hideName() && styles.hiddenText)}>{props.app.name}</span>}
+      >
         <input
           ref={(el) => queueMicrotask(() => el.select())}
           value={props.app.name}
@@ -804,9 +922,24 @@ const styles = stylex.create({
     fontSize: font.xs,
     fontWeight: 700,
   },
-  newButton: { justifyContent: "flex-start", width: "100%", flexShrink: 0, backgroundColor: { default: "transparent", ":hover": colors.surfaceHover }, boxShadow: "none", color: colors.muted },
+  newButton: {
+    justifyContent: "flex-start",
+    width: "100%",
+    flexShrink: 0,
+    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
+    boxShadow: "none",
+    color: colors.muted,
+  },
   chrome: { display: "flex", flexDirection: "column", gap: space.sm, flexShrink: 0 },
-  tiles: { listStyle: "none", margin: 0, padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(44px, 1fr))", gap: 6, flexShrink: 0 },
+  tiles: {
+    listStyle: "none",
+    margin: 0,
+    padding: 0,
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(44px, 1fr))",
+    gap: 6,
+    flexShrink: 0,
+  },
   tile: {
     justifyContent: "center",
     height: 40,
@@ -869,7 +1002,11 @@ const styles = stylex.create({
     outlineColor: colors.accent,
     outlineOffset: -2,
   },
-  pageLinkOn: { backgroundColor: { default: colors.surface, ":hover": colors.surface }, color: colors.text, boxShadow: `0 0 0 1px ${colors.border}` },
+  pageLinkOn: {
+    backgroundColor: { default: colors.surface, ":hover": colors.surface },
+    color: colors.text,
+    boxShadow: `0 0 0 1px ${colors.border}`,
+  },
   name: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   rename: {
     flex: 1,
@@ -934,7 +1071,11 @@ const styles = stylex.create({
     transitionProperty: "opacity, background-color",
     transitionDuration: "120ms",
   },
-  workspaceIconOn: { opacity: 1, backgroundColor: { default: colors.surface, ":hover": colors.surface }, boxShadow: `0 0 0 1px ${colors.border}` },
+  workspaceIconOn: {
+    opacity: 1,
+    backgroundColor: { default: colors.surface, ":hover": colors.surface },
+    boxShadow: `0 0 0 1px ${colors.border}`,
+  },
   workspaceIconOver: { boxShadow: `0 0 0 2px ${colors.accent}`, opacity: 1 },
   workspaceAdd: { opacity: { default: 0.6, ":hover": 1 } },
 });

@@ -52,8 +52,23 @@ const toSource = (r: Row): ContextSource => ({
 const SECRET_FILE =
   /^(\.env(\.(?!example$|sample$|template$|dist$)[\w.-]+)?|.*\.(pem|key|p12|pfx|keystore|jks|kdbx)|id_(rsa|ed25519|ecdsa|dsa)(\.pub)?|\.npmrc|\.pypirc|\.netrc|\.git-credentials|credentials(\.json)?|secrets?\.(json|ya?ml|toml)|\.htpasswd)$/i;
 /** Not worth listing or searching. */
-const SKIPPED_DIRS = new Set([".git", "node_modules", ".rune", "dist", "build", ".next", ".turbo", ".cache", "target", "__pycache__", ".venv", "venv", "coverage"]);
-export const isSecretPath = (rel: string) => rel.split(/[\\/]/).some((part, i, all) => part === ".git" || (i === all.length - 1 && SECRET_FILE.test(part)));
+const SKIPPED_DIRS = new Set([
+  ".git",
+  "node_modules",
+  ".rune",
+  "dist",
+  "build",
+  ".next",
+  ".turbo",
+  ".cache",
+  "target",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "coverage",
+]);
+export const isSecretPath = (rel: string) =>
+  rel.split(/[\\/]/).some((part, i, all) => part === ".git" || (i === all.length - 1 && SECRET_FILE.test(part)));
 
 const MAX_FILE = 2 * 1024 * 1024;
 
@@ -89,10 +104,22 @@ export interface SourcesShape {
   /** The tab was deleted: its clones go too. */
   readonly forgetTab: (tabId: string) => Effect.Effect<void>;
   /** A path inside the source, checked: no escaping it (symlinks too), no credential files. */
-  readonly resolvePath: (source: ContextSource, path: string) => Effect.Effect<{ abs: string; rel: string }, SourceError>;
-  readonly listFiles: (source: ContextSource, options: { dir?: string; pattern?: string; limit?: number }) => Effect.Effect<string[], SourceError>;
-  readonly readText: (source: ContextSource, path: string) => Effect.Effect<{ rel: string; text: string | null }, SourceError>;
-  readonly search: (source: ContextSource, options: { query: string; regex?: boolean; glob?: string; limit?: number }) => Effect.Effect<string[], SourceError>;
+  readonly resolvePath: (
+    source: ContextSource,
+    path: string,
+  ) => Effect.Effect<{ abs: string; rel: string }, SourceError>;
+  readonly listFiles: (
+    source: ContextSource,
+    options: { dir?: string; pattern?: string; limit?: number },
+  ) => Effect.Effect<string[], SourceError>;
+  readonly readText: (
+    source: ContextSource,
+    path: string,
+  ) => Effect.Effect<{ rel: string; text: string | null }, SourceError>;
+  readonly search: (
+    source: ContextSource,
+    options: { query: string; regex?: boolean; glob?: string; limit?: number },
+  ) => Effect.Effect<string[], SourceError>;
   readonly git: (source: ContextSource, args: string[]) => Effect.Effect<string, SourceError>;
   readonly writeText: (source: ContextSource, rel: string, text: string) => Effect.Effect<void, SourceError>;
 }
@@ -107,8 +134,12 @@ export const make = Effect.gen(function* () {
   const noHooks = join(config.cacheDir, "no-git-hooks");
 
   const db = orDieAll({
-    list: (tabId: string) => sql<Row>`SELECT * FROM sources WHERE tab_id = ${tabId} ORDER BY added_at, id`.pipe(Effect.map((rows) => rows.map(toSource))),
-    get: (id: string) => sql<Row>`SELECT * FROM sources WHERE id = ${id}`.pipe(Effect.map((rows) => (rows[0] ? toSource(rows[0]) : null))),
+    list: (tabId: string) =>
+      sql<Row>`SELECT * FROM sources WHERE tab_id = ${tabId} ORDER BY added_at, id`.pipe(
+        Effect.map((rows) => rows.map(toSource)),
+      ),
+    get: (id: string) =>
+      sql<Row>`SELECT * FROM sources WHERE id = ${id}`.pipe(Effect.map((rows) => (rows[0] ? toSource(rows[0]) : null))),
     insert: (s: Omit<ContextSource, "addedAt" | "updatedAt" | "error">) =>
       sql`INSERT INTO sources (id, tab_id, kind, name, path, url, branch, state) VALUES (${s.id}, ${s.tabId}, ${s.kind}, ${s.name}, ${s.path}, ${s.url}, ${s.branch}, ${s.state})`,
     setState: (id: string, state: ContextSource["state"], error: string | null) =>
@@ -118,16 +149,28 @@ export const make = Effect.gen(function* () {
   });
 
   const publish = (tabId: string) =>
-    Effect.flatMap(db.list(tabId), (sources) => hub.publish({ type: "sources", topic: topics.app(tabId), appId: tabId, sources }));
+    Effect.flatMap(db.list(tabId), (sources) =>
+      hub.publish({ type: "sources", topic: topics.app(tabId), appId: tabId, sources }),
+    );
   const progress = (tabId: string, sourceId: string) => (p: { phase: string; percent: number | null }) =>
-    hub.publishUnsafe({ type: "source-progress", topic: topics.app(tabId), appId: tabId, sourceId, phase: p.phase, percent: p.percent });
+    hub.publishUnsafe({
+      type: "source-progress",
+      topic: topics.app(tabId),
+      appId: tabId,
+      sourceId,
+      phase: p.phase,
+      percent: p.percent,
+    });
 
   const fail = (message: string) => Effect.fail(new SourceError({ message }));
 
   const resolvePath = (source: ContextSource, path: string) =>
     Effect.gen(function* () {
       if (source.state === "cloning") return yield* fail(`${source.name} is still being cloned.`);
-      const root = yield* Effect.try({ try: () => realpathSync(source.path), catch: () => new SourceError({ message: `${source.path} doesn't exist anymore.` }) });
+      const root = yield* Effect.try({
+        try: () => realpathSync(source.path),
+        catch: () => new SourceError({ message: `${source.path} doesn't exist anymore.` }),
+      });
       const wanted = resolve(root, path.replace(/^[\\/]+/, "") || ".");
       // The path itself may not exist yet (a new file): check its nearest existing parent after symlinks.
       let existing = wanted;
@@ -136,7 +179,8 @@ export const make = Effect.gen(function* () {
       // With forward slashes on every OS, like the listings.
       const rel = relative(root, real).split(sep).join("/");
       if (rel.startsWith("..") || isAbsolute(rel)) return yield* fail(`${path} isn't inside ${source.name}.`);
-      if (isSecretPath(rel)) return yield* fail(`${rel} may hold credentials or is git's own data: it's never read or changed.`);
+      if (isSecretPath(rel))
+        return yield* fail(`${rel} may hold credentials or is git's own data: it's never read or changed.`);
       return { abs: real, rel: rel || "." };
     });
 
@@ -164,10 +208,22 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       yield* Effect.promise(() => rm(source.path, { recursive: true, force: true }));
       yield* Effect.promise(() => mkdir(clonesDir, { recursive: true }));
-      const result = yield* clone({ url, branch, target: source.path, noHooks, onProgress: progress(source.tabId, source.id), cancelKey: `source:${source.id}` });
+      const result = yield* clone({
+        url,
+        branch,
+        target: source.path,
+        noHooks,
+        onProgress: progress(source.tabId, source.id),
+        cancelKey: `source:${source.id}`,
+      });
       if (!(yield* db.get(source.id))) return; // removed meanwhile
       if (result.code === 0) yield* db.setState(source.id, "ready", null);
-      else yield* db.setState(source.id, "error", result.cancelled ? "Cancelled" : cloneError(result.err) || `git exited with ${result.code}`);
+      else
+        yield* db.setState(
+          source.id,
+          "error",
+          result.cancelled ? "Cancelled" : cloneError(result.err) || `git exited with ${result.code}`,
+        );
       yield* publish(source.tabId);
     });
 
@@ -180,12 +236,23 @@ export const make = Effect.gen(function* () {
         const abs = resolve(path);
         const info = yield* Effect.sync(() => (existsSync(abs) ? statSync(abs) : null));
         if (!info?.isDirectory()) return yield* fail(`${path} isn't a folder.`);
-        if (abs === sep || abs === homedir() || /^[A-Za-z]:\\?$/.test(abs)) return yield* fail("That's too much: pick a project folder, not your whole disk or home folder.");
-        if (under(config.dataDir, abs) || under(abs, config.dataDir)) return yield* fail("That folder is Rune Browser's own data.");
+        if (abs === sep || abs === homedir() || /^[A-Za-z]:\\?$/.test(abs))
+          return yield* fail("That's too much: pick a project folder, not your whole disk or home folder.");
+        if (under(config.dataDir, abs) || under(abs, config.dataDir))
+          return yield* fail("That folder is Rune Browser's own data.");
         const existing = (yield* db.list(tabId)).find((s) => s.path === abs);
         if (existing) return existing;
         const id = crypto.randomUUID().slice(0, 8);
-        yield* db.insert({ id, tabId, kind: "folder", name: basename(abs), path: abs, url: null, branch: null, state: "ready" });
+        yield* db.insert({
+          id,
+          tabId,
+          kind: "folder",
+          name: basename(abs),
+          path: abs,
+          url: null,
+          branch: null,
+          state: "ready",
+        });
         yield* publish(tabId);
         return (yield* db.get(id))!;
       }),
@@ -223,7 +290,8 @@ export const make = Effect.gen(function* () {
         cancelGit(`source:${id}`);
         yield* db.remove(id);
         // Rune Browser's clone goes; the user's own folder is theirs.
-        if (source.kind === "git" && under(source.path, clonesDir)) yield* Effect.promise(() => rm(source.path, { recursive: true, force: true }));
+        if (source.kind === "git" && under(source.path, clonesDir))
+          yield* Effect.promise(() => rm(source.path, { recursive: true, force: true }));
         yield* publish(source.tabId);
         return true;
       }),
@@ -245,9 +313,18 @@ export const make = Effect.gen(function* () {
         yield* publish(source.tabId);
         yield* Effect.forkDetach(
           Effect.gen(function* () {
-            const result = yield* runGit(["pull", "--progress", "--ff-only"], { cwd: source.path, noHooks, onProgress: progress(source.tabId, id), cancelKey: `source:${id}` });
+            const result = yield* runGit(["pull", "--progress", "--ff-only"], {
+              cwd: source.path,
+              noHooks,
+              onProgress: progress(source.tabId, id),
+              cancelKey: `source:${id}`,
+            });
             if (!(yield* db.get(id))) return;
-            yield* db.setState(id, result.code === 0 ? "ready" : "error", result.code === 0 ? null : cloneError(result.err) || `git exited with ${result.code}`);
+            yield* db.setState(
+              id,
+              result.code === 0 ? "ready" : "error",
+              result.code === 0 ? null : cloneError(result.err) || `git exited with ${result.code}`,
+            );
             yield* publish(source.tabId);
           }),
         );
@@ -258,7 +335,8 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         for (const row of yield* db.ofTab(tabId)) {
           cancelGit(`source:${row.id}`);
-          if (row.kind === "git") yield* Effect.promise(() => rm(join(clonesDir, row.id), { recursive: true, force: true }));
+          if (row.kind === "git")
+            yield* Effect.promise(() => rm(join(clonesDir, row.id), { recursive: true, force: true }));
         }
       }),
 
@@ -280,7 +358,8 @@ export const make = Effect.gen(function* () {
         const info = yield* Effect.sync(() => (existsSync(abs) ? statSync(abs) : null));
         if (!info) return yield* fail(`${rel} doesn't exist in ${source.name}.`);
         if (info.isDirectory()) return yield* fail(`${rel} is a folder: list it with list_source_files.`);
-        if (info.size > MAX_FILE) return yield* fail(`${rel} is too large to read (${Math.round(info.size / 1024)} kB).`);
+        if (info.size > MAX_FILE)
+          return yield* fail(`${rel} is too large to read (${Math.round(info.size / 1024)} kB).`);
         const buffer = yield* Effect.promise(() => readFile(abs));
         return { rel, text: isText(buffer) ? buffer.toString("utf8") : null };
       }),

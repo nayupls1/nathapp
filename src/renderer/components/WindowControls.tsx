@@ -33,7 +33,13 @@ export function WindowControls() {
         data-window-controls
       >
         <span {...stylex.attrs(styles.light, blurred() && styles.lightBlurred)}>
-          <svg viewBox="0 0 8 8" width="6" height="6" {...stylex.attrs(styles.glyph, showGlyph() && styles.glyphOn)} aria-hidden="true">
+          <svg
+            viewBox="0 0 8 8"
+            width="6"
+            height="6"
+            {...stylex.attrs(styles.glyph, showGlyph() && styles.glyphOn)}
+            aria-hidden="true"
+          >
             <path d="M1 1l6 6M7 1L1 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" />
           </svg>
         </span>
@@ -44,7 +50,17 @@ export function WindowControls() {
 
 const styles = stylex.create({
   // A bigger target than the light itself.
-  button: { display: "grid", placeItems: "center", flexShrink: 0, width: 24, height: 30, padding: 0, borderWidth: 0, backgroundColor: "transparent", cursor: "default" },
+  button: {
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
+    width: 24,
+    height: 30,
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    cursor: "default",
+  },
   light: {
     display: "grid",
     placeItems: "center",

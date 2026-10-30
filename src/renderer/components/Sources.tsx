@@ -52,7 +52,12 @@ export function SourcesBar(props: { tabId: string; adding: boolean; onDone: () =
           {(source) => {
             const busy = () => source.state === "cloning" || source.state === "pulling";
             const broken = () => source.state === "error";
-            const status = () => (busy() ? (progress()[source.id] ?? (source.state === "cloning" ? "Cloning…" : "Pulling…")) : broken() ? source.error : null);
+            const status = () =>
+              busy()
+                ? (progress()[source.id] ?? (source.state === "cloning" ? "Cloning…" : "Pulling…"))
+                : broken()
+                  ? source.error
+                  : null;
             return (
               <span
                 {...stylex.attrs(styles.chip, broken() && styles.chipBroken)}
@@ -60,7 +65,11 @@ export function SourcesBar(props: { tabId: string; adding: boolean; onDone: () =
                 data-source-chip={source.id}
                 data-source-state={source.state}
               >
-                <Icon name={busy() ? "loader-circle" : source.kind === "git" ? "git-branch" : "folder-code"} size={12} {...stylex.attrs(busy() && styles.spin)} />
+                <Icon
+                  name={busy() ? "loader-circle" : source.kind === "git" ? "git-branch" : "folder-code"}
+                  size={12}
+                  {...stylex.attrs(busy() && styles.spin)}
+                />
                 <span {...stylex.attrs(styles.label)}>{source.name}</span>
                 <Show when={status()}>{(text) => <span {...stylex.attrs(styles.status)}>{text()}</span>}</Show>
                 <Show when={source.kind === "git" && !busy()}>
@@ -76,7 +85,11 @@ export function SourcesBar(props: { tabId: string; adding: boolean; onDone: () =
                 </Show>
                 <button
                   type="button"
-                  title={source.kind === "git" ? "Remove (deletes Rune Browser's clone)" : "Remove (your folder stays as it is)"}
+                  title={
+                    source.kind === "git"
+                      ? "Remove (deletes Rune Browser's clone)"
+                      : "Remove (your folder stays as it is)"
+                  }
                   onClick={() => void api.removeSource(props.tabId, source.id).catch(failed)}
                   {...stylex.attrs(styles.chipButton)}
                   data-source-remove
@@ -148,7 +161,9 @@ export function SourcesButton(props: { tabId: string; onAddRepository: () => voi
       >
         <Icon name="folder-code" size={15} />
       </button>
-      <Show when={menu()}>{(position) => <ContextMenu items={items} position={position()} onClose={() => setMenu()} />}</Show>
+      <Show when={menu()}>
+        {(position) => <ContextMenu items={items} position={position()} onClose={() => setMenu()} />}
+      </Show>
     </>
   );
 }
@@ -185,7 +200,12 @@ const styles = stylex.create({
     color: colors.muted,
     cursor: "pointer",
   },
-  spin: { animationName: spin, animationDuration: "1s", animationIterationCount: "infinite", animationTimingFunction: "linear" },
+  spin: {
+    animationName: spin,
+    animationDuration: "1s",
+    animationIterationCount: "infinite",
+    animationTimingFunction: "linear",
+  },
   form: { display: "flex", alignItems: "center", gap: space.xs, width: "100%" },
   input: {
     flex: 1,
@@ -202,7 +222,15 @@ const styles = stylex.create({
     fontSize: font.xs,
   },
   branch: { flex: "0 1 90px" },
-  link: { padding: 0, borderWidth: 0, backgroundColor: "transparent", color: colors.accent, fontSize: font.xs, cursor: "pointer", opacity: { default: 1, ":disabled": 0.5 } },
+  link: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: colors.accent,
+    fontSize: font.xs,
+    cursor: "pointer",
+    opacity: { default: 1, ":disabled": 0.5 },
+  },
   muted: { color: colors.muted },
   button: {
     display: "grid",

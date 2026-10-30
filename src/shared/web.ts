@@ -43,7 +43,8 @@ export function normalizeUrl(input: string, engine: Settings["web"]["searchEngin
   if (/^(https?:\/\/|about:)/i.test(text)) return text;
   const local = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:\d+)?(\/|$)/i.test(text);
   if (local) return `http://${text}`;
-  const looksLikeHost = !/\s/.test(text) && /^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(text) && /\.[a-z]{2,}(:\d+)?(\/|$)/i.test(text);
+  const looksLikeHost =
+    !/\s/.test(text) && /^[\w-]+(\.[\w-]+)+(:\d+)?(\/.*)?$/.test(text) && /\.[a-z]{2,}(:\d+)?(\/|$)/i.test(text);
   if (looksLikeHost) return `https://${text}`;
   return searchEngines[engine].url.replace("%s", encodeURIComponent(text));
 }
@@ -139,12 +140,15 @@ const POSITIONS = new Set(["before", "after", "prepend", "append"]);
 export function pageChangeProblem(c: PageChangeSpec): string | null {
   if (!c.title?.trim()) return "Give it a short title";
   if (c.title.length > 120) return "The title is too long";
-  if (!c.scope || !["page", "site", "pattern"].includes(c.scope.type)) return "scope.type must be page, site or pattern";
+  if (!c.scope || !["page", "site", "pattern"].includes(c.scope.type))
+    return "scope.type must be page, site or pattern";
   const value = c.scope.value?.trim() ?? "";
   if (!value || value.length > 500) return "scope.value is missing";
   if (c.scope.type === "site" && !/^[a-z0-9.-]+$/i.test(value)) return "A site is a host name, like example.com";
-  if (c.scope.type === "page" && !/^[a-z0-9.-]+(:\d+)?(\/\S*)?$/i.test(value.replace(/^https?:\/\//i, ""))) return "A page is a host and path, like example.com/news";
-  if (c.scope.type === "pattern" && (!patternRegex(value) || /\s/.test(value))) return "Patterns look like *.example.com/* or example.com/docs/*";
+  if (c.scope.type === "page" && !/^[a-z0-9.-]+(:\d+)?(\/\S*)?$/i.test(value.replace(/^https?:\/\//i, "")))
+    return "A page is a host and path, like example.com/news";
+  if (c.scope.type === "pattern" && (!patternRegex(value) || /\s/.test(value)))
+    return "Patterns look like *.example.com/* or example.com/docs/*";
   if (!ACTIONS.has(c.action)) return `action must be one of ${[...ACTIONS].join(", ")}`;
   if (SELECTOR_ACTIONS.has(c.action) && !c.selector?.trim()) return `${c.action} needs a selector`;
   if ((c.selector?.length ?? 0) > 2000) return "The selector is too long";
@@ -153,7 +157,8 @@ export function pageChangeProblem(c: PageChangeSpec): string | null {
   if ((c.value?.length ?? 0) > 100_000) return "The value is too long";
   if (c.action === "attribute" && !/^[a-z_:][\w:.-]*$/i.test(c.name ?? "")) return "attribute needs a name";
   if (c.action === "attribute" && /^on/i.test(c.name ?? "")) return "Use a button for behavior, not on* attributes";
-  if (c.position !== undefined && !POSITIONS.has(c.position)) return "position must be before, after, prepend or append";
+  if (c.position !== undefined && !POSITIONS.has(c.position))
+    return "position must be before, after, prepend or append";
   if (c.action === "button" && !c.onClick?.trim()) return "A button needs onClick (JavaScript run on click)";
   if ((c.onClick?.length ?? 0) > 50_000) return "onClick is too long";
   return null;

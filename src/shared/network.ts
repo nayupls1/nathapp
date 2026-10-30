@@ -52,7 +52,11 @@ const words = (name: string) =>
  */
 export function isSensitiveName(name: string, keyAlone = false) {
   const w = words(name);
-  return w.some((word, i) => SENSITIVE_WORDS.has(word) || (word === "key" && (keyAlone || ["api", "access", "private", "secret"].includes(w[i - 1] ?? ""))));
+  return w.some(
+    (word, i) =>
+      SENSITIVE_WORDS.has(word) ||
+      (word === "key" && (keyAlone || ["api", "access", "private", "secret"].includes(w[i - 1] ?? ""))),
+  );
 }
 
 const JWT = /eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]{8,}/g;
@@ -62,7 +66,9 @@ const BEARER = /\b(Bearer|Basic|Token)\s+[\w~+/.=-]{8,}/gi;
 export const redactTokens = (text: string) => text.replace(JWT, REDACTED).replace(BEARER, `$1 ${REDACTED}`);
 
 export function redactHeaders(headers: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, isSensitiveName(name) ? REDACTED : redactTokens(value)]));
+  return Object.fromEntries(
+    Object.entries(headers).map(([name, value]) => [name, isSensitiveName(name) ? REDACTED : redactTokens(value)]),
+  );
 }
 
 export function redactUrl(url: string) {
@@ -90,7 +96,10 @@ const redactJson = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(redactJson);
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, isSensitiveName(k) && (typeof v === "string" || typeof v === "number") ? REDACTED : redactJson(v)]),
+      Object.entries(value).map(([k, v]) => [
+        k,
+        isSensitiveName(k) && (typeof v === "string" || typeof v === "number") ? REDACTED : redactJson(v),
+      ]),
     );
   }
   return typeof value === "string" ? redactTokens(value) : value;
@@ -130,7 +139,13 @@ export function urlMatcher(pattern: string): (url: string) => boolean {
     const needle = p.toLowerCase();
     return (url) => url.toLowerCase().includes(needle);
   }
-  const re = new RegExp(`^${p.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "i");
+  const re = new RegExp(
+    `^${p
+      .split("*")
+      .map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+      .join(".*")}$`,
+    "i",
+  );
   return (url) => re.test(url);
 }
 
@@ -145,11 +160,13 @@ export interface Captured extends Omit<NetworkEntry, "redacted" | "hasBody"> {
 /** Structured data worth keeping the body of: JSON, XML, forms, text from fetch/XHR. */
 export function isStructured(mimeType: string, type: string) {
   const m = mimeType.toLowerCase();
-  if (/json|xml|graphql|x-www-form-urlencoded|csv|ndjson|event-stream|yaml|protobuf/.test(m) && !/svg/.test(m)) return true;
+  if (/json|xml|graphql|x-www-form-urlencoded|csv|ndjson|event-stream|yaml|protobuf/.test(m) && !/svg/.test(m))
+    return true;
   return (type === "XHR" || type === "Fetch") && m.startsWith("text/") && !/css|javascript/.test(m);
 }
 
-const isData = (e: Captured) => ["XHR", "Fetch", "EventSource", "WebSocket"].includes(e.type) || isStructured(e.mimeType, e.type);
+const isData = (e: Captured) =>
+  ["XHR", "Fetch", "EventSource", "WebSocket"].includes(e.type) || isStructured(e.mimeType, e.type);
 
 export interface Limits {
   /** Requests kept per tab (the oldest go first). */
@@ -284,7 +301,10 @@ export class TrafficLog {
       ...summary(e, redact),
       requestHeaders: redact ? redactHeaders(e.requestHeaders) : { ...e.requestHeaders },
       responseHeaders: redact ? redactHeaders(e.responseHeaders) : { ...e.responseHeaders },
-      requestBody: e.requestBody !== null && redact ? redactBody(e.requestBody, e.requestHeaders["content-type"] ?? e.requestHeaders["Content-Type"]) : e.requestBody,
+      requestBody:
+        e.requestBody !== null && redact
+          ? redactBody(e.requestBody, e.requestHeaders["content-type"] ?? e.requestHeaders["Content-Type"])
+          : e.requestBody,
       responseBody: e.responseBody !== null && redact ? redactBody(e.responseBody, e.mimeType) : e.responseBody,
       bodyNote: e.bodyNote,
       redacted: redact,

@@ -36,7 +36,10 @@ function fileKey(dataDir: string): Buffer {
 }
 
 export const makeVault = (key: Buffer | null, protection: VaultShape["protection"]): VaultShape => {
-  const locked = () => new VaultLocked({ message: "Secrets are locked: Rune Browser couldn't unlock its key (is the OS keychain available?)" });
+  const locked = () =>
+    new VaultLocked({
+      message: "Secrets are locked: Rune Browser couldn't unlock its key (is the OS keychain available?)",
+    });
   return {
     protection,
     encrypt: (plain, context) =>
@@ -46,7 +49,12 @@ export const makeVault = (key: Buffer | null, protection: VaultShape["protection
             const cipher = createCipheriv("aes-256-gcm", key, iv);
             cipher.setAAD(Buffer.from(context));
             const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-            return [VERSION, iv.toString("base64"), cipher.getAuthTag().toString("base64"), data.toString("base64")].join(":");
+            return [
+              VERSION,
+              iv.toString("base64"),
+              cipher.getAuthTag().toString("base64"),
+              data.toString("base64"),
+            ].join(":");
           })
         : Effect.fail(locked()),
     decrypt: (blob, context) =>

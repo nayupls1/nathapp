@@ -22,7 +22,8 @@ You're welcome to build and hack on it locally:
 ```sh
 bun install
 bun run dev      # the app with hot reload
-bun run check    # typecheck, unit tests, build and e2e (headless)
+bun fmt          # format the code
+bun run check    # formatting, typecheck, unit tests, build and e2e (headless)
 ```
 
 See the [README](README.md) for requirements and [docs/](docs/) for how it fits

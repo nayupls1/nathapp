@@ -38,12 +38,21 @@ class OpenCodeServer {
     private directory: string,
   ) {}
 
-  static async start(binary: string, cwd: string, env: Record<string, string>, mcp: McpEndpoint | null, access: "workspace" | "none") {
+  static async start(
+    binary: string,
+    cwd: string,
+    env: Record<string, string>,
+    mcp: McpEndpoint | null,
+    access: "workspace" | "none",
+  ) {
     const port = await freePort();
     const password = crypto.randomUUID();
     const config: Json = {
       // Not interactive: in a project everything inside it is allowed, outside it isn't.
-      permission: access === "workspace" ? { edit: "allow", bash: "allow", webfetch: "allow", external_directory: "deny" } : askEverything(mcp),
+      permission:
+        access === "workspace"
+          ? { edit: "allow", bash: "allow", webfetch: "allow", external_directory: "deny" }
+          : askEverything(mcp),
       ...(mcp ? { mcp: { [mcp.name]: { type: "remote", url: mcp.url, headers: mcp.headers, enabled: true } } } : {}),
     };
     const proc = Bun.spawn([binary, "serve", "--hostname=127.0.0.1", `--port=${port}`], {
@@ -92,7 +101,10 @@ class OpenCodeServer {
 
   /** Calls `fn` for every event until the signal aborts. */
   async events(fn: (event: Json) => void, signal: AbortSignal) {
-    const res = await fetch(this.path("/event"), { headers: { Authorization: this.auth, Accept: "text/event-stream" }, signal });
+    const res = await fetch(this.path("/event"), {
+      headers: { Authorization: this.auth, Accept: "text/event-stream" },
+      signal,
+    });
     if (!res.ok || !res.body) throw new Error(`OpenCode events: ${res.status}`);
     await readLines(res.body, (line) => {
       if (!line.startsWith("data:")) return;
@@ -139,10 +151,10 @@ export const OpenCodeDriver: ProviderDriver = {
       const version = (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim() || null;
       const server = await OpenCodeServer.start(binary, readConfig().agentDir, {}, null, "none");
       try {
-        const { providers, default: defaults } = await server.request<{ providers: Json[]; default: Record<string, string> }>(
-          "GET",
-          "/config/providers",
-        );
+        const { providers, default: defaults } = await server.request<{
+          providers: Json[];
+          default: Record<string, string>;
+        }>("GET", "/config/providers");
         const models: ProviderModel[] = providers.flatMap((p) =>
           Object.values(p.models as Record<string, Json>).map((m) => ({
             id: `${p.id}/${m.id}`,
@@ -191,7 +203,9 @@ export const OpenCodeDriver: ProviderDriver = {
       signal.addEventListener("abort", onAbort, { once: true });
 
       try {
-        const existing = input.resume ? await server.request("GET", `/session/${input.resume}`).catch(() => null) : null;
+        const existing = input.resume
+          ? await server.request("GET", `/session/${input.resume}`).catch(() => null)
+          : null;
         const session: Json = existing ?? (await server.request("POST", "/session", { title: "Rune Browser" }));
         sessionId = session.id as string;
         emit({ type: "session", id: sessionId });
@@ -205,18 +219,26 @@ export const OpenCodeDriver: ProviderDriver = {
 
         const listening = server.events((event) => {
           const p = event.properties ?? {};
-          if (p.sessionID && p.sessionID !== sessionId && p.info?.sessionID !== sessionId && p.part?.sessionID !== sessionId) return;
+          if (
+            p.sessionID &&
+            p.sessionID !== sessionId &&
+            p.info?.sessionID !== sessionId &&
+            p.part?.sessionID !== sessionId
+          )
+            return;
           switch (event.type) {
             case "message.updated":
               if (p.info?.role === "assistant") assistant.add(p.info.id);
               if (p.info?.error && !reported.has(p.info.id)) {
                 reported.add(p.info.id);
                 const err = p.info.error;
-                if (err.name !== "MessageAbortedError") emit({ type: "error", message: err.data?.message ?? err.name ?? "OpenCode failed" });
+                if (err.name !== "MessageAbortedError")
+                  emit({ type: "error", message: err.data?.message ?? err.name ?? "OpenCode failed" });
               }
               break;
             case "message.part.delta":
-              if (p.field === "text" && textParts.has(p.partID) && assistant.has(p.messageID)) emit({ type: "delta", text: p.delta });
+              if (p.field === "text" && textParts.has(p.partID) && assistant.has(p.messageID))
+                emit({ type: "delta", text: p.delta });
               break;
             case "message.part.updated": {
               const part = p.part as Json;
@@ -227,7 +249,10 @@ export const OpenCodeDriver: ProviderDriver = {
                   reported.add(part.id);
                   emit({ type: "text", text: part.text.trim() });
                 }
-              } else if (part.type === "tool" && (part.state?.status === "completed" || part.state?.status === "error")) {
+              } else if (
+                part.type === "tool" &&
+                (part.state?.status === "completed" || part.state?.status === "error")
+              ) {
                 if (reported.has(part.id) || (input.mcp && String(part.tool).startsWith(`${input.mcp.name}_`))) break;
                 reported.add(part.id);
                 const title = describeTool(part.tool, part.state.input ?? {}, input.cwd) ?? part.state.title;
@@ -238,12 +263,18 @@ export const OpenCodeDriver: ProviderDriver = {
             case "permission.asked": {
               // Nobody can answer: Rune Browser's own tools are fine, everything else is refused.
               const ours = !!input.mcp && String(p.permission ?? "").startsWith(`${input.mcp.name}_`);
-              void server.request("POST", `/permission/${p.id}/reply`, { reply: ours ? "once" : "reject", message: "Not allowed here." }).catch(() => {});
+              void server
+                .request("POST", `/permission/${p.id}/reply`, {
+                  reply: ours ? "once" : "reject",
+                  message: "Not allowed here.",
+                })
+                .catch(() => {});
               if (!ours && input.access === "workspace") emit({ type: "tool", title: `Refused: ${p.permission}` });
               break;
             }
             case "session.error":
-              if (p.error && p.error.name !== "MessageAbortedError") emit({ type: "error", message: p.error.data?.message ?? p.error.name });
+              if (p.error && p.error.name !== "MessageAbortedError")
+                emit({ type: "error", message: p.error.data?.message ?? p.error.name });
               break;
             case "session.idle":
               idle();

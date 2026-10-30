@@ -67,7 +67,11 @@ export function startWindowChrome() {
   if (!isMac) {
     document.addEventListener("dblclick", (e) => {
       const target = e.target as HTMLElement | null;
-      if (!target?.closest("[data-titlebar]") || target.closest("button, input, select, textarea, a, [role=button], [role=switch], [role=tab], webview")) return;
+      if (
+        !target?.closest("[data-titlebar]") ||
+        target.closest("button, input, select, textarea, a, [role=button], [role=switch], [role=tab], webview")
+      )
+        return;
       bridge.toggleMaximize();
     });
   }

@@ -115,14 +115,18 @@ export function describeCron(expression: string): string {
   if (parts.length !== 5) return expression;
   const [minute, hour, day, month, weekday] = parts as [string, string, string, string, string];
   const fixed = (s: string) => /^\d+$/.test(s);
-  if (/^\*\/\d+$/.test(minute) && hour === "*" && day === "*" && month === "*" && weekday === "*") return `Every ${minute.slice(2)} minutes`;
-  if (fixed(minute) && hour === "*" && day === "*" && month === "*" && weekday === "*") return `Every hour at :${pad(Number(minute))}`;
-  if (fixed(minute) && /^\*\/\d+$/.test(hour) && day === "*" && month === "*" && weekday === "*") return `Every ${hour.slice(2)} hours at :${pad(Number(minute))}`;
+  if (/^\*\/\d+$/.test(minute) && hour === "*" && day === "*" && month === "*" && weekday === "*")
+    return `Every ${minute.slice(2)} minutes`;
+  if (fixed(minute) && hour === "*" && day === "*" && month === "*" && weekday === "*")
+    return `Every hour at :${pad(Number(minute))}`;
+  if (fixed(minute) && /^\*\/\d+$/.test(hour) && day === "*" && month === "*" && weekday === "*")
+    return `Every ${hour.slice(2)} hours at :${pad(Number(minute))}`;
   if (!fixed(minute) || !fixed(hour)) return expression;
   const time = `${pad(Number(hour))}:${pad(Number(minute))}`;
   if (day === "*" && month === "*" && weekday === "*") return `Every day at ${time}`;
   if (day === "*" && month === "*" && weekday === "1-5") return `Weekdays at ${time}`;
-  if (day === "*" && month === "*" && /^[0-7]$/.test(weekday)) return `Every ${WEEKDAYS[Number(weekday) % 7]} at ${time}`;
+  if (day === "*" && month === "*" && /^[0-7]$/.test(weekday))
+    return `Every ${WEEKDAYS[Number(weekday) % 7]} at ${time}`;
   if (fixed(day) && month === "*" && weekday === "*") return `Monthly on day ${day} at ${time}`;
   return expression;
 }

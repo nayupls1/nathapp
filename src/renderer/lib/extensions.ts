@@ -4,9 +4,25 @@
 // reported whenever it changes; tabs they open, select or close go through the
 // normal tab store.
 import { createEffect, createRoot, createSignal } from "solid-js";
-import type { ExtensionInfo, ExtensionPermissionRequest, ExtensionPopupRequest, ExtensionTabs } from "../../shared/extensions";
+import type {
+  ExtensionInfo,
+  ExtensionPermissionRequest,
+  ExtensionPopupRequest,
+  ExtensionTabs,
+} from "../../shared/extensions";
 import { confirmDialog } from "../components/ConfirmDialog";
-import { apps, deleteApp, lastTabOf, newWebTab, openedIds, openSettings, selectApp, selectedId, currentWorkspace, appById } from "./store";
+import {
+  apps,
+  deleteApp,
+  lastTabOf,
+  newWebTab,
+  openedIds,
+  openSettings,
+  selectApp,
+  selectedId,
+  currentWorkspace,
+  appById,
+} from "./store";
 import { pageOf, pagesVersion, tabOfContents } from "./webtabs";
 import { searchEngines } from "../../shared/settings";
 import { settings } from "./settings";
@@ -30,7 +46,9 @@ void refreshExtensions().catch((err) => console.error("Loading the extensions fa
 // Toolbar buttons change per workspace (badges, icons); toolbars refetch when theirs did.
 const [actionsVersions, setActionsVersions] = createSignal<Record<string, number>>({});
 export const actionsVersion = (workspaceId: string) => actionsVersions()[workspaceId] ?? 0;
-bridge.onActionsChanged((workspaceId) => setActionsVersions((v) => ({ ...v, [workspaceId]: (v[workspaceId] ?? 0) + 1 })));
+bridge.onActionsChanged((workspaceId) =>
+  setActionsVersions((v) => ({ ...v, [workspaceId]: (v[workspaceId] ?? 0) + 1 })),
+);
 
 // A popup to open (an extension's shortcut, or chrome.action.openPopup); the visible tab's toolbar shows it.
 const [popupRequest, setPopupRequest] = createSignal<ExtensionPopupRequest | null>(null);
@@ -76,7 +94,7 @@ createRoot(() => {
 
 /** Waits for a tab's page to have its webContents. */
 async function contentsWhenReady(tabId: string, ms = 10_000) {
-  for (const start = Date.now(); Date.now() - start < ms; ) {
+  for (const start = Date.now(); Date.now() - start < ms;) {
     const id = contentsOf(tabId);
     if (id !== null) return id;
     await new Promise((r) => setTimeout(r, 100));
@@ -88,8 +106,13 @@ bridge.onTabRequest(async (request) => {
   try {
     if (request.action === "open") {
       // chrome.search.query: the search engine from Settings.
-      const url = request.search ? searchEngines[settings().web.searchEngine].url.replace("%s", encodeURIComponent(request.search)) : request.url;
-      const app = await newWebTab(url || undefined, { workspaceId: request.workspaceId, background: !request.active || request.workspaceId !== currentWorkspace()?.id });
+      const url = request.search
+        ? searchEngines[settings().web.searchEngine].url.replace("%s", encodeURIComponent(request.search))
+        : request.url;
+      const app = await newWebTab(url || undefined, {
+        workspaceId: request.workspaceId,
+        background: !request.active || request.workspaceId !== currentWorkspace()?.id,
+      });
       bridge.reply(request.requestId, await contentsWhenReady(app.id));
       return;
     }
@@ -108,11 +131,14 @@ bridge.onTabRequest(async (request) => {
 
 const describePermissions = (request: ExtensionPermissionRequest) => {
   const parts = [...request.permissions];
-  for (const origin of request.origins) parts.push(origin === "<all_urls>" || origin === "*://*/*" ? "all websites" : origin);
+  for (const origin of request.origins)
+    parts.push(origin === "<all_urls>" || origin === "*://*/*" ? "all websites" : origin);
   return parts.join(", ");
 };
 
 bridge.onPermissionRequest(async (request) => {
-  const ok = await confirmDialog(`${request.name} asks for more access: ${describePermissions(request)}.`, { confirmLabel: "Allow" });
+  const ok = await confirmDialog(`${request.name} asks for more access: ${describePermissions(request)}.`, {
+    confirmLabel: "Allow",
+  });
   bridge.reply(request.requestId, ok);
 });

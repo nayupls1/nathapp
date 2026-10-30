@@ -33,7 +33,8 @@ export function loadSecretsKey(): SecretsKey | null {
     const stored = JSON.parse(readFileSync(file, "utf8")) as Stored;
     if (stored.protection === "file") {
       // Move it into the keychain once one is available.
-      if (keychainAvailable()) write(file, { protection: "keychain", data: safeStorage.encryptString(stored.key).toString("base64") });
+      if (keychainAvailable())
+        write(file, { protection: "keychain", data: safeStorage.encryptString(stored.key).toString("base64") });
       return { key: stored.key, protection: keychainAvailable() ? "keychain" : "file" };
     }
     if (!keychainAvailable()) return null;

@@ -13,7 +13,12 @@ import { Icon } from "./Icon";
 
 const PAGE = 100;
 
-const actorIcons: Record<AuditEntry["actor"], string> = { user: "user", agent: "bot", app: "app-window", rune: "shield" };
+const actorIcons: Record<AuditEntry["actor"], string> = {
+  user: "user",
+  agent: "bot",
+  app: "app-window",
+  rune: "shield",
+};
 
 const actions: Record<string, string> = {
   "agent.turn": "Started working",
@@ -44,7 +49,8 @@ const actions: Record<string, string> = {
   "schedule.delete": "Deleted the schedule",
 };
 
-const describe = (action: string) => actions[action] ?? (action.startsWith("tool.") ? `Used ${action.slice(5).replaceAll("_", " ")}` : action);
+const describe = (action: string) =>
+  actions[action] ?? (action.startsWith("tool.") ? `Used ${action.slice(5).replaceAll("_", " ")}` : action);
 
 export function ActivityPage() {
   const [entries, setEntries] = createSignal<AuditEntry[]>([]);
@@ -54,11 +60,19 @@ export function ActivityPage() {
   const [more, setMore] = createSignal(false);
   const workspace = () => (everywhere() ? undefined : currentWorkspace()?.id);
   const matches = (e: AuditEntry) =>
-    (!tab() || e.tabId === tab()) && (!actor() || e.actor === actor()) && (!workspace() || !e.workspaceId || e.workspaceId === workspace());
+    (!tab() || e.tabId === tab()) &&
+    (!actor() || e.actor === actor()) &&
+    (!workspace() || !e.workspaceId || e.workspaceId === workspace());
   const tabs = () => apps.filter((a) => !workspace() || a.workspaceId === workspace());
 
   const load = async (before?: number) => {
-    const page = await api.audit({ tab: tab() || undefined, workspace: workspace(), actor: actor() || undefined, before, limit: PAGE });
+    const page = await api.audit({
+      tab: tab() || undefined,
+      workspace: workspace(),
+      actor: actor() || undefined,
+      before,
+      limit: PAGE,
+    });
     setEntries((list) => (before ? [...list, ...page] : page));
     setMore(page.length === PAGE);
   };
@@ -79,7 +93,9 @@ export function ActivityPage() {
           <Icon name="scroll-text" size={24} {...stylex.attrs(styles.accent)} />
           Activity
         </h1>
-        <p {...stylex.attrs(styles.muted)}>What agents, apps and you did: tools used, AI requests, secrets, permissions. Secret values are never logged.</p>
+        <p {...stylex.attrs(styles.muted)}>
+          What agents, apps and you did: tools used, AI requests, secrets, permissions. Secret values are never logged.
+        </p>
       </header>
       <div {...stylex.attrs(styles.filters)}>
         <select
@@ -96,11 +112,20 @@ export function ActivityPage() {
             <option value="all">All workspaces</option>
           </Show>
         </select>
-        <select value={tab()} onChange={(e) => setTab(e.currentTarget.value)} {...stylex.attrs(styles.select)} data-activity-tab>
+        <select
+          value={tab()}
+          onChange={(e) => setTab(e.currentTarget.value)}
+          {...stylex.attrs(styles.select)}
+          data-activity-tab
+        >
           <option value="">All tabs</option>
           <For each={tabs()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
         </select>
-        <select value={actor()} onChange={(e) => setActor(e.currentTarget.value as "" | AuditEntry["actor"])} {...stylex.attrs(styles.select)}>
+        <select
+          value={actor()}
+          onChange={(e) => setActor(e.currentTarget.value as "" | AuditEntry["actor"])}
+          {...stylex.attrs(styles.select)}
+        >
           <option value="">Everyone</option>
           <option value="agent">Agents</option>
           <option value="app">Apps</option>
@@ -153,9 +178,25 @@ export function ActivityPage() {
 }
 
 const styles = stylex.create({
-  page: { maxWidth: 820, marginInline: "auto", paddingBlock: space.xxl, paddingInline: space.xl, display: "flex", flexDirection: "column", gap: space.lg },
+  page: {
+    maxWidth: 820,
+    marginInline: "auto",
+    paddingBlock: space.xxl,
+    paddingInline: space.xl,
+    display: "flex",
+    flexDirection: "column",
+    gap: space.lg,
+  },
   header: { display: "flex", flexDirection: "column", gap: space.xs },
-  title: { display: "flex", alignItems: "center", gap: space.sm, margin: 0, fontSize: font.xxl, fontWeight: 650, letterSpacing: "-0.02em" },
+  title: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    margin: 0,
+    fontSize: font.xxl,
+    fontWeight: 650,
+    letterSpacing: "-0.02em",
+  },
   accent: { color: colors.accent },
   muted: { margin: 0, color: colors.muted, fontSize: font.sm, lineHeight: 1.5 },
   filters: { display: "flex", gap: space.sm },

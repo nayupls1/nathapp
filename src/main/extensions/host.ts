@@ -47,7 +47,9 @@ export interface MenuItem {
   targetUrlPatterns?: string[];
 }
 
-export type Lifecycle = { event: "runtime.onInstalled"; details: { reason: "install" | "update"; previousVersion?: string } } | { event: "runtime.onStartup"; details: null };
+export type Lifecycle =
+  | { event: "runtime.onInstalled"; details: { reason: "install" | "update"; previousVersion?: string } }
+  | { event: "runtime.onStartup"; details: null };
 
 interface StoredState {
   version?: string;
@@ -206,7 +208,15 @@ export function keepAlive(worker: ServiceWorkerMain) {
  * With `wake`, a stopped service worker that listened for it before is
  * started and gets it once it listens again. Resolves with how many got it.
  */
-export async function dispatch(contexts: Contexts, state: ExtensionState | undefined, session: Session, extensionId: string, event: string, args: unknown[], wake = true) {
+export async function dispatch(
+  contexts: Contexts,
+  state: ExtensionState | undefined,
+  session: Session,
+  extensionId: string,
+  event: string,
+  args: unknown[],
+  wake = true,
+) {
   const targets = contexts.of(session, extensionId).filter((c) => c.events.has(event));
   for (const ctx of targets) {
     if (ctx.worker) keepAlive(ctx.worker);
@@ -219,7 +229,10 @@ export async function dispatch(contexts: Contexts, state: ExtensionState | undef
   } catch {
     return targets.length;
   }
-  const ctx = await contexts.waitFor((c) => c.worker !== null && c.session === session && c.extensionId === extensionId && c.events.has(event), 5000);
+  const ctx = await contexts.waitFor(
+    (c) => c.worker !== null && c.session === session && c.extensionId === extensionId && c.events.has(event),
+    5000,
+  );
   if (!ctx) return targets.length;
   if (ctx.worker) keepAlive(ctx.worker);
   ctx.send(event, args);

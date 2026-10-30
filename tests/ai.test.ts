@@ -80,7 +80,10 @@ describe("gateway", () => {
 
   test("the user can turn it off", async () => {
     const settings = await server.api<Settings>("/api/settings");
-    await server.api("/api/settings", { method: "PUT", json: { ...settings, apps: { ...settings.apps, ai: { ...settings.apps.ai, enabled: false } } } });
+    await server.api("/api/settings", {
+      method: "PUT",
+      json: { ...settings, apps: { ...settings.apps, ai: { ...settings.apps.ai, enabled: false } } },
+    });
     const res = await ai("/chat", { token, body: { prompt: "hi" } });
     expect(res.status).toBe(403);
     expect(((await res.json()) as { error: string }).error).toContain("turned off");

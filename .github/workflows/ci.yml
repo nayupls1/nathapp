@@ -42,6 +42,7 @@ jobs:
           sudo apt-get install -yq bubblewrap
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: bun install --frozen-lockfile
+      - run: bun fmt --check
       - run: bun run typecheck
       - run: bun run test
       - run: bun run build

@@ -55,21 +55,38 @@ function Dialog(props: { request: AuthPrompt }) {
         >
           <h2 {...stylex.attrs(styles.title)}>Sign in</h2>
           <p {...stylex.attrs(styles.text)}>
-            {props.request.isProxy ? `The proxy ${props.request.host} needs a username and password.` : `${props.request.host} needs a username and password.`}
+            {props.request.isProxy
+              ? `The proxy ${props.request.host} needs a username and password.`
+              : `${props.request.host} needs a username and password.`}
             <Show when={props.request.realm}>
               <span {...stylex.attrs(styles.muted)}> It says: “{props.request.realm}”</span>
             </Show>
           </p>
           <Show when={insecure()}>
-            <p {...stylex.attrs(styles.text, styles.warning)}>Your connection to this site isn't private: they're sent unencrypted.</p>
+            <p {...stylex.attrs(styles.text, styles.warning)}>
+              Your connection to this site isn't private: they're sent unencrypted.
+            </p>
           </Show>
           <label {...stylex.attrs(styles.label)}>
             Username
-            <Input ref={first} value={username()} onInput={(e) => setUsername(e.currentTarget.value)} autocomplete="username" spellcheck={false} data-auth-username />
+            <Input
+              ref={first}
+              value={username()}
+              onInput={(e) => setUsername(e.currentTarget.value)}
+              autocomplete="username"
+              spellcheck={false}
+              data-auth-username
+            />
           </label>
           <label {...stylex.attrs(styles.label)}>
             Password
-            <Input type="password" value={password()} onInput={(e) => setPassword(e.currentTarget.value)} autocomplete="current-password" data-auth-password />
+            <Input
+              type="password"
+              value={password()}
+              onInput={(e) => setPassword(e.currentTarget.value)}
+              autocomplete="current-password"
+              data-auth-password
+            />
           </label>
           <div {...stylex.attrs(styles.actions)}>
             <Button onClick={() => close(null)}>Cancel</Button>

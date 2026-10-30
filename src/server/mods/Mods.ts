@@ -7,7 +7,17 @@
 import { Context, Data, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
 import { topics } from "../../shared/hub";
-import { MOD_MAX_BYTES, newModId, parseMod, reviewMod, type GalleryResult, type InstalledMod, type Mod, type ModExtension, type ModReview } from "../../shared/mods";
+import {
+  MOD_MAX_BYTES,
+  newModId,
+  parseMod,
+  reviewMod,
+  type GalleryResult,
+  type InstalledMod,
+  type Mod,
+  type ModExtension,
+  type ModReview,
+} from "../../shared/mods";
 import type { GlobalTheme } from "../../shared/settings";
 import { pageChangeSpec } from "../../shared/web";
 import { PageChanges, pageChangeError } from "../db/PageChanges";
@@ -17,7 +27,10 @@ import { Hub } from "../Hub";
 import { Audit } from "../security/Audit";
 import { builtInMods } from "./gallery";
 
-export class ModError extends Data.TaggedError("ModError")<{ readonly status: 400 | 404 | 502; readonly message: string }> {}
+export class ModError extends Data.TaggedError("ModError")<{
+  readonly status: 400 | 404 | 502;
+  readonly message: string;
+}> {}
 
 /** What installing a mod did, to take it back. */
 interface ModState {
@@ -55,17 +68,38 @@ export const make = Effect.gen(function* () {
   const hub = yield* Hub;
   const audit = yield* Audit;
 
-  const row = (id: string) => sql<ModRow>`SELECT * FROM mods WHERE id = ${id}`.pipe(Effect.orDie, Effect.map((rows) => rows[0] ?? null));
+  const row = (id: string) =>
+    sql<ModRow>`SELECT * FROM mods WHERE id = ${id}`.pipe(
+      Effect.orDie,
+      Effect.map((rows) => rows[0] ?? null),
+    );
   const stateOf = (r: ModRow) => JSON.parse(r.state) as ModState;
-  const saveState = (id: string, state: ModState) => sql`UPDATE mods SET state = ${JSON.stringify(state)} WHERE id = ${id}`.pipe(Effect.orDie);
+  const saveState = (id: string, state: ModState) =>
+    sql`UPDATE mods SET state = ${JSON.stringify(state)} WHERE id = ${id}`.pipe(Effect.orDie);
   const require = (id: string) =>
-    row(id).pipe(Effect.flatMap((r) => (r ? Effect.succeed(r) : Effect.fail(new ModError({ status: 404, message: "That mod isn't installed." })))));
+    row(id).pipe(
+      Effect.flatMap((r) =>
+        r ? Effect.succeed(r) : Effect.fail(new ModError({ status: 404, message: "That mod isn't installed." })),
+      ),
+    );
 
-  const changed = Effect.all([hub.publish({ type: "page-changes", topic: topics.sites }), hub.publish({ type: "mods-changed", topic: topics.mods })]);
+  const changed = Effect.all([
+    hub.publish({ type: "page-changes", topic: topics.sites }),
+    hub.publish({ type: "mods-changed", topic: topics.mods }),
+  ]);
   const youDid = (action: string, mod: Mod, detail: string | null = null) =>
-    audit.record({ actor: "user", actorLabel: "You", action, target: mod.name, detail: detail ?? `${mod.id} v${mod.modVersion} by ${mod.author}` });
+    audit.record({
+      actor: "user",
+      actorLabel: "You",
+      action,
+      target: mod.name,
+      detail: detail ?? `${mod.id} v${mod.modVersion} by ${mod.author}`,
+    });
   const snapshots = (summary: string, theme: boolean) =>
-    Effect.all([history.record("sites", { actor: "user", actorLabel: "You", summary }), theme ? history.record("settings", { actor: "user", actorLabel: "You", summary }) : Effect.void]);
+    Effect.all([
+      history.record("sites", { actor: "user", actorLabel: "You", summary }),
+      theme ? history.record("settings", { actor: "user", actorLabel: "You", summary }) : Effect.void,
+    ]);
 
   /** Sets Rune Browser's theme and tells the renderer. */
   const setTheme = (theme: GlobalTheme) =>
@@ -89,24 +123,33 @@ export const make = Effect.gen(function* () {
   const restoreTheme = (mod: Mod, state: ModState): Effect.Effect<ModState> =>
     Effect.gen(function* () {
       if (!state.themeApplied) return state;
-      if (state.previousTheme && sameTheme((yield* settings.get()).theme, mod.theme)) yield* setTheme(state.previousTheme);
+      if (state.previousTheme && sameTheme((yield* settings.get()).theme, mod.theme))
+        yield* setTheme(state.previousTheme);
       return { extensions: state.extensions, themeApplied: false };
     });
 
   /** A mod from untrusted JSON, checked like the page changes the agent makes (scripts must parse). */
   const check = (json: unknown) =>
     Effect.gen(function* () {
-      if (JSON.stringify(json ?? null).length > MOD_MAX_BYTES) return yield* new ModError({ status: 400, message: "The mod is too big." });
+      if (JSON.stringify(json ?? null).length > MOD_MAX_BYTES)
+        return yield* new ModError({ status: 400, message: "The mod is too big." });
       const parsed = parseMod(json);
       if ("error" in parsed) return yield* new ModError({ status: 400, message: parsed.error });
       for (const [i, change] of parsed.mod.pageChanges.entries()) {
         const problem = pageChangeError(change);
-        if (problem) return yield* new ModError({ status: 400, message: `Page change ${i + 1} (“${change.title}”) is invalid: ${problem}` });
+        if (problem)
+          return yield* new ModError({
+            status: 400,
+            message: `Page change ${i + 1} (“${change.title}”) is invalid: ${problem}`,
+          });
       }
       return parsed.mod;
     });
 
-  const list = sql<ModRow>`SELECT * FROM mods ORDER BY installed_at, id`.pipe(Effect.orDie, Effect.map((rows) => rows.map(toInstalled)));
+  const list = sql<ModRow>`SELECT * FROM mods ORDER BY installed_at, id`.pipe(
+    Effect.orDie,
+    Effect.map((rows) => rows.map(toInstalled)),
+  );
 
   return {
     list,
@@ -118,7 +161,11 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const mod = yield* check(json);
         const installed = yield* row(mod.id);
-        return { mod, review: reviewMod(mod) satisfies ModReview, installed: installed ? toInstalled(installed) : null };
+        return {
+          mod,
+          review: reviewMod(mod) satisfies ModReview,
+          installed: installed ? toInstalled(installed) : null,
+        };
       }),
 
     /** Installs a mod, or updates the installed one with the same id. */
@@ -130,12 +177,22 @@ export const make = Effect.gen(function* () {
         if (existing) yield* pageChanges.removeMod(mod.id);
         for (const change of mod.pageChanges) yield* pageChanges.create(change, "user", undefined, mod.id);
         // An update without a theme puts back the one the old version replaced.
-        state = mod.theme ? yield* applyTheme(mod, state) : existing ? yield* restoreTheme(JSON.parse(existing.mod) as Mod, state) : state;
+        state = mod.theme
+          ? yield* applyTheme(mod, state)
+          : existing
+            ? yield* restoreTheme(JSON.parse(existing.mod) as Mod, state)
+            : state;
         yield* sql`INSERT INTO mods (id, mod, enabled, source, state) VALUES (${mod.id}, ${JSON.stringify(mod)}, 1, ${source.slice(0, 500)}, ${JSON.stringify(state)})
-          ON CONFLICT (id) DO UPDATE SET mod = excluded.mod, enabled = 1, source = excluded.source, state = excluded.state`.pipe(Effect.orDie);
+          ON CONFLICT (id) DO UPDATE SET mod = excluded.mod, enabled = 1, source = excluded.source, state = excluded.state`.pipe(
+          Effect.orDie,
+        );
         yield* changed;
         yield* snapshots(`${existing ? "Updated" : "Installed"} the mod ${mod.name}`, !!mod.theme || !!existing);
-        yield* youDid(existing ? "mod.update" : "mod.install", mod, `${mod.id} v${mod.modVersion} by ${mod.author}, from ${source.slice(0, 200)}`);
+        yield* youDid(
+          existing ? "mod.update" : "mod.install",
+          mod,
+          `${mod.id} v${mod.modVersion} by ${mod.author}, from ${source.slice(0, 200)}`,
+        );
         return toInstalled((yield* row(mod.id))!);
       }),
 
@@ -174,17 +231,28 @@ export const make = Effect.gen(function* () {
         const mod = JSON.parse(r.mod) as Mod;
         const known = new Set(mod.extensions.map((e) => e.id));
         const state = stateOf(r);
-        yield* saveState(id, { ...state, extensions: [...new Set([...(state.extensions ?? []), ...installed.filter((e) => known.has(e))])] });
+        yield* saveState(id, {
+          ...state,
+          extensions: [...new Set([...(state.extensions ?? []), ...installed.filter((e) => known.has(e))])],
+        });
         yield* hub.publish({ type: "mods-changed", topic: topics.mods });
         return toInstalled((yield* row(id))!);
       }),
 
     /** A new mod from the user's own page changes, theme and Web Store extensions. */
-    package: (input: { name: string; description: string; author: string; pageChangeIds: readonly string[]; theme: boolean; extensions: readonly ModExtension[] }) =>
+    package: (input: {
+      name: string;
+      description: string;
+      author: string;
+      pageChangeIds: readonly string[];
+      theme: boolean;
+      extensions: readonly ModExtension[];
+    }) =>
       Effect.gen(function* () {
         const all = yield* pageChanges.list();
         const chosen = input.pageChangeIds.map((id) => all.find((c) => c.id === id)).filter((c) => c !== undefined);
-        if (chosen.length !== input.pageChangeIds.length) return yield* new ModError({ status: 400, message: "Some of those page changes don't exist anymore." });
+        if (chosen.length !== input.pageChangeIds.length)
+          return yield* new ModError({ status: 400, message: "Some of those page changes don't exist anymore." });
         const mod = {
           format: "rune-mod",
           version: 1,
@@ -202,10 +270,19 @@ export const make = Effect.gen(function* () {
 
     /** Rune Browser's example mods and the ones in the user's galleries (Settings → Mods). */
     gallery: Effect.gen(function* () {
-      const result: GalleryResult = { entries: builtInMods.map((mod) => ({ mod, gallery: "Rune Browser" })), errors: [] };
+      const result: GalleryResult = {
+        entries: builtInMods.map((mod) => ({ mod, gallery: "Rune Browser" })),
+        errors: [],
+      };
       for (const url of (yield* settings.get()).mods.galleries) {
         const listed = yield* fetchJson(url).pipe(
-          Effect.map((json) => (Array.isArray(json) ? json : Array.isArray((json as { mods?: unknown })?.mods) ? (json as { mods: unknown[] }).mods : null)),
+          Effect.map((json) =>
+            Array.isArray(json)
+              ? json
+              : Array.isArray((json as { mods?: unknown })?.mods)
+                ? (json as { mods: unknown[] }).mods
+                : null,
+          ),
           Effect.catch((e: ModError) => Effect.succeed(e.message)),
         );
         if (!Array.isArray(listed)) {
@@ -234,7 +311,11 @@ function fetchJson(url: string) {
     try: async () => {
       const target = new URL(url);
       if (target.protocol !== "https:") throw new Error("Only https links can be used.");
-      const res = await fetch(target, { signal: AbortSignal.timeout(15_000), redirect: "follow", headers: { Accept: "application/json" } });
+      const res = await fetch(target, {
+        signal: AbortSignal.timeout(15_000),
+        redirect: "follow",
+        headers: { Accept: "application/json" },
+      });
       if (!res.ok) throw new Error(`The link answered HTTP ${res.status}.`);
       const text = await res.text();
       if (text.length > MOD_MAX_BYTES) throw new Error("That's too big for a mod.");
@@ -244,7 +325,16 @@ function fetchJson(url: string) {
         throw new Error("The link isn't a mod (not JSON).");
       }
     },
-    catch: (err) => new ModError({ status: 502, message: err instanceof Error ? (err.name === "TimeoutError" ? "The link didn't answer in time." : err.message) : String(err) }),
+    catch: (err) =>
+      new ModError({
+        status: 502,
+        message:
+          err instanceof Error
+            ? err.name === "TimeoutError"
+              ? "The link didn't answer in time."
+              : err.message
+            : String(err),
+      }),
   });
 }
 

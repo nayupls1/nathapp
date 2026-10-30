@@ -75,7 +75,12 @@ export function ToastHost() {
                   </Show>
                   <span {...stylex.attrs(styles.message)}>{t.message}</span>
                 </div>
-                <button type="button" aria-label="Dismiss" onClick={() => dismiss(t.id)} {...stylex.attrs(styles.close)}>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => dismiss(t.id)}
+                  {...stylex.attrs(styles.close)}
+                >
                   <Icon name="x" size={14} />
                 </button>
               </div>
@@ -87,7 +92,10 @@ export function ToastHost() {
   );
 }
 
-const slideIn = stylex.keyframes({ from: { opacity: 0, transform: "translateY(6px)" }, to: { opacity: 1, transform: "none" } });
+const slideIn = stylex.keyframes({
+  from: { opacity: 0, transform: "translateY(6px)" },
+  to: { opacity: 1, transform: "none" },
+});
 
 const styles = stylex.create({
   stack: {

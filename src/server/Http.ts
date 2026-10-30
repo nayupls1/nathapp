@@ -69,8 +69,7 @@ const noContent = HttpServerResponse.empty({ status: 204 });
 const handle = <R>(effect: Effect.Effect<HttpServerResponse.HttpServerResponse, HttpFail, R>) =>
   effect.pipe(Effect.catchTag("HttpFail", (e) => Effect.succeed(json({ error: e.message }, e.status))));
 
-const param = (name: string) =>
-  Effect.map(HttpRouter.params, (params) => params[name] ?? "");
+const param = (name: string) => Effect.map(HttpRouter.params, (params) => params[name] ?? "");
 
 const body = Effect.gen(function* () {
   const req = yield* HttpServerRequest.HttpServerRequest;
@@ -136,7 +135,12 @@ const health = HttpRouter.add(
   "/api/health",
   Effect.gen(function* () {
     const config = yield* ServerConfig;
-    return json({ ok: true, uptime: process.uptime(), bun: Bun.version, dataDir: config.dataDir } satisfies HealthResponse);
+    return json({
+      ok: true,
+      uptime: process.uptime(),
+      bun: Bun.version,
+      dataDir: config.dataDir,
+    } satisfies HealthResponse);
   }),
 );
 
@@ -217,7 +221,8 @@ const settingsRoutes = HttpRouter.addAll([
         yield* snapshot("settings", "Changed settings", true);
         // Re-check providers that were turned on/off or moved.
         for (const id of providerIds) {
-          if (JSON.stringify(previous.providers[id]) !== JSON.stringify(next.providers[id])) yield* Effect.forkDetach(providers.refresh(id));
+          if (JSON.stringify(previous.providers[id]) !== JSON.stringify(next.providers[id]))
+            yield* Effect.forkDetach(providers.refresh(id));
         }
         return json(next);
       }),
@@ -234,9 +239,13 @@ const attachmentRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const id = yield* param("id");
         if (!(yield* (yield* Apps).get(id))) return yield* fail(404, "Not found");
-        const input = yield* decodeBody(Schema.Struct({ name: str(300), mime: str(200), data: str(Math.ceil((MAX_ATTACHMENT * 4) / 3) + 8) }));
+        const input = yield* decodeBody(
+          Schema.Struct({ name: str(300), mime: str(200), data: str(Math.ceil((MAX_ATTACHMENT * 4) / 3) + 8) }),
+        );
         const data = Buffer.from(input.data, "base64");
-        const saved = yield* (yield* Attachments).save(id, { name: input.name, mime: input.mime, data }).pipe(Effect.catchTag("AttachmentError", (e) => fail(400, e.message)));
+        const saved = yield* (yield* Attachments)
+          .save(id, { name: input.name, mime: input.mime, data })
+          .pipe(Effect.catchTag("AttachmentError", (e) => fail(400, e.message)));
         return json(saved, 201);
       }),
     ),
@@ -254,7 +263,10 @@ const attachmentRoutes = HttpRouter.addAll([
         return HttpServerResponse.uint8Array(bytes, {
           status: 200,
           contentType: inline ? file.mime : "application/octet-stream",
-          headers: { "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${file.name.replace(/"/g, "")}"`, "X-Content-Type-Options": "nosniff" },
+          headers: {
+            "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${file.name.replace(/"/g, "")}"`,
+            "X-Content-Type-Options": "nosniff",
+          },
         });
       }),
     ),
@@ -262,7 +274,8 @@ const attachmentRoutes = HttpRouter.addAll([
 ]);
 
 // Code attached to a tab for its agent: folders of yours and Git repositories (workspace/Sources.ts).
-const sourceFail = <A, R>(effect: Effect.Effect<A, SourceError, R>) => effect.pipe(Effect.catchTag("SourceError", (e) => fail(400, e.message)));
+const sourceFail = <A, R>(effect: Effect.Effect<A, SourceError, R>) =>
+  effect.pipe(Effect.catchTag("SourceError", (e) => fail(400, e.message)));
 const sourceOf = (tabId: string, id: string) =>
   Effect.gen(function* () {
     const source = yield* (yield* Sources).get(id);
@@ -287,11 +300,17 @@ const sourceRoutes = HttpRouter.addAll([
         const id = yield* param("id");
         if (!(yield* (yield* Apps).get(id))) return yield* fail(404, "Not found");
         const input = yield* decodeBody(
-          Schema.Struct({ folder: Schema.optionalKey(str(4000)), git: Schema.optionalKey(str(2000)), branch: Schema.optionalKey(str(200)) }),
+          Schema.Struct({
+            folder: Schema.optionalKey(str(4000)),
+            git: Schema.optionalKey(str(2000)),
+            branch: Schema.optionalKey(str(200)),
+          }),
         );
         if (!input.git === !input.folder) return yield* fail(400, "Give either git or folder");
         const sources = yield* Sources;
-        const source = yield* sourceFail(input.git ? sources.addGit(id, input.git, input.branch) : sources.addFolder(id, input.folder!));
+        const source = yield* sourceFail(
+          input.git ? sources.addGit(id, input.git, input.branch) : sources.addFolder(id, input.folder!),
+        );
         yield* youDid(id, "source.add", source.name, source.url ?? source.path);
         return json(source, 201);
       }),
@@ -398,7 +417,13 @@ const appRoutes = HttpRouter.addAll([
           Schema.Struct({
             kind: Schema.optionalKey(Schema.Literals(["app", "web"])),
             // Extension pages (options, tabs extensions open) are web tabs too.
-            url: Schema.optionalKey(str(8000).check(Schema.isPattern(/^(https?:\/\/|chrome-extension:\/\/[a-p]{32}\/)/i, { message: "url must be an http(s) URL" }))),
+            url: Schema.optionalKey(
+              str(8000).check(
+                Schema.isPattern(/^(https?:\/\/|chrome-extension:\/\/[a-p]{32}\/)/i, {
+                  message: "url must be an http(s) URL",
+                }),
+              ),
+            ),
             workspaceId: Schema.optionalKey(str(100)),
           }),
         );
@@ -682,7 +707,8 @@ const appRoutes = HttpRouter.addAll([
         yield* agent
           .start(yield* param("id"), {
             prompt: request.prompt.trim(),
-            agent: request.agent as { provider?: ProviderId; model?: string | null; effort?: string | null } | undefined,
+            agent: request.agent as
+              { provider?: ProviderId; model?: string | null; effort?: string | null } | undefined,
             page: request.page as never,
             shared: request.shared,
             ...(request.attachments?.length ? { attachments: request.attachments } : {}),
@@ -713,7 +739,10 @@ const runtimeRoutes = HttpRouter.addAll([
       const apps = yield* Apps;
       const id = yield* param("id");
       const app = yield* apps.get(id);
-      return json({ status: { ...(yield* runtime.status(id)), mode: app?.mode ?? "dev" }, logs: runtime.logs(id, 500) });
+      return json({
+        status: { ...(yield* runtime.status(id)), mode: app?.mode ?? "dev" },
+        logs: runtime.logs(id, 500),
+      });
     }),
   ),
 
@@ -760,7 +789,11 @@ const runtimeRoutes = HttpRouter.addAll([
         const apps = yield* Apps;
         const id = yield* param("id");
         const input = yield* decodeBody(
-          Schema.Struct({ git: Schema.optionalKey(str(2000)), branch: Schema.optionalKey(str(200)), folder: Schema.optionalKey(str(4000)) }),
+          Schema.Struct({
+            git: Schema.optionalKey(str(2000)),
+            branch: Schema.optionalKey(str(200)),
+            folder: Schema.optionalKey(str(4000)),
+          }),
         );
         const app = yield* apps.get(id);
         if (!app || app.kind !== "app") return yield* fail(404, "Not found");
@@ -768,7 +801,9 @@ const runtimeRoutes = HttpRouter.addAll([
         const source = input.git
           ? ({ kind: "git", url: input.git, ...(input.branch?.trim() ? { branch: input.branch.trim() } : {}) } as const)
           : ({ kind: "folder", path: input.folder! } as const);
-        const project = yield* (yield* Projects).importApp(id, source).pipe(Effect.catchTag("WorkspaceError", (e) => fail(400, e.message)));
+        const project = yield* (yield* Projects)
+          .importApp(id, source)
+          .pipe(Effect.catchTag("WorkspaceError", (e) => fail(400, e.message)));
         yield* youDid(id, "app.import", input.git ?? input.folder ?? null);
         return json({ project }, 201);
       }),
@@ -794,7 +829,9 @@ const runtimeRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const apps = yield* Apps;
         const id = yield* param("id");
-        const { preset, name } = yield* decodeBody(Schema.Struct({ preset: str(50), name: Schema.optionalKey(str(80)) }));
+        const { preset, name } = yield* decodeBody(
+          Schema.Struct({ preset: str(50), name: Schema.optionalKey(str(80)) }),
+        );
         const app = yield* apps.get(id);
         if (!app || app.kind !== "app") return yield* fail(404, "Not found");
         const project = yield* (yield* Projects)
@@ -900,7 +937,9 @@ const pageChangeRoutes = HttpRouter.addAll([
     "/api/page-changes/:id",
     handle(
       Effect.gen(function* () {
-        const { enabled, change: spec } = yield* decodeBody(Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean), change: Schema.optionalKey(PageChangeBody) }));
+        const { enabled, change: spec } = yield* decodeBody(
+          Schema.Struct({ enabled: Schema.optionalKey(Schema.Boolean), change: Schema.optionalKey(PageChangeBody) }),
+        );
         if (spec) {
           const problem = pageChangeError(spec);
           if (problem) return yield* fail(400, problem);
@@ -908,7 +947,9 @@ const pageChangeRoutes = HttpRouter.addAll([
         const saved = yield* (yield* PageChanges).update(yield* param("id"), { spec, enabled });
         if (!saved) return yield* fail(404, "Not found");
         yield* (yield* Hub).publish({ type: "page-changes", topic: topics.sites });
-        const summary = spec ? `Changed the page change “${saved.title}”` : `Turned ${saved.enabled ? "on" : "off"} “${saved.title}”`;
+        const summary = spec
+          ? `Changed the page change “${saved.title}”`
+          : `Turned ${saved.enabled ? "on" : "off"} “${saved.title}”`;
         yield* snapshot("sites", summary, true);
         return json(saved);
       }),
@@ -947,7 +988,10 @@ const modJson = (input: typeof ModInput.Type) =>
     if (input.mod !== undefined) return { json: input.mod, source: "file" };
     if (input.code) {
       const code = input.code;
-      const json = yield* Effect.tryPromise({ try: () => decodeShareCode(code), catch: (e) => new ModError({ status: 400, message: e instanceof Error ? e.message : String(e) }) });
+      const json = yield* Effect.tryPromise({
+        try: () => decodeShareCode(code),
+        catch: (e) => new ModError({ status: 400, message: e instanceof Error ? e.message : String(e) }),
+      });
       return { json, source: "code" };
     }
     if (input.url) return { json: yield* (yield* Mods).fetchJson(input.url), source: input.url };
@@ -1035,7 +1079,9 @@ const modRoutes = HttpRouter.addAll([
     "/api/mods/:id/extensions",
     handle(
       Effect.gen(function* () {
-        const { installed } = yield* decodeBody(Schema.Struct({ installed: Schema.Array(str(32)).check(Schema.isMaxLength(20)) }));
+        const { installed } = yield* decodeBody(
+          Schema.Struct({ installed: Schema.Array(str(32)).check(Schema.isMaxLength(20)) }),
+        );
         return json(yield* (yield* Mods).recordExtensions(yield* param("id"), installed));
       }).pipe(Effect.catchTag("ModError", modError)),
     ),
@@ -1064,14 +1110,21 @@ export const ScheduleBody = Schema.Struct({
       type: Schema.Literal("prompt"),
       prompt: str(20_000),
       appId: Schema.optionalKey(str(64)),
-      newTab: Schema.optionalKey(Schema.Struct({ kind: Schema.Literals(["app", "web"]), workspaceId: str(100), url: Schema.optionalKey(str(8000)) })),
+      newTab: Schema.optionalKey(
+        Schema.Struct({
+          kind: Schema.Literals(["app", "web"]),
+          workspaceId: str(100),
+          url: Schema.optionalKey(str(8000)),
+        }),
+      ),
     }),
   ]),
   notify: Schema.Literals(["always", "failure", "never"]),
   timeoutSec: Schema.Finite,
 });
 
-const scheduleFail = <A, R>(effect: Effect.Effect<A, ScheduleError, R>) => effect.pipe(Effect.catchTag("ScheduleError", (e) => fail(e.status, e.message)));
+const scheduleFail = <A, R>(effect: Effect.Effect<A, ScheduleError, R>) =>
+  effect.pipe(Effect.catchTag("ScheduleError", (e) => fail(e.status, e.message)));
 
 const scheduleRoutes = HttpRouter.addAll([
   HttpRouter.route(
@@ -1079,7 +1132,12 @@ const scheduleRoutes = HttpRouter.addAll([
     "/api/schedules",
     Effect.gen(function* () {
       const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
-      return json(yield* (yield* Scheduler).list({ workspaceId: params.get("workspace") ?? undefined, appId: params.get("app") ?? undefined }));
+      return json(
+        yield* (yield* Scheduler).list({
+          workspaceId: params.get("workspace") ?? undefined,
+          appId: params.get("app") ?? undefined,
+        }),
+      );
     }),
   ),
   HttpRouter.route(
@@ -1102,7 +1160,12 @@ const scheduleRoutes = HttpRouter.addAll([
     "/api/schedules/upcoming",
     Effect.gen(function* () {
       const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://localhost").searchParams;
-      return json(yield* (yield* Scheduler).upcoming({ workspaceId: params.get("workspace") ?? undefined, limit: Number(params.get("limit")) || undefined }));
+      return json(
+        yield* (yield* Scheduler).upcoming({
+          workspaceId: params.get("workspace") ?? undefined,
+          limit: Number(params.get("limit")) || undefined,
+        }),
+      );
     }),
   ),
   HttpRouter.route(
@@ -1112,7 +1175,11 @@ const scheduleRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const spec = yield* decodeBody(ScheduleBody);
         const schedule = yield* scheduleFail((yield* Scheduler).create(spec, { by: "user" }));
-        yield* youDid(taskTab(spec.task) ?? (spec.task.type === "prompt" ? `workspace:${spec.task.newTab?.workspaceId}` : null), "schedule.create", schedule.name);
+        yield* youDid(
+          taskTab(spec.task) ?? (spec.task.type === "prompt" ? `workspace:${spec.task.newTab?.workspaceId}` : null),
+          "schedule.create",
+          schedule.name,
+        );
         return json(schedule);
       }),
     ),
@@ -1122,7 +1189,9 @@ const scheduleRoutes = HttpRouter.addAll([
     "/api/schedules/:id",
     handle(
       Effect.gen(function* () {
-        const { spec, paused } = yield* decodeBody(Schema.Struct({ spec: Schema.optionalKey(ScheduleBody), paused: Schema.optionalKey(Schema.Boolean) }));
+        const { spec, paused } = yield* decodeBody(
+          Schema.Struct({ spec: Schema.optionalKey(ScheduleBody), paused: Schema.optionalKey(Schema.Boolean) }),
+        );
         return json(yield* scheduleFail((yield* Scheduler).update(yield* param("id"), { spec, paused })));
       }),
     ),
@@ -1159,7 +1228,10 @@ const aiApp = Effect.gen(function* () {
   const tokens = yield* AiTokens;
   const req = yield* HttpServerRequest.HttpServerRequest;
   if (req.headers.origin !== undefined) {
-    return yield* fail(403, "AI requests must come from the app's server, not from the browser. Call your server, and let it call Rune Browser.");
+    return yield* fail(
+      403,
+      "AI requests must come from the app's server, not from the browser. Call your server, and let it call Rune Browser.",
+    );
   }
   const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
   if (!appId) return yield* fail(401, "Missing or invalid RUNE_AI_TOKEN");
@@ -1169,7 +1241,9 @@ const aiApp = Effect.gen(function* () {
 const AiChatBody = Schema.Struct({
   prompt: Schema.optionalKey(str(200_000)),
   messages: Schema.optionalKey(
-    Schema.Array(Schema.Struct({ role: Schema.Literals(["user", "assistant"]), content: str(200_000) })).check(Schema.isMaxLength(200)),
+    Schema.Array(Schema.Struct({ role: Schema.Literals(["user", "assistant"]), content: str(200_000) })).check(
+      Schema.isMaxLength(200),
+    ),
   ),
   system: Schema.optionalKey(str(50_000)),
   model: Schema.optionalKey(str(300)),
@@ -1208,14 +1282,19 @@ const aiRoutes = HttpRouter.addAll([
         const appId = yield* aiApp;
         const ai = yield* Ai;
         const input = yield* decodeBody(AiChatBody);
-        const messages = input.messages ?? (input.prompt !== undefined ? [{ role: "user" as const, content: input.prompt }] : []);
+        const messages =
+          input.messages ?? (input.prompt !== undefined ? [{ role: "user" as const, content: input.prompt }] : []);
         const request = { messages, system: input.system, model: input.model, effort: input.effort, json: input.json };
-        const stream = yield* ai.chat(appId, request).pipe(Effect.catchTag("AiError", (e) => fail(e.status, e.message)));
+        const stream = yield* ai
+          .chat(appId, request)
+          .pipe(Effect.catchTag("AiError", (e) => fail(e.status, e.message)));
 
         if (input.stream) {
           // Newline-delimited JSON: {"type":"delta","text"}…, then {"type":"done",…} or {"type":"error",…}.
           const lines = stream.pipe(
-            Stream.map((event) => (event.type === "done" && input.json ? { ...event, json: parseJson(event.text) } : event)),
+            Stream.map((event) =>
+              event.type === "done" && input.json ? { ...event, json: parseJson(event.text) } : event,
+            ),
             Stream.catchTag("AiError", (e) => Stream.make({ type: "error", status: e.status, message: e.message })),
             Stream.map((event) => `${JSON.stringify(event)}\n`),
             Stream.encodeText,
@@ -1231,7 +1310,12 @@ const aiRoutes = HttpRouter.addAll([
           Effect.catchTag("AiError", (e) => fail(e.status, e.message)),
         );
         if (!done) return yield* fail(503, "No answer");
-        return json({ text: done.text, ...(input.json ? { json: parseJson(done.text) } : {}), provider: done.provider, model: done.model });
+        return json({
+          text: done.text,
+          ...(input.json ? { json: parseJson(done.text) } : {}),
+          provider: done.provider,
+          model: done.model,
+        });
       }),
     ),
   ),
@@ -1282,7 +1366,9 @@ const dataRoutes = HttpRouter.addAll([
         const id = yield* param("id");
         yield* requireApp(id);
         const table = decodeURIComponent(yield* param("table"));
-        const rows = yield* (yield* AppData).rows(id, table, yield* rowQuery).pipe(Effect.catchTag("AppDataError", (e) => fail(e.status, e.message)));
+        const rows = yield* (yield* AppData)
+          .rows(id, table, yield* rowQuery)
+          .pipe(Effect.catchTag("AppDataError", (e) => fail(e.status, e.message)));
         return json(rows);
       }),
     ),
@@ -1297,7 +1383,12 @@ const dataRoutes = HttpRouter.addAll([
         const app = yield* requireApp(id);
         const bytes = yield* (yield* AppData).exportArchive(id);
         yield* youDid(id, "data.export", app.name, `${bytes.byteLength} bytes`);
-        const name = `${app.name.replace(/[^\w .-]/g, "").trim().replace(/\s+/g, "-") || "app"}-data.tar.gz`;
+        const name = `${
+          app.name
+            .replace(/[^\w .-]/g, "")
+            .trim()
+            .replace(/\s+/g, "-") || "app"
+        }-data.tar.gz`;
         return HttpServerResponse.uint8Array(bytes, {
           contentType: "application/gzip",
           headers: { "Content-Disposition": `attachment; filename="${name}"` },
@@ -1315,8 +1406,13 @@ const dataRoutes = HttpRouter.addAll([
         const app = yield* requireApp(id);
         const runtime = yield* Runtime;
         const history = yield* History;
-        if (yield* (yield* Agent).isRunning(id)) return yield* fail(409, "Stop the agent before deleting the app's data");
-        yield* history.record(appTarget(id), { actor: "rune", actorLabel: "Rune Browser", summary: "Before deleting the app's data" });
+        if (yield* (yield* Agent).isRunning(id))
+          return yield* fail(409, "Stop the agent before deleting the app's data");
+        yield* history.record(appTarget(id), {
+          actor: "rune",
+          actorLabel: "Rune Browser",
+          summary: "Before deleting the app's data",
+        });
         const status = yield* runtime.status(id);
         yield* runtime.stop(id);
         yield* (yield* AppData).clear(id);
@@ -1334,7 +1430,8 @@ const dataRoutes = HttpRouter.addAll([
 const apiApp = Effect.gen(function* () {
   const tokens = yield* AiTokens;
   const req = yield* HttpServerRequest.HttpServerRequest;
-  if (req.headers.origin !== undefined) return yield* fail(403, "Rune Browser's app API is for the app's server, not the browser.");
+  if (req.headers.origin !== undefined)
+    return yield* fail(403, "Rune Browser's app API is for the app's server, not the browser.");
   const appId = tokens.appFor(req.headers.authorization?.replace(/^Bearer /, "") ?? "");
   if (!appId) return yield* fail(401, "Missing or invalid RUNE_API_TOKEN");
   const app = yield* (yield* Apps).get(appId);
@@ -1350,7 +1447,8 @@ const mayRead = (app: { id: string; name: string; workspaceId: string }, targetI
   Effect.gen(function* () {
     if (targetId === app.id) return app;
     const target = yield* (yield* Apps).get(targetId);
-    if (!target || target.kind !== "app" || target.workspaceId !== app.workspaceId) return yield* fail(404, "No such app in this workspace");
+    if (!target || target.kind !== "app" || target.workspaceId !== app.workspaceId)
+      return yield* fail(404, "No such app in this workspace");
     const permissions = yield* Permissions;
     const allowed = yield* permissions.ask({
       subject: app.id,
@@ -1368,7 +1466,11 @@ const mayRead = (app: { id: string; name: string; workspaceId: string }, targetI
       target: target.name,
       outcome: allowed ? "ok" : "denied",
     });
-    if (!allowed) return yield* fail(403, `The user didn't allow reading the data of "${target.name}". It can be allowed in Rune Browser's Settings → Permissions.`);
+    if (!allowed)
+      return yield* fail(
+        403,
+        `The user didn't allow reading the data of "${target.name}". It can be allowed in Rune Browser's Settings → Permissions.`,
+      );
     return target;
   });
 
@@ -1395,7 +1497,9 @@ const appApiRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const app = yield* apiApp;
         const catalog = yield* (yield* AppTools).catalog(app.workspaceId);
-        return json(catalog.map((info) => ({ ...info, self: info.appId === app.id, tools: info.tools.filter((t) => !t.path) })));
+        return json(
+          catalog.map((info) => ({ ...info, self: info.appId === app.id, tools: info.tools.filter((t) => !t.path) })),
+        );
       }),
     ),
   ),
@@ -1418,7 +1522,11 @@ const appApiRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const app = yield* apiApp;
         const all = yield* (yield* Apps).list();
-        return json(all.filter((a) => a.kind === "app" && a.workspaceId === app.workspaceId).map((a) => ({ id: a.id, name: a.name, self: a.id === app.id })));
+        return json(
+          all
+            .filter((a) => a.kind === "app" && a.workspaceId === app.workspaceId)
+            .map((a) => ({ id: a.id, name: a.name, self: a.id === app.id })),
+        );
       }),
     ),
   ),
@@ -1440,7 +1548,9 @@ const appApiRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const target = yield* mayRead(yield* apiApp, yield* param("app"));
         const table = decodeURIComponent(yield* param("table"));
-        const rows = yield* (yield* AppData).rows(target.id, table, yield* rowQuery).pipe(Effect.catchTag("AppDataError", (e) => fail(e.status, e.message)));
+        const rows = yield* (yield* AppData)
+          .rows(target.id, table, yield* rowQuery)
+          .pipe(Effect.catchTag("AppDataError", (e) => fail(e.status, e.message)));
         return json(rows);
       }),
     ),
@@ -1454,9 +1564,16 @@ const ToolCallBody = Schema.Struct({
   input: Schema.optionalKey(Schema.NullOr(str(4000))),
 });
 
-const callTool = (caller: ToolCaller, appId: string, toolId: string, args: { params?: Record<string, unknown>; input?: string | null }) =>
+const callTool = (
+  caller: ToolCaller,
+  appId: string,
+  toolId: string,
+  args: { params?: Record<string, unknown>; input?: string | null },
+) =>
   Effect.gen(function* () {
-    return yield* (yield* AppTools).call(caller, appId, toolId, args).pipe(Effect.catchTag("AppToolError", (e) => fail(e.status, e.message)));
+    return yield* (yield* AppTools)
+      .call(caller, appId, toolId, args)
+      .pipe(Effect.catchTag("AppToolError", (e) => fail(e.status, e.message)));
   });
 
 const actionRoutes = HttpRouter.addAll([
@@ -1485,7 +1602,9 @@ const actionRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const { input } = yield* decodeBody(Schema.Struct({ input: Schema.optionalKey(Schema.NullOr(str(4000))) }));
-        const { ok, status, message } = yield* callTool({ kind: "user" }, yield* param("id"), yield* param("action"), { input });
+        const { ok, status, message } = yield* callTool({ kind: "user" }, yield* param("id"), yield* param("action"), {
+          input,
+        });
         return json({ ok, status, message } satisfies AppActionResult);
       }),
     ),
@@ -1553,7 +1672,11 @@ const historyRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const history = yield* History;
         const { target } = yield* decodeBody(Schema.Struct({ target: historyTarget }));
-        const entry = yield* history.record(target as `app:${string}`, { actor: "user", actorLabel: "You", summary: "Saved a snapshot" });
+        const entry = yield* history.record(target as `app:${string}`, {
+          actor: "user",
+          actorLabel: "You",
+          summary: "Saved a snapshot",
+        });
         return entry ? json(entry, 201) : noContent;
       }),
     ),
@@ -1564,7 +1687,9 @@ const historyRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const history = yield* History;
-        const detail = yield* history.detail(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        const detail = yield* history
+          .detail(Number(yield* param("id")))
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
         return json(detail);
       }),
     ),
@@ -1576,17 +1701,27 @@ const historyRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const history = yield* History;
-        const { data, workspaceId } = yield* decodeBody(Schema.Struct({ data: Schema.optionalKey(Schema.Boolean), workspaceId: Schema.optionalKey(str(100)) }));
-        const entry = yield* history.entry(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        const { data, workspaceId } = yield* decodeBody(
+          Schema.Struct({ data: Schema.optionalKey(Schema.Boolean), workspaceId: Schema.optionalKey(str(100)) }),
+        );
+        const entry = yield* history
+          .entry(Number(yield* param("id")))
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
         const apps = yield* Apps;
         const agent = yield* Agent;
         for (const app of yield* apps.list()) {
-          if ((!workspaceId || app.workspaceId === workspaceId) && (yield* agent.isRunning(app.id))) return yield* fail(409, `Stop the agent in “${app.name}” first`);
+          if ((!workspaceId || app.workspaceId === workspaceId) && (yield* agent.isRunning(app.id)))
+            return yield* fail(409, `Stop the agent in “${app.name}” first`);
         }
         const result = yield* history
           .restoreAll(entry.id, { data: data ?? false, ...(workspaceId ? { workspaceId } : {}) })
           .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
-        yield* youDid(workspaceId ? workspaceScope(workspaceId) : null, "history.restoreAll", entry.at, `${result.restored.length} restored: ${result.restored.join(", ")}${data ? " · with data" : ""}`);
+        yield* youDid(
+          workspaceId ? workspaceScope(workspaceId) : null,
+          "history.restoreAll",
+          entry.at,
+          `${result.restored.length} restored: ${result.restored.join(", ")}${data ? " · with data" : ""}`,
+        );
         return json(result);
       }),
     ),
@@ -1598,11 +1733,20 @@ const historyRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const history = yield* History;
         const { data } = yield* decodeBody(Schema.Struct({ data: Schema.optionalKey(Schema.Boolean) }));
-        const entry = yield* history.entry(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        const entry = yield* history
+          .entry(Number(yield* param("id")))
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
         yield* ensureAgentIdle(entry.target);
         // The data goes back only when asked: what was added since would be lost.
-        yield* history.restore(entry.id, { data: data ?? false }).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
-        yield* youDid(entry.tabId, "history.restore", entry.summary, `${entry.target} · ${entry.at}${data ? " · with its data" : ""}`);
+        yield* history
+          .restore(entry.id, { data: data ?? false })
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        yield* youDid(
+          entry.tabId,
+          "history.restore",
+          entry.summary,
+          `${entry.target} · ${entry.at}${data ? " · with its data" : ""}`,
+        );
         return noContent;
       }),
     ),
@@ -1614,9 +1758,13 @@ const historyRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const history = yield* History;
         const { data } = yield* decodeBody(Schema.Struct({ data: Schema.optionalKey(Schema.Boolean) }));
-        const entry = yield* history.entry(Number(yield* param("id"))).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        const entry = yield* history
+          .entry(Number(yield* param("id")))
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
         yield* ensureAgentIdle(entry.target);
-        const result = yield* history.undo(entry.id, { data: data ?? false }).pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
+        const result = yield* history
+          .undo(entry.id, { data: data ?? false })
+          .pipe(Effect.catchTag("HistoryError", (e) => fail(e.status, e.message)));
         yield* youDid(entry.tabId, "history.undo", entry.summary, `${entry.target}${data ? " · with its data" : ""}`);
         return json(result);
       }),
@@ -1652,7 +1800,9 @@ const workspaceRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const workspaces = yield* Workspaces;
-        const input = yield* decodeBody(Schema.Struct({ name: workspaceName, icon: Schema.optionalKey(Schema.NullOr(str(80))) }));
+        const input = yield* decodeBody(
+          Schema.Struct({ name: workspaceName, icon: Schema.optionalKey(Schema.NullOr(str(80))) }),
+        );
         const created = yield* workspaces.create(input.name.trim(), input.icon ?? null);
         yield* publishWorkspace(created.id);
         yield* snapshot("settings", `Created the workspace ${created.name}`);
@@ -1667,7 +1817,9 @@ const workspaceRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const workspaces = yield* Workspaces;
-        const { ids } = yield* decodeBody(Schema.Struct({ ids: Schema.Array(str(100)).check(Schema.isMaxLength(500)) }));
+        const { ids } = yield* decodeBody(
+          Schema.Struct({ ids: Schema.Array(str(100)).check(Schema.isMaxLength(500)) }),
+        );
         yield* workspaces.reorder(ids);
         yield* snapshot("settings", "Reordered the workspaces", true);
         return json(yield* workspaces.list());
@@ -1715,7 +1867,10 @@ const workspaceRoutes = HttpRouter.addAll([
             ).check(Schema.isMaxLength(100)),
           }),
         );
-        const updated = yield* workspaces.setSplits(id, splits.map((s) => ({ ...s, tabs: [...s.tabs], sizes: [...s.sizes] })));
+        const updated = yield* workspaces.setSplits(
+          id,
+          splits.map((s) => ({ ...s, tabs: [...s.tabs], sizes: [...s.sizes] })),
+        );
         if (!updated) return yield* fail(404, "Not found");
         return json(yield* publishWorkspace(id));
       }),
@@ -1786,7 +1941,8 @@ const youDid = (where: string | null, action: string, target: string | null, det
   });
 
 /** "global KEY", "workspace KEY", "app KEY" for the audit log. */
-const secretLabel = (scope: string, name: string) => `${scope === "global" ? "global" : workspaceOfScope(scope) ? "workspace" : "app"} ${name}`;
+const secretLabel = (scope: string, name: string) =>
+  `${scope === "global" ? "global" : workspaceOfScope(scope) ? "workspace" : "app"} ${name}`;
 
 /**
  * Running apps that use a secret get restarted, so their environment changes
@@ -1803,7 +1959,8 @@ const restartUsers = (scope: string, name: string) =>
     if (scope === "global") {
       appIds = [];
       for (const app of yield* apps.list()) {
-        if (app.kind === "app" && (yield* permissions.decision(app.id, "app.secret", name)) === "allow") appIds.push(app.id);
+        if (app.kind === "app" && (yield* permissions.decision(app.id, "app.secret", name)) === "allow")
+          appIds.push(app.id);
       }
     } else appIds = space ? yield* workspaces.appIds(space) : [scope];
     for (const id of appIds) yield* runtime.refresh(id);
@@ -1837,7 +1994,9 @@ const secretRoutes = HttpRouter.addAll([
           if (!app || app.kind !== "app") return yield* fail(404, "No such app");
         }
         const existed = (yield* secrets.list(input.scope)).some((x) => x.name === input.name);
-        const saved = yield* secrets.set(input.scope, input.name, input.value).pipe(Effect.catchTag("SecretError", (e) => fail(400, e.message)));
+        const saved = yield* secrets
+          .set(input.scope, input.name, input.value)
+          .pipe(Effect.catchTag("SecretError", (e) => fail(400, e.message)));
         yield* youDid(input.scope, existed ? "secret.replace" : "secret.create", secretLabel(input.scope, input.name));
         yield* restartUsers(input.scope, input.name);
         return json(saved);
@@ -1860,7 +2019,17 @@ const secretRoutes = HttpRouter.addAll([
   ),
 ]);
 
-const permissionActions = ["app.ai", "app.secret", "agent.site", "agent.network", "app.data", "app.tool", "agent.schedule", "agent.tab", "agent.browse"] as const satisfies readonly PermissionAction[];
+const permissionActions = [
+  "app.ai",
+  "app.secret",
+  "agent.site",
+  "agent.network",
+  "app.data",
+  "app.tool",
+  "agent.schedule",
+  "agent.tab",
+  "agent.browse",
+] as const satisfies readonly PermissionAction[];
 
 const permissionRoutes = HttpRouter.addAll([
   HttpRouter.route(
@@ -1879,10 +2048,19 @@ const permissionRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const permissions = yield* Permissions;
         const input = yield* decodeBody(
-          Schema.Struct({ subject: str(100), action: Schema.Literals(permissionActions), resource: str(300), decision: Schema.Literals(["allow", "deny"]) }),
+          Schema.Struct({
+            subject: str(100),
+            action: Schema.Literals(permissionActions),
+            resource: str(300),
+            decision: Schema.Literals(["allow", "deny"]),
+          }),
         );
         yield* permissions.set(input.subject, input.action, input.resource, input.decision);
-        yield* youDid(input.subject, `permission.${input.decision}`, `${input.action}${input.resource ? ` ${input.resource}` : ""}`);
+        yield* youDid(
+          input.subject,
+          `permission.${input.decision}`,
+          `${input.action}${input.resource ? ` ${input.resource}` : ""}`,
+        );
         if (input.action === "app.secret") yield* restartUsers(input.subject, input.resource);
         return noContent;
       }),
@@ -1897,7 +2075,12 @@ const permissionRoutes = HttpRouter.addAll([
         const id = Number(yield* param("id"));
         const revoked = yield* permissions.revoke(id);
         if (!revoked) return yield* fail(404, "Not found");
-        yield* youDid(revoked.subject, "permission.revoke", `${revoked.action}${revoked.resource ? ` ${revoked.resource}` : ""}`, revoked.subjectName);
+        yield* youDid(
+          revoked.subject,
+          "permission.revoke",
+          `${revoked.action}${revoked.resource ? ` ${revoked.resource}` : ""}`,
+          revoked.subjectName,
+        );
         if (revoked.action === "app.secret") yield* restartUsers(revoked.subject, revoked.resource);
         return noContent;
       }),
@@ -1919,10 +2102,14 @@ const permissionRoutes = HttpRouter.addAll([
         const permissions = yield* Permissions;
         // remember: true (this app or agent) or "workspace" (every app in its workspace).
         const { allow, remember } = yield* decodeBody(
-          Schema.Struct({ allow: Schema.Boolean, remember: Schema.Union([Schema.Boolean, Schema.Literal("workspace")]) }),
+          Schema.Struct({
+            allow: Schema.Boolean,
+            remember: Schema.Union([Schema.Boolean, Schema.Literal("workspace")]),
+          }),
         );
         const scope = remember === "workspace" ? "workspace" : remember ? "subject" : false;
-        if (!(yield* permissions.answer(yield* param("id"), allow, scope))) return yield* fail(404, "The request is no longer waiting");
+        if (!(yield* permissions.answer(yield* param("id"), allow, scope)))
+          return yield* fail(404, "The request is no longer waiting");
         return noContent;
       }),
     ),
@@ -1949,7 +2136,9 @@ const permissionRoutes = HttpRouter.addAll([
 
 // --- Network: rules for web tabs' requests, saved requests ------------------------------------
 
-const headerValue = str(8000).check(Schema.isPattern(/^[^\r\n]*$/, { message: "header values can't contain line breaks" }));
+const headerValue = str(8000).check(
+  Schema.isPattern(/^[^\r\n]*$/, { message: "header values can't contain line breaks" }),
+);
 const HeaderChanges = Schema.Record(Schema.String, Schema.NullOr(headerValue));
 const HEADER_NAME = /^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,100}$/;
 /** Record keys aren't checked by the schema: header names are, here. */
@@ -2005,7 +2194,11 @@ export const sendSaved = (id: string, overrides: ReplayOverrides) =>
     const saved = yield* network.draftOf(id);
     if (!saved) return yield* fail(404, "Not found");
     const result = yield* hub
-      .rpc<ReplayResult>("network.replay", { workspaceId: saved.request.workspaceId, draft: saved.draft, overrides }, 45_000)
+      .rpc<ReplayResult>(
+        "network.replay",
+        { workspaceId: saved.request.workspaceId, draft: saved.draft, overrides },
+        45_000,
+      )
       .pipe(Effect.mapError((err) => new HttpFail({ status: 502, message: err.message })));
     return { request: saved.request, result };
   });
@@ -2037,7 +2230,11 @@ const networkRoutes = HttpRouter.addAll([
           responseHeaders: fields.responseHeaders ?? {},
           enabled: fields.enabled ?? true,
         });
-        yield* youDid(rule.workspaceId ? workspaceScope(rule.workspaceId) : null, "network.rule.create", ruleLabel(rule));
+        yield* youDid(
+          rule.workspaceId ? workspaceScope(rule.workspaceId) : null,
+          "network.rule.create",
+          ruleLabel(rule),
+        );
         yield* publishNetwork("rules");
         return json(rule, 201);
       }),
@@ -2049,12 +2246,27 @@ const networkRoutes = HttpRouter.addAll([
     handle(
       Effect.gen(function* () {
         const network = yield* Network;
-        const fields = yield* decodeBody(Schema.Struct({ ...RuleFields.fields, workspaceId: Schema.optionalKey(Schema.NullOr(str(100))), pattern: Schema.optionalKey(RuleFields.fields.pattern), action: Schema.optionalKey(RuleFields.fields.action) }));
+        const fields = yield* decodeBody(
+          Schema.Struct({
+            ...RuleFields.fields,
+            workspaceId: Schema.optionalKey(Schema.NullOr(str(100))),
+            pattern: Schema.optionalKey(RuleFields.fields.pattern),
+            action: Schema.optionalKey(RuleFields.fields.action),
+          }),
+        );
         yield* checkHeaderNames(fields.requestHeaders, fields.responseHeaders);
         if (fields.workspaceId !== undefined) yield* ensureWorkspace(fields.workspaceId);
-        const rule = yield* network.updateRule(yield* param("id"), { ...fields, ...(fields.pattern ? { pattern: fields.pattern.trim() } : {}) });
+        const rule = yield* network.updateRule(yield* param("id"), {
+          ...fields,
+          ...(fields.pattern ? { pattern: fields.pattern.trim() } : {}),
+        });
         if (!rule) return yield* fail(404, "Not found");
-        yield* youDid(rule.workspaceId ? workspaceScope(rule.workspaceId) : null, "network.rule.update", ruleLabel(rule), rule.enabled ? "on" : "off");
+        yield* youDid(
+          rule.workspaceId ? workspaceScope(rule.workspaceId) : null,
+          "network.rule.update",
+          ruleLabel(rule),
+          rule.enabled ? "on" : "off",
+        );
         yield* publishNetwork("rules");
         return json(rule);
       }),
@@ -2069,7 +2281,11 @@ const networkRoutes = HttpRouter.addAll([
         const rule = yield* network.getRule(yield* param("id"));
         if (!rule) return yield* fail(404, "Not found");
         yield* network.removeRule(rule.id);
-        yield* youDid(rule.workspaceId ? workspaceScope(rule.workspaceId) : null, "network.rule.delete", ruleLabel(rule));
+        yield* youDid(
+          rule.workspaceId ? workspaceScope(rule.workspaceId) : null,
+          "network.rule.delete",
+          ruleLabel(rule),
+        );
         yield* publishNetwork("rules");
         return noContent;
       }),
@@ -2091,7 +2307,11 @@ const networkRoutes = HttpRouter.addAll([
       Effect.gen(function* () {
         const network = yield* Network;
         const { workspaceId, name, draft } = yield* decodeBody(
-          Schema.Struct({ workspaceId: str(100), name: str(120).check(Schema.isPattern(/\S/, { message: "name is required" })), draft: Draft }),
+          Schema.Struct({
+            workspaceId: str(100),
+            name: str(120).check(Schema.isPattern(/\S/, { message: "name is required" })),
+            draft: Draft,
+          }),
         );
         yield* checkHeaderNames(draft.headers);
         yield* ensureWorkspace(workspaceId);
@@ -2125,14 +2345,45 @@ const networkRoutes = HttpRouter.addAll([
         const overrides = yield* decodeBody(Schema.Struct({ overrides: Schema.optionalKey(Overrides) }));
         yield* checkHeaderNames(overrides.overrides?.headers);
         const { request, result } = yield* sendSaved(yield* param("id"), overrides.overrides ?? {});
-        yield* youDid(workspaceScope(request.workspaceId), "network.request.send", request.name, `HTTP ${result.status}`);
+        yield* youDid(
+          workspaceScope(request.workspaceId),
+          "network.request.send",
+          request.name,
+          `HTTP ${result.status}`,
+        );
         return json(result);
       }),
     ),
   ),
 ]);
 
-export const routes = Layer.mergeAll(health, ws, mcp, providerRoutes, settingsRoutes, sandboxRoute, sourceRoutes, attachmentRoutes, presetsRoute, appRoutes, workspaceRoutes, historyRoutes, actionRoutes, dataRoutes, appApiRoutes, runtimeRoutes, siteRoutes, pageChangeRoutes, modRoutes, scheduleRoutes, aiRoutes, secretRoutes, permissionRoutes, networkRoutes, guard);
+export const routes = Layer.mergeAll(
+  health,
+  ws,
+  mcp,
+  providerRoutes,
+  settingsRoutes,
+  sandboxRoute,
+  sourceRoutes,
+  attachmentRoutes,
+  presetsRoute,
+  appRoutes,
+  workspaceRoutes,
+  historyRoutes,
+  actionRoutes,
+  dataRoutes,
+  appApiRoutes,
+  runtimeRoutes,
+  siteRoutes,
+  pageChangeRoutes,
+  modRoutes,
+  scheduleRoutes,
+  aiRoutes,
+  secretRoutes,
+  permissionRoutes,
+  networkRoutes,
+  guard,
+);
 
 export const cors = (allowedOrigin: string) =>
   HttpRouter.cors({

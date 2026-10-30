@@ -17,7 +17,8 @@ watchTopic(topics.mods, (msg) => {
 });
 onConnected(() => void loadMods());
 
-export const modName = (id: string | null | undefined) => (id ? installed().find((m) => m.mod.id === id)?.mod.name : undefined);
+export const modName = (id: string | null | undefined) =>
+  id ? installed().find((m) => m.mod.id === id)?.mod.name : undefined;
 
 // --- Review before installing ---------------------------------------------------------------
 
@@ -72,7 +73,9 @@ async function installExtensions(installedMod: InstalledMod) {
   const failed: string[] = [];
   for (const ext of wanted) {
     if (present.has(ext.id)) continue;
-    const result = await window.rune.extensions.install(ext.id).catch((err: unknown) => ({ installed: [], failed: [{ id: ext.id, name: ext.name, error: String(err) }] }));
+    const result = await window.rune.extensions
+      .install(ext.id)
+      .catch((err: unknown) => ({ installed: [], failed: [{ id: ext.id, name: ext.name, error: String(err) }] }));
     if (result.installed.some((e) => e.id === ext.id)) added.push(ext.id);
     else failed.push(`${ext.name}: ${result.failed[0]?.error ?? "not installed"}`);
   }

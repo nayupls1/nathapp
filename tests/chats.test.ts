@@ -31,7 +31,11 @@ test("new chat, earlier chats, reopening and deleting", async () => {
       yield* apps.addMessage(tab.id, "assistant", "Done.");
       yield* apps.setSession(tab.id, { provider: "claude", id: "session-1" });
       yield* apps.newChat(tab.id);
-      const afterNew = { current: texts(yield* apps.messages(tab.id)), chats: yield* apps.chats(tab.id), session: (yield* apps.get(tab.id))!.session };
+      const afterNew = {
+        current: texts(yield* apps.messages(tab.id)),
+        chats: yield* apps.chats(tab.id),
+        session: (yield* apps.get(tab.id))!.session,
+      };
 
       yield* apps.addMessage(tab.id, "user", "Something else");
       yield* apps.setSession(tab.id, { provider: "codex", id: "session-2" });
@@ -62,7 +66,11 @@ test("new chat, earlier chats, reopening and deleting", async () => {
   expect(result.afterNew.chats).toMatchObject([{ title: "Build a habit tracker with streaks", messages: 2 }]);
   expect(result.afterNew.session).toBeNull();
   expect(result.opened).toBe(true);
-  expect(result.afterOpen).toEqual({ current: ["Build   a habit tracker\nwith streaks", "Done."], chats: ["Something else"], session: { provider: "claude", id: "session-1" } });
+  expect(result.afterOpen).toEqual({
+    current: ["Build   a habit tracker\nwith streaks", "Done."],
+    chats: ["Something else"],
+    session: { provider: "claude", id: "session-1" },
+  });
   expect(result.kept).toEqual(["Something else"]);
   expect(result.deleted).toBe(true);
   expect(result.missing).toEqual([false, false]);

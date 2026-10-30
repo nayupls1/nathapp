@@ -30,24 +30,98 @@
 
 /* Top bars are where the window is dragged (it has no title bar: lib/windowChrome.ts);
    what's clickable in them still clicks. */
-[data-titlebar] { -webkit-app-region: drag; }
-[data-window-controls] { -webkit-app-region: no-drag; }
-[data-titlebar] :is(button, input, select, textarea, a, label, webview, [role="button"], [role="switch"], [role="tab"], [contenteditable]) { -webkit-app-region: no-drag; }
+[data-titlebar] {
+  -webkit-app-region: drag;
+}
+[data-window-controls] {
+  -webkit-app-region: no-drag;
+}
+[data-titlebar]
+  :is(
+    button,
+    input,
+    select,
+    textarea,
+    a,
+    label,
+    webview,
+    [role="button"],
+    [role="switch"],
+    [role="tab"],
+    [contenteditable]
+  ) {
+  -webkit-app-region: no-drag;
+}
 
 /* Markdown in agent replies (generated HTML, so it can't
    carry StyleX classes). */
-.rune-markdown > :first-child { margin-top: 0; }
-.rune-markdown > :last-child { margin-bottom: 0; }
-.rune-markdown p, .rune-markdown ul, .rune-markdown ol, .rune-markdown blockquote, .rune-markdown pre { margin: 0 0 0.75em; }
-.rune-markdown h1, .rune-markdown h2, .rune-markdown h3, .rune-markdown h4 { margin: 1em 0 0.4em; line-height: 1.25; letter-spacing: -0.01em; }
-.rune-markdown h1 { font-size: 1.6em; }
-.rune-markdown h2 { font-size: 1.3em; }
-.rune-markdown h3 { font-size: 1.1em; }
-.rune-markdown ul, .rune-markdown ol { padding-left: 1.4em; }
-.rune-markdown li.task { list-style: none; margin-left: -1.4em; }
-.rune-markdown a { color: inherit; text-decoration-color: currentColor; text-underline-offset: 2px; }
-.rune-markdown code { font-family: ui-monospace, "JetBrains Mono", monospace; font-size: 0.9em; padding: 0.1em 0.35em; border-radius: 4px; background: rgb(127 127 127 / 0.14); }
-.rune-markdown pre { padding: 0.8em 1em; border-radius: 8px; background: rgb(127 127 127 / 0.1); overflow-x: auto; }
-.rune-markdown pre code { padding: 0; background: none; }
-.rune-markdown blockquote { padding-left: 1em; border-left: 3px solid rgb(127 127 127 / 0.35); opacity: 0.85; }
-.rune-markdown hr { border: none; border-top: 1px solid rgb(127 127 127 / 0.25); margin: 1em 0; }
+.rune-markdown > :first-child {
+  margin-top: 0;
+}
+.rune-markdown > :last-child {
+  margin-bottom: 0;
+}
+.rune-markdown p,
+.rune-markdown ul,
+.rune-markdown ol,
+.rune-markdown blockquote,
+.rune-markdown pre {
+  margin: 0 0 0.75em;
+}
+.rune-markdown h1,
+.rune-markdown h2,
+.rune-markdown h3,
+.rune-markdown h4 {
+  margin: 1em 0 0.4em;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.rune-markdown h1 {
+  font-size: 1.6em;
+}
+.rune-markdown h2 {
+  font-size: 1.3em;
+}
+.rune-markdown h3 {
+  font-size: 1.1em;
+}
+.rune-markdown ul,
+.rune-markdown ol {
+  padding-left: 1.4em;
+}
+.rune-markdown li.task {
+  list-style: none;
+  margin-left: -1.4em;
+}
+.rune-markdown a {
+  color: inherit;
+  text-decoration-color: currentColor;
+  text-underline-offset: 2px;
+}
+.rune-markdown code {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 0.9em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgb(127 127 127 / 0.14);
+}
+.rune-markdown pre {
+  padding: 0.8em 1em;
+  border-radius: 8px;
+  background: rgb(127 127 127 / 0.1);
+  overflow-x: auto;
+}
+.rune-markdown pre code {
+  padding: 0;
+  background: none;
+}
+.rune-markdown blockquote {
+  padding-left: 1em;
+  border-left: 3px solid rgb(127 127 127 / 0.35);
+  opacity: 0.85;
+}
+.rune-markdown hr {
+  border: none;
+  border-top: 1px solid rgb(127 127 127 / 0.25);
+  margin: 1em 0;
+}

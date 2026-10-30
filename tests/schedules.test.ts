@@ -42,11 +42,21 @@ describe("cron", () => {
 });
 
 describe("checks", () => {
-  const spec: ScheduleSpec = { name: "Sync", trigger: { type: "cron", cron: "0 * * * *" }, task: { type: "command", appId: "a", command: "true" }, notify: "failure", timeoutSec: 60 };
+  const spec: ScheduleSpec = {
+    name: "Sync",
+    trigger: { type: "cron", cron: "0 * * * *" },
+    task: { type: "command", appId: "a", command: "true" },
+    notify: "failure",
+    timeoutSec: 60,
+  };
   test("limits and fields", () => {
     expect(scheduleProblem(spec)).toBeNull();
-    expect(scheduleProblem({ ...spec, trigger: { type: "cron", cron: "* * * * *" } })).toContain("at most every 5 minutes");
-    expect(scheduleProblem({ ...spec, trigger: { type: "once", at: "2020-01-01T00:00:00Z" } })).toBe("That time has passed");
+    expect(scheduleProblem({ ...spec, trigger: { type: "cron", cron: "* * * * *" } })).toContain(
+      "at most every 5 minutes",
+    );
+    expect(scheduleProblem({ ...spec, trigger: { type: "once", at: "2020-01-01T00:00:00Z" } })).toBe(
+      "That time has passed",
+    );
     expect(scheduleProblem({ ...spec, trigger: { type: "event", event: "app:abc:done" } })).toBeNull();
     expect(scheduleProblem({ ...spec, trigger: { type: "event", event: "whenever" } })).toContain("Events are");
     expect(scheduleProblem({ ...spec, timeoutSec: 99_999 })).toContain("timeout");
@@ -55,10 +65,19 @@ describe("checks", () => {
 
   test("prompts: in a tab, or in a new one", () => {
     expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Summarize the news", appId: "a" } })).toBeNull();
-    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi", newTab: { kind: "app", workspaceId: "w" } } })).toBeNull();
-    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: " ", appId: "a" } })).toBe("What should the agent do?");
+    expect(
+      scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi", newTab: { kind: "app", workspaceId: "w" } } }),
+    ).toBeNull();
+    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: " ", appId: "a" } })).toBe(
+      "What should the agent do?",
+    );
     expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi" } })).toBe("Which tab?");
-    expect(scheduleProblem({ ...spec, task: { type: "prompt", prompt: "Hi", newTab: { kind: "web", workspaceId: "w", url: "example.com" } } })).toContain("http(s)");
+    expect(
+      scheduleProblem({
+        ...spec,
+        task: { type: "prompt", prompt: "Hi", newTab: { kind: "web", workspaceId: "w", url: "example.com" } },
+      }),
+    ).toContain("http(s)");
   });
 });
 
@@ -75,7 +94,8 @@ describe("scheduler", () => {
     timeoutSec: 60,
     ...fields,
   });
-  const create = (fields: Partial<ScheduleSpec>) => server.api<Schedule>("/api/schedules", { method: "POST", json: base(fields) });
+  const create = (fields: Partial<ScheduleSpec>) =>
+    server.api<Schedule>("/api/schedules", { method: "POST", json: base(fields) });
   const runsOf = (id: string) => server.api<ScheduleRun[]>(`/api/schedules/runs?schedule=${id}`);
   const finished = async (id: string, count = 1, ms = 20_000) => {
     const deadline = Date.now() + ms;
@@ -117,7 +137,11 @@ Bun.serve({
   afterAll(() => server.stop());
 
   test("a one-off schedule runs at its time, without a tab, using an app's tool", async () => {
-    const schedule = await create({ name: "Digest", trigger: { type: "once", at: new Date(Date.now() + 1500).toISOString() }, task: { type: "tool", appId: app.id, tool: "digest" } });
+    const schedule = await create({
+      name: "Digest",
+      trigger: { type: "once", at: new Date(Date.now() + 1500).toISOString() },
+      task: { type: "tool", appId: app.id, tool: "digest" },
+    });
     expect(schedule.nextRunAt).not.toBeNull();
     const [run] = await finished(schedule.id, 1, 60_000);
     expect(run).toMatchObject({ status: "ok", trigger: "time", message: "Sent the digest", scheduleName: "Digest" });
@@ -130,18 +154,28 @@ Bun.serve({
   }, 90_000);
 
   test("commands run in the app's sandbox; failures and timeouts are results too", async () => {
-    const ok = await create({ name: "Hello", task: { type: "command", appId: app.id, command: "echo hello from $RUNE_MODE" } });
+    const ok = await create({
+      name: "Hello",
+      task: { type: "command", appId: app.id, command: "echo hello from $RUNE_MODE" },
+    });
     expect(ok.nextRunAt).not.toBeNull();
     await server.api(`/api/schedules/${ok.id}/run`, { method: "POST" });
     const [done] = await finished(ok.id);
     expect(done).toMatchObject({ status: "ok", trigger: "manual", message: "Done" });
     expect(done!.output).toContain("hello from");
 
-    const failing = await create({ name: "Broken", task: { type: "command", appId: app.id, command: "echo nope 1>&2; exit 3" } });
+    const failing = await create({
+      name: "Broken",
+      task: { type: "command", appId: app.id, command: "echo nope 1>&2; exit 3" },
+    });
     await server.api(`/api/schedules/${failing.id}/run`, { method: "POST" });
     expect((await finished(failing.id))[0]).toMatchObject({ status: "error", message: "Exited with code 3" });
 
-    const slow = await create({ name: "Slow", timeoutSec: 5, task: { type: "command", appId: app.id, command: 'bun -e "await Bun.sleep(30000)"' } });
+    const slow = await create({
+      name: "Slow",
+      timeoutSec: 5,
+      task: { type: "command", appId: app.id, command: 'bun -e "await Bun.sleep(30000)"' },
+    });
     await server.api(`/api/schedules/${slow.id}/run`, { method: "POST" });
     // It never runs twice at once.
     const second = await server.api<ScheduleRun>(`/api/schedules/${slow.id}/run`, { method: "POST" });
@@ -150,19 +184,36 @@ Bun.serve({
     expect(runs.map((r) => r.status).sort()).toEqual(["skipped", "timeout"]);
 
     const audit = await server.api<AuditEntry[]>(`/api/audit?tab=${app.id}`);
-    expect(audit.filter((e) => e.action === "schedule.run").map((e) => [e.target, e.outcome])).toContainEqual(["Broken", "error"]);
+    expect(audit.filter((e) => e.action === "schedule.run").map((e) => [e.target, e.outcome])).toContainEqual([
+      "Broken",
+      "error",
+    ]);
   }, 90_000);
 
   test("pause, resume, edit and delete", async () => {
     const schedule = await create({ name: "Nightly" });
-    const paused = await server.api<Schedule>(`/api/schedules/${schedule.id}`, { method: "PATCH", json: { paused: true } });
+    const paused = await server.api<Schedule>(`/api/schedules/${schedule.id}`, {
+      method: "PATCH",
+      json: { paused: true },
+    });
     expect(paused).toMatchObject({ paused: true, nextRunAt: null });
-    const resumed = await server.api<Schedule>(`/api/schedules/${schedule.id}`, { method: "PATCH", json: { paused: false } });
+    const resumed = await server.api<Schedule>(`/api/schedules/${schedule.id}`, {
+      method: "PATCH",
+      json: { paused: false },
+    });
     expect(resumed.nextRunAt).toBe(schedule.nextRunAt);
-    const edited = await server.api<Schedule>(`/api/schedules/${schedule.id}`, { method: "PATCH", json: { spec: base({ name: "Hourly", trigger: { type: "cron", cron: "0 * * * *" } }) } });
+    const edited = await server.api<Schedule>(`/api/schedules/${schedule.id}`, {
+      method: "PATCH",
+      json: { spec: base({ name: "Hourly", trigger: { type: "cron", cron: "0 * * * *" } }) },
+    });
     expect(edited.name).toBe("Hourly");
     expect(new Date(edited.nextRunAt!).getMinutes()).toBe(0);
-    await expect(server.api(`/api/schedules/${schedule.id}`, { method: "PATCH", json: { spec: base({ trigger: { type: "cron", cron: "* * * * *" } }) } })).rejects.toThrow("400");
+    await expect(
+      server.api(`/api/schedules/${schedule.id}`, {
+        method: "PATCH",
+        json: { spec: base({ trigger: { type: "cron", cron: "* * * * *" } }) },
+      }),
+    ).rejects.toThrow("400");
     const upcoming = await server.api<{ scheduleId: string; at: string }[]>("/api/schedules/upcoming");
     expect(upcoming.filter((u) => u.scheduleId === schedule.id).length).toBeGreaterThan(1);
     await server.api(`/api/schedules/${schedule.id}`, { method: "DELETE" });
@@ -203,7 +254,14 @@ describe("scheduled prompts", () => {
     const off = { enabled: false };
     await server.api("/api/settings", {
       method: "PUT",
-      json: { ...settings, providers: { claude: { ...settings.providers.claude, ...off }, codex: { ...settings.providers.codex, ...off }, opencode: { ...settings.providers.opencode, ...off } } },
+      json: {
+        ...settings,
+        providers: {
+          claude: { ...settings.providers.claude, ...off },
+          codex: { ...settings.providers.codex, ...off },
+          opencode: { ...settings.providers.opencode, ...off },
+        },
+      },
     });
     // A refresh joins the startup check if it's still going: again until they're off.
     for (let i = 0; i < 20; i++) {
@@ -218,7 +276,13 @@ describe("scheduled prompts", () => {
     const before = (await server.api<AppSummary[]>("/api/apps")).length;
     const schedule = await server.api<Schedule>("/api/schedules", {
       method: "POST",
-      json: { name: "Morning", trigger: { type: "cron", cron: "0 8 * * *" }, task: { type: "prompt", prompt: "Summarize", newTab: { kind: "app", workspaceId: space!.id } }, notify: "never", timeoutSec: 60 },
+      json: {
+        name: "Morning",
+        trigger: { type: "cron", cron: "0 8 * * *" },
+        task: { type: "prompt", prompt: "Summarize", newTab: { kind: "app", workspaceId: space!.id } },
+        notify: "never",
+        timeoutSec: 60,
+      },
     });
     expect(schedule.workspaceId).toBe(space!.id);
     const runOnce = async () => {
@@ -248,7 +312,13 @@ describe("scheduled prompts", () => {
     await expect(
       server.api("/api/schedules", {
         method: "POST",
-        json: { name: "X", trigger: { type: "cron", cron: "0 8 * * *" }, task: { type: "prompt", prompt: "Hi", appId: "nope" }, notify: "never", timeoutSec: 60 },
+        json: {
+          name: "X",
+          trigger: { type: "cron", cron: "0 8 * * *" },
+          task: { type: "prompt", prompt: "Hi", appId: "nope" },
+          notify: "never",
+          timeoutSec: 60,
+        },
       }),
     ).rejects.toThrow("404");
   });

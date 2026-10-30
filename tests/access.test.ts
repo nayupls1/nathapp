@@ -41,7 +41,12 @@ test("asks by default; with full access an agent's request is allowed and logged
       const agent = yield* ask("tab-1");
       const app = yield* ask();
       const entries = yield* (yield* Audit).list({ limit: 20 });
-      return { asking, agent, app, auto: entries.filter((e) => e.action === "permission.auto").map((e) => [e.tabId, e.target]) };
+      return {
+        asking,
+        agent,
+        app,
+        auto: entries.filter((e) => e.action === "permission.auto").map((e) => [e.tabId, e.target]),
+      };
     }),
   );
   // Nobody answers in these tests: asking means a no after the timeout.

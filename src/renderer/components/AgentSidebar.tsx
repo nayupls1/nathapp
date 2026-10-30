@@ -21,7 +21,12 @@ export function AgentSidebar() {
   return (
     <Show when={agentTab()} keyed>
       {(tabId) => (
-        <div {...stylex.attrs(styles.root)} style={{ width: `${agentWidth()}px` }} data-agent-sidebar data-agent-for={tabId}>
+        <div
+          {...stylex.attrs(styles.root)}
+          style={{ width: `${agentWidth()}px` }}
+          data-agent-sidebar
+          data-agent-for={tabId}
+        >
           <Resizer tabId={tabId} />
           <Chat appId={tabId} />
         </div>

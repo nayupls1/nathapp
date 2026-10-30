@@ -25,7 +25,14 @@ const icons: Record<PermissionRequest["action"], string> = {
 };
 
 /** A diff line's kind, for its color. */
-const lineKind = (line: string) => (line.startsWith("+") && !line.startsWith("+++") ? "add" : line.startsWith("-") && !line.startsWith("---") ? "remove" : line.startsWith("@@") ? "hunk" : "same");
+const lineKind = (line: string) =>
+  line.startsWith("+") && !line.startsWith("+++")
+    ? "add"
+    : line.startsWith("-") && !line.startsWith("---")
+      ? "remove"
+      : line.startsWith("@@")
+        ? "hunk"
+        : "same";
 
 /** Mount once at the app root. */
 export function PermissionHost() {
@@ -42,13 +49,23 @@ function Prompt(props: { request: PermissionRequest; more: number }) {
   let allowButton!: HTMLButtonElement;
   onMount(() => allowButton.focus());
   const answer = (allow: boolean) =>
-    void answerPermission(props.request.id, allow, remember() && wholeWorkspace() && props.request.workspace ? "workspace" : remember());
+    void answerPermission(
+      props.request.id,
+      allow,
+      remember() && wholeWorkspace() && props.request.workspace ? "workspace" : remember(),
+    );
   const showWorkspaceOption = () => remember() && !!props.request.workspace;
 
   return (
     <Portal>
       <div {...stylex.attrs(styles.backdrop)}>
-        <div role="alertdialog" aria-modal="true" aria-labelledby="permission-title" {...stylex.attrs(styles.dialog)} data-permission-request={props.request.action}>
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="permission-title"
+          {...stylex.attrs(styles.dialog)}
+          data-permission-request={props.request.action}
+        >
           <div {...stylex.attrs(styles.head)}>
             <span {...stylex.attrs(styles.icon)}>
               <Icon name={icons[props.request.action]} size={18} />
@@ -70,7 +87,18 @@ function Prompt(props: { request: PermissionRequest; more: number }) {
                     const added = () => kind === "add";
                     const removed = () => kind === "remove";
                     const hunk = () => kind === "hunk";
-                    return <div {...stylex.attrs(styles.line, added() && styles.added, removed() && styles.removed, hunk() && styles.hunk)}>{line || " "}</div>;
+                    return (
+                      <div
+                        {...stylex.attrs(
+                          styles.line,
+                          added() && styles.added,
+                          removed() && styles.removed,
+                          hunk() && styles.hunk,
+                        )}
+                      >
+                        {line || " "}
+                      </div>
+                    );
                   }}
                 </For>
               </pre>
@@ -78,13 +106,23 @@ function Prompt(props: { request: PermissionRequest; more: number }) {
           </Show>
           <Show when={!props.request.once}>
             <label {...stylex.attrs(styles.remember)}>
-              <input type="checkbox" checked={remember()} onChange={(e) => setRemember(e.currentTarget.checked)} data-remember />
+              <input
+                type="checkbox"
+                checked={remember()}
+                onChange={(e) => setRemember(e.currentTarget.checked)}
+                data-remember
+              />
               Remember my choice (you can change it in Settings → Permissions)
             </label>
           </Show>
           <Show when={showWorkspaceOption()}>
             <label {...stylex.attrs(styles.remember, styles.indented)}>
-              <input type="checkbox" checked={wholeWorkspace()} onChange={(e) => setWholeWorkspace(e.currentTarget.checked)} data-remember-workspace />
+              <input
+                type="checkbox"
+                checked={wholeWorkspace()}
+                onChange={(e) => setWholeWorkspace(e.currentTarget.checked)}
+                data-remember-workspace
+              />
               For every app in the workspace {props.request.workspace!.name}
             </label>
           </Show>

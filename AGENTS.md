@@ -24,7 +24,8 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 ## Development
 
 - Bun everywhere: `bun install`, `bun run <script>`.
-- Verify changes with `bun run check` (typecheck, unit tests, build, e2e). Chain steps with `&&`, and don't hide failures behind pipes.
+- Format with `bun fmt` before committing (settings in `bunfig.toml`); `bun run check` and CI fail on unformatted files. Type-check with `bun run typecheck` (`bun check`).
+- Verify changes with `bun run check` (formatting, typecheck, unit tests, build, e2e). Chain steps with `&&`, and don't hide failures behind pipes.
   - For UI work, look at the screenshots in `test-results/`.
   - `bun run e2e --agent` exercises real agent runs. They use your own plan; it picks Haiku/low effort.
 - `scripts/lib/cdp.ts` is a small DevTools client for driving the running app if you need to inspect something e2e doesn't cover. Launch it headless as above.
@@ -36,6 +37,6 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 - Server code is Effect v4 (`effect@4`, `effect/http`, `effect/sql`):
   - Services are `Context.Service` + `Layer`, wired in `src/server/services.ts`.
   - v4 names differ from v3 (e.g. `Effect.catch`, `Effect.forkDetach`, `Schema.optionalKey`); check `node_modules/effect` when unsure.
-- Naming: a *workspace* (`db/Workspaces.ts`, `WorkspaceInfo`) groups tabs; `workspace/Workspace.ts` is an app's project folder. New per-tab features should consider which workspace they belong to (secrets, permissions and the audit log are scoped by it).
+- Naming: a _workspace_ (`db/Workspaces.ts`, `WorkspaceInfo`) groups tabs; `workspace/Workspace.ts` is an app's project folder. New per-tab features should consider which workspace they belong to (secrets, permissions and the audit log are scoped by it).
 - Presets live in `src/server/workspace/presets.ts`, with their files in `templates/` (`*.tpl`, imported as text so they're bundled into the compiled server).
 - Rune Browser's agent tools are in `src/server/agent/tools.ts`. They're served over MCP, and their input schemas must be object schemas: one bad schema makes clients drop every tool.

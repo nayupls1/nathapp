@@ -23,29 +23,50 @@ const json = (value: unknown) => JSON.stringify(value, null, 1);
 
 export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site: boolean }) {
   const hub = yield* Hub;
-  const devtools = <T>(command: DevtoolsCommand, params: object = {}, timeoutMs = 30_000) => hub.rpc<T>("devtools", { tabId: env.tabId, command, params }, timeoutMs);
+  const devtools = <T>(command: DevtoolsCommand, params: object = {}, timeoutMs = 30_000) =>
+    hub.rpc<T>("devtools", { tabId: env.tabId, command, params }, timeoutMs);
   const where = options.site ? "the page in the user's tab" : "the app's preview";
 
   // Emulation changes what the user sees: it's undone when the turn ends.
   let emulating = false;
-  yield* Effect.addFinalizer(() => (emulating ? devtools("emulate", { reset: true }).pipe(Effect.ignore) : Effect.void));
+  yield* Effect.addFinalizer(() =>
+    emulating ? devtools("emulate", { reset: true }).pipe(Effect.ignore) : Effect.void,
+  );
 
   return [
     tool(
       "console_logs",
       `Console messages and uncaught errors of ${where} (console.log/warn/error, exceptions with their stack, and the browser's own messages: failed requests, CSP, deprecations), oldest first.${
-        options.site ? " On a website, capturing starts the first time you ask: reload the page or redo the steps to see what happens then." : ""
+        options.site
+          ? " On a website, capturing starts the first time you ask: reload the page or redo the steps to see what happens then."
+          : ""
       }`,
       Schema.Struct({
-        level: Schema.optionalKey(Schema.Literals(["all", "warnings", "errors"]).annotate({ description: "errors: errors and exceptions only; warnings: also warnings. Default all." })),
+        level: Schema.optionalKey(
+          Schema.Literals(["all", "warnings", "errors"]).annotate({
+            description: "errors: errors and exceptions only; warnings: also warnings. Default all.",
+          }),
+        ),
         limit: Schema.optionalKey(Schema.Finite.annotate({ description: "The last N messages (default 100)" })),
-        clear: Schema.optionalKey(Schema.Boolean.annotate({ description: "Empty the log after reading, to see only what comes next" })),
+        clear: Schema.optionalKey(
+          Schema.Boolean.annotate({ description: "Empty the log after reading, to see only what comes next" }),
+        ),
       }),
       ({ level, limit, clear }) =>
-        devtools<{ startedNow: boolean; since: number; entries: ConsoleEntry[] }>("console", { level: level === "all" ? undefined : level, limit, clear }).pipe(
+        devtools<{ startedNow: boolean; since: number; entries: ConsoleEntry[] }>("console", {
+          level: level === "all" ? undefined : level,
+          limit,
+          clear,
+        }).pipe(
           Effect.map(({ startedNow, entries }) => {
-            if (!entries.length) return startedNow ? "Started capturing the console now; nothing yet. Reload the page or redo the steps, then ask again." : "No console messages.";
-            const lines = entries.map((e) => `[${new Date(e.at).toISOString().slice(11, 23)}] ${e.level.toUpperCase()} ${e.text}${e.source ? `  (${e.source})` : ""}`);
+            if (!entries.length)
+              return startedNow
+                ? "Started capturing the console now; nothing yet. Reload the page or redo the steps, then ask again."
+                : "No console messages.";
+            const lines = entries.map(
+              (e) =>
+                `[${new Date(e.at).toISOString().slice(11, 23)}] ${e.level.toUpperCase()} ${e.text}${e.source ? `  (${e.source})` : ""}`,
+            );
             return `${lines.join("\n")}${startedNow ? "\n(Capturing started just now.)" : ""}`;
           }),
         ),
@@ -64,18 +85,30 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
       Schema.Struct({
         reload: Schema.optionalKey(Schema.Boolean.annotate({ description: "Reload the page and record its load" })),
         interaction: Schema.optionalKey(
-          Schema.String.annotate({ description: "JavaScript to run in the page after recording starts (the body of an async function), e.g. document.querySelector('#add').click()" }),
+          Schema.String.annotate({
+            description:
+              "JavaScript to run in the page after recording starts (the body of an async function), e.g. document.querySelector('#add').click()",
+          }),
         ),
-        seconds: Schema.optionalKey(Schema.Finite.annotate({ description: "How long to record after the reload or interaction (1–30; default 3, or 5 with neither)" })),
+        seconds: Schema.optionalKey(
+          Schema.Finite.annotate({
+            description: "How long to record after the reload or interaction (1–30; default 3, or 5 with neither)",
+          }),
+        ),
       }),
       ({ reload, interaction, seconds }) =>
-        devtools<{ analysis: TraceAnalysis; summary: string; file: string; events: number; seconds: number; interactionError?: string }>(
-          "trace",
-          { reload, interaction, seconds },
-          150_000,
-        ).pipe(
+        devtools<{
+          analysis: TraceAnalysis;
+          summary: string;
+          file: string;
+          events: number;
+          seconds: number;
+          interactionError?: string;
+        }>("trace", { reload, interaction, seconds }, 150_000).pipe(
           Effect.tap((r) =>
-            env.log(`Recorded a performance trace (${r.seconds} s${reload ? ", with a reload" : interaction ? ", with an interaction" : ""}). Saved for Chrome DevTools' Performance panel: ${r.file}`),
+            env.log(
+              `Recorded a performance trace (${r.seconds} s${reload ? ", with a reload" : interaction ? ", with an interaction" : ""}). Saved for Chrome DevTools' Performance panel: ${r.file}`,
+            ),
           ),
           Effect.map(
             (r) =>
@@ -93,7 +126,11 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
       }),
       ({ selector, limit }) =>
         devtools<{ lines: string[]; truncated: boolean }>("accessibility", { selector, limit }).pipe(
-          Effect.map((r) => (r.lines.length ? `${r.lines.join("\n")}${r.truncated ? "\n… (more; use a selector or a higher limit)" : ""}` : "Nothing accessible there.")),
+          Effect.map((r) =>
+            r.lines.length
+              ? `${r.lines.join("\n")}${r.truncated ? "\n… (more; use a selector or a higher limit)" : ""}`
+              : "Nothing accessible there.",
+          ),
         ),
     ),
 
@@ -102,7 +139,11 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
       `The CSS of an element in ${where}, like DevTools' Styles panel: every rule that applies (selector, declarations, stylesheet file:line, media query; the winning ones first), its box model (content, padding, border, margin) and computed values.`,
       Schema.Struct({
         selector: Schema.String,
-        properties: Schema.optionalKey(Schema.Array(Schema.String).annotate({ description: "Computed properties to show (default: the layout and text ones)" })),
+        properties: Schema.optionalKey(
+          Schema.Array(Schema.String).annotate({
+            description: "Computed properties to show (default: the layout and text ones)",
+          }),
+        ),
       }),
       ({ selector, properties }) =>
         devtools<{
@@ -117,7 +158,10 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
               `Box: ${json(r.box)}`,
               "",
               "Rules (winning first):",
-              ...r.rules.map((rule) => `${rule.selector}${rule.media ? ` @media ${rule.media}` : ""} { ${rule.props.join("; ")} }${rule.source ? `  — ${rule.source}` : ""}`),
+              ...r.rules.map(
+                (rule) =>
+                  `${rule.selector}${rule.media ? ` @media ${rule.media}` : ""} { ${rule.props.join("; ")} }${rule.source ? `  — ${rule.source}` : ""}`,
+              ),
               "",
               "Computed:",
               ...Object.entries(r.computed).map(([k, v]) => `${k}: ${v}`),
@@ -137,14 +181,27 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
       "code_coverage",
       `How much of ${where}'s JavaScript and CSS is actually used, per file (like DevTools' Coverage panel): reloads the page (unless reload is false), waits, and lists files by unused bytes.`,
       Schema.Struct({
-        reload: Schema.optionalKey(Schema.Boolean.annotate({ description: "Reload to measure the load (default true)" })),
-        seconds: Schema.optionalKey(Schema.Finite.annotate({ description: "How long to wait after loading (default 2)" })),
+        reload: Schema.optionalKey(
+          Schema.Boolean.annotate({ description: "Reload to measure the load (default true)" }),
+        ),
+        seconds: Schema.optionalKey(
+          Schema.Finite.annotate({ description: "How long to wait after loading (default 2)" }),
+        ),
       }),
       ({ reload, seconds }) =>
-        devtools<{ totalKb: number; unusedKb: number; files: { url: string; type: string; totalKb: number; unusedKb: number; unusedPercent: number }[] }>("coverage", { reload, seconds }, 90_000).pipe(
+        devtools<{
+          totalKb: number;
+          unusedKb: number;
+          files: { url: string; type: string; totalKb: number; unusedKb: number; unusedPercent: number }[];
+        }>("coverage", { reload, seconds }, 90_000).pipe(
           Effect.map((r) =>
             r.files.length
-              ? [`${r.unusedKb} of ${r.totalKb} kB unused.`, ...r.files.map((f) => `${f.unusedPercent}% unused · ${f.unusedKb}/${f.totalKb} kB · ${f.type} · ${f.url}`)].join("\n")
+              ? [
+                  `${r.unusedKb} of ${r.totalKb} kB unused.`,
+                  ...r.files.map(
+                    (f) => `${f.unusedPercent}% unused · ${f.unusedKb}/${f.totalKb} kB · ${f.type} · ${f.url}`,
+                  ),
+                ].join("\n")
               : "No scripts or stylesheets were measured.",
           ),
         ),
@@ -159,7 +216,9 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
         height: Schema.optionalKey(Schema.Finite),
         mobile: Schema.optionalKey(Schema.Boolean),
         network: Schema.optionalKey(Schema.Literals(["offline", "slow-3g", "fast-3g", "slow-4g", "none"])),
-        cpu_slowdown: Schema.optionalKey(Schema.Finite.annotate({ description: "1 = normal, 4 = a mid-range phone, 6 = a low-end one" })),
+        cpu_slowdown: Schema.optionalKey(
+          Schema.Finite.annotate({ description: "1 = normal, 4 = a mid-range phone, 6 = a low-end one" }),
+        ),
         color_scheme: Schema.optionalKey(Schema.Literals(["light", "dark"])),
         reduced_motion: Schema.optionalKey(Schema.Literals(["reduce", "no-preference"])),
         reset: Schema.optionalKey(Schema.Boolean.annotate({ description: "Back to normal" })),
@@ -177,7 +236,11 @@ export const devtoolsTools = Effect.fn(function* (env: ToolEnv, options: { site:
           reducedMotion: args.reduced_motion,
         }).pipe(
           Effect.tap((r) => Effect.sync(() => (emulating = Object.keys(r.emulating).length > 0))),
-          Effect.map((r) => (Object.keys(r.emulating).length ? `Emulating: ${json(r.emulating)}` : text("Emulation is off: the page is back to normal."))),
+          Effect.map((r) =>
+            Object.keys(r.emulating).length
+              ? `Emulating: ${json(r.emulating)}`
+              : text("Emulation is off: the page is back to normal."),
+          ),
         ),
     ),
   ];

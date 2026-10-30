@@ -44,11 +44,11 @@ The notes are only as good as the pull request titles: they're the list.
 
 ## What a release contains
 
-| OS      | Files | Updates itself |
-| ------- | ----- | -------------- |
+| OS      | Files                                                                        | Updates itself                                                                                |
+| ------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | Linux   | `rune-browser-<v>-linux-x86_64.AppImage`, `rune-browser-<v>-linux-amd64.deb` | yes (the AppImage replaces itself; the deb asks for your password to install the new package) |
-| Windows | `rune-browser-<v>-setup-x64.exe` (NSIS, per-user) | yes |
-| macOS   | `rune-browser-<v>-mac-arm64.dmg` and `.zip` (Apple Silicon) | no: it shows the new version and links to its release |
+| Windows | `rune-browser-<v>-setup-x64.exe` (NSIS, per-user)                            | yes                                                                                           |
+| macOS   | `rune-browser-<v>-mac-arm64.dmg` and `.zip` (Apple Silicon)                  | no: it shows the new version and links to its release                                         |
 
 macOS is supported but not tested by hand (CI runs the checks there, without
 blocking on them).

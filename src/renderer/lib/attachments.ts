@@ -47,8 +47,14 @@ export async function addAttachments(tabId: string, files: File[]): Promise<stri
   for (const file of files.slice(0, room)) {
     try {
       const blob = await shrink(file);
-      const name = file.name || `Screenshot ${new Date().toLocaleTimeString()}.${(blob.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`;
-      const saved = await api.uploadAttachment(tabId, { name, mime: blob.type || file.type || "application/octet-stream", data: await toBase64(blob) });
+      const name =
+        file.name ||
+        `Screenshot ${new Date().toLocaleTimeString()}.${(blob.type.split("/")[1] ?? "png").replace("jpeg", "jpg")}`;
+      const saved = await api.uploadAttachment(tabId, {
+        name,
+        mime: blob.type || file.type || "application/octet-stream",
+        data: await toBase64(blob),
+      });
       setPending(tabId, (list) => [...(list ?? []), saved]);
     } catch (err) {
       errors.push(err instanceof Error ? err.message : String(err));
@@ -60,5 +66,6 @@ export async function addAttachments(tabId: string, files: File[]): Promise<stri
   return errors.length ? errors.join(" ") : null;
 }
 
-export const removeAttachment = (tabId: string, id: string) => setPending(tabId, (list) => (list ?? []).filter((a) => a.id !== id));
+export const removeAttachment = (tabId: string, id: string) =>
+  setPending(tabId, (list) => (list ?? []).filter((a) => a.id !== id));
 export const clearAttachments = (tabId: string) => setPending(tabId, []);

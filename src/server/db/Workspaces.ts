@@ -47,11 +47,17 @@ const toInfo = (r: WorkspaceRow): WorkspaceInfo => ({
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
-  const get = (id: string) => sql<WorkspaceRow>`SELECT * FROM workspaces WHERE id = ${id}`.pipe(Effect.map((rows) => (rows[0] ? toInfo(rows[0]) : null)));
+  const get = (id: string) =>
+    sql<WorkspaceRow>`SELECT * FROM workspaces WHERE id = ${id}`.pipe(
+      Effect.map((rows) => (rows[0] ? toInfo(rows[0]) : null)),
+    );
 
   return {
     /** In the user's order. */
-    list: () => sql<WorkspaceRow>`SELECT * FROM workspaces ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map(toInfo))),
+    list: () =>
+      sql<WorkspaceRow>`SELECT * FROM workspaces ORDER BY position, created_at, rowid`.pipe(
+        Effect.map((rows) => rows.map(toInfo)),
+      ),
 
     get,
 
@@ -62,7 +68,10 @@ export const make = Effect.gen(function* () {
       ),
 
     /** Where tabs go when no workspace is given. */
-    first: () => sql<WorkspaceRow>`SELECT * FROM workspaces ORDER BY position, created_at, rowid LIMIT 1`.pipe(Effect.map((rows) => toInfo(rows[0]!))),
+    first: () =>
+      sql<WorkspaceRow>`SELECT * FROM workspaces ORDER BY position, created_at, rowid LIMIT 1`.pipe(
+        Effect.map((rows) => toInfo(rows[0]!)),
+      ),
 
     create: (name: string, icon: string | null) =>
       Effect.gen(function* () {
@@ -88,20 +97,32 @@ export const make = Effect.gen(function* () {
     setSplits: (id: string, splits: readonly TabSplit[]) =>
       Effect.gen(function* () {
         const tabs = yield* sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id}`;
-        const clean = normalizeSplits(splits, tabs.map((t) => t.id));
+        const clean = normalizeSplits(
+          splits,
+          tabs.map((t) => t.id),
+        );
         yield* sql`UPDATE workspaces SET splits = ${JSON.stringify(clean)} WHERE id = ${id}`;
         return yield* get(id);
       }),
 
     /** The ids of its tabs, in their order. */
-    appIds: (id: string) => sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id} ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map((r) => r.id))),
+    appIds: (id: string) =>
+      sql<{ id: string }>`SELECT id FROM apps WHERE workspace_id = ${id} ORDER BY position, created_at, rowid`.pipe(
+        Effect.map((rows) => rows.map((r) => r.id)),
+      ),
 
     /** Puts the workspaces in this order (unknown ids are ignored, missing ones follow in their old order). */
     reorder: (ids: readonly string[]) =>
       Effect.gen(function* () {
-        const current = (yield* sql<{ id: string }>`SELECT id FROM workspaces ORDER BY position, created_at, rowid`).map((r) => r.id);
+        const current = (yield* sql<{
+          id: string;
+        }>`SELECT id FROM workspaces ORDER BY position, created_at, rowid`).map((r) => r.id);
         const order = [...ids.filter((id) => current.includes(id)), ...current.filter((id) => !ids.includes(id))];
-        yield* sql.withTransaction(Effect.forEach(order, (id, i) => sql`UPDATE workspaces SET position = ${i} WHERE id = ${id}`, { discard: true }));
+        yield* sql.withTransaction(
+          Effect.forEach(order, (id, i) => sql`UPDATE workspaces SET position = ${i} WHERE id = ${id}`, {
+            discard: true,
+          }),
+        );
         return order;
       }),
 

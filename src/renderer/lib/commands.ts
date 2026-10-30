@@ -142,7 +142,13 @@ export function results(query: string, commands: Command[], limit = 50): Command
     if (!command.input || !q.startsWith(prefix) || q.length === prefix.length) continue;
     const rest = query.trim().slice(prefix.length).trim();
     scored.push({
-      command: { ...command, id: `${command.id}:with`, subtitle: `${command.subtitle ? `${command.subtitle} · ` : ""}with “${rest}”`, input: undefined, run: () => command.run(rest) },
+      command: {
+        ...command,
+        id: `${command.id}:with`,
+        subtitle: `${command.subtitle ? `${command.subtitle} · ` : ""}with “${rest}”`,
+        input: undefined,
+        run: () => command.run(rest),
+      },
       i: -1,
       score: 950,
     });
@@ -202,7 +208,10 @@ async function runAppAction(info: AppActionInfo, input?: string) {
   const pending = toast({ title: action.title, message: `Running in ${info.appName}…`, kind: "info", sticky: true });
   try {
     const result = await api.runAction(info.appId, action.id, input);
-    pending.update({ message: result.message || (result.ok ? "Done" : `Failed (HTTP ${result.status})`), kind: result.ok ? "success" : "error" });
+    pending.update({
+      message: result.message || (result.ok ? "Done" : `Failed (HTTP ${result.status})`),
+      kind: result.ok ? "success" : "error",
+    });
   } catch (err) {
     pending.update({ message: err instanceof Error ? err.message : String(err), kind: "error" });
   }
@@ -242,13 +251,44 @@ function currentTabCommands(id: string): Command[] {
   const state = states[id];
   const name = `“${app.name}”`;
   const list: Command[] = [
-    { id: "tab.rename", title: "Rename tab", subtitle: app.name, icon: "pencil", group: "Tab", input: "New name", run: (name) => name?.trim() && renameApp(id, name.trim()) },
-    { id: "tab.duplicate", title: "Duplicate tab", subtitle: app.name, icon: "copy", group: "Tab", run: () => duplicateApp(id) },
+    {
+      id: "tab.rename",
+      title: "Rename tab",
+      subtitle: app.name,
+      icon: "pencil",
+      group: "Tab",
+      input: "New name",
+      run: (name) => name?.trim() && renameApp(id, name.trim()),
+    },
+    {
+      id: "tab.duplicate",
+      title: "Duplicate tab",
+      subtitle: app.name,
+      icon: "copy",
+      group: "Tab",
+      run: () => duplicateApp(id),
+    },
     // For an app, the agent panel is its mode: open while editing, hidden when done.
     app.kind === "app" && state?.project
       ? isAgentCollapsed(id)
-        ? { id: "tab.agent", title: "Edit the app", subtitle: "Ctrl+J", icon: "pencil-ruler", group: "App", keywords: "show agent panel chat dev mode editing", run: () => setAgentCollapsed(id, false) }
-        : { id: "tab.agent", title: "Done editing", subtitle: "Ctrl+J", icon: "check", group: "App", keywords: "hide agent panel chat mark as done live build publish", run: () => setAgentCollapsed(id, true) }
+        ? {
+            id: "tab.agent",
+            title: "Edit the app",
+            subtitle: "Ctrl+J",
+            icon: "pencil-ruler",
+            group: "App",
+            keywords: "show agent panel chat dev mode editing",
+            run: () => setAgentCollapsed(id, false),
+          }
+        : {
+            id: "tab.agent",
+            title: "Done editing",
+            subtitle: "Ctrl+J",
+            icon: "check",
+            group: "App",
+            keywords: "hide agent panel chat mark as done live build publish",
+            run: () => setAgentCollapsed(id, true),
+          }
       : {
           id: "tab.agent",
           title: isAgentCollapsed(id) ? "Show the agent" : "Hide the agent",
@@ -261,10 +301,34 @@ function currentTabCommands(id: string): Command[] {
   ];
   list.push(
     app.pinned
-      ? { id: "tab.pin", title: "Allow unloading this tab", subtitle: app.name, icon: "pin-off", group: "Tab", keywords: "unpin memory idle", run: () => setTabPinned(id, false) }
-      : { id: "tab.pin", title: "Keep this tab loaded", subtitle: app.name, icon: "pin", group: "Tab", keywords: "pin memory idle unload", run: () => setTabPinned(id, true) },
+      ? {
+          id: "tab.pin",
+          title: "Allow unloading this tab",
+          subtitle: app.name,
+          icon: "pin-off",
+          group: "Tab",
+          keywords: "unpin memory idle",
+          run: () => setTabPinned(id, false),
+        }
+      : {
+          id: "tab.pin",
+          title: "Keep this tab loaded",
+          subtitle: app.name,
+          icon: "pin",
+          group: "Tab",
+          keywords: "pin memory idle unload",
+          run: () => setTabPinned(id, true),
+        },
   );
-  if (state?.running) list.push({ id: "tab.stop", title: "Stop the agent", subtitle: app.name, icon: "square", group: "Tab", run: () => stopAgent(id) });
+  if (state?.running)
+    list.push({
+      id: "tab.stop",
+      title: "Stop the agent",
+      subtitle: app.name,
+      icon: "square",
+      group: "Tab",
+      run: () => stopAgent(id),
+    });
   list.push({
     id: "tab.close",
     title: app.kind === "app" ? "Close tab (the app is kept)" : "Close tab",
@@ -274,7 +338,14 @@ function currentTabCommands(id: string): Command[] {
     run: () => closeTab(id),
   });
   if (app.kind === "web") {
-    list.push({ id: "tab.reload", title: "Reload page", subtitle: "Ctrl+R", icon: "rotate-cw", group: "Tab", run: () => pageOf(id)?.reload() });
+    list.push({
+      id: "tab.reload",
+      title: "Reload page",
+      subtitle: "Ctrl+R",
+      icon: "rotate-cw",
+      group: "Tab",
+      run: () => pageOf(id)?.reload(),
+    });
     list.push({
       id: "tab.network",
       title: networkTab() === id ? "Hide network requests" : "Network requests",
@@ -303,7 +374,10 @@ function currentTabCommands(id: string): Command[] {
         keywords: "history version checkpoint",
         run: async () => {
           const entry = await api.saveSnapshot(`app:${id}`);
-          toast({ message: entry ? "Saved a snapshot" : "Nothing changed since the last snapshot", kind: entry ? "success" : "info" });
+          toast({
+            message: entry ? "Saved a snapshot" : "Nothing changed since the last snapshot",
+            kind: entry ? "success" : "info",
+          });
         },
       },
     );
@@ -320,7 +394,15 @@ function currentTabCommands(id: string): Command[] {
     });
   }
   for (const w of workspaces) {
-    if (w.id !== app.workspaceId) list.push({ id: `tab.move:${w.id}`, title: `Move tab to ${w.name}`, subtitle: app.name, icon: "folder-input", group: "Tab", run: () => moveApp(id, w.id) });
+    if (w.id !== app.workspaceId)
+      list.push({
+        id: `tab.move:${w.id}`,
+        title: `Move tab to ${w.name}`,
+        subtitle: app.name,
+        icon: "folder-input",
+        group: "Tab",
+        run: () => moveApp(id, w.id),
+      });
   }
   list.push({
     id: "tab.delete",
@@ -329,7 +411,8 @@ function currentTabCommands(id: string): Command[] {
     icon: "trash",
     group: "Tab",
     run: async () => {
-      if (await confirmDialog(`Delete ${name} and all its data?`, { confirmLabel: "Delete", danger: true })) await deleteApp(id);
+      if (await confirmDialog(`Delete ${name} and all its data?`, { confirmLabel: "Delete", danger: true }))
+        await deleteApp(id);
     },
   });
   return list;
@@ -345,8 +428,23 @@ function runeCommands(): Command[] {
     run: () => updateSettings((s) => ({ ...s, theme: { ...s.theme, mode } })),
   });
   return [
-    { id: "new.app", title: "New app", icon: "plus", group: "Rune Browser", keywords: "create build", run: () => newApp() },
-    { id: "new.web", title: "New web tab", subtitle: "Ctrl+T", icon: "globe", group: "Rune Browser", keywords: "browser", run: () => newWebTab() },
+    {
+      id: "new.app",
+      title: "New app",
+      icon: "plus",
+      group: "Rune Browser",
+      keywords: "create build",
+      run: () => newApp(),
+    },
+    {
+      id: "new.web",
+      title: "New web tab",
+      subtitle: "Ctrl+T",
+      icon: "globe",
+      group: "Rune Browser",
+      keywords: "browser",
+      run: () => newWebTab(),
+    },
     {
       id: "tabs.unload",
       title: "Unload other tabs",
@@ -355,10 +453,20 @@ function runeCommands(): Command[] {
       keywords: "memory free discard sleep background",
       run: async () => {
         const count = await unloadOtherTabs();
-        toast({ message: count ? `Unloaded ${count} tab${count === 1 ? "" : "s"}` : "No other tabs are loaded", kind: "info" });
+        toast({
+          message: count ? `Unloaded ${count} tab${count === 1 ? "" : "s"}` : "No other tabs are loaded",
+          kind: "info",
+        });
       },
     },
-    { id: "new.workspace", title: "New workspace", icon: "layers", group: "Rune Browser", input: "Name", run: (name) => name?.trim() && createWorkspace(name.trim()) },
+    {
+      id: "new.workspace",
+      title: "New workspace",
+      icon: "layers",
+      group: "Rune Browser",
+      input: "Name",
+      run: (name) => name?.trim() && createWorkspace(name.trim()),
+    },
     {
       id: "sidebar.toggle",
       title: isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar",
@@ -371,21 +479,54 @@ function runeCommands(): Command[] {
     // Every category of Settings, by name ("Settings: Apps").
     ...settingsSections
       .filter((section) => !section.view)
-      .map(
-        (section): Command => ({
-          id: `settings.${section.id}`,
-          title: `Settings: ${section.label}`,
-          icon: section.icon,
-          group: "Rune Browser",
-          keywords: `preferences ${section.keywords ?? ""}`,
-          run: () => openSettings(section.id),
-        }),
-      ),
-    { id: "open.history", title: "Open History", icon: "history", group: "Rune Browser", keywords: "undo restore snapshots versions", run: () => selectApp(HISTORY_VIEW) },
-    { id: "open.schedules", title: "Open Schedules", icon: "calendar-clock", group: "Rune Browser", keywords: "background runs cron jobs timer", run: () => selectApp(SCHEDULES_VIEW) },
-    { id: "open.mods", title: "Open Mods", icon: "puzzle", group: "Rune Browser", keywords: "install share gallery themes customizations extensions", run: () => selectApp(MODS_VIEW) },
-    { id: "open.activity", title: "Open Activity", icon: "activity", group: "Rune Browser", keywords: "audit log", run: () => selectApp(ACTIVITY_VIEW) },
-    { id: "open.settings", title: "Open Settings", icon: "settings", group: "Rune Browser", keywords: "preferences", run: () => openSettings() },
+      .map((section): Command => ({
+        id: `settings.${section.id}`,
+        title: `Settings: ${section.label}`,
+        icon: section.icon,
+        group: "Rune Browser",
+        keywords: `preferences ${section.keywords ?? ""}`,
+        run: () => openSettings(section.id),
+      })),
+    {
+      id: "open.history",
+      title: "Open History",
+      icon: "history",
+      group: "Rune Browser",
+      keywords: "undo restore snapshots versions",
+      run: () => selectApp(HISTORY_VIEW),
+    },
+    {
+      id: "open.schedules",
+      title: "Open Schedules",
+      icon: "calendar-clock",
+      group: "Rune Browser",
+      keywords: "background runs cron jobs timer",
+      run: () => selectApp(SCHEDULES_VIEW),
+    },
+    {
+      id: "open.mods",
+      title: "Open Mods",
+      icon: "puzzle",
+      group: "Rune Browser",
+      keywords: "install share gallery themes customizations extensions",
+      run: () => selectApp(MODS_VIEW),
+    },
+    {
+      id: "open.activity",
+      title: "Open Activity",
+      icon: "activity",
+      group: "Rune Browser",
+      keywords: "audit log",
+      run: () => selectApp(ACTIVITY_VIEW),
+    },
+    {
+      id: "open.settings",
+      title: "Open Settings",
+      icon: "settings",
+      group: "Rune Browser",
+      keywords: "preferences",
+      run: () => openSettings(),
+    },
     {
       id: "open.workspace-settings",
       title: "Workspace settings",
@@ -399,8 +540,22 @@ function runeCommands(): Command[] {
     theme("light", "Theme: light", "sun"),
     theme("dark", "Theme: dark", "moon"),
     window.rune.safeMode
-      ? { id: "restart.normal", title: "Restart normally", icon: "power", group: "Rune Browser", keywords: "safe mode", run: () => window.rune.relaunch(false) }
-      : { id: "restart.safe", title: "Restart in safe mode", icon: "life-buoy", group: "Rune Browser", keywords: "recovery broken theme", run: () => window.rune.relaunch(true) },
+      ? {
+          id: "restart.normal",
+          title: "Restart normally",
+          icon: "power",
+          group: "Rune Browser",
+          keywords: "safe mode",
+          run: () => window.rune.relaunch(false),
+        }
+      : {
+          id: "restart.safe",
+          title: "Restart in safe mode",
+          icon: "life-buoy",
+          group: "Rune Browser",
+          keywords: "recovery broken theme",
+          run: () => window.rune.relaunch(true),
+        },
   ];
 }
 
@@ -412,15 +567,43 @@ function splitCommands(id: string, typed: boolean): Command[] {
   const list: Command[] = [];
   if (split) {
     list.push(
-      { id: "split.rotate", title: split.direction === "row" ? "Stack the split view" : "Split view side by side", icon: split.direction === "row" ? "rows-2" : "columns-2", group: "Split view", keywords: "rotate vertical horizontal", run: () => rotateSplit(split.id) },
-      { id: "split.remove", title: "Remove from split view", subtitle: app.name, icon: "square-x", group: "Split view", run: () => removeFromSplit(id) },
-      { id: "split.end", title: "Unsplit", icon: "square-split-horizontal", group: "Split view", keywords: "close split view", run: () => unsplit(split.id) },
+      {
+        id: "split.rotate",
+        title: split.direction === "row" ? "Stack the split view" : "Split view side by side",
+        icon: split.direction === "row" ? "rows-2" : "columns-2",
+        group: "Split view",
+        keywords: "rotate vertical horizontal",
+        run: () => rotateSplit(split.id),
+      },
+      {
+        id: "split.remove",
+        title: "Remove from split view",
+        subtitle: app.name,
+        icon: "square-x",
+        group: "Split view",
+        run: () => removeFromSplit(id),
+      },
+      {
+        id: "split.end",
+        title: "Unsplit",
+        icon: "square-split-horizontal",
+        group: "Split view",
+        keywords: "close split view",
+        run: () => unsplit(split.id),
+      },
     );
   }
   if (typed) {
     for (const tab of apps) {
       if (tab.workspaceId !== app.workspaceId || visibleTabs().includes(tab.id)) continue;
-      list.push({ id: `split.with:${tab.id}`, title: `Split with ${tab.name}`, icon: "columns-2", group: "Split view", keywords: "side by side split view", run: () => splitWith(id, tab.id, "right") });
+      list.push({
+        id: `split.with:${tab.id}`,
+        title: `Split with ${tab.name}`,
+        icon: "columns-2",
+        group: "Split view",
+        keywords: "side by side split view",
+        run: () => splitWith(id, tab.id, "right"),
+      });
     }
   }
   return list;
@@ -441,7 +624,10 @@ function routed(query: string, best: number): Command[] {
         icon: "puzzle",
         group: "Mods",
         rank: 1000,
-        run: () => reviewMod({ code: text }).catch((err) => toast({ message: err instanceof Error ? err.message : String(err), kind: "error" })),
+        run: () =>
+          reviewMod({ code: text }).catch((err) =>
+            toast({ message: err instanceof Error ? err.message : String(err), kind: "error" }),
+          ),
       },
     ];
   }
@@ -449,9 +635,25 @@ function routed(query: string, best: number): Command[] {
   const id = selectedId();
   const tab = isTab(id) ? apps.find((a) => a.id === id) : undefined;
   if (url) {
-    list.push({ id: "route.open", title: `Open ${text}`, subtitle: "in a new tab", icon: "globe", group: "Web", rank: 1000, run: () => newWebTab(url) });
+    list.push({
+      id: "route.open",
+      title: `Open ${text}`,
+      subtitle: "in a new tab",
+      icon: "globe",
+      group: "Web",
+      rank: 1000,
+      run: () => newWebTab(url),
+    });
     if (tab?.kind === "web") {
-      list.push({ id: "route.here", title: `Open ${text}`, subtitle: "in this tab", icon: "corner-down-right", group: "Web", rank: 999, run: () => pageOf(tab.id)?.navigate(url) });
+      list.push({
+        id: "route.here",
+        title: `Open ${text}`,
+        subtitle: "in this tab",
+        icon: "corner-down-right",
+        group: "Web",
+        rank: 999,
+        run: () => pageOf(tab.id)?.navigate(url),
+      });
     }
     return list;
   }
@@ -495,7 +697,9 @@ export function commands(query: string): Command[] {
   const id = selectedId();
   const inWorkspace = (workspaceId: string) => workspaceId === current;
   const tabs = [...apps].sort((a, b) => Number(inWorkspace(b.workspaceId)) - Number(inWorkspace(a.workspaceId)));
-  const actions = [...appActions()].sort((a, b) => Number(inWorkspace(b.workspaceId)) - Number(inWorkspace(a.workspaceId)));
+  const actions = [...appActions()].sort(
+    (a, b) => Number(inWorkspace(b.workspaceId)) - Number(inWorkspace(a.workspaceId)),
+  );
   const list: Command[] = [
     ...tabs.filter((a) => a.id !== id).map(tabCommand),
     ...actions.map(actionCommand),
@@ -503,12 +707,33 @@ export function commands(query: string): Command[] {
     ...(isTab(id) ? splitCommands(id, !!query.trim()) : []),
     ...workspaces
       .filter((w) => w.id !== current)
-      .map((w): Command => ({ id: `workspace:${w.id}`, title: w.name, subtitle: "Switch workspace", icon: w.icon ?? "layers", group: "Workspace", run: () => showWorkspace(w.id) })),
+      .map((w): Command => ({
+        id: `workspace:${w.id}`,
+        title: w.name,
+        subtitle: "Switch workspace",
+        icon: w.icon ?? "layers",
+        group: "Workspace",
+        run: () => showWorkspace(w.id),
+      })),
     ...runeCommands(),
-    { id: "tab.reopen", title: "Reopen closed tab", subtitle: "Ctrl+Shift+T", icon: "undo-2", group: "Rune Browser", keywords: "restore undo close", run: () => reopenClosedTab() },
-    ...library().map(
-      (app): Command => ({ id: `library:${app.id}`, title: `Open ${app.name}`, subtitle: "Saved app", icon: app.icon ?? "box", group: "Saved apps", keywords: "reopen closed library", run: () => reopenApp(app.id) }),
-    ),
+    {
+      id: "tab.reopen",
+      title: "Reopen closed tab",
+      subtitle: "Ctrl+Shift+T",
+      icon: "undo-2",
+      group: "Rune Browser",
+      keywords: "restore undo close",
+      run: () => reopenClosedTab(),
+    },
+    ...library().map((app): Command => ({
+      id: `library:${app.id}`,
+      title: `Open ${app.name}`,
+      subtitle: "Saved app",
+      icon: app.icon ?? "box",
+      group: "Saved apps",
+      keywords: "reopen closed library",
+      run: () => reopenApp(app.id),
+    })),
   ];
   const q = query.trim().toLowerCase();
   const best = q ? Math.max(0, ...list.map((c) => scoreOf(q, c))) : 0;

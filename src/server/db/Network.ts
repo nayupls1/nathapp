@@ -58,13 +58,19 @@ export type RuleFields = Omit<NetworkRule, "id" | "createdAt">;
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const getRule = (id: string) => sql<RuleRow>`SELECT * FROM network_rules WHERE id = ${id}`.pipe(Effect.map((rows) => (rows[0] ? toRule(rows[0]) : null)));
-  const savedRow = (id: string) => sql<SavedRow>`SELECT * FROM saved_requests WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
+  const getRule = (id: string) =>
+    sql<RuleRow>`SELECT * FROM network_rules WHERE id = ${id}`.pipe(
+      Effect.map((rows) => (rows[0] ? toRule(rows[0]) : null)),
+    );
+  const savedRow = (id: string) =>
+    sql<SavedRow>`SELECT * FROM saved_requests WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
 
   return {
-    rules: () => sql<RuleRow>`SELECT * FROM network_rules ORDER BY created_at, id`.pipe(Effect.map((rows) => rows.map(toRule))),
+    rules: () =>
+      sql<RuleRow>`SELECT * FROM network_rules ORDER BY created_at, id`.pipe(Effect.map((rows) => rows.map(toRule))),
     getRule,
-    countRules: () => sql<{ n: number }>`SELECT COUNT(*) AS n FROM network_rules`.pipe(Effect.map((rows) => rows[0]!.n)),
+    countRules: () =>
+      sql<{ n: number }>`SELECT COUNT(*) AS n FROM network_rules`.pipe(Effect.map((rows) => rows[0]!.n)),
     addRule: (fields: RuleFields) =>
       Effect.gen(function* () {
         const id = crypto.randomUUID();
@@ -95,7 +101,18 @@ export const make = Effect.gen(function* () {
     draftOf: (id: string) =>
       savedRow(id).pipe(
         Effect.map((row): { request: SavedRequest; draft: RequestDraft } | null =>
-          row ? { request: toSaved(row), draft: { method: row.method, url: row.url, headers: JSON.parse(row.headers), body: row.body, sealed: row.sealed } } : null,
+          row
+            ? {
+                request: toSaved(row),
+                draft: {
+                  method: row.method,
+                  url: row.url,
+                  headers: JSON.parse(row.headers),
+                  body: row.body,
+                  sealed: row.sealed,
+                },
+              }
+            : null,
         ),
       ),
     save: (workspaceId: string, name: string, draft: RequestDraft) =>
@@ -106,14 +123,16 @@ export const make = Effect.gen(function* () {
             ${sql.literal(now)})`;
         return toSaved((yield* savedRow(id))!);
       }),
-    renameSaved: (id: string, name: string) => sql`UPDATE saved_requests SET name = ${name} WHERE id = ${id}`.pipe(Effect.asVoid),
+    renameSaved: (id: string, name: string) =>
+      sql`UPDATE saved_requests SET name = ${name} WHERE id = ${id}`.pipe(Effect.asVoid),
     removeSaved: (id: string) => sql`DELETE FROM saved_requests WHERE id = ${id}`.pipe(Effect.asVoid),
 
     /** A deleted workspace's rules and saved requests. */
     removeWorkspace: (workspaceId: string) =>
-      Effect.all([sql`DELETE FROM network_rules WHERE workspace_id = ${workspaceId}`, sql`DELETE FROM saved_requests WHERE workspace_id = ${workspaceId}`]).pipe(
-        Effect.asVoid,
-      ),
+      Effect.all([
+        sql`DELETE FROM network_rules WHERE workspace_id = ${workspaceId}`,
+        sql`DELETE FROM saved_requests WHERE workspace_id = ${workspaceId}`,
+      ]).pipe(Effect.asVoid),
   };
 });
 

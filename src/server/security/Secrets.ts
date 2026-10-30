@@ -7,7 +7,13 @@
 // deleted but never read back through the API.
 import { Context, Data, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
-import { isReservedSecretName, SECRET_NAME_PATTERN, workspaceScope, type SecretInfo, type SecretScope } from "../../shared/api";
+import {
+  isReservedSecretName,
+  SECRET_NAME_PATTERN,
+  workspaceScope,
+  type SecretInfo,
+  type SecretScope,
+} from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { Hub } from "../Hub";
 import { now } from "../db/Db";
@@ -41,7 +47,8 @@ const toInfo = (r: SecretRow): SecretInfo => ({
 const context = (scope: string, name: string) => `secret:${scope}:${name}`;
 
 export function validateSecret(name: string, value: string): string | null {
-  if (!SECRET_NAME_PATTERN.test(name)) return "Names are environment variable names: capital letters, digits and _ (e.g. STRIPE_KEY)";
+  if (!SECRET_NAME_PATTERN.test(name))
+    return "Names are environment variable names: capital letters, digits and _ (e.g. STRIPE_KEY)";
   if (isReservedSecretName(name)) return `${name} is set by Rune Browser itself; pick another name`;
   if (!value) return "The value is empty";
   if (new TextEncoder().encode(value).length > MAX_VALUE_BYTES) return "The value is too long (64 KB at most)";
@@ -59,7 +66,9 @@ export interface SecretsShape {
   readonly remove: (id: string) => Effect.Effect<SecretInfo | null>;
   readonly removeScope: (scope: string) => Effect.Effect<void>;
   /** The names an app can use: its own, its workspace's and the allowed global ones. */
-  readonly available: (appId: string) => Effect.Effect<{ own: string[]; workspace: string[]; global: string[]; globalNotAllowed: string[] }>;
+  readonly available: (
+    appId: string,
+  ) => Effect.Effect<{ own: string[]; workspace: string[]; global: string[]; globalNotAllowed: string[] }>;
   /** The environment for an app's processes (marks the secrets as used). */
   readonly envFor: (appId: string) => Effect.Effect<Record<string, string>, VaultLocked>;
 }
@@ -73,7 +82,8 @@ export const make = Effect.gen(function* () {
   const hub = yield* Hub;
 
   const changed = (scope: string) => hub.publish({ type: "secrets-changed", topic: topics.activity, scope });
-  const rowsOf = (scope: string) => sql<SecretRow>`SELECT * FROM secrets WHERE scope = ${scope} ORDER BY name`.pipe(Effect.orDie);
+  const rowsOf = (scope: string) =>
+    sql<SecretRow>`SELECT * FROM secrets WHERE scope = ${scope} ORDER BY name`.pipe(Effect.orDie);
   const workspaceRows = (appId: string) =>
     sql<{ workspace_id: string }>`SELECT workspace_id FROM apps WHERE id = ${appId}`.pipe(
       Effect.orDie,
@@ -94,15 +104,23 @@ export const make = Effect.gen(function* () {
     protection: vault.protection,
 
     list: (scope) =>
-      (scope ? rowsOf(scope) : sql<SecretRow>`SELECT * FROM secrets ORDER BY scope, name`.pipe(Effect.orDie)).pipe(Effect.map((rows) => rows.map(toInfo))),
+      (scope ? rowsOf(scope) : sql<SecretRow>`SELECT * FROM secrets ORDER BY scope, name`.pipe(Effect.orDie)).pipe(
+        Effect.map((rows) => rows.map(toInfo)),
+      ),
 
-    get: (id) => sql<SecretRow>`SELECT * FROM secrets WHERE id = ${id}`.pipe(Effect.map((rows) => (rows[0] ? toInfo(rows[0]) : null)), Effect.orDie),
+    get: (id) =>
+      sql<SecretRow>`SELECT * FROM secrets WHERE id = ${id}`.pipe(
+        Effect.map((rows) => (rows[0] ? toInfo(rows[0]) : null)),
+        Effect.orDie,
+      ),
 
     set: (scope, name, value) =>
       Effect.gen(function* () {
         const problem = validateSecret(name, value);
         if (problem) return yield* new SecretError({ message: problem });
-        const blob = yield* vault.encrypt(value, context(scope, name)).pipe(Effect.mapError((e) => new SecretError({ message: e.message })));
+        const blob = yield* vault
+          .encrypt(value, context(scope, name))
+          .pipe(Effect.mapError((e) => new SecretError({ message: e.message })));
         const rows = yield* sql<SecretRow>`
           INSERT INTO secrets (id, scope, name, value) VALUES (${crypto.randomUUID()}, ${scope}, ${name}, ${blob})
           ON CONFLICT (scope, name) DO UPDATE SET value = excluded.value, updated_at = ${sql.literal(now)}
@@ -119,7 +137,8 @@ export const make = Effect.gen(function* () {
         return toInfo(rows[0]);
       }),
 
-    removeScope: (scope) => sql`DELETE FROM secrets WHERE scope = ${scope}`.pipe(Effect.orDie, Effect.andThen(changed(scope))),
+    removeScope: (scope) =>
+      sql`DELETE FROM secrets WHERE scope = ${scope}`.pipe(Effect.orDie, Effect.andThen(changed(scope))),
 
     available: (appId) =>
       Effect.gen(function* () {
@@ -146,7 +165,10 @@ export const make = Effect.gen(function* () {
         const rows = [...allowed, ...workspace, ...own];
         for (const row of rows) env[row.name] = yield* vault.decrypt(row.value, context(row.scope, row.name));
         const used = rows.map((r) => r.id);
-        if (used.length) yield* sql`UPDATE secrets SET last_used_at = ${sql.literal(now)} WHERE id IN ${sql.in(used)}`.pipe(Effect.orDie);
+        if (used.length)
+          yield* sql`UPDATE secrets SET last_used_at = ${sql.literal(now)} WHERE id IN ${sql.in(used)}`.pipe(
+            Effect.orDie,
+          );
         return env;
       }),
   } satisfies SecretsShape;

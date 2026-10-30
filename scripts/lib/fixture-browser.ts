@@ -8,7 +8,8 @@ import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { extensionIdFromHash, type ShortcutPlatform } from "../../src/shared/extensions";
 
-const shortcutPlatform: ShortcutPlatform = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
+const shortcutPlatform: ShortcutPlatform =
+  process.platform === "darwin" ? "mac" : process.platform === "win32" ? "windows" : "linux";
 
 // --- LevelDB ---------------------------------------------------------------------------
 
@@ -63,7 +64,9 @@ export function writeLevelDb(dir: string, entries: Record<string, unknown>) {
   const batch = Buffer.concat([
     seq,
     count,
-    ...items.map(([k, v]) => Buffer.concat([Buffer.from([1]), lengthPrefixed(Buffer.from(k)), lengthPrefixed(Buffer.from(JSON.stringify(v)))])),
+    ...items.map(([k, v]) =>
+      Buffer.concat([Buffer.from([1]), lengthPrefixed(Buffer.from(k)), lengthPrefixed(Buffer.from(JSON.stringify(v)))]),
+    ),
   ]);
   writeFileSync(join(dir, "000003.log"), logRecord(batch));
   const edit = Buffer.concat([
@@ -120,7 +123,15 @@ chrome.storage.local.get("greeting").then(({ greeting }) => (document.documentEl
   "popup.js": `chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => (document.getElementById("url").textContent = (tabs[0] && tabs[0].url) || "none"));`,
   "options.html": `<!doctype html><meta charset="utf-8"><title>Fixture options</title><h1>Fixture options</h1>`,
   "rules.json": JSON.stringify([
-    { id: 1, priority: 1, action: { type: "block" }, condition: { urlFilter: "/blocked-by-extension", resourceTypes: ["xmlhttprequest", "main_frame", "sub_frame", "other"] } },
+    {
+      id: 1,
+      priority: 1,
+      action: { type: "block" },
+      condition: {
+        urlFilter: "/blocked-by-extension",
+        resourceTypes: ["xmlhttprequest", "main_frame", "sub_frame", "other"],
+      },
+    },
   ]),
 });
 
@@ -151,7 +162,12 @@ function png(size: number, [r, g, b]: [number, number, number]) {
   ihdr[9] = 2; // RGB
   const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: size }, () => [r, g, b]).flat())]);
   const pixels = deflateSync(Buffer.concat(Array.from({ length: size }, () => row)));
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", pixels), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", pixels),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 export interface FixtureBrowser {
@@ -181,7 +197,15 @@ export function writeFixtureBrowser(root: string): FixtureBrowser {
     action: { default_popup: "popup.html", default_title: "Fixture", default_icon: { 16: "icon.png" } },
     options_page: "options.html",
     background: { service_worker: "background.js" },
-    permissions: ["storage", "tabs", "contextMenus", "declarativeNetRequest", "history", "webRequest", "webRequestAuthProvider"],
+    permissions: [
+      "storage",
+      "tabs",
+      "contextMenus",
+      "declarativeNetRequest",
+      "history",
+      "webRequest",
+      "webRequestAuthProvider",
+    ],
     host_permissions: ["http://127.0.0.1/*"],
     content_scripts: [{ matches: ["http://127.0.0.1/*"], js: ["content.js"], run_at: "document_start" }],
     declarative_net_request: { rule_resources: [{ id: "fixture", enabled: true, path: "rules.json" }] },

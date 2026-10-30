@@ -15,7 +15,8 @@ beforeAll(async () => {
 afterAll(() => server.stop());
 
 test("settings, sites and apps back to one snapshot", async () => {
-  const snapshot = (target: string) => server.api<HistoryEntry | undefined>("/api/history", { method: "POST", json: { target } });
+  const snapshot = (target: string) =>
+    server.api<HistoryEntry | undefined>("/api/history", { method: "POST", json: { target } });
   const settings = () => server.api<Settings>("/api/settings");
   const app = await server.api<AppSummary>("/api/apps", { method: "POST" });
   await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
@@ -31,12 +32,18 @@ test("settings, sites and apps back to one snapshot", async () => {
   await snapshot(`app:${app.id}`);
   // (Changes of the same kind in a row are folded into one snapshot, so these are other kinds.)
   await server.api("/api/workspaces/default", { method: "PATCH", json: { name: "Renamed later" } });
-  await server.api("/api/page-changes", { method: "POST", json: { title: "Later", scope: { type: "site", value: "example.com" }, action: "hide", selector: ".ad" } });
+  await server.api("/api/page-changes", {
+    method: "POST",
+    json: { title: "Later", scope: { type: "site", value: "example.com" }, action: "hide", selector: ".ad" },
+  });
   const later = await server.api<AppSummary>("/api/apps", { method: "POST" });
   await server.api(`/api/apps/${later.id}/project`, { method: "POST", json: { preset: "api" } });
   await server.api(`/api/apps/${later.id}/runtime`, { method: "POST", json: { action: "stop" } });
 
-  const { restored } = await server.api<{ restored: string[] }>(`/api/history/${point.id}/restore-all`, { method: "POST", json: { workspaceId: "default" } });
+  const { restored } = await server.api<{ restored: string[] }>(`/api/history/${point.id}/restore-all`, {
+    method: "POST",
+    json: { workspaceId: "default" },
+  });
   expect(restored.sort()).toEqual([`app:${app.id}`, "settings", "sites"].sort());
   expect(existsSync(join(dir, "later.txt"))).toBe(false);
   expect((await server.api<{ name: string }[]>("/api/workspaces"))[0]!.name).toBe("Personal");
@@ -45,5 +52,8 @@ test("settings, sites and apps back to one snapshot", async () => {
   // Made afterwards: left alone.
   expect(existsSync(join(server.dataDir, "apps", later.id, "rune.json"))).toBe(true);
   // Already that way: nothing to do.
-  expect((await server.api<{ restored: string[] }>(`/api/history/${point.id}/restore-all`, { method: "POST", json: {} })).restored).toEqual([]);
+  expect(
+    (await server.api<{ restored: string[] }>(`/api/history/${point.id}/restore-all`, { method: "POST", json: {} }))
+      .restored,
+  ).toEqual([]);
 });

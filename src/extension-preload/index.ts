@@ -41,5 +41,8 @@ if (id) {
       ipcRenderer.on("crx:event", (_event, name: string, args: unknown[]) => fn(name, args));
     },
   };
-  contextBridge.executeInMainWorld({ func: shim, args: [bridge, { id, worker, builtin: id === BUILTIN_EXTENSION_ID, withoutApi: [...PERMISSIONS_WITHOUT_API] }] });
+  contextBridge.executeInMainWorld({
+    func: shim,
+    args: [bridge, { id, worker, builtin: id === BUILTIN_EXTENSION_ID, withoutApi: [...PERMISSIONS_WITHOUT_API] }],
+  });
 }

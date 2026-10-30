@@ -23,11 +23,14 @@ const toOverride = (r: OverrideRow): SiteOverride => ({
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const get = (host: string) =>
-    sql<OverrideRow>`SELECT * FROM site_overrides WHERE host = ${host}`.pipe(Effect.map((rows) => (rows[0] ? toOverride(rows[0]) : null)));
+    sql<OverrideRow>`SELECT * FROM site_overrides WHERE host = ${host}`.pipe(
+      Effect.map((rows) => (rows[0] ? toOverride(rows[0]) : null)),
+    );
 
   return {
     get,
-    list: () => sql<OverrideRow>`SELECT * FROM site_overrides ORDER BY host`.pipe(Effect.map((rows) => rows.map(toOverride))),
+    list: () =>
+      sql<OverrideRow>`SELECT * FROM site_overrides ORDER BY host`.pipe(Effect.map((rows) => rows.map(toOverride))),
     /** Updates the given fields (the rest stay as they are). */
     save: (host: string, fields: { css?: string; js?: string; enabled?: boolean }) =>
       Effect.gen(function* () {

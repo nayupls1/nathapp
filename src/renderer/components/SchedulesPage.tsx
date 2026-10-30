@@ -24,12 +24,22 @@ const taskIcons: Record<ScheduleTask["type"], string> = { tool: "wrench", comman
 function describeTask(task: ScheduleTask) {
   if (task.type === "tool") return `${appName(task.appId)} · ${task.tool}`;
   if (task.type === "command") return `${appName(task.appId)} · ${task.command}`;
-  const where = task.appId ? appName(task.appId) : task.newTab?.kind === "web" ? `a new tab (${task.newTab.url})` : "a new app tab";
+  const where = task.appId
+    ? appName(task.appId)
+    : task.newTab?.kind === "web"
+      ? `a new tab (${task.newTab.url})`
+      : "a new app tab";
   const prompt = task.prompt.replace(/\s+/g, " ").trim();
   return `${where} · “${prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt}”`;
 }
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-const statusIcons: Record<ScheduleRun["status"], string> = { running: "loader", ok: "circle-check", error: "circle-x", timeout: "timer-off", skipped: "skip-forward" };
+const statusIcons: Record<ScheduleRun["status"], string> = {
+  running: "loader",
+  ok: "circle-check",
+  error: "circle-x",
+  timeout: "timer-off",
+  skipped: "skip-forward",
+};
 
 /** "in 5 minutes", "in 2 hours", "tomorrow"… */
 function relative(iso: string) {
@@ -93,21 +103,34 @@ export function SchedulesPage() {
           </Button>
         </div>
         <p {...stylex.attrs(styles.muted)}>
-          Apps' tools and commands that run in the background (no tab needed), and prompts for a tab's agent (each run is a new chat in the tab, to read
-          and continue): at a time, on a repeating schedule, or when something happens. At most two run at once, each with a time limit.
+          Apps' tools and commands that run in the background (no tab needed), and prompts for a tab's agent (each run
+          is a new chat in the tab, to read and continue): at a time, on a repeating schedule, or when something
+          happens. At most two run at once, each with a time limit.
         </p>
       </header>
       <Show when={error()}>
         <p {...stylex.attrs(styles.error)}>{error()}</p>
       </Show>
       <Show when={editing()}>
-        {(target) => <ScheduleEditor schedule={target() === "new" ? null : (target() as Schedule)} onDone={() => setEditing(null)} />}
+        {(target) => (
+          <ScheduleEditor
+            schedule={target() === "new" ? null : (target() as Schedule)}
+            onDone={() => setEditing(null)}
+          />
+        )}
       </Show>
 
       <section {...stylex.attrs(styles.section)}>
         <h2 {...stylex.attrs(styles.sectionTitle)}>In {currentWorkspace()?.name ?? "this workspace"}</h2>
         <div {...stylex.attrs(styles.list)}>
-          <For each={schedules()} fallback={<p {...stylex.attrs(styles.empty)}>No schedules yet. Create one, or ask an app's agent ("check for new articles every morning").</p>}>
+          <For
+            each={schedules()}
+            fallback={
+              <p {...stylex.attrs(styles.empty)}>
+                No schedules yet. Create one, or ask an app's agent ("check for new articles every morning").
+              </p>
+            }
+          >
             {(s) => (
               <div {...stylex.attrs(styles.item)} data-schedule={s.id} data-paused={s.paused ? "yes" : "no"}>
                 <Icon name={taskIcons[s.task.type]} size={16} {...stylex.attrs(styles.itemIcon)} />
@@ -125,7 +148,12 @@ export function SchedulesPage() {
                     {describeTrigger(s.trigger, appName)} · {describeTask(s.task)}
                   </span>
                   <span {...stylex.attrs(styles.meta)}>
-                    <Show when={s.nextRunAt} fallback={s.paused ? "Paused" : s.trigger.type === "event" ? "Waits for the event" : "Won't run again"}>
+                    <Show
+                      when={s.nextRunAt}
+                      fallback={
+                        s.paused ? "Paused" : s.trigger.type === "event" ? "Waits for the event" : "Won't run again"
+                      }
+                    >
                       Next {relative(s.nextRunAt!)} ({when(s.nextRunAt!)})
                     </Show>
                     <Show when={s.lastRun}>
@@ -148,17 +176,34 @@ export function SchedulesPage() {
                 >
                   <Icon name={s.paused ? "play" : "pause"} size={15} />
                 </button>
-                <button type="button" title="Run now" onClick={() => void act(() => api.runSchedule(s.id))} {...stylex.attrs(styles.iconButton)} data-run-schedule>
+                <button
+                  type="button"
+                  title="Run now"
+                  onClick={() => void act(() => api.runSchedule(s.id))}
+                  {...stylex.attrs(styles.iconButton)}
+                  data-run-schedule
+                >
                   <Icon name="zap" size={15} />
                 </button>
-                <button type="button" title="Edit" onClick={() => setEditing(s)} {...stylex.attrs(styles.iconButton)} data-edit-schedule>
+                <button
+                  type="button"
+                  title="Edit"
+                  onClick={() => setEditing(s)}
+                  {...stylex.attrs(styles.iconButton)}
+                  data-edit-schedule
+                >
                   <Icon name="pencil" size={15} />
                 </button>
                 <button
                   type="button"
                   title="Delete"
                   onClick={async () => {
-                    if (await confirmDialog(`Delete the schedule “${s.name}” and its runs?`, { confirmLabel: "Delete", danger: true })) {
+                    if (
+                      await confirmDialog(`Delete the schedule “${s.name}” and its runs?`, {
+                        confirmLabel: "Delete",
+                        danger: true,
+                      })
+                    ) {
                       await act(() => api.deleteSchedule(s.id));
                     }
                   }}
@@ -204,7 +249,9 @@ export function SchedulesPage() {
       <section {...stylex.attrs(styles.section)}>
         <h2 {...stylex.attrs(styles.sectionTitle)}>Past runs</h2>
         <div {...stylex.attrs(styles.list)} data-past-runs>
-          <For each={past()} fallback={<p {...stylex.attrs(styles.empty)}>Nothing has run yet.</p>}>{(run) => <RunRow run={run} />}</For>
+          <For each={past()} fallback={<p {...stylex.attrs(styles.empty)}>Nothing has run yet.</p>}>
+            {(run) => <RunRow run={run} />}
+          </For>
         </div>
       </section>
     </div>
@@ -216,12 +263,22 @@ function RunRow(props: { run: ScheduleRun }) {
   const bad = () => props.run.status === "error" || props.run.status === "timeout";
   return (
     <div {...stylex.attrs(styles.run)} data-run={props.run.id} data-run-status={props.run.status}>
-      <button type="button" onClick={() => setOpen((o) => !o)} disabled={!props.run.output} {...stylex.attrs(styles.runHead)}>
-        <Icon name={statusIcons[props.run.status]} size={15} {...stylex.attrs(styles.runIcon, bad() && styles.runIconBad)} />
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={!props.run.output}
+        {...stylex.attrs(styles.runHead)}
+      >
+        <Icon
+          name={statusIcons[props.run.status]}
+          size={15}
+          {...stylex.attrs(styles.runIcon, bad() && styles.runIconBad)}
+        />
         <span {...stylex.attrs(styles.itemTitle)}>{props.run.scheduleName}</span>
         <span {...stylex.attrs(styles.meta, styles.runMessage)}>{props.run.message || props.run.status}</span>
         <span {...stylex.attrs(styles.meta)}>
-          {props.run.trigger === "manual" ? "run by you" : props.run.trigger === "event" ? "on event" : "on time"} · {when(props.run.startedAt)}
+          {props.run.trigger === "manual" ? "run by you" : props.run.trigger === "event" ? "on event" : "on time"} ·{" "}
+          {when(props.run.startedAt)}
           {props.run.finishedAt ? ` · ${duration(props.run)}` : ""}
         </span>
       </button>
@@ -258,7 +315,9 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
   const [prompt, setPrompt] = createSignal(s?.task.type === "prompt" ? s.task.prompt : "");
   /** A tab's id, or "new:app" / "new:web". */
   const [target, setTarget] = createSignal(
-    s?.task.type === "prompt" ? (s.task.appId ?? `new:${s.task.newTab?.kind ?? "app"}`) : (s?.task.appId ?? workspaceTabs()[0]?.id ?? "new:app"),
+    s?.task.type === "prompt"
+      ? (s.task.appId ?? `new:${s.task.newTab?.kind ?? "app"}`)
+      : (s?.task.appId ?? workspaceTabs()[0]?.id ?? "new:app"),
   );
   const [url, setUrl] = createSignal(s?.task.type === "prompt" ? (s.task.newTab?.url ?? "") : "");
   const isPrompt = () => taskType() === "prompt";
@@ -266,18 +325,28 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
   /** The tab app events are about. */
   const eventApp = () => (isPrompt() ? target() : appId());
   const [tool, setTool] = createSignal(s?.task.type === "tool" ? s.task.tool : "");
-  const [params, setParams] = createSignal(s?.task.type === "tool" && s.task.params ? JSON.stringify(s.task.params) : "");
+  const [params, setParams] = createSignal(
+    s?.task.type === "tool" && s.task.params ? JSON.stringify(s.task.params) : "",
+  );
   const [command, setCommand] = createSignal(s?.task.type === "command" ? s.task.command : "");
   const [when, setWhen] = createSignal<ScheduleTrigger["type"]>(s?.trigger.type ?? "cron");
-  const [at, setAt] = createSignal(s?.trigger.type === "once" ? localInput(s.trigger.at) : localInput(new Date(Date.now() + 3600_000).toISOString()));
+  const [at, setAt] = createSignal(
+    s?.trigger.type === "once" ? localInput(s.trigger.at) : localInput(new Date(Date.now() + 3600_000).toISOString()),
+  );
   const [cron, setCron] = createSignal(s?.trigger.type === "cron" ? s.trigger.cron : "0 8 * * *");
   const initialEvent = s?.trigger.type === "event" ? s.trigger.event : "rune.started";
-  const [eventKind, setEventKind] = createSignal(initialEvent === "rune.started" ? "rune.started" : initialEvent.split(":")[0]!);
-  const [eventName, setEventName] = createSignal(initialEvent.startsWith("app:") ? initialEvent.split(":").slice(2).join(":") : "");
+  const [eventKind, setEventKind] = createSignal(
+    initialEvent === "rune.started" ? "rune.started" : initialEvent.split(":")[0]!,
+  );
+  const [eventName, setEventName] = createSignal(
+    initialEvent.startsWith("app:") ? initialEvent.split(":").slice(2).join(":") : "",
+  );
   const [notify, setNotify] = createSignal<ScheduleSpec["notify"]>(s?.notify ?? "failure");
   const [timeout, setTimeout_] = createSignal(String(s?.timeoutSec ?? DEFAULT_TIMEOUT_SEC));
   const [error, setError] = createSignal<string>();
-  const [tools] = createResource(appId, (id) => (id ? api.appTools(id).then((list) => list.filter((t: AppTool) => !t.path)) : Promise.resolve([])));
+  const [tools] = createResource(appId, (id) =>
+    id ? api.appTools(id).then((list) => list.filter((t: AppTool) => !t.path)) : Promise.resolve([]),
+  );
   const isTool = () => taskType() === "tool";
   const isCommand = () => taskType() === "command";
   const cronText = () => {
@@ -301,7 +370,12 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
           ? { type: "cron", cron: cron().trim() }
           : {
               type: "event",
-              event: eventKind() === "rune.started" ? "rune.started" : eventKind() === "app" ? `app:${eventApp()}:${eventName().trim()}` : `${eventKind()}:${eventApp()}`,
+              event:
+                eventKind() === "rune.started"
+                  ? "rune.started"
+                  : eventKind() === "app"
+                    ? `app:${eventApp()}:${eventName().trim()}`
+                    : `${eventKind()}:${eventApp()}`,
             };
     const where = target();
     const task: ScheduleTask = isPrompt()
@@ -309,15 +383,27 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
         ? {
             type: "prompt",
             prompt: prompt(),
-            newTab: { kind: where === "new:web" ? "web" : "app", workspaceId: currentWorkspace()?.id ?? "", ...(where === "new:web" ? { url: url().trim() } : {}) },
+            newTab: {
+              kind: where === "new:web" ? "web" : "app",
+              workspaceId: currentWorkspace()?.id ?? "",
+              ...(where === "new:web" ? { url: url().trim() } : {}),
+            },
           }
         : { type: "prompt", prompt: prompt(), appId: where }
       : isTool()
         ? { type: "tool", appId: appId(), tool: tool(), ...(parsedParams ? { params: parsedParams } : {}) }
         : { type: "command", appId: appId(), command: command() };
-    if (isPrompt() && when() === "event" && eventKind() !== "rune.started" && where.startsWith("new:")) return "App events need an existing tab";
+    if (isPrompt() && when() === "event" && eventKind() !== "rune.started" && where.startsWith("new:"))
+      return "App events need an existing tab";
     return {
-      name: name().trim() || (isPrompt() ? prompt().trim().split(/\s+/).slice(0, 6).join(" ") : isTool() ? tool() : command().split(" ")[0]!) || "",
+      name:
+        name().trim() ||
+        (isPrompt()
+          ? prompt().trim().split(/\s+/).slice(0, 6).join(" ")
+          : isTool()
+            ? tool()
+            : command().split(" ")[0]!) ||
+        "",
       trigger,
       task,
       notify: notify(),
@@ -344,14 +430,25 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
       <h2 {...stylex.attrs(styles.sectionTitle)}>{s ? `Edit “${s.name}”` : "New schedule"}</h2>
       <label {...stylex.attrs(styles.field)}>
         <span {...stylex.attrs(styles.label)}>Name</span>
-        <input value={name()} placeholder="Fetch new articles" onInput={(e) => setName(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-schedule-name />
+        <input
+          value={name()}
+          placeholder="Fetch new articles"
+          onInput={(e) => setName(e.currentTarget.value)}
+          {...stylex.attrs(styles.input)}
+          data-schedule-name
+        />
       </label>
       <Show
         when={isPrompt()}
         fallback={
           <label {...stylex.attrs(styles.field)}>
             <span {...stylex.attrs(styles.label)}>App</span>
-            <select value={appId()} onChange={(e) => setAppId(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-schedule-app>
+            <select
+              value={appId()}
+              onChange={(e) => setAppId(e.currentTarget.value)}
+              {...stylex.attrs(styles.input)}
+              data-schedule-app
+            >
               <For each={workspaceApps()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
             </select>
           </label>
@@ -359,19 +456,35 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
       >
         <div {...stylex.attrs(styles.field)}>
           <span {...stylex.attrs(styles.label)}>In</span>
-          <select value={target()} onChange={(e) => setTarget(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-schedule-target>
+          <select
+            value={target()}
+            onChange={(e) => setTarget(e.currentTarget.value)}
+            {...stylex.attrs(styles.input)}
+            data-schedule-target
+          >
             <For each={workspaceTabs()}>{(a) => <option value={a.id}>{a.name}</option>}</For>
             <option value="new:app">A new app tab (opened on the first run)</option>
             <option value="new:web">A new web tab (opened on the first run)</option>
           </select>
           <Show when={newWebTab()}>
-            <input value={url()} placeholder="https://example.com" onInput={(e) => setUrl(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-schedule-url />
+            <input
+              value={url()}
+              placeholder="https://example.com"
+              onInput={(e) => setUrl(e.currentTarget.value)}
+              {...stylex.attrs(styles.input)}
+              data-schedule-url
+            />
           </Show>
         </div>
       </Show>
       <div {...stylex.attrs(styles.field)}>
         <span {...stylex.attrs(styles.label)}>Does</span>
-        <select value={taskType()} onChange={(e) => setTaskType(e.currentTarget.value as ScheduleTask["type"])} {...stylex.attrs(styles.input, styles.narrow)} data-schedule-task>
+        <select
+          value={taskType()}
+          onChange={(e) => setTaskType(e.currentTarget.value as ScheduleTask["type"])}
+          {...stylex.attrs(styles.input, styles.narrow)}
+          data-schedule-task
+        >
           <option value="prompt">Ask the agent</option>
           <option value="tool">Use a tool</option>
           <option value="command">Run a command</option>
@@ -380,7 +493,12 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
           <span {...stylex.attrs(styles.meta)}>Each run is a new chat in the tab, as if you had sent the prompt.</span>
         </Show>
         <Show when={isTool()}>
-          <select value={tool()} onChange={(e) => setTool(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-schedule-tool>
+          <select
+            value={tool()}
+            onChange={(e) => setTool(e.currentTarget.value)}
+            {...stylex.attrs(styles.input)}
+            data-schedule-tool
+          >
             <option value="">Pick a tool…</option>
             <For each={tools()}>{(t) => <option value={t.id}>{`${t.id} — ${t.title}`}</option>}</For>
           </select>
@@ -411,32 +529,62 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
       <Show when={isTool()}>
         <label {...stylex.attrs(styles.field)}>
           <span {...stylex.attrs(styles.label)}>Params</span>
-          <input value={params()} placeholder='{ "limit": 10 } (optional)' onInput={(e) => setParams(e.currentTarget.value)} {...stylex.attrs(styles.input, styles.mono)} />
+          <input
+            value={params()}
+            placeholder='{ "limit": 10 } (optional)'
+            onInput={(e) => setParams(e.currentTarget.value)}
+            {...stylex.attrs(styles.input, styles.mono)}
+          />
         </label>
       </Show>
       <div {...stylex.attrs(styles.field)}>
         <span {...stylex.attrs(styles.label)}>When</span>
-        <select value={when()} onChange={(e) => setWhen(e.currentTarget.value as ScheduleTrigger["type"])} {...stylex.attrs(styles.input, styles.narrow)} data-schedule-when>
+        <select
+          value={when()}
+          onChange={(e) => setWhen(e.currentTarget.value as ScheduleTrigger["type"])}
+          {...stylex.attrs(styles.input, styles.narrow)}
+          data-schedule-when
+        >
           <option value="once">Once</option>
           <option value="cron">Repeating</option>
           <option value="event">On an event</option>
         </select>
         <Show when={when() === "once"}>
-          <input type="datetime-local" value={at()} onInput={(e) => setAt(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-schedule-at />
+          <input
+            type="datetime-local"
+            value={at()}
+            onInput={(e) => setAt(e.currentTarget.value)}
+            {...stylex.attrs(styles.input)}
+            data-schedule-at
+          />
         </Show>
         <Show when={when() === "cron"}>
-          <input value={cron()} onInput={(e) => setCron(e.currentTarget.value)} {...stylex.attrs(styles.input, styles.mono, styles.narrow)} data-schedule-cron />
+          <input
+            value={cron()}
+            onInput={(e) => setCron(e.currentTarget.value)}
+            {...stylex.attrs(styles.input, styles.mono, styles.narrow)}
+            data-schedule-cron
+          />
           <span {...stylex.attrs(styles.meta)}>{cronText()}</span>
         </Show>
         <Show when={when() === "event"}>
-          <select value={eventKind()} onChange={(e) => setEventKind(e.currentTarget.value)} {...stylex.attrs(styles.input)}>
+          <select
+            value={eventKind()}
+            onChange={(e) => setEventKind(e.currentTarget.value)}
+            {...stylex.attrs(styles.input)}
+          >
             <option value="rune.started">Rune Browser starts</option>
             <option value="app.started">The app starts</option>
             <option value="app.crashed">The app crashes</option>
             <option value="app">The app sends an event…</option>
           </select>
           <Show when={eventKind() === "app"}>
-            <input value={eventName()} placeholder="new-order" onInput={(e) => setEventName(e.currentTarget.value)} {...stylex.attrs(styles.input, styles.mono, styles.narrow)} />
+            <input
+              value={eventName()}
+              placeholder="new-order"
+              onInput={(e) => setEventName(e.currentTarget.value)}
+              {...stylex.attrs(styles.input, styles.mono, styles.narrow)}
+            />
           </Show>
         </Show>
       </div>
@@ -453,13 +601,24 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
       </Show>
       <div {...stylex.attrs(styles.field)}>
         <span {...stylex.attrs(styles.label)}>Notify</span>
-        <select value={notify()} onChange={(e) => setNotify(e.currentTarget.value as ScheduleSpec["notify"])} {...stylex.attrs(styles.input, styles.narrow)}>
+        <select
+          value={notify()}
+          onChange={(e) => setNotify(e.currentTarget.value as ScheduleSpec["notify"])}
+          {...stylex.attrs(styles.input, styles.narrow)}
+        >
           <option value="failure">When it fails</option>
           <option value="always">After every run</option>
           <option value="never">Never</option>
         </select>
         <span {...stylex.attrs(styles.label)}>Time limit</span>
-        <input type="number" min="5" max="1800" value={timeout()} onInput={(e) => setTimeout_(e.currentTarget.value)} {...stylex.attrs(styles.input, styles.tiny)} />
+        <input
+          type="number"
+          min="5"
+          max="1800"
+          value={timeout()}
+          onInput={(e) => setTimeout_(e.currentTarget.value)}
+          {...stylex.attrs(styles.input, styles.tiny)}
+        />
         <span {...stylex.attrs(styles.meta)}>seconds</span>
       </div>
       <Show when={error()}>
@@ -478,10 +637,26 @@ function ScheduleEditor(props: { schedule: Schedule | null; onDone: () => void }
 }
 
 const styles = stylex.create({
-  page: { maxWidth: 860, marginInline: "auto", paddingBlock: space.xxl, paddingInline: space.xl, display: "flex", flexDirection: "column", gap: space.lg },
+  page: {
+    maxWidth: 860,
+    marginInline: "auto",
+    paddingBlock: space.xxl,
+    paddingInline: space.xl,
+    display: "flex",
+    flexDirection: "column",
+    gap: space.lg,
+  },
   header: { display: "flex", flexDirection: "column", gap: space.xs },
   titleRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md },
-  title: { display: "flex", alignItems: "center", gap: space.sm, margin: 0, fontSize: font.xxl, fontWeight: 650, letterSpacing: "-0.02em" },
+  title: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    margin: 0,
+    fontSize: font.xxl,
+    fontWeight: 650,
+    letterSpacing: "-0.02em",
+  },
   accent: { color: colors.accent },
   muted: { margin: 0, color: colors.muted, fontSize: font.sm, lineHeight: 1.5 },
   error: { margin: 0, color: colors.danger, fontSize: font.sm },
@@ -510,9 +685,23 @@ const styles = stylex.create({
   },
   itemIcon: { flexShrink: 0, color: colors.accent },
   itemText: { display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 },
-  itemTitle: { display: "flex", alignItems: "center", gap: 6, fontSize: font.sm, fontWeight: 500, whiteSpace: "nowrap" },
+  itemTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: font.sm,
+    fontWeight: 500,
+    whiteSpace: "nowrap",
+  },
   meta: { color: colors.muted, fontSize: font.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  badge: { paddingInline: 6, borderRadius: radius.full, backgroundColor: colors.surfaceHover, color: colors.muted, fontSize: 11, fontWeight: 600 },
+  badge: {
+    paddingInline: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceHover,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: 600,
+  },
   badgeRunning: { color: colors.accent },
   iconButton: {
     display: "grid",
@@ -595,7 +784,14 @@ const styles = stylex.create({
   tiny: { flexGrow: 0, flexShrink: 0, flexBasis: "auto", width: 80 },
   mono: { fontFamily: font.mono, fontSize: font.xs },
   top: { alignItems: "flex-start" },
-  textarea: { height: "auto", minHeight: 84, paddingBlock: space.sm, resize: "vertical", fontFamily: "inherit", lineHeight: 1.45 },
+  textarea: {
+    height: "auto",
+    minHeight: 84,
+    paddingBlock: space.sm,
+    resize: "vertical",
+    fontFamily: "inherit",
+    lineHeight: 1.45,
+  },
   presets: { display: "flex", flexWrap: "wrap", gap: 4, paddingLeft: 78 },
   preset: {
     height: 24,

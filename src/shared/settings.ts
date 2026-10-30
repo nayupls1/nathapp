@@ -3,9 +3,12 @@
 import { Effect, Schema } from "effect";
 import { providerIds } from "./api";
 
-const withDefault = <S extends Schema.Top>(value: S["Encoded"]) => Schema.withDecodingDefaultKey<S>(Effect.succeed(value));
+const withDefault = <S extends Schema.Top>(value: S["Encoded"]) =>
+  Schema.withDecodingDefaultKey<S>(Effect.succeed(value));
 
-export const HexColor = Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/, { message: 'must be a hex color like "#6d4aff"' }));
+export const HexColor = Schema.String.check(
+  Schema.isPattern(/^#[0-9a-fA-F]{6}$/, { message: 'must be a hex color like "#6d4aff"' }),
+);
 
 export const Radius = Schema.Literals(["none", "sm", "md", "lg"]);
 export type Radius = typeof Radius.Type;
@@ -84,7 +87,9 @@ export const Settings = Schema.Struct({
   }).pipe(withDefault({})),
   mods: Schema.Struct({
     /** Galleries to browse mods from: URLs of JSON files listing mods ({ "mods": [...] } or an array). */
-    galleries: Schema.Array(Schema.String.check(Schema.isMaxLength(2000))).check(Schema.isMaxLength(20)).pipe(withDefault([])),
+    galleries: Schema.Array(Schema.String.check(Schema.isMaxLength(2000)))
+      .check(Schema.isMaxLength(20))
+      .pipe(withDefault([])),
   }).pipe(withDefault({})),
   apps: Schema.Struct({
     /** How app processes are isolated. auto: bubblewrap when it's installed. */
@@ -94,7 +99,9 @@ export const Settings = Schema.Struct({
     /** Show the toolchains installed in your home folder (mise, nvm, rustup…) to the sandbox, read-only. */
     sandboxToolchains: Schema.Boolean.pipe(withDefault(true)),
     /** More folders the sandbox may read (absolute paths). */
-    sandboxReadOnly: Schema.Array(Schema.String.check(Schema.isMaxLength(4000))).check(Schema.isMaxLength(50)).pipe(withDefault([])),
+    sandboxReadOnly: Schema.Array(Schema.String.check(Schema.isMaxLength(4000)))
+      .check(Schema.isMaxLength(50))
+      .pipe(withDefault([])),
     /** Start an app's server when its tab is opened. */
     autoStart: Schema.Boolean.pipe(withDefault(true)),
     /** Build and switch to the finished app when the agent is done. */

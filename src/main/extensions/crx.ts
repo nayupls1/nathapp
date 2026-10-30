@@ -46,7 +46,8 @@ function protoFields(buf: Buffer) {
   return fields;
 }
 
-const bytes = (fields: ReturnType<typeof protoFields>, field: number) => fields.filter((f) => f.field === field && Buffer.isBuffer(f.value)).map((f) => f.value as Buffer);
+const bytes = (fields: ReturnType<typeof protoFields>, field: number) =>
+  fields.filter((f) => f.field === field && Buffer.isBuffer(f.value)).map((f) => f.value as Buffer);
 
 const idOfKey = (key: Buffer) => extensionIdFromHash(createHash("sha256").update(key).digest("hex"));
 
@@ -83,7 +84,8 @@ export function parseCrx(file: Buffer): Crx {
       const signature = bytes(p, 2)[0];
       if (!key || !signature) continue;
       if (!createHash("sha256").update(key).digest().subarray(0, 16).equals(crxId)) continue;
-      if (!verify("sha256", key, signature, prefix, signedLength, signedData, zip)) throw new Error("The package's signature doesn't match");
+      if (!verify("sha256", key, signature, prefix, signedLength, signedData, zip))
+        throw new Error("The package's signature doesn't match");
       return { id: idOfKey(key), key: key.toString("base64"), zip };
     }
     throw new Error("The package isn't signed with its own key");

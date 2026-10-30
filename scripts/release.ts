@@ -33,9 +33,13 @@ if (next) {
 } else {
   const tag = `v${pkg.version}`;
   if ((await $`git branch --show-current`.text()).trim() !== "master") fail("Tag releases from master.");
-  if ((await $`git rev-parse HEAD`.text()) !== (await $`git rev-parse origin/master`.text())) fail("master isn't in sync with origin/master: pull first.");
-  if ((await $`git tag --list ${tag}`.text()).trim()) fail(`${tag} exists already. Bump the version first: bun run release <version>.`);
+  if ((await $`git rev-parse HEAD`.text()) !== (await $`git rev-parse origin/master`.text()))
+    fail("master isn't in sync with origin/master: pull first.");
+  if ((await $`git tag --list ${tag}`.text()).trim())
+    fail(`${tag} exists already. Bump the version first: bun run release <version>.`);
   await $`git tag -a ${tag} -m ${`Rune Browser ${pkg.version}`}`;
   await $`git push --quiet origin ${tag}`;
-  console.log(`✓ Pushed ${tag}. The release workflow builds, tests and publishes it: https://github.com/nayupls1/rune-browser/actions`);
+  console.log(
+    `✓ Pushed ${tag}. The release workflow builds, tests and publishes it: https://github.com/nayupls1/rune-browser/actions`,
+  );
 }

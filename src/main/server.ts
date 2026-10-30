@@ -36,9 +36,7 @@ function serverCommand(): { command: string; args: string[] } {
   }
 
   const binary = process.platform === "win32" ? "rune-server.exe" : "rune-server";
-  const dir = app.isPackaged
-    ? join(process.resourcesPath, "server")
-    : join(app.getAppPath(), "dist/server");
+  const dir = app.isPackaged ? join(process.resourcesPath, "server") : join(app.getAppPath(), "dist/server");
   return { command: join(dir, binary), args: [] };
 }
 

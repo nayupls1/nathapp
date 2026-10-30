@@ -71,7 +71,8 @@ export function parseMod(json: unknown): { mod: Mod } | { error: string } {
   if (!json || typeof json !== "object" || Array.isArray(json)) return { error: "That isn't a Rune Browser mod." };
   const raw = json as Record<string, unknown>;
   if (raw.format !== MOD_FORMAT) return { error: "That isn't a Rune Browser mod (its format isn't rune-mod)." };
-  if (raw.version !== 1) return { error: "This mod was made by a newer Rune Browser. Update Rune Browser to install it." };
+  if (raw.version !== 1)
+    return { error: "This mod was made by a newer Rune Browser. Update Rune Browser to install it." };
   const id = text(raw.id, 64).toLowerCase();
   if (!MOD_ID.test(id)) return { error: "The mod's id is missing or invalid." };
   const name = text(raw.name, 80);
@@ -80,7 +81,8 @@ export function parseMod(json: unknown): { mod: Mod } | { error: string } {
   if (changes.length > MOD_MAX_CHANGES) return { error: `A mod has at most ${MOD_MAX_CHANGES} page changes.` };
   const pageChanges: PageChangeSpec[] = [];
   for (const [i, change] of changes.entries()) {
-    const problem = change && typeof change === "object" ? pageChangeProblem(change as PageChangeSpec) : "it isn't an object";
+    const problem =
+      change && typeof change === "object" ? pageChangeProblem(change as PageChangeSpec) : "it isn't an object";
     if (problem) return { error: `Page change ${i + 1} is invalid: ${problem}` };
     pageChanges.push(pageChangeSpec(change as PageChangeSpec));
   }
@@ -93,7 +95,8 @@ export function parseMod(json: unknown): { mod: Mod } | { error: string } {
     }
   }
   const extensionList = Array.isArray(raw.extensions) ? raw.extensions : [];
-  if (extensionList.length > MOD_MAX_EXTENSIONS) return { error: `A mod installs at most ${MOD_MAX_EXTENSIONS} extensions.` };
+  if (extensionList.length > MOD_MAX_EXTENSIONS)
+    return { error: `A mod installs at most ${MOD_MAX_EXTENSIONS} extensions.` };
   const extensions: ModExtension[] = [];
   for (const e of extensionList) {
     const ext = (e ?? {}) as Record<string, unknown>;
@@ -130,15 +133,21 @@ export function scopeLabel(scope: PageChangeSpec["scope"]) {
 /** A pattern that matches any site: its host part is only wildcards (like "*" or "*.*"). */
 const everywhere = (scope: PageChangeSpec["scope"]) => {
   if (scope.type !== "pattern") return false;
-  const host = scope.value.trim().replace(/^(\*|https?):\/\//i, "").split("/")[0] ?? "";
+  const host =
+    scope.value
+      .trim()
+      .replace(/^(\*|https?):\/\//i, "")
+      .split("/")[0] ?? "";
   return !host.replace(/[*.]/g, "");
 };
 
 /** Whether a page change can run JavaScript: scripts, buttons, HTML with handlers or script URLs, on* attributes. */
 export function runsCode(change: PageChangeSpec) {
   if (change.action === "script" || change.action === "button") return true;
-  if (change.action === "insert") return /<script|\son[a-z]+\s*=|javascript:|<iframe|<object|<embed/i.test(change.value ?? "");
-  if (change.action === "attribute") return /^on/i.test(change.name ?? "") || /^\s*javascript:/i.test(change.value ?? "");
+  if (change.action === "insert")
+    return /<script|\son[a-z]+\s*=|javascript:|<iframe|<object|<embed/i.test(change.value ?? "");
+  if (change.action === "attribute")
+    return /^on/i.test(change.name ?? "") || /^\s*javascript:/i.test(change.value ?? "");
   return false;
 }
 
@@ -160,7 +169,8 @@ const actionLabels: Record<PageChangeSpec["action"], string> = {
   script: "Runs a script",
 };
 
-const list = (items: string[]) => (items.length <= 3 ? items.join(", ") : `${items.slice(0, 3).join(", ")} and ${items.length - 3} more`);
+const list = (items: string[]) =>
+  items.length <= 3 ? items.join(", ") : `${items.slice(0, 3).join(", ")} and ${items.length - 3} more`;
 
 /** What installing a mod does and may do, for the review before installing it. */
 export function reviewMod(mod: Mod): ModReview {
@@ -168,7 +178,13 @@ export function reviewMod(mod: Mod): ModReview {
     title: c.title,
     where: scopeLabel(c.scope),
     what: actionLabels[c.action],
-    ...(c.action === "script" ? { code: c.value } : c.action === "button" ? { code: c.onClick } : runsCode(c) ? { code: c.value } : {}),
+    ...(c.action === "script"
+      ? { code: c.value }
+      : c.action === "button"
+        ? { code: c.onClick }
+        : runsCode(c)
+          ? { code: c.value }
+          : {}),
   }));
   const permissions: ModReview["permissions"] = [];
   const codeWhere = [...new Set(mod.pageChanges.filter(runsCode).map((c) => scopeLabel(c.scope)))];
@@ -185,8 +201,16 @@ export function reviewMod(mod: Mod): ModReview {
     });
   }
   const lookWhere = [...new Set(mod.pageChanges.filter((c) => !runsCode(c)).map((c) => scopeLabel(c.scope)))];
-  if (lookWhere.length) permissions.push({ level: "info", text: `Changes how ${list(lookWhere)} ${lookWhere.length === 1 ? "looks" : "look"}.` });
-  if (mod.theme) permissions.push({ level: "info", text: "Changes Rune Browser's theme. Turning the mod off or removing it brings yours back." });
+  if (lookWhere.length)
+    permissions.push({
+      level: "info",
+      text: `Changes how ${list(lookWhere)} ${lookWhere.length === 1 ? "looks" : "look"}.`,
+    });
+  if (mod.theme)
+    permissions.push({
+      level: "info",
+      text: "Changes Rune Browser's theme. Turning the mod off or removing it brings yours back.",
+    });
   return { changes, permissions };
 }
 
@@ -233,10 +257,18 @@ export async function decodeShareCode(code: string): Promise<unknown> {
   const body = code.trim().replace(/\s+/g, "");
   if (!body.toUpperCase().startsWith(SHARE_CODE_PREFIX)) throw new Error("That isn't a mod's share code.");
   try {
-    const bytes = await pipeThrough(fromBase64Url(body.slice(SHARE_CODE_PREFIX.length)), new DecompressionStream("deflate-raw"), MOD_MAX_BYTES);
+    const bytes = await pipeThrough(
+      fromBase64Url(body.slice(SHARE_CODE_PREFIX.length)),
+      new DecompressionStream("deflate-raw"),
+      MOD_MAX_BYTES,
+    );
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch (err) {
-    throw new Error(err instanceof Error && err.message === "The mod is too big" ? err.message : "The share code is damaged (copied only partly?).");
+    throw new Error(
+      err instanceof Error && err.message === "The mod is too big"
+        ? err.message
+        : "The share code is damaged (copied only partly?).",
+    );
   }
 }
 
@@ -244,9 +276,11 @@ export const isShareCode = (text: string) => text.trim().toUpperCase().startsWit
 
 /** A new mod id from its name (with a random end, so two people's "Dark mode" don't collide). */
 export const newModId = (name: string) =>
-  `${name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40) || "mod"}-${crypto.randomUUID().slice(0, 6)}`;
+  `${
+    name
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "mod"
+  }-${crypto.randomUUID().slice(0, 6)}`;

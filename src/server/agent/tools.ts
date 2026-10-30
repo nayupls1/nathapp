@@ -24,7 +24,21 @@ import { Secrets } from "../security/Secrets";
 import { NoArgs, text, tool } from "./Mcp";
 import { sharedContext, shareRefusal } from "./sharedTabs";
 import { topics } from "../../shared/hub";
-import { isImageIcon, isReservedSecretName, SECRET_NAME_PATTERN, type AppTool, type ChatMessage, type PageChange, type PageChangeSpec, type Schedule, type ScheduleSpec, type ScheduleTask, type ScheduleTrigger, type LogLine, type RuntimeStatus } from "../../shared/api";
+import {
+  isImageIcon,
+  isReservedSecretName,
+  SECRET_NAME_PATTERN,
+  type AppTool,
+  type ChatMessage,
+  type PageChange,
+  type PageChangeSpec,
+  type Schedule,
+  type ScheduleSpec,
+  type ScheduleTask,
+  type ScheduleTrigger,
+  type LogLine,
+  type RuntimeStatus,
+} from "../../shared/api";
 
 const transpiler = new Bun.Transpiler({ loader: "js" });
 
@@ -54,7 +68,8 @@ export async function readIconFile(projectDir: string, path: string): Promise<st
     return { error: `${path} doesn't exist in the project.` };
   }
   const bytes = new Uint8Array(await readFile(file));
-  if (type.magic && !type.magic(bytes)) return { error: `${path} isn't a valid ${extname(path).slice(1).toUpperCase()} image.` };
+  if (type.magic && !type.magic(bytes))
+    return { error: `${path} isn't a valid ${extname(path).slice(1).toUpperCase()} image.` };
   return `data:${type.mime};base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
@@ -82,17 +97,14 @@ export interface ToolEnv {
 
 export const pageTools = Effect.fn(function* (env: ToolEnv, options: { site: boolean }) {
   const hub = yield* Hub;
-  const call = <T>(method: string, params: object = {}, timeoutMs?: number) => hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
+  const call = <T>(method: string, params: object = {}, timeoutMs?: number) =>
+    hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
   const evalIn = <T>(code: string) => call<T>("page.eval", { code });
 
   const where = options.site ? "the page in the user's tab" : "the app's preview";
   return [
-    tool(
-      "get_page",
-      `The URL, title, viewport and visible text of ${where}.`,
-      NoArgs,
-      () =>
-        evalIn<object>(`(() => {
+    tool("get_page", `The URL, title, viewport and visible text of ${where}.`, NoArgs, () =>
+      evalIn<object>(`(() => {
             const text = (document.body?.innerText ?? "").replace(/\\n{3,}/g, "\\n\\n");
             return {
               url: location.href,
@@ -131,7 +143,9 @@ export const pageTools = Effect.fn(function* (env: ToolEnv, options: { site: boo
     tool(
       "run_js",
       `Run JavaScript in ${where} and get the result. \`code\` is the body of an async function: use \`return\` (JSON-serializable).${
-        options.site ? " Changes made this way are lost on reload; use set_site_override to keep them." : " Good for checking behavior; change the source files for real changes."
+        options.site
+          ? " Changes made this way are lost on reload; use set_site_override to keep them."
+          : " Good for checking behavior; change the source files for real changes."
       }`,
       Schema.Struct({ code: Schema.String }),
       ({ code }) =>
@@ -154,24 +168,36 @@ ${code}
       `See ${where}: a screenshot as the user sees it right now. With selector, just that element (and what's around it), even if it's scrolled out of view; with full_page, the whole page from top to bottom. Use it to check how things look, not only what the DOM says.`,
       Schema.Struct({
         selector: Schema.optionalKey(Schema.String.annotate({ description: "Only this element" })),
-        full_page: Schema.optionalKey(Schema.Boolean.annotate({ description: "The whole page, not only what's on screen" })),
+        full_page: Schema.optionalKey(
+          Schema.Boolean.annotate({ description: "The whole page, not only what's on screen" }),
+        ),
       }),
       ({ selector, full_page }) =>
-        (selector || full_page
-          ? call<{ data: string; width: number; height: number; truncated: boolean }>("devtools", { command: "screenshot", params: { selector, fullPage: full_page } }, 45_000).pipe(
+        selector || full_page
+          ? call<{ data: string; width: number; height: number; truncated: boolean }>(
+              "devtools",
+              { command: "screenshot", params: { selector, fullPage: full_page } },
+              45_000,
+            ).pipe(
               Effect.map((shot) => ({
                 content: [
                   { type: "image" as const, data: shot.data, mimeType: "image/jpeg" },
-                  ...(shot.truncated ? [{ type: "text" as const, text: "The page is very long: this shows its first 12000 pixels." }] : []),
+                  ...(shot.truncated
+                    ? [{ type: "text" as const, text: "The page is very long: this shows its first 12000 pixels." }]
+                    : []),
                 ],
               })),
             )
-          : call<string>("page.capture").pipe(Effect.map((data) => ({ content: [{ type: "image" as const, data, mimeType: "image/jpeg" }] })))),
+          : call<string>("page.capture").pipe(
+              Effect.map((data) => ({ content: [{ type: "image" as const, data, mimeType: "image/jpeg" }] })),
+            ),
     ),
 
     tool(
       "navigate",
-      options.site ? "Open a URL in the tab and wait for it to load." : "Open a path of the app in the preview (e.g. /settings) and wait for it to load.",
+      options.site
+        ? "Open a URL in the tab and wait for it to load."
+        : "Open a path of the app in the preview (e.g. /settings) and wait for it to load.",
       Schema.Struct({ url: Schema.String }),
       ({ url }) =>
         call<{ url: string; title: string }>("page.navigate", { url }, 45_000).pipe(
@@ -199,9 +225,13 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
   const sites = yield* Sites;
   const pageChanges = yield* PageChanges;
   const permissions = yield* Permissions;
-  const currentUrl = hub.rpc<{ url: string }>("page.info", { tabId: env.tabId }).pipe(
-    Effect.flatMap(({ url }) => (/^https?:/i.test(url) ? Effect.succeed(url) : Effect.fail(new Error("No website is open in this tab")))),
-  );
+  const currentUrl = hub
+    .rpc<{ url: string }>("page.info", { tabId: env.tabId })
+    .pipe(
+      Effect.flatMap(({ url }) =>
+        /^https?:/i.test(url) ? Effect.succeed(url) : Effect.fail(new Error("No website is open in this tab")),
+      ),
+    );
   const currentHost = hub.rpc<{ url: string }>("page.info", { tabId: env.tabId }).pipe(
     Effect.flatMap(({ url }) => {
       const host = hostOf(url);
@@ -229,25 +259,36 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
     Effect.gen(function* () {
       yield* hub.publish({ type: "page-changes", topic: topics.sites });
       const result = yield* hub
-        .rpc<{ changesEnabled?: boolean; changeErrors?: Record<string, string> }>("page.applyOverride", { tabId: env.tabId }, 45_000)
+        .rpc<{ changesEnabled?: boolean; changeErrors?: Record<string, string> }>(
+          "page.applyOverride",
+          { tabId: env.tabId },
+          45_000,
+        )
         .pipe(Effect.orElseSucceed(() => ({}) as { changesEnabled?: boolean; changeErrors?: Record<string, string> }));
       yield* env.log(`${done.split(" (")[0]}: ${change.title}`);
       const error = result.changeErrors?.[change.id];
       if (error) return text(`${done}, but it failed on the page: ${error}`, true);
       const url = yield* currentUrl.pipe(Effect.orElseSucceed(() => ""));
-      if (!scopeMatches(change.scope, url)) return `${done}. It doesn't apply to the current page (scope ${change.scope.type}: ${change.scope.value}).`;
-      return result.changesEnabled ? `${done}; applied to the page.` : `${done}, but customizations are turned off in Settings (or Rune Browser is in safe mode), so it isn't applied.`;
+      if (!scopeMatches(change.scope, url))
+        return `${done}. It doesn't apply to the current page (scope ${change.scope.type}: ${change.scope.value}).`;
+      return result.changesEnabled
+        ? `${done}; applied to the page.`
+        : `${done}, but customizations are turned off in Settings (or Rune Browser is in safe mode), so it isn't applied.`;
     });
 
   return [
-    tool("get_site_override", "The current site's customization (CSS and JavaScript applied whenever it loads in Rune Browser).", NoArgs, () =>
-      Effect.gen(function* () {
-        const host = yield* currentHost;
-        const override = yield* sites.get(host);
-        return override
-          ? JSON.stringify({ host, enabled: override.enabled, css: override.css, js: override.js }, null, 1)
-          : `No customization for ${host} yet.`;
-      }),
+    tool(
+      "get_site_override",
+      "The current site's customization (CSS and JavaScript applied whenever it loads in Rune Browser).",
+      NoArgs,
+      () =>
+        Effect.gen(function* () {
+          const host = yield* currentHost;
+          const override = yield* sites.get(host);
+          return override
+            ? JSON.stringify({ host, enabled: override.enabled, css: override.css, js: override.js }, null, 1)
+            : `No customization for ${host} yet.`;
+        }),
     ),
 
     tool(
@@ -268,10 +309,18 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
             detail: `It wants to save ${js?.trim() ? "CSS and JavaScript" : "CSS"} that is applied whenever you open ${host} in Rune Browser. You can turn it off or remove it later.`,
             timeoutMs: 120_000,
           });
-          if (!allowed) return text(`The user didn't allow customizing ${host}. Nothing was saved; tell them what you would have changed.`, true);
+          if (!allowed)
+            return text(
+              `The user didn't allow customizing ${host}. Nothing was saved; tell them what you would have changed.`,
+              true,
+            );
           const saved = yield* sites.save(host, { css, js, enabled: true });
           yield* hub.publish({ type: "site", topic: topics.sites, host });
-          const result = yield* hub.rpc<{ applied: boolean; error?: string }>("page.applyOverride", { tabId: env.tabId }, 45_000);
+          const result = yield* hub.rpc<{ applied: boolean; error?: string }>(
+            "page.applyOverride",
+            { tabId: env.tabId },
+            45_000,
+          );
           yield* env.log(`Customized ${host}`);
           if (result.error) return text(`Saved, but the JavaScript threw: ${result.error}`, true);
           const sizes = `CSS ${saved.css.length} chars, JS ${saved.js.length} chars`;
@@ -291,7 +340,9 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
           const host = hostOf(url);
           const all = yield* pageChanges.list();
           const here = all.filter((c) => scopeMatches(c.scope, url));
-          const site = all.filter((c) => !here.includes(c) && (c.scope.value === host || c.scope.value.startsWith(`${host}/`)));
+          const site = all.filter(
+            (c) => !here.includes(c) && (c.scope.value === host || c.scope.value.startsWith(`${host}/`)),
+          );
           const line = (c: PageChange) =>
             `- ${c.id} ${c.enabled ? "[on]" : "[off]"} ${c.title} — ${c.action}${c.selector ? ` ${c.selector}` : ""} (${c.scope.type}: ${c.scope.value})`;
           return [
@@ -328,7 +379,11 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
           const spec: PageChangeSpec = { ...fields, scope: scopeFor(scope, url, pattern) };
           const problem = pageChangeError(spec);
           if (problem) return text(problem, true);
-          if (!(yield* allowChange(spec))) return text(`The user didn't allow changing ${spec.scope.value}. Nothing was saved; tell them what you would have changed.`, true);
+          if (!(yield* allowChange(spec)))
+            return text(
+              `The user didn't allow changing ${spec.scope.value}. Nothing was saved; tell them what you would have changed.`,
+              true,
+            );
           const change = yield* pageChanges.create(spec, "agent");
           return yield* applied(change, `Added ${change.id} (“${change.title}”)`);
         }),
@@ -353,7 +408,11 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
         Effect.gen(function* () {
           const current = yield* pageChanges.get(id);
           if (!current) return text(`No page change ${id}.`, true);
-          const spec: PageChangeSpec = { ...current, ...fields, ...(scope ? { scope: scopeFor(scope, yield* currentUrl, pattern) } : {}) };
+          const spec: PageChangeSpec = {
+            ...current,
+            ...fields,
+            ...(scope ? { scope: scopeFor(scope, yield* currentUrl, pattern) } : {}),
+          };
           const problem = pageChangeError(spec);
           if (problem) return text(problem, true);
           if (!(yield* allowChange(spec))) return text(`The user didn't allow changing ${spec.scope.value}.`, true);
@@ -362,16 +421,20 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
         }),
     ),
 
-    tool("remove_page_change", "Remove a page change (see list_page_changes).", Schema.Struct({ id: Schema.String }), ({ id }) =>
-      Effect.gen(function* () {
-        const current = yield* pageChanges.get(id);
-        if (!current) return text(`No page change ${id}.`, true);
-        yield* pageChanges.remove(id);
-        yield* hub.publish({ type: "page-changes", topic: topics.sites });
-        yield* hub.rpc("page.applyOverride", { tabId: env.tabId }, 45_000).pipe(Effect.ignore);
-        yield* env.log(`Removed the page change “${current.title}”`);
-        return `Removed ${id}.`;
-      }),
+    tool(
+      "remove_page_change",
+      "Remove a page change (see list_page_changes).",
+      Schema.Struct({ id: Schema.String }),
+      ({ id }) =>
+        Effect.gen(function* () {
+          const current = yield* pageChanges.get(id);
+          if (!current) return text(`No page change ${id}.`, true);
+          yield* pageChanges.remove(id);
+          yield* hub.publish({ type: "page-changes", topic: topics.sites });
+          yield* hub.rpc("page.applyOverride", { tabId: env.tabId }, 45_000).pipe(Effect.ignore);
+          yield* env.log(`Removed the page change “${current.title}”`);
+          return `Removed ${id}.`;
+        }),
     ),
   ];
 });
@@ -379,7 +442,9 @@ export const siteTools = Effect.fn(function* (env: ToolEnv) {
 // --- Tool registry ---------------------------------------------------------------------
 
 const describeTool = (t: AppTool) => {
-  const params = Object.entries(t.params).map(([name, p]) => `${name}${p.required ? "" : "?"}: ${p.type}${p.description ? ` (${p.description})` : ""}`);
+  const params = Object.entries(t.params).map(
+    ([name, p]) => `${name}${p.required ? "" : "?"}: ${p.type}${p.description ? ` (${p.description})` : ""}`,
+  );
   return `- ${t.id}: ${t.title}${t.description ? ` — ${t.description}` : ""}${t.readOnly ? " [read-only]" : ""}${params.length ? `\n    params: ${params.join("; ")}` : ""}${t.input ? `\n    input: text (${t.input})` : ""}`;
 };
 
@@ -394,12 +459,15 @@ export const registryTools = Effect.fn(function* (env: ToolEnv) {
     tool(
       "list_app_tools",
       "What the apps in this workspace can do: each app's actions and the basic tools Rune Browser derives from its data (list/get/add/update/delete per table), with their params. Use one with use_app_tool. Using another app's tools needs the user's OK.",
-      Schema.Struct({ app: Schema.optionalKey(Schema.String.annotate({ description: "An app id, to list only its tools" })) }),
+      Schema.Struct({
+        app: Schema.optionalKey(Schema.String.annotate({ description: "An app id, to list only its tools" })),
+      }),
       ({ app }) =>
         Effect.gen(function* () {
           if (!own) return text("This tab no longer exists.", true);
           const catalog = (yield* registry.catalog(own.workspaceId)).filter((info) => !app || info.appId === app);
-          if (!catalog.length) return app ? text(`No app "${app}" in this workspace.`, true) : "No apps in this workspace yet.";
+          if (!catalog.length)
+            return app ? text(`No app "${app}" in this workspace.`, true) : "No apps in this workspace yet.";
           return catalog
             .map((info) => {
               const tools = info.tools.filter((t) => !t.path);
@@ -423,7 +491,10 @@ export const registryTools = Effect.fn(function* (env: ToolEnv) {
         Effect.gen(function* () {
           const appId = app ?? self;
           if (!appId) return text("Say which app (list_app_tools shows their ids).", true);
-          const result = yield* registry.call({ kind: "agent", tabId: env.tabId, label: env.label }, appId, toolId, { params, input });
+          const result = yield* registry.call({ kind: "agent", tabId: env.tabId, label: env.label }, appId, toolId, {
+            params,
+            input,
+          });
           const data = result.data === undefined ? "" : JSON.stringify(result.data, null, 1);
           const body = `${result.ok ? "" : `Failed (${result.status}): `}${result.message}${data ? `\n${data.length > 20_000 ? `${data.slice(0, 20_000)}…` : data}` : ""}`;
           return result.ok ? body : text(body, true);
@@ -435,10 +506,19 @@ export const registryTools = Effect.fn(function* (env: ToolEnv) {
 // --- Schedules -------------------------------------------------------------------------
 
 const TriggerArgs = {
-  at: Schema.optionalKey(Schema.String.annotate({ description: "Run once at this time (ISO 8601, e.g. 2026-11-02T08:00:00+01:00)" })),
-  cron: Schema.optionalKey(Schema.String.annotate({ description: 'Or repeat: a cron expression in local time, e.g. "0 8 * * 1-5" (at most every 5 minutes)' })),
+  at: Schema.optionalKey(
+    Schema.String.annotate({ description: "Run once at this time (ISO 8601, e.g. 2026-11-02T08:00:00+01:00)" }),
+  ),
+  cron: Schema.optionalKey(
+    Schema.String.annotate({
+      description: 'Or repeat: a cron expression in local time, e.g. "0 8 * * 1-5" (at most every 5 minutes)',
+    }),
+  ),
   event: Schema.optionalKey(
-    Schema.String.annotate({ description: 'Or on an event: "rune.started", "app.started", "app.crashed" (this app), or a name the app sends to $RUNE_API_URL/events' }),
+    Schema.String.annotate({
+      description:
+        'Or on an event: "rune.started", "app.started", "app.crashed" (this app), or a name the app sends to $RUNE_API_URL/events',
+    }),
   ),
 };
 
@@ -455,7 +535,11 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
     if (args.at) return { type: "once", at: new Date(args.at).toISOString() };
     if (args.cron) return { type: "cron", cron: args.cron };
     const e = args.event!;
-    return { type: "event", event: e === "rune.started" ? e : e === "app.started" || e === "app.crashed" ? `${e}:${appId}` : `app:${appId}:${e}` };
+    return {
+      type: "event",
+      event:
+        e === "rune.started" ? e : e === "app.started" || e === "app.crashed" ? `${e}:${appId}` : `app:${appId}:${e}`,
+    };
   };
   const allowed = Effect.gen(function* () {
     const app = yield* apps.get(appId);
@@ -465,7 +549,8 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
       action: "agent.schedule",
       resource: appId,
       title: `Let the agent in "${app?.name ?? "this app"}" run things on a schedule?`,
-      detail: "It wants to run the app's tools or commands in the background, also when no tab is open. You see every schedule and run in Schedules, and can pause or delete them.",
+      detail:
+        "It wants to run the app's tools or commands in the background, also when no tab is open. You see every schedule and run in Schedules, and can pause or delete them.",
       timeoutMs: 120_000,
     });
   });
@@ -476,7 +561,9 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
 
   return [
     tool("list_schedules", "This app's schedules (background runs), with their next and last runs.", NoArgs, () =>
-      scheduler.list({ appId }).pipe(Effect.map((list) => (list.length ? list.map(describe).join("\n") : "No schedules yet."))),
+      scheduler
+        .list({ appId })
+        .pipe(Effect.map((list) => (list.length ? list.map(describe).join("\n") : "No schedules yet."))),
     ),
 
     tool(
@@ -496,11 +583,20 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
           const trigger = triggerOf({ at, cron, event });
           if (typeof trigger === "string") return text(trigger, true);
           if (!toolId === !command) return text("Give either tool or command.", true);
-          const task: ScheduleTask = toolId ? { type: "tool", appId, tool: toolId, ...(params ? { params } : {}) } : { type: "command", appId, command: command! };
-          const spec: ScheduleSpec = { name, trigger, task, notify: notify ?? "failure", timeoutSec: Math.round(timeoutSec ?? DEFAULT_TIMEOUT_SEC) };
+          const task: ScheduleTask = toolId
+            ? { type: "tool", appId, tool: toolId, ...(params ? { params } : {}) }
+            : { type: "command", appId, command: command! };
+          const spec: ScheduleSpec = {
+            name,
+            trigger,
+            task,
+            notify: notify ?? "failure",
+            timeoutSec: Math.round(timeoutSec ?? DEFAULT_TIMEOUT_SEC),
+          };
           const problem = scheduleProblem(spec);
           if (problem) return text(problem, true);
-          if (!(yield* allowed)) return text("The user didn't allow schedules for this app. Tell them what you would have scheduled.", true);
+          if (!(yield* allowed))
+            return text("The user didn't allow schedules for this app. Tell them what you would have scheduled.", true);
           const schedule = yield* scheduler.create(spec, { by: "agent", tabId: appId });
           yield* env.log(`Scheduled “${schedule.name}” (${describeTrigger(schedule.trigger)})`);
           return `Created:\n${describe(schedule)}`;
@@ -510,7 +606,12 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
     tool(
       "update_schedule",
       "Change one of this app's schedules: pause or resume it, rename it, or give it a new time (at, cron or event).",
-      Schema.Struct({ id: Schema.String, paused: Schema.optionalKey(Schema.Boolean), name: Schema.optionalKey(Schema.String), ...TriggerArgs }),
+      Schema.Struct({
+        id: Schema.String,
+        paused: Schema.optionalKey(Schema.Boolean),
+        name: Schema.optionalKey(Schema.String),
+        ...TriggerArgs,
+      }),
       ({ id, paused, name, at, cron, event }) =>
         Effect.gen(function* () {
           const current = yield* scheduler.get(id);
@@ -519,7 +620,15 @@ export const scheduleTools = Effect.fn(function* (env: ToolEnv) {
           const trigger = timing ? triggerOf({ at, cron, event }) : current.trigger;
           if (typeof trigger === "string") return text(trigger, true);
           const spec: ScheduleSpec | undefined =
-            timing || name ? { name: name ?? current.name, trigger, task: current.task, notify: current.notify, timeoutSec: current.timeoutSec } : undefined;
+            timing || name
+              ? {
+                  name: name ?? current.name,
+                  trigger,
+                  task: current.task,
+                  notify: current.notify,
+                  timeoutSec: current.timeoutSec,
+                }
+              : undefined;
           if (spec && !(yield* allowed)) return text("The user didn't allow schedules for this app.", true);
           const saved = yield* scheduler.update(id, { spec, paused });
           return `Updated:\n${describe(saved)}`;
@@ -602,7 +711,10 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
       }),
       ({ preset, name }) =>
         Effect.gen(function* () {
-          const project = yield* projects.create(appId, preset, { name, by: { actor: "agent", actorLabel: env.label } });
+          const project = yield* projects.create(appId, preset, {
+            name,
+            by: { actor: "agent", actorLabel: env.label },
+          });
           yield* env.log(`Created the project (${preset})`);
           const files = Object.keys(presets.find((p) => p.id === preset)!.files).sort();
           return `Created in ${project.dir}:\n${files.join("\n")}\nrune.json, src/tokens.css\n\n${yield* statusText(20)}`;
@@ -662,7 +774,10 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           if (!table) {
             const overview = yield* appData.overview(appId);
             if (overview.error) return text(overview.error, true);
-            const tables = overview.tables.map((t) => `- ${t.name} (${t.rows} rows): ${t.columns.map((c) => `${c.name}${c.type ? ` ${c.type}` : ""}`).join(", ")}`);
+            const tables = overview.tables.map(
+              (t) =>
+                `- ${t.name} (${t.rows} rows): ${t.columns.map((c) => `${c.name}${c.type ? ` ${c.type}` : ""}`).join(", ")}`,
+            );
             return [
               tables.length ? `Tables:\n${tables.join("\n")}` : "No tables yet.",
               `Files: ${overview.files.count} (${overview.files.bytes} bytes)`,
@@ -684,7 +799,9 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
       Schema.Struct({
         name: Schema.optionalKey(Schema.String),
         icon: Schema.optionalKey(Schema.String),
-        icon_file: Schema.optionalKey(Schema.String.annotate({ description: "Path of an image, relative to the project folder" })),
+        icon_file: Schema.optionalKey(
+          Schema.String.annotate({ description: "Path of an image, relative to the project folder" }),
+        ),
       }),
       ({ name, icon, icon_file }) =>
         Effect.gen(function* () {
@@ -703,7 +820,12 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
           yield* hub.publish({ type: "app", topic: topics.apps, app: summary });
           // The user's own choice of icon stays.
           const kept = wanted !== undefined && summary.icon !== wanted;
-          const shown = image && !kept ? ` (icon from ${icon_file})` : summary.icon && !isImageIcon(summary.icon) ? ` (${summary.icon})` : "";
+          const shown =
+            image && !kept
+              ? ` (icon from ${icon_file})`
+              : summary.icon && !isImageIcon(summary.icon)
+                ? ` (${summary.icon})`
+                : "";
           return `Saved: ${summary.name}${shown}.${kept ? " The user chose the tab's icon themselves, so it stays." : ""}`;
         }),
     ),
@@ -735,20 +857,28 @@ export const appTools = Effect.fn(function* (env: ToolEnv) {
       ({ name, description }) =>
         Effect.gen(function* () {
           if (!SECRET_NAME_PATTERN.test(name) || isReservedSecretName(name)) {
-            return text(`"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names Rune Browser sets itself.`, true);
+            return text(
+              `"${name}" can't be used: use capital letters, digits and _ (like STRIPE_KEY), and not names Rune Browser sets itself.`,
+              true,
+            );
           }
           const { own, workspace, global } = yield* secrets.available(appId);
-          if ([...own, ...workspace, ...global].includes(name)) return `${name} is already available as process.env.${name}.`;
+          if ([...own, ...workspace, ...global].includes(name))
+            return `${name} is already available as process.env.${name}.`;
           yield* env.message("secret", JSON.stringify({ name, description: description.slice(0, 500) }));
           return `Asked the user for ${name}. Once they add it, the app restarts and gets it as process.env.${name}.`;
         }),
     ),
 
-    tool("search_icons", "Find Lucide icon names by keywords (e.g. 'money', 'calendar check').", Schema.Struct({ query: Schema.String }), ({ query }) =>
-      Effect.sync(() => {
-        const names = searchIcons(query);
-        return names.length ? names.join(", ") : "No icons found. Try a more general word.";
-      }),
+    tool(
+      "search_icons",
+      "Find Lucide icon names by keywords (e.g. 'money', 'calendar check').",
+      Schema.Struct({ query: Schema.String }),
+      ({ query }) =>
+        Effect.sync(() => {
+          const names = searchIcons(query);
+          return names.length ? names.join(", ") : "No icons found. Try a more general word.";
+        }),
     ),
   ];
 });
@@ -795,7 +925,13 @@ export const tabTools = Effect.fn(function* (env: ToolEnv) {
           if (!self) return text("This tab no longer exists.", true);
           const named = tabs.filter((t) => t.name.toLowerCase() === tab.trim().toLowerCase());
           const source = tabs.find((t) => t.id === tab) ?? (named.length === 1 ? named[0] : undefined);
-          if (!source) return text(named.length > 1 ? `Several tabs are called “${tab}”: use its id from list_tabs.` : `No tab “${tab}” in this workspace (see list_tabs).`, true);
+          if (!source)
+            return text(
+              named.length > 1
+                ? `Several tabs are called “${tab}”: use its id from list_tabs.`
+                : `No tab “${tab}” in this workspace (see list_tabs).`,
+              true,
+            );
           const refusal = shareRefusal(self, source);
           if (refusal) return text(refusal, true);
           const reader = self.kind === "web" ? "website agent" : "app builder";
@@ -816,12 +952,18 @@ export const tabTools = Effect.fn(function* (env: ToolEnv) {
           const page =
             self.kind === "web"
               ? yield* hub
-                  .rpc<{ url: string; title: string; text: string; selection?: string } | null>("page.read", { tabId: source.id }, 45_000)
+                  .rpc<{ url: string; title: string; text: string; selection?: string } | null>(
+                    "page.read",
+                    { tabId: source.id },
+                    45_000,
+                  )
                   .pipe(Effect.orElseSucceed(() => null))
               : null;
           const reply = (yield* apps.messages(source.id)).filter((m) => m.role === "assistant").at(-1);
           return yield* Effect.provide(
-            sharedContext(self, [{ tabId: source.id, ...(page ? { page } : {}), ...(reply ? { messageId: reply.id } : {}) }]),
+            sharedContext(self, [
+              { tabId: source.id, ...(page ? { page } : {}), ...(reply ? { messageId: reply.id } : {}) },
+            ]),
             context,
           ).pipe(
             Effect.tap(() => env.log(`Read “${source.name}”`)),

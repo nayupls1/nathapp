@@ -21,7 +21,20 @@ import { startUnloading } from "./lib/unload";
 import { startWindowChrome } from "./lib/windowChrome";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
-import { currentWorkspace, HISTORY_VIEW, isSettingsView, selectApp, loadApps, openTab, loadProviders, newApp, newWebTab, openTabs, selectedId, workspaceTabs } from "./lib/store";
+import {
+  currentWorkspace,
+  HISTORY_VIEW,
+  isSettingsView,
+  selectApp,
+  loadApps,
+  openTab,
+  loadProviders,
+  newApp,
+  newWebTab,
+  openTabs,
+  selectedId,
+  workspaceTabs,
+} from "./lib/store";
 import { colors, font, radius, space } from "./theme.stylex";
 
 export default function App() {
@@ -66,7 +79,8 @@ export default function App() {
           <div role="status" {...stylex.attrs(styles.safeMode)} data-safe-mode data-titlebar>
             <Icon name="life-buoy" size={16} />
             <span {...stylex.attrs(styles.safeModeText)}>
-              <strong>Safe mode.</strong> Your theme and site customizations are off. Undo what broke things in History, then restart normally.
+              <strong>Safe mode.</strong> Your theme and site customizations are off. Undo what broke things in History,
+              then restart normally.
             </span>
             <button type="button" onClick={() => void selectApp(HISTORY_VIEW)} {...stylex.attrs(styles.safeModeButton)}>
               Open History
@@ -82,7 +96,11 @@ export default function App() {
           <Switch
             fallback={
               <div {...stylex.attrs(styles.empty)}>
-                <p>{workspaceTabs().length ? "Select a tab" : `Nothing in ${currentWorkspace()?.name ?? "this workspace"} yet`}</p>
+                <p>
+                  {workspaceTabs().length
+                    ? "Select a tab"
+                    : `Nothing in ${currentWorkspace()?.name ?? "this workspace"} yet`}
+                </p>
                 <div {...stylex.attrs(styles.emptyActions)}>
                   <Button variant="primary" onClick={() => newApp()}>
                     + New app
@@ -141,7 +159,16 @@ const styles = stylex.create({
     // The frame around the page: the sidebars' color.
     backgroundColor: colors.sidebar,
   },
-  column: { display: "flex", flexDirection: "column", gap: space.sm, flex: 1, minWidth: 0, minHeight: 0, paddingBlock: space.sm, paddingRight: space.sm },
+  column: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.sm,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    paddingBlock: space.sm,
+    paddingRight: space.sm,
+  },
   // Pages scroll vertically; nothing in it should ever scroll the whole area sideways.
   content: {
     position: "relative",
@@ -185,7 +212,14 @@ const styles = stylex.create({
     fontSize: 12,
     cursor: "pointer",
   },
-  layer: { position: "absolute", inset: 0, zIndex: 1, overflow: "hidden", borderRadius: radius.md, backgroundColor: colors.bg },
+  layer: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 1,
+    overflow: "hidden",
+    borderRadius: radius.md,
+    backgroundColor: colors.bg,
+  },
   pane: { boxShadow: `0 0 0 1px ${colors.border}, 0 1px 3px rgb(0 0 0 / 0.06)` },
   // Not display:none: webviews must keep their size to stay rendered.
   hidden: { visibility: "hidden", pointerEvents: "none", zIndex: 0 },

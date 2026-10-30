@@ -80,7 +80,10 @@ class AppServer {
   }
 
   async initialize() {
-    await this.request("initialize", { clientInfo: { name: "rune", title: "Rune Browser", version: VERSION }, capabilities: null });
+    await this.request("initialize", {
+      clientInfo: { name: "rune", title: "Rune Browser", version: VERSION },
+      capabilities: null,
+    });
     this.notify("initialized");
   }
 
@@ -109,7 +112,15 @@ function userMcpServers(): string[] {
  * read a file: it can't.
  */
 const noTools = () => ({
-  features: { shell_tool: false, unified_exec: false, code_mode: false, js_repl: false, view_image: false, apps: false, goals: false },
+  features: {
+    shell_tool: false,
+    unified_exec: false,
+    code_mode: false,
+    js_repl: false,
+    view_image: false,
+    apps: false,
+    goals: false,
+  },
   web_search: "disabled",
   mcp_servers: Object.fromEntries(userMcpServers().map((name) => [name, { enabled: false }])),
 });
@@ -131,7 +142,9 @@ export const CodexDriver: ProviderDriver = {
           defaultModel: null,
         };
       }
-      const version = (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim().replace(/^codex-cli\s*/, "") || null;
+      const version =
+        (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim().replace(/^codex-cli\s*/, "") ||
+        null;
       const server = new AppServer(binary, readConfig().agentDir, {});
       try {
         await server.initialize();
@@ -148,7 +161,8 @@ export const CodexDriver: ProviderDriver = {
             description: m.description,
             efforts: (m.supportedReasoningEfforts ?? []).map((e: Json) => e.reasoningEffort),
           }));
-        const plan = account.account?.type === "chatgpt" ? `ChatGPT ${account.account.planType}` : account.account?.type;
+        const plan =
+          account.account?.type === "chatgpt" ? `ChatGPT ${account.account.planType}` : account.account?.type;
         return {
           state: signedIn ? "ready" : "signed-out",
           version,
@@ -200,18 +214,26 @@ export const CodexDriver: ProviderDriver = {
                 if (item.type === "agentMessage" && item.text?.trim()) emit({ type: "text", text: item.text.trim() });
                 else if (item.type === "commandExecution") emit({ type: "tool", title: commandTitle(item.command) });
                 else if (item.type === "fileChange") {
-                  for (const change of item.changes ?? []) emit({ type: "tool", title: `Edited ${displayPath(change.path, input.cwd)}` });
+                  for (const change of item.changes ?? [])
+                    emit({ type: "tool", title: `Edited ${displayPath(change.path, input.cwd)}` });
                 } else if (item.type === "webSearch") {
-                  emit({ type: "tool", title: item.query ? `Searched the web for “${String(item.query).slice(0, 60)}”` : "Searched the web" });
+                  emit({
+                    type: "tool",
+                    title: item.query
+                      ? `Searched the web for “${String(item.query).slice(0, 60)}”`
+                      : "Searched the web",
+                  });
                 }
                 break;
               }
               case "error":
-                if (!params.willRetry) emit({ type: "error", message: params.error?.message ?? "Codex reported an error" });
+                if (!params.willRetry)
+                  emit({ type: "error", message: params.error?.message ?? "Codex reported an error" });
                 break;
               case "turn/completed": {
                 const turn = params.turn as Json;
-                if (turn.status === "failed") emit({ type: "error", message: turn.error?.message ?? "The turn failed" });
+                if (turn.status === "failed")
+                  emit({ type: "error", message: turn.error?.message ?? "The turn failed" });
                 resolve();
                 break;
               }
@@ -230,7 +252,9 @@ export const CodexDriver: ProviderDriver = {
           ...(input.ephemeral ? { ephemeral: true } : {}),
           config: (() => {
             const locked = input.access === "none" ? noTools() : null;
-            const rune = input.mcp ? { [input.mcp.name]: { url: input.mcp.url, default_tools_approval_mode: "approve" } } : {};
+            const rune = input.mcp
+              ? { [input.mcp.name]: { url: input.mcp.url, default_tools_approval_mode: "approve" } }
+              : {};
             return {
               ...locked,
               mcp_servers: { ...locked?.mcp_servers, ...rune },
@@ -239,7 +263,9 @@ export const CodexDriver: ProviderDriver = {
           })(),
         };
         const thread = input.resume
-          ? await server.request("thread/resume", { threadId: input.resume, ...common }).catch(() => server.request("thread/start", common))
+          ? await server
+              .request("thread/resume", { threadId: input.resume, ...common })
+              .catch(() => server.request("thread/start", common))
           : await server.request("thread/start", common);
         threadId = thread.thread.id as string;
         emit({ type: "session", id: threadId });
@@ -248,7 +274,9 @@ export const CodexDriver: ProviderDriver = {
           threadId,
           // Attached images as local images the model sees; PDFs by their path.
           input: [
-            ...(input.files ?? []).filter((f) => f.mime.startsWith("image/")).map((f) => ({ type: "localImage", path: f.path })),
+            ...(input.files ?? [])
+              .filter((f) => f.mime.startsWith("image/"))
+              .map((f) => ({ type: "localImage", path: f.path })),
             { type: "text", text: withPdfPaths(input), text_elements: [] },
           ],
           ...(input.model ? { model: input.model } : {}),
@@ -266,5 +294,7 @@ export const CodexDriver: ProviderDriver = {
 /** Codex can't take PDFs as content: it gets their paths to read. */
 const withPdfPaths = (input: { prompt: string; files?: readonly { path: string; mime: string; name: string }[] }) => {
   const pdfs = (input.files ?? []).filter((f) => f.mime === "application/pdf");
-  return pdfs.length ? `${input.prompt}\n\nPDFs the user attached: ${pdfs.map((f) => `${f.name} (${f.path})`).join(", ")}` : input.prompt;
+  return pdfs.length
+    ? `${input.prompt}\n\nPDFs the user attached: ${pdfs.map((f) => `${f.name} (${f.path})`).join(", ")}`
+    : input.prompt;
 };

@@ -11,7 +11,11 @@ const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 // (Hyprland, Sway…) it would keep the keys of cookies and safeStorage under a
 // hardcoded password. Without a Secret Service, encryption is reported as
 // unavailable (see secretsKey.ts). KDE's KWallet is found on its own.
-if (process.platform === "linux" && !app.commandLine.hasSwitch("password-store") && !/kde/i.test(process.env.XDG_CURRENT_DESKTOP ?? "")) {
+if (
+  process.platform === "linux" &&
+  !app.commandLine.hasSwitch("password-store") &&
+  !/kde/i.test(process.env.XDG_CURRENT_DESKTOP ?? "")
+) {
   app.commandLine.appendSwitch("password-store", "gnome-libsecret");
 }
 
@@ -63,7 +67,10 @@ ipcMain.on("rune:relaunch", (event, safe: unknown) => {
 ipcMain.handle("rune:pick-folder", async (event, title: unknown) => {
   const win = mainWindow;
   if (!win || event.sender !== win.webContents) return null;
-  const picked = await dialog.showOpenDialog(win, { title: typeof title === "string" ? title.slice(0, 200) : "Choose a folder", properties: ["openDirectory"] });
+  const picked = await dialog.showOpenDialog(win, {
+    title: typeof title === "string" ? title.slice(0, 200) : "Choose a folder",
+    properties: ["openDirectory"],
+  });
   return picked.canceled ? null : (picked.filePaths[0] ?? null);
 });
 
@@ -101,10 +108,17 @@ function createWindow(server: ServerHandle) {
     // No title bar (like Chrome). macOS keeps its traffic lights (top left); elsewhere the
     // window is frameless and the renderer draws minimize, maximize and close (top right).
     // Its top bars are where the window is dragged (lib/windowChrome.ts).
-    ...(process.platform === "darwin" ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 16, y: 16 } } : { frame: false }),
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hidden" as const, trafficLightPosition: { x: 16, y: 16 } }
+      : { frame: false }),
     webPreferences: {
       preload: join(distDir, "electron/preload.cjs"),
-      additionalArguments: [`--rune-server-url=${server.url}`, `--rune-token=${server.token}`, ...(safeMode ? ["--rune-safe-mode=1"] : []), ...(process.env.RUNE_OFFSCREEN === "1" ? ["--rune-offscreen=1"] : [])],
+      additionalArguments: [
+        `--rune-server-url=${server.url}`,
+        `--rune-token=${server.token}`,
+        ...(safeMode ? ["--rune-safe-mode=1"] : []),
+        ...(process.env.RUNE_OFFSCREEN === "1" ? ["--rune-offscreen=1"] : []),
+      ],
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,

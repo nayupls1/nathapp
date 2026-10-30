@@ -24,9 +24,18 @@ function hostDirs() {
   const dirs = [nativeHostsDir()];
   for (const { dir } of browserDirs()) dirs.push(join(dir, "NativeMessagingHosts"));
   if (process.platform === "linux") {
-    dirs.push("/etc/opt/chrome/native-messaging-hosts", "/etc/chromium/native-messaging-hosts", "/etc/opt/edge/native-messaging-hosts", "/etc/opt/brave/native-messaging-hosts");
+    dirs.push(
+      "/etc/opt/chrome/native-messaging-hosts",
+      "/etc/chromium/native-messaging-hosts",
+      "/etc/opt/edge/native-messaging-hosts",
+      "/etc/opt/brave/native-messaging-hosts",
+    );
   } else if (process.platform === "darwin") {
-    dirs.push("/Library/Google/Chrome/NativeMessagingHosts", "/Library/Application Support/Chromium/NativeMessagingHosts", join(homedir(), "Library", "Application Support", "Mozilla", "NativeMessagingHosts"));
+    dirs.push(
+      "/Library/Google/Chrome/NativeMessagingHosts",
+      "/Library/Application Support/Chromium/NativeMessagingHosts",
+      join(homedir(), "Library", "Application Support", "Mozilla", "NativeMessagingHosts"),
+    );
   }
   return dirs;
 }
@@ -56,7 +65,8 @@ export function hasHostsFor(extensionId: string) {
     } catch {
       continue;
     }
-    for (const f of files) if (f.endsWith(".json") && readJson<HostManifest>(join(dir, f))?.allowed_origins?.includes(origin)) return true;
+    for (const f of files)
+      if (f.endsWith(".json") && readJson<HostManifest>(join(dir, f))?.allowed_origins?.includes(origin)) return true;
   }
   return false;
 }
@@ -64,7 +74,8 @@ export function hasHostsFor(extensionId: string) {
 /** The environment hosts get: Rune Browser's own variables stay out. */
 function hostEnv() {
   const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith("RUNE_") && k !== "ELECTRON_RUN_AS_NODE") env[k] = v;
+  for (const [k, v] of Object.entries(process.env))
+    if (v !== undefined && !k.startsWith("RUNE_") && k !== "ELECTRON_RUN_AS_NODE") env[k] = v;
   return env;
 }
 
@@ -77,7 +88,12 @@ export interface NativePort {
  * Starts a host and connects to it. `onMessage` gets each message, `onClose`
  * once, with an error message when it didn't end well.
  */
-export function connectNative(name: string, extensionId: string, onMessage: (message: unknown) => void, onClose: (error: string | null) => void): NativePort {
+export function connectNative(
+  name: string,
+  extensionId: string,
+  onMessage: (message: unknown) => void,
+  onClose: (error: string | null) => void,
+): NativePort {
   const host = findHost(name, extensionId);
   let closed = false;
   const close = (error: string | null) => {
@@ -93,7 +109,12 @@ export function connectNative(name: string, extensionId: string, onMessage: (mes
   if (process.platform === "win32") args.push("--parent-window=0");
   let child: ChildProcess;
   try {
-    child = spawn(host.path, args, { cwd: dirname(host.path), env: hostEnv(), stdio: ["pipe", "pipe", "inherit"], windowsHide: true });
+    child = spawn(host.path, args, {
+      cwd: dirname(host.path),
+      env: hostEnv(),
+      stdio: ["pipe", "pipe", "inherit"],
+      windowsHide: true,
+    });
   } catch {
     queueMicrotask(() => close("Failed to start native messaging host."));
     return { post: () => {}, close: () => {} };

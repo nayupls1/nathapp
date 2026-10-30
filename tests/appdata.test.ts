@@ -5,11 +5,19 @@ import { Database } from "bun:sqlite";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AppSummary, AuditEntry, DataOverview, DataRows, HistoryEntry, PermissionRequest, WorkspaceInfo } from "../src/shared/api";
+import type {
+  AppSummary,
+  AuditEntry,
+  DataOverview,
+  DataRows,
+  HistoryEntry,
+  PermissionRequest,
+  WorkspaceInfo,
+} from "../src/shared/api";
 import { startServer } from "./lib/server";
 import { devScript } from "./lib/apps";
 
-const waitFor = async <T,>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
+const waitFor = async <T>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
   const deadline = Date.now() + ms;
   for (;;) {
     const value = await fn();
@@ -31,17 +39,31 @@ describe("managed app data", () => {
   const create = async (workspaceId?: string) => {
     const app = await server.api<AppSummary>("/api/apps", { method: "POST", json: workspaceId ? { workspaceId } : {} });
     await server.api(`/api/apps/${app.id}/project`, { method: "POST", json: { preset: "api" } });
-    devScript(projectOf(app), 'await Bun.write("env.txt", Object.entries(process.env).map(([k, v]) => `${k}=${v}`).join("\\n"));');
+    devScript(
+      projectOf(app),
+      'await Bun.write("env.txt", Object.entries(process.env).map(([k, v]) => `${k}=${v}`).join("\\n"));',
+    );
     return app;
   };
   const envOf = async (app: AppSummary) => {
     const file = join(projectOf(app), "env.txt");
     await server.api(`/api/apps/${app.id}/runtime`, { method: "POST", json: { action: "restart" } });
-    const text = await waitFor(() => (existsSync(file) && readFileSync(file, "utf8").includes("RUNE_API_TOKEN=") ? readFileSync(file, "utf8") : undefined));
-    return Object.fromEntries(text.split("\n").filter(Boolean).map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+    const text = await waitFor(() =>
+      existsSync(file) && readFileSync(file, "utf8").includes("RUNE_API_TOKEN=")
+        ? readFileSync(file, "utf8")
+        : undefined,
+    );
+    return Object.fromEntries(
+      text
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+    );
   };
   const appApi = (path: string, token: string, origin?: string) =>
-    fetch(`${server.url}/app-api/v1${path}`, { headers: { Authorization: `Bearer ${token}`, ...(origin ? { Origin: origin } : {}) } });
+    fetch(`${server.url}/app-api/v1${path}`, {
+      headers: { Authorization: `Bearer ${token}`, ...(origin ? { Origin: origin } : {}) },
+    });
 
   beforeAll(async () => {
     server = await startServer();
@@ -51,7 +73,8 @@ describe("managed app data", () => {
     // Rune Browser may be reading it (History) while this writes.
     db.run("PRAGMA busy_timeout = 5000");
     db.run("CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT, done INTEGER)");
-    for (let i = 1; i <= 120; i++) db.run("INSERT INTO notes (title, done) VALUES (?, ?)", [i === 7 ? "100% sure" : `note ${i}`, i % 2]);
+    for (let i = 1; i <= 120; i++)
+      db.run("INSERT INTO notes (title, done) VALUES (?, ?)", [i === 7 ? "100% sure" : `note ${i}`, i % 2]);
     db.close();
     env = await envOf(notes);
     other = await create();
@@ -86,16 +109,24 @@ describe("managed app data", () => {
     expect(page.rows).toHaveLength(20);
     expect(page.rows[0]).toEqual({ id: 101, title: "note 101", done: 1 });
     // LIKE wildcards are matched literally.
-    const found = await server.api<DataRows>(`/api/apps/${notes.id}/data/tables/notes?search=${encodeURIComponent("0%")}`);
+    const found = await server.api<DataRows>(
+      `/api/apps/${notes.id}/data/tables/notes?search=${encodeURIComponent("0%")}`,
+    );
     expect(found.rows.map((r) => r.title)).toEqual(["100% sure"]);
-    const filtered = await server.api<DataRows>(`/api/apps/${notes.id}/data/tables/notes?where.done=0&order=id&desc=1&limit=2`);
+    const filtered = await server.api<DataRows>(
+      `/api/apps/${notes.id}/data/tables/notes?where.done=0&order=id&desc=1&limit=2`,
+    );
     expect(filtered.rows.map((r) => r.id)).toEqual([120, 118]);
     await expect(server.api(`/api/apps/${notes.id}/data/tables/nope`)).rejects.toThrow("404");
-    await expect(server.api(`/api/apps/${notes.id}/data/tables/notes?order=${encodeURIComponent('id"; DROP TABLE notes; --')}`)).rejects.toThrow("404");
+    await expect(
+      server.api(`/api/apps/${notes.id}/data/tables/notes?order=${encodeURIComponent('id"; DROP TABLE notes; --')}`),
+    ).rejects.toThrow("404");
   });
 
   test("the export has the database, the tables as JSON and the files", async () => {
-    const res = await fetch(`${server.url}/api/apps/${notes.id}/data/export`, { headers: { Authorization: `Bearer ${server.token}` } });
+    const res = await fetch(`${server.url}/api/apps/${notes.id}/data/export`, {
+      headers: { Authorization: `Bearer ${server.token}` },
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Disposition")).toMatch(/^attachment; filename=".+-data\.tar\.gz"$/);
     const files = await new Bun.Archive(await res.bytes()).files();
@@ -117,7 +148,10 @@ describe("managed app data", () => {
     const denied = appApi(`/data/${notes.id}/notes`, token);
     const request = await waitFor(async () => (await server.api<PermissionRequest[]>("/api/permissions/pending"))[0]);
     expect(request).toMatchObject({ subject: other.id, action: "app.data", resource: notes.id });
-    await server.api(`/api/permissions/pending/${request.id}`, { method: "POST", json: { allow: false, remember: false } });
+    await server.api(`/api/permissions/pending/${request.id}`, {
+      method: "POST",
+      json: { allow: false, remember: false },
+    });
     expect((await denied).status).toBe(403);
 
     const allowed = appApi(`/data/${notes.id}/notes?limit=3`, token);

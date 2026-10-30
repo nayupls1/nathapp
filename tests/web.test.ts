@@ -88,23 +88,37 @@ describe("web tab routes", () => {
   afterAll(() => server.stop());
 
   test("web tabs are named after the page until renamed", async () => {
-    const tab = await server.api<AppSummary>("/api/apps", { method: "POST", json: { kind: "web", url: "https://example.com/" } });
+    const tab = await server.api<AppSummary>("/api/apps", {
+      method: "POST",
+      json: { kind: "web", url: "https://example.com/" },
+    });
     expect(tab).toMatchObject({ kind: "web", name: "example.com", url: "https://example.com/" });
 
     const titled = await server.api<AppSummary>(`/api/apps/${tab.id}/page`, {
       method: "PATCH",
       json: { url: "https://example.com/about", title: "About us", favicon: "https://example.com/favicon.ico" },
     });
-    expect(titled).toMatchObject({ name: "About us", url: "https://example.com/about", favicon: "https://example.com/favicon.ico" });
+    expect(titled).toMatchObject({
+      name: "About us",
+      url: "https://example.com/about",
+      favicon: "https://example.com/favicon.ico",
+    });
 
     await server.api(`/api/apps/${tab.id}`, { method: "PATCH", json: { name: "Mine" } });
-    const after = await server.api<AppSummary>(`/api/apps/${tab.id}/page`, { method: "PATCH", json: { title: "Other" } });
+    const after = await server.api<AppSummary>(`/api/apps/${tab.id}/page`, {
+      method: "PATCH",
+      json: { title: "Other" },
+    });
     expect(after.name).toBe("Mine");
 
     const app = await server.api<AppSummary>("/api/apps", { method: "POST" });
     expect(app.kind).toBe("app");
-    await expect(server.api(`/api/apps/${app.id}/page`, { method: "PATCH", json: { title: "x" } })).rejects.toThrow("404");
-    await expect(server.api("/api/apps", { method: "POST", json: { kind: "web", url: "file:///etc/passwd" } })).rejects.toThrow("400");
+    await expect(server.api(`/api/apps/${app.id}/page`, { method: "PATCH", json: { title: "x" } })).rejects.toThrow(
+      "404",
+    );
+    await expect(
+      server.api("/api/apps", { method: "POST", json: { kind: "web", url: "file:///etc/passwd" } }),
+    ).rejects.toThrow("400");
   });
 
   test("site customizations are stored per host and broadcast", async () => {
@@ -114,9 +128,15 @@ describe("web tab routes", () => {
     await new Promise<void>((resolve) => socket.onConnection((c) => c && resolve()));
     await Bun.sleep(50);
 
-    const saved = await server.api<SiteOverride>("/api/sites/example.com", { method: "PUT", json: { css: "h1 { color: red }" } });
+    const saved = await server.api<SiteOverride>("/api/sites/example.com", {
+      method: "PUT",
+      json: { css: "h1 { color: red }" },
+    });
     expect(saved).toMatchObject({ host: "example.com", css: "h1 { color: red }", js: "", enabled: true });
-    const toggled = await server.api<SiteOverride>("/api/sites/example.com", { method: "PUT", json: { enabled: false } });
+    const toggled = await server.api<SiteOverride>("/api/sites/example.com", {
+      method: "PUT",
+      json: { enabled: false },
+    });
     expect(toggled).toMatchObject({ css: "h1 { color: red }", enabled: false });
     expect((await server.api<SiteOverride[]>("/api/sites")).map((o) => o.host)).toEqual(["example.com"]);
 
@@ -131,7 +151,11 @@ describe("web tab routes", () => {
   test("websites can't change customizations", async () => {
     const res = await fetch(`${server.url}/api/sites/evil.com`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Origin: "https://evil.com", Authorization: `Bearer ${server.token}` },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://evil.com",
+        Authorization: `Bearer ${server.token}`,
+      },
       body: JSON.stringify({ js: "alert(1)" }),
     });
     expect(res.status).toBe(403);

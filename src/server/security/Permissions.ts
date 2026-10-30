@@ -6,7 +6,13 @@
 // are denied after a timeout.
 import { Context, Deferred, Effect, Layer } from "effect";
 import { SqlClient } from "effect/sql";
-import { workspaceOfScope, workspaceScope, type PermissionAction, type PermissionGrant, type PermissionRequest } from "../../shared/api";
+import {
+  workspaceOfScope,
+  workspaceScope,
+  type PermissionAction,
+  type PermissionGrant,
+  type PermissionRequest,
+} from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { Apps } from "../db/Apps";
 import { Settings } from "../db/Settings";
@@ -52,7 +58,11 @@ export interface AskInput {
 
 export interface PermissionsShape {
   /** The remembered decision, if any. */
-  readonly decision: (subject: string, action: PermissionAction, resource: string) => Effect.Effect<"allow" | "deny" | null>;
+  readonly decision: (
+    subject: string,
+    action: PermissionAction,
+    resource: string,
+  ) => Effect.Effect<"allow" | "deny" | null>;
   /** The remembered decision, else asks the user (false if they deny or don't answer in time). */
   readonly ask: (input: AskInput) => Effect.Effect<boolean>;
   /** remember: for this subject, or (apps) for every app in its workspace. */
@@ -60,7 +70,12 @@ export interface PermissionsShape {
   readonly pending: Effect.Effect<PermissionRequest[]>;
   readonly list: Effect.Effect<PermissionGrant[]>;
   /** Remembers a decision (from the UI, e.g. letting an app use a global secret). */
-  readonly set: (subject: string, action: PermissionAction, resource: string, decision: "allow" | "deny") => Effect.Effect<void>;
+  readonly set: (
+    subject: string,
+    action: PermissionAction,
+    resource: string,
+    decision: "allow" | "deny",
+  ) => Effect.Effect<void>;
   readonly revoke: (id: number) => Effect.Effect<PermissionGrant | null>;
   /** Forgets everything about a subject (the app was deleted). */
   readonly forget: (subject: string) => Effect.Effect<void>;
@@ -115,10 +130,15 @@ export const make = Effect.gen(function* () {
     );
 
   const nameOf = (subject: string) =>
-    subject === WEBSITE_AGENT ? Effect.succeed("Website agent") : apps.get(subject).pipe(Effect.map((a) => a?.name ?? "A deleted app"));
+    subject === WEBSITE_AGENT
+      ? Effect.succeed("Website agent")
+      : apps.get(subject).pipe(Effect.map((a) => a?.name ?? "A deleted app"));
 
   const workspaceOf = (subject: string) =>
-    sql<{ id: string; name: string }>`SELECT w.id, w.name FROM workspaces w JOIN apps a ON a.workspace_id = w.id WHERE a.id = ${subject}`.pipe(
+    sql<{
+      id: string;
+      name: string;
+    }>`SELECT w.id, w.name FROM workspaces w JOIN apps a ON a.workspace_id = w.id WHERE a.id = ${subject}`.pipe(
       Effect.map((rows) => rows[0] ?? null),
       Effect.orDie,
     );
@@ -154,7 +174,10 @@ export const make = Effect.gen(function* () {
         if (known) return known === "allow";
         // The same question asked twice while waiting gets the same answer.
         let entry = [...waiting.values()].find(
-          (w) => w.request.subject === input.subject && w.request.action === input.action && w.request.resource === input.resource,
+          (w) =>
+            w.request.subject === input.subject &&
+            w.request.action === input.action &&
+            w.request.resource === input.resource,
         );
         if (!entry) {
           const request: PermissionRequest = {
@@ -223,7 +246,10 @@ export const make = Effect.gen(function* () {
 
     pending: Effect.sync(() => [...waiting.values()].map((w) => w.request)),
 
-    list: sql.unsafe<GrantRow>(`${GRANTS} ORDER BY p.created_at DESC`).pipe(Effect.map((rows) => rows.map(toGrant)), Effect.orDie),
+    list: sql.unsafe<GrantRow>(`${GRANTS} ORDER BY p.created_at DESC`).pipe(
+      Effect.map((rows) => rows.map(toGrant)),
+      Effect.orDie,
+    ),
 
     revoke: (id) =>
       Effect.gen(function* () {
@@ -235,7 +261,8 @@ export const make = Effect.gen(function* () {
         return toGrant(row);
       }).pipe(Effect.orDie),
 
-    forget: (subject) => sql`DELETE FROM permissions WHERE subject = ${subject}`.pipe(Effect.orDie, Effect.andThen(changed)),
+    forget: (subject) =>
+      sql`DELETE FROM permissions WHERE subject = ${subject}`.pipe(Effect.orDie, Effect.andThen(changed)),
   } satisfies PermissionsShape;
 });
 

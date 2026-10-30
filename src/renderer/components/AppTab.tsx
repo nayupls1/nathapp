@@ -25,7 +25,6 @@ import { HistoryPanel } from "./History";
 import { ToolsPanel } from "./ToolsPanel";
 import { SecretsPanel } from "./Secrets";
 
-
 export function AppTab(props: { appId: string; active: boolean }) {
   const state = () => states[props.appId];
   const isNew = () => !state()?.project && !state()?.messages.length && !state()?.running;
@@ -84,7 +83,8 @@ function Workbench(props: { appId: string; active: boolean }) {
 
   // --- Runtime control ---------------------------------------------------------------
 
-  const control = async (action: "start" | "stop" | "restart") => setRuntime(props.appId, await api.controlRuntime(props.appId, action));
+  const control = async (action: "start" | "stop" | "restart") =>
+    setRuntime(props.appId, await api.controlRuntime(props.appId, action));
 
   // --- The preview page --------------------------------------------------------------
 
@@ -102,10 +102,14 @@ function Workbench(props: { appId: string; active: boolean }) {
     });
 
   const requireReady = () => {
-    if (!webview || !ready) throw new Error(running() ? "The preview is still loading" : `The app isn't running (${runtime()?.state ?? "no project"})`);
+    if (!webview || !ready)
+      throw new Error(
+        running() ? "The preview is still loading" : `The app isn't running (${runtime()?.state ?? "no project"})`,
+      );
     return webview;
   };
-  const info = (): PageInfo => (webview && ready ? { url: webview.getURL(), title: webview.getTitle() } : { url: runtime()?.url ?? "", title: "" });
+  const info = (): PageInfo =>
+    webview && ready ? { url: webview.getURL(), title: webview.getTitle() } : { url: runtime()?.url ?? "", title: "" };
 
   function attach(view: WebviewTag) {
     webview = view;
@@ -125,11 +129,13 @@ function Workbench(props: { appId: string; active: boolean }) {
     view.addEventListener("did-stop-loading", () => {
       const saved = restoring;
       restoring = undefined;
-      if (saved && sameOrigin(view.getURL(), saved.url)) void view.executeJavaScript(restoreScript(saved)).catch(() => {});
+      if (saved && sameOrigin(view.getURL(), saved.url))
+        void view.executeJavaScript(restoreScript(saved)).catch(() => {});
       loaded();
     });
     view.addEventListener("did-fail-load", (e: DidFailLoadEvent) => {
-      if (e.isMainFrame && e.errorCode !== -3) setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
+      if (e.isMainFrame && e.errorCode !== -3)
+        setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
       loaded();
     });
     view.addEventListener("did-navigate", () => (first ? (first = false) : clearPicks(props.appId)));
@@ -213,7 +219,9 @@ function Workbench(props: { appId: string; active: boolean }) {
   function send(prompt: string) {
     const selection = [...picksOf(props.appId)];
     const page: PageContext | undefined =
-      webview && ready && selection.length ? { url: webview.getURL(), title: webview.getTitle(), selection } : undefined;
+      webview && ready && selection.length
+        ? { url: webview.getURL(), title: webview.getTitle(), selection }
+        : undefined;
     clearPicks(props.appId);
     if (webview && ready) void webview.executeJavaScript(unmarkScript()).catch(() => {});
     void sendWithShares(props.appId, prompt, page);
@@ -244,113 +252,135 @@ function Workbench(props: { appId: string; active: boolean }) {
       },
       tools: () => (
         <>
-      <Show when={state().project}>
-        <span
-          {...stylex.attrs(styles.status)}
-          title={runtime()?.error ?? (isLive() ? "The finished app (open the agent to edit it)" : "Being edited: the dev server, changes appear live")}
-          data-runtime-state={runtime()?.state}
-          data-mode={appMode(props.appId)}
-        >
-          <span
-            {...stylex.attrs(
-              styles.dot,
-              isRunning() && styles.dotRunning,
-              busy() && styles.dotBusy,
-              isCrashed() && styles.dotCrashed,
-            )}
-          />
-          {isLive() ? "" : "Editing · "}
-          {stateLabels[runtime()?.state ?? "stopped"]}
-        </span>
-      </Show>
-      <button
-        type="button"
-        title="Restart the app"
-        disabled={!state().project || busy()}
-        onClick={() => void control("restart")}
-        {...stylex.attrs(styles.iconButton)}
-        data-restart
-      >
-        <Icon name="rotate-cw" size={15} />
-      </button>
-      <button
-        type="button"
-        title="Logs"
-        disabled={!state().project}
-        onClick={() => setLogsOpen((o) => !o)}
-        {...stylex.attrs(styles.iconButton, logsOpen() && styles.iconButtonOn)}
-        data-logs
-      >
-        <Icon name="terminal" size={15} />
-      </button>
-      <button
-        type="button"
-        title="Secrets (API keys, passwords) for this app"
-        onClick={() => setSecretsOpen((o) => !o)}
-        {...stylex.attrs(styles.iconButton, secretsOpen() && styles.iconButtonOn)}
-        data-secrets
-      >
-        <Icon name="key-round" size={15} />
-      </button>
-      <button
-        type="button"
-        title="History: undo changes, restore earlier versions"
-        disabled={!state().project}
-        onClick={() => setHistoryOpen((o) => !o)}
-        {...stylex.attrs(styles.iconButton, historyOpen() && styles.iconButtonOn)}
-        data-history-button
-      >
-        <Icon name="file-clock" size={15} />
-      </button>
-      <button
-        type="button"
-        title="Data: what the app has stored"
-        disabled={!state().project}
-        onClick={() => setDataOpen((o) => !o)}
-        {...stylex.attrs(styles.iconButton, dataOpen() && styles.iconButtonOn)}
-        data-data-button
-      >
-        <Icon name="database" size={15} />
-      </button>
-      <button
-        type="button"
-        title="Tools: what the app can do, for you, agents and other apps"
-        disabled={!state().project}
-        onClick={() => setToolsOpen((o) => !o)}
-        {...stylex.attrs(styles.iconButton, toolsOpen() && styles.iconButtonOn)}
-        data-tools-button
-      >
-        <Icon name="wrench" size={15} />
-      </button>
-      <button
-        type="button"
-        title="Open in your browser"
-        disabled={!running()}
-        onClick={() => window.rune.web.openExternal(runtime()!.url!)}
-        {...stylex.attrs(styles.iconButton)}
-      >
-        <Icon name="external-link" size={15} />
-      </button>
+          <Show when={state().project}>
+            <span
+              {...stylex.attrs(styles.status)}
+              title={
+                runtime()?.error ??
+                (isLive()
+                  ? "The finished app (open the agent to edit it)"
+                  : "Being edited: the dev server, changes appear live")
+              }
+              data-runtime-state={runtime()?.state}
+              data-mode={appMode(props.appId)}
+            >
+              <span
+                {...stylex.attrs(
+                  styles.dot,
+                  isRunning() && styles.dotRunning,
+                  busy() && styles.dotBusy,
+                  isCrashed() && styles.dotCrashed,
+                )}
+              />
+              {isLive() ? "" : "Editing · "}
+              {stateLabels[runtime()?.state ?? "stopped"]}
+            </span>
+          </Show>
+          <button
+            type="button"
+            title="Restart the app"
+            disabled={!state().project || busy()}
+            onClick={() => void control("restart")}
+            {...stylex.attrs(styles.iconButton)}
+            data-restart
+          >
+            <Icon name="rotate-cw" size={15} />
+          </button>
+          <button
+            type="button"
+            title="Logs"
+            disabled={!state().project}
+            onClick={() => setLogsOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, logsOpen() && styles.iconButtonOn)}
+            data-logs
+          >
+            <Icon name="terminal" size={15} />
+          </button>
+          <button
+            type="button"
+            title="Secrets (API keys, passwords) for this app"
+            onClick={() => setSecretsOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, secretsOpen() && styles.iconButtonOn)}
+            data-secrets
+          >
+            <Icon name="key-round" size={15} />
+          </button>
+          <button
+            type="button"
+            title="History: undo changes, restore earlier versions"
+            disabled={!state().project}
+            onClick={() => setHistoryOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, historyOpen() && styles.iconButtonOn)}
+            data-history-button
+          >
+            <Icon name="file-clock" size={15} />
+          </button>
+          <button
+            type="button"
+            title="Data: what the app has stored"
+            disabled={!state().project}
+            onClick={() => setDataOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, dataOpen() && styles.iconButtonOn)}
+            data-data-button
+          >
+            <Icon name="database" size={15} />
+          </button>
+          <button
+            type="button"
+            title="Tools: what the app can do, for you, agents and other apps"
+            disabled={!state().project}
+            onClick={() => setToolsOpen((o) => !o)}
+            {...stylex.attrs(styles.iconButton, toolsOpen() && styles.iconButtonOn)}
+            data-tools-button
+          >
+            <Icon name="wrench" size={15} />
+          </button>
+          <button
+            type="button"
+            title="Open in your browser"
+            disabled={!running()}
+            onClick={() => window.rune.web.openExternal(runtime()!.url!)}
+            {...stylex.attrs(styles.iconButton)}
+          >
+            <Icon name="external-link" size={15} />
+          </button>
         </>
       ),
     }),
   );
 
   return (
-    <div {...stylex.attrs(styles.split)} data-app-tab={props.appId} data-runtime-state={runtime()?.state} data-mode={appMode(props.appId)}>
+    <div
+      {...stylex.attrs(styles.split)}
+      data-app-tab={props.appId}
+      data-runtime-state={runtime()?.state}
+      data-mode={appMode(props.appId)}
+    >
       <div {...stylex.attrs(styles.main)}>
         <div {...stylex.attrs(styles.viewport)}>
           <Show
             when={previewKey()}
             keyed
             fallback={
-              <Placeholder appId={props.appId} onStart={() => void control("start")} onLogs={() => setLogsOpen(true)} onHistory={() => setHistoryOpen(true)} />
+              <Placeholder
+                appId={props.appId}
+                onStart={() => void control("start")}
+                onLogs={() => setLogsOpen(true)}
+                onHistory={() => setHistoryOpen(true)}
+              />
             }
           >
             {(_) => {
               // Set once: the page navigates on its own from there.
               const src = untrack(previewSrc);
-              return <webview ref={attach} src={src} partition={appPartition(props.appId)} {...stylex.attrs(styles.webview)} />;
+              return (
+                <webview
+                  ref={attach}
+                  src={src}
+                  partition={appPartition(props.appId)}
+                  {...stylex.attrs(styles.webview)}
+                />
+              );
             }}
           </Show>
           <Show when={picking()}>
@@ -396,7 +426,8 @@ function Placeholder(props: { appId: string; onStart: () => void; onLogs: () => 
   const [undoError, setUndoError] = createSignal<string>();
   const [lastChange] = createResource(
     () => (runtime()?.state === "crashed" ? props.appId : undefined),
-    async (id) => (await api.history({ target: `app:${id}`, limit: 20 })).find((e) => e.actor === "agent" && !e.first) ?? null,
+    async (id) =>
+      (await api.history({ target: `app:${id}`, limit: 20 })).find((e) => e.actor === "agent" && !e.first) ?? null,
   );
   const undoLast = async () => {
     setUndoError();
@@ -411,7 +442,9 @@ function Placeholder(props: { appId: string; onStart: () => void; onLogs: () => 
       <Switch>
         <Match when={!state().project}>
           <Icon name="hammer" size={28} {...stylex.attrs(styles.placeholderIcon)} />
-          <p>{state().running ? "The agent is setting up your app…" : "No app yet. Describe what you want in the chat."}</p>
+          <p>
+            {state().running ? "The agent is setting up your app…" : "No app yet. Describe what you want in the chat."}
+          </p>
         </Match>
         <Match when={runtime()?.state === "crashed"}>
           <Icon name="triangle-alert" size={28} {...stylex.attrs(styles.placeholderError)} />
@@ -424,7 +457,13 @@ function Placeholder(props: { appId: string; onStart: () => void; onLogs: () => 
               Show logs
             </button>
             <Show when={lastChange()}>
-              <button type="button" onClick={() => void undoLast()} title={lastChange()!.summary} {...stylex.attrs(styles.pillButton)} data-undo-last>
+              <button
+                type="button"
+                onClick={() => void undoLast()}
+                title={lastChange()!.summary}
+                {...stylex.attrs(styles.pillButton)}
+                data-undo-last
+              >
                 Undo the agent's last change
               </button>
             </Show>
@@ -458,7 +497,10 @@ function Logs(props: { appId: string; onClose: () => void }) {
   let scroller!: HTMLDivElement;
   let stick = true;
 
-  api.runtime(props.appId).then((r) => setLines(r.logs), () => {});
+  api.runtime(props.appId).then(
+    (r) => setLines(r.logs),
+    () => {},
+  );
   const stop = watchTopic(topics.logs(props.appId), (msg) => {
     if (msg.type === "log") setLines((l) => [...l, ...msg.lines].slice(-2000));
   });
@@ -488,7 +530,11 @@ function Logs(props: { appId: string; onClose: () => void }) {
           {(line) => {
             const isErr = () => line.stream === "err";
             const isSystem = () => line.stream === "system";
-            return <div {...stylex.attrs(styles.logLine, isErr() && styles.logErr, isSystem() && styles.logSystem)}>{line.text}</div>;
+            return (
+              <div {...stylex.attrs(styles.logLine, isErr() && styles.logErr, isSystem() && styles.logSystem)}>
+                {line.text}
+              </div>
+            );
           }}
         </For>
       </div>
@@ -540,7 +586,12 @@ const styles = stylex.create({
   },
   dot: { width: 7, height: 7, borderRadius: radius.full, backgroundColor: colors.muted },
   dotRunning: { backgroundColor: colors.success },
-  dotBusy: { backgroundColor: colors.warning, animationName: pulse, animationDuration: "1.2s", animationIterationCount: "infinite" },
+  dotBusy: {
+    backgroundColor: colors.warning,
+    animationName: pulse,
+    animationDuration: "1.2s",
+    animationIterationCount: "infinite",
+  },
   dotCrashed: { backgroundColor: colors.danger },
   url: {
     flex: 1,
@@ -569,7 +620,10 @@ const styles = stylex.create({
     opacity: { default: 1, ":disabled": 0.4 },
     cursor: { default: "pointer", ":disabled": "default" },
   },
-  iconButtonOn: { backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft }, color: { default: colors.accent, ":hover": colors.accent } },
+  iconButtonOn: {
+    backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft },
+    color: { default: colors.accent, ":hover": colors.accent },
+  },
   viewport: { position: "relative", flex: 1, minHeight: 0, backgroundColor: colors.bg },
   webview: { position: "absolute", inset: 0, width: "100%", height: "100%" },
   placeholder: {
@@ -655,7 +709,15 @@ const styles = stylex.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  logsHeader: { display: "flex", alignItems: "center", gap: 6, height: 34, flexShrink: 0, paddingInline: space.md, color: colors.muted },
+  logsHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    flexShrink: 0,
+    paddingInline: space.md,
+    color: colors.muted,
+  },
   logsTitle: { flex: 1, fontSize: font.xs, fontWeight: 600 },
   logsBody: {
     flex: 1,

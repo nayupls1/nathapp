@@ -66,7 +66,10 @@ async function gather(recipientId: string): Promise<SharedTab[]> {
   const recipient = appById(recipientId);
   const out: SharedTab[] = [];
   for (const ref of sharesOf(recipientId)) {
-    const shared: SharedTab = { tabId: ref.tabId, ...(ref.messageId !== undefined ? { messageId: ref.messageId } : {}) };
+    const shared: SharedTab = {
+      tabId: ref.tabId,
+      ...(ref.messageId !== undefined ? { messageId: ref.messageId } : {}),
+    };
     // A handed-over reply is what was asked for; a mentioned tab brings its page.
     if (recipient?.kind === "web" && ref.messageId === undefined) {
       const page = await readPage(ref.tabId).catch(() => null);
@@ -81,5 +84,6 @@ async function gather(recipientId: string): Promise<SharedTab[]> {
 export async function sendWithShares(tabId: string, prompt: string, page?: PageContext) {
   const refs = sharesOf(tabId).map((r) => ({ ...r }));
   const shared = refs.length ? await gather(tabId) : undefined;
-  if (await sendPrompt(tabId, prompt, page, shared)) setDrafts(tabId, (list) => (list ?? []).filter((r) => !refs.some((sent) => same(sent, r))));
+  if (await sendPrompt(tabId, prompt, page, shared))
+    setDrafts(tabId, (list) => (list ?? []).filter((r) => !refs.some((sent) => same(sent, r))));
 }

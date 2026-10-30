@@ -27,13 +27,21 @@ const safeName = (name: string) => name.replace(/[^\w.\- ()]+/g, "_").slice(0, 1
 const textLike = (mime: string, name: string) =>
   mime.startsWith("text/") ||
   /^application\/(json|xml|javascript|typescript|x-yaml|yaml|toml|x-sh|sql|graphql)/.test(mime) ||
-  /\.(txt|md|csv|tsv|json|ya?ml|toml|xml|html?|css|scss|js|jsx|ts|tsx|mjs|py|rb|go|rs|java|kt|swift|c|h|cpp|cs|php|sh|sql|log|ini|env\.example)$/i.test(name);
+  /\.(txt|md|csv|tsv|json|ya?ml|toml|xml|html?|css|scss|js|jsx|ts|tsx|mjs|py|rb|go|rs|java|kt|swift|c|h|cpp|cs|php|sh|sql|log|ini|env\.example)$/i.test(
+    name,
+  );
 
 export interface AttachmentsShape {
-  readonly save: (tabId: string, input: { name: string; mime: string; data: Uint8Array }) => Effect.Effect<Attachment, AttachmentError>;
+  readonly save: (
+    tabId: string,
+    input: { name: string; mime: string; data: Uint8Array },
+  ) => Effect.Effect<Attachment, AttachmentError>;
   readonly get: (tabId: string, id: string) => Effect.Effect<AttachedFile | null>;
   /** The prompt with the text files in it, and the files for the provider (images, PDFs, other files by path). */
-  readonly forTurn: (prompt: string, files: readonly AttachedFile[]) => Effect.Effect<{ prompt: string; files: AttachedFile[] }>;
+  readonly forTurn: (
+    prompt: string,
+    files: readonly AttachedFile[],
+  ) => Effect.Effect<{ prompt: string; files: AttachedFile[] }>;
   readonly forgetTab: (tabId: string) => Effect.Effect<void>;
 }
 
@@ -48,10 +56,18 @@ export const make = Effect.gen(function* () {
     save: (tabId, { name, mime, data }) =>
       Effect.gen(function* () {
         if (!data.length) return yield* new AttachmentError({ message: "The file is empty." });
-        if (data.length > MAX_ATTACHMENT) return yield* new AttachmentError({ message: `${name} is too large (at most ${MAX_ATTACHMENT / 1048576} MB).` });
+        if (data.length > MAX_ATTACHMENT)
+          return yield* new AttachmentError({
+            message: `${name} is too large (at most ${MAX_ATTACHMENT / 1048576} MB).`,
+          });
         const id = crypto.randomUUID();
         const dir = dirOf(tabId);
-        const meta: Attachment = { id, name: safeName(name), mime: mime || "application/octet-stream", size: data.length };
+        const meta: Attachment = {
+          id,
+          name: safeName(name),
+          mime: mime || "application/octet-stream",
+          size: data.length,
+        };
         yield* Effect.promise(async () => {
           mkdirSync(dir, { recursive: true });
           await writeFile(join(dir, `${id}${extname(meta.name).slice(0, 10)}`), data);
@@ -76,13 +92,20 @@ export const make = Effect.gen(function* () {
         const inline: string[] = [];
         const rest: AttachedFile[] = [];
         for (const file of files) {
-          if (!IMAGE_TYPES.has(file.mime) && file.mime !== "application/pdf" && textLike(file.mime, file.name) && file.size <= INLINE_TEXT) {
+          if (
+            !IMAGE_TYPES.has(file.mime) &&
+            file.mime !== "application/pdf" &&
+            textLike(file.mime, file.name) &&
+            file.size <= INLINE_TEXT
+          ) {
             const content = yield* Effect.promise(() => readFile(file.path, "utf8"));
             inline.push(`<attached-file name="${file.name}">\n${content}\n</attached-file>`);
           } else rest.push(file);
         }
         const others = rest.filter((f) => !IMAGE_TYPES.has(f.mime) && f.mime !== "application/pdf");
-        const notes = others.length ? `\n\nFiles the user attached (read them from these paths if you can):\n${others.map((f) => `- ${f.name}: ${f.path}`).join("\n")}` : "";
+        const notes = others.length
+          ? `\n\nFiles the user attached (read them from these paths if you can):\n${others.map((f) => `- ${f.name}: ${f.path}`).join("\n")}`
+          : "";
         return { prompt: `${inline.length ? `${inline.join("\n\n")}\n\n` : ""}${prompt}${notes}`, files: rest };
       }),
 

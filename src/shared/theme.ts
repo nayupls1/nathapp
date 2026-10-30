@@ -4,9 +4,28 @@ import type { GlobalTheme, Theme } from "./settings";
 
 export type Mode = "light" | "dark";
 
-const base: Record<Mode, { bg: string; surface: string; text: string; accent: string; danger: string; success: string; warning: string }> = {
-  light: { bg: "#fafafa", surface: "#ffffff", text: "#18181b", accent: "#6d4aff", danger: "#dc2626", success: "#16a34a", warning: "#d97706" },
-  dark: { bg: "#111113", surface: "#18181b", text: "#ececef", accent: "#8b70ff", danger: "#f05252", success: "#3ecf73", warning: "#f5a524" },
+const base: Record<
+  Mode,
+  { bg: string; surface: string; text: string; accent: string; danger: string; success: string; warning: string }
+> = {
+  light: {
+    bg: "#fafafa",
+    surface: "#ffffff",
+    text: "#18181b",
+    accent: "#6d4aff",
+    danger: "#dc2626",
+    success: "#16a34a",
+    warning: "#d97706",
+  },
+  dark: {
+    bg: "#111113",
+    surface: "#18181b",
+    text: "#ececef",
+    accent: "#8b70ff",
+    danger: "#f05252",
+    success: "#3ecf73",
+    warning: "#f5a524",
+  },
 };
 
 const radii = {

@@ -80,26 +80,34 @@ export const api = {
   sandbox: () => request<SandboxInfo>("/api/sandbox"),
 
   getSettings: () => request<Settings>("/api/settings"),
-  saveSettings: (settings: Settings) => request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
+  saveSettings: (settings: Settings) =>
+    request<Settings>("/api/settings", { method: "PUT", body: JSON.stringify(settings) }),
 
   listApps: () => request<AppSummary[]>("/api/apps"),
   createApp: (body: { kind?: TabKind; url?: string; workspaceId?: string } = {}) => post<AppSummary>("/api/apps", body),
   moveApp: (id: string, workspaceId: string) => post<AppSummary>(`/api/apps/${id}/move`, { workspaceId }),
-  setTabIcon: (id: string, icon: string | null) => request<AppSummary>(`/api/apps/${id}/icon`, { method: "PUT", body: JSON.stringify({ icon }) }),
-  setTabPinned: (id: string, pinned: boolean) => request<AppSummary>(`/api/apps/${id}/pinned`, { method: "PUT", body: JSON.stringify({ pinned }) }),
+  setTabIcon: (id: string, icon: string | null) =>
+    request<AppSummary>(`/api/apps/${id}/icon`, { method: "PUT", body: JSON.stringify({ icon }) }),
+  setTabPinned: (id: string, pinned: boolean) =>
+    request<AppSummary>(`/api/apps/${id}/pinned`, { method: "PUT", body: JSON.stringify({ pinned }) }),
   setSplits: (workspaceId: string, splits: TabSplit[]) =>
-    request<WorkspaceInfo>(`/api/workspaces/${workspaceId}/splits`, { method: "PUT", body: JSON.stringify({ splits }) }),
+    request<WorkspaceInfo>(`/api/workspaces/${workspaceId}/splits`, {
+      method: "PUT",
+      body: JSON.stringify({ splits }),
+    }),
   reorderTabs: (workspaceId: string, ids: string[]) =>
     request<AppSummary[]>(`/api/workspaces/${workspaceId}/order`, { method: "PUT", body: JSON.stringify({ ids }) }),
 
   workspaces: () => request<WorkspaceInfo[]>("/api/workspaces"),
-  reorderWorkspaces: (ids: string[]) => request<WorkspaceInfo[]>("/api/workspaces/order", { method: "PUT", body: JSON.stringify({ ids }) }),
+  reorderWorkspaces: (ids: string[]) =>
+    request<WorkspaceInfo[]>("/api/workspaces/order", { method: "PUT", body: JSON.stringify({ ids }) }),
   createWorkspace: (name: string) => post<WorkspaceInfo>("/api/workspaces", { name }),
   updateWorkspace: (id: string, fields: { name?: string; icon?: string | null; settings?: WorkspaceSettings }) =>
     request<WorkspaceInfo>(`/api/workspaces/${id}`, { method: "PATCH", body: JSON.stringify(fields) }),
   deleteWorkspace: (id: string) => request<void>(`/api/workspaces/${id}`, { method: "DELETE" }),
   getApp: (id: string) => request<AppDetail>(`/api/apps/${id}`),
-  renameApp: (id: string, name: string) => request<AppSummary>(`/api/apps/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  renameApp: (id: string, name: string) =>
+    request<AppSummary>(`/api/apps/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   deleteApp: (id: string) => request<void>(`/api/apps/${id}`, { method: "DELETE" }),
   closeApp: (id: string) => post<AppSummary | { deleted: true }>(`/api/apps/${id}/close`),
   library: () => request<AppSummary[]>("/api/library"),
@@ -115,23 +123,30 @@ export const api = {
   chats: (id: string) => request<ChatSummary[]>(`/api/apps/${id}/chats`),
   chatMessages: (id: string, chatId: number) => request<ChatMessage[]>(`/api/apps/${id}/chats/${chatId}`),
   newChat: (id: string) => post<{ messages: ChatMessage[]; chats: ChatSummary[] }>(`/api/apps/${id}/chats`),
-  openChat: (id: string, chatId: number) => post<{ messages: ChatMessage[]; chats: ChatSummary[] }>(`/api/apps/${id}/chats/${chatId}/open`),
+  openChat: (id: string, chatId: number) =>
+    post<{ messages: ChatMessage[]; chats: ChatSummary[] }>(`/api/apps/${id}/chats/${chatId}/open`),
   deleteChat: (id: string, chatId: number) => request<void>(`/api/apps/${id}/chats/${chatId}`, { method: "DELETE" }),
 
   runtime: (id: string) => request<{ status: RuntimeStatus; logs: LogLine[] }>(`/api/apps/${id}/runtime`),
-  controlRuntime: (id: string, action: "start" | "stop" | "restart") => post<RuntimeStatus>(`/api/apps/${id}/runtime`, { action }),
+  controlRuntime: (id: string, action: "start" | "stop" | "restart") =>
+    post<RuntimeStatus>(`/api/apps/${id}/runtime`, { action }),
   setMode: (id: string, mode: AppMode) => post<RuntimeStatus>(`/api/apps/${id}/mode`, { mode }),
   importApp: (id: string, source: { git: string; branch?: string } | { folder: string }) =>
     post<{ project: ProjectInfo | null }>(`/api/apps/${id}/import`, source),
-  uploadAttachment: (id: string, file: { name: string; mime: string; data: string }) => post<Attachment>(`/api/apps/${id}/attachments`, file),
+  uploadAttachment: (id: string, file: { name: string; mime: string; data: string }) =>
+    post<Attachment>(`/api/apps/${id}/attachments`, file),
   sources: (id: string) => request<ContextSource[]>(`/api/apps/${id}/sources`),
-  addSource: (id: string, source: { folder: string } | { git: string; branch?: string }) => post<ContextSource>(`/api/apps/${id}/sources`, source),
-  removeSource: (id: string, sourceId: string) => request<void>(`/api/apps/${id}/sources/${sourceId}`, { method: "DELETE" }),
+  addSource: (id: string, source: { folder: string } | { git: string; branch?: string }) =>
+    post<ContextSource>(`/api/apps/${id}/sources`, source),
+  removeSource: (id: string, sourceId: string) =>
+    request<void>(`/api/apps/${id}/sources/${sourceId}`, { method: "DELETE" }),
   pullSource: (id: string, sourceId: string) => post<ContextSource>(`/api/apps/${id}/sources/${sourceId}/pull`),
   cancelImport: (id: string) => request<void>(`/api/apps/${id}/import`, { method: "DELETE" }),
-  createProject: (id: string, preset: string, name?: string) => post<ProjectInfo>(`/api/apps/${id}/project`, { preset, name }),
+  createProject: (id: string, preset: string, name?: string) =>
+    post<ProjectInfo>(`/api/apps/${id}/project`, { preset, name }),
 
-  secrets: (scope?: string) => request<SecretsOverview>(`/api/secrets${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),
+  secrets: (scope?: string) =>
+    request<SecretsOverview>(`/api/secrets${scope ? `?scope=${encodeURIComponent(scope)}` : ""}`),
   /** Creates or replaces a secret. The value is never sent back. */
   saveSecret: (scope: string, name: string, value: string) =>
     request<SecretInfo>("/api/secrets", { method: "PUT", body: JSON.stringify({ scope, name, value }) }),
@@ -147,26 +162,45 @@ export const api = {
     post<void>(`/api/permissions/pending/${id}`, { allow, remember }),
 
   audit: (filter: { tab?: string; workspace?: string; actor?: string; before?: number; limit?: number } = {}) => {
-    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    const params = new URLSearchParams(
+      Object.entries(filter)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([k, v]) => [k, String(v)]),
+    );
     return request<AuditEntry[]>(`/api/audit${params.size ? `?${params}` : ""}`);
   },
 
   appData: (id: string) => request<DataOverview>(`/api/apps/${id}/data`),
   appDataRows: (id: string, table: string, query: { offset?: number; limit?: number; search?: string } = {}) => {
-    const params = new URLSearchParams(Object.entries(query).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
-    return request<DataRows>(`/api/apps/${id}/data/tables/${encodeURIComponent(table)}${params.size ? `?${params}` : ""}`);
+    const params = new URLSearchParams(
+      Object.entries(query)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([k, v]) => [k, String(v)]),
+    );
+    return request<DataRows>(
+      `/api/apps/${id}/data/tables/${encodeURIComponent(table)}${params.size ? `?${params}` : ""}`,
+    );
   },
   /** The app's data as a .tar.gz, with the file name the server suggests. */
   exportAppData: async (id: string) => {
-    const res = await fetch(url(`/api/apps/${id}/data/export`), { headers: { Authorization: `Bearer ${window.rune.token}` } });
-    if (!res.ok) throw new Error(((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `${res.status} ${res.statusText}`);
+    const res = await fetch(url(`/api/apps/${id}/data/export`), {
+      headers: { Authorization: `Bearer ${window.rune.token}` },
+    });
+    if (!res.ok)
+      throw new Error(
+        ((await res.json().catch(() => null)) as { error?: string } | null)?.error ?? `${res.status} ${res.statusText}`,
+      );
     const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "app-data.tar.gz";
     return { blob: await res.blob(), name };
   },
   deleteAppData: (id: string) => request<void>(`/api/apps/${id}/data`, { method: "DELETE" }),
 
   history: (filter: { target?: string; workspace?: string; before?: number; limit?: number } = {}) => {
-    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    const params = new URLSearchParams(
+      Object.entries(filter)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([k, v]) => [k, String(v)]),
+    );
     return request<HistoryEntry[]>(`/api/history${params.size ? `?${params}` : ""}`);
   },
   historyDetail: (id: number) => request<HistoryDetail>(`/api/history/${id}`),
@@ -174,41 +208,58 @@ export const api = {
   saveSnapshot: (target: string) => post<HistoryEntry | undefined>("/api/history", { target }),
   /** data: also put the app's data back (else its current data is kept). */
   restoreSnapshot: (id: number, data: boolean) => post<void>(`/api/history/${id}/restore`, { data }),
-  restoreAll: (id: number, data: boolean, workspaceId?: string) => post<{ restored: string[] }>(`/api/history/${id}/restore-all`, { data, workspaceId }),
+  restoreAll: (id: number, data: boolean, workspaceId?: string) =>
+    post<{ restored: string[] }>(`/api/history/${id}/restore-all`, { data, workspaceId }),
   undoSnapshot: (id: number, data = false) => post<{ note: string | null }>(`/api/history/${id}/undo`, { data }),
 
   /** Every app's command bar actions. */
   actions: () => request<AppActionInfo[]>("/api/actions"),
   runAction: (id: string, actionId: string, input?: string) =>
-    post<AppActionResult>(`/api/apps/${id}/actions/${encodeURIComponent(actionId)}`, input === undefined ? {} : { input }),
+    post<AppActionResult>(
+      `/api/apps/${id}/actions/${encodeURIComponent(actionId)}`,
+      input === undefined ? {} : { input },
+    ),
   /** An app's tools in the registry (its actions and the ones from its data). */
   appTools: (id: string) => request<AppTool[]>(`/api/apps/${id}/tools`),
   callTool: (id: string, toolId: string, args: { params?: Record<string, unknown>; input?: string }) =>
     post<ToolResult>(`/api/apps/${id}/tools/${encodeURIComponent(toolId)}`, args),
 
   networkRules: () => request<NetworkRule[]>("/api/network/rules"),
-  addNetworkRule: (rule: Omit<NetworkRule, "id" | "createdAt" | "enabled"> & { enabled?: boolean }) => post<NetworkRule>("/api/network/rules", rule),
+  addNetworkRule: (rule: Omit<NetworkRule, "id" | "createdAt" | "enabled"> & { enabled?: boolean }) =>
+    post<NetworkRule>("/api/network/rules", rule),
   updateNetworkRule: (id: string, fields: Partial<Omit<NetworkRule, "id" | "createdAt">>) =>
     request<NetworkRule>(`/api/network/rules/${id}`, { method: "PATCH", body: JSON.stringify(fields) }),
   deleteNetworkRule: (id: string) => request<void>(`/api/network/rules/${id}`, { method: "DELETE" }),
-  savedRequests: (workspaceId?: string) => request<SavedRequest[]>(`/api/network/requests${workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : ""}`),
-  saveRequest: (workspaceId: string, name: string, draft: RequestDraft) => post<SavedRequest>("/api/network/requests", { workspaceId, name, draft }),
+  savedRequests: (workspaceId?: string) =>
+    request<SavedRequest[]>(
+      `/api/network/requests${workspaceId ? `?workspace=${encodeURIComponent(workspaceId)}` : ""}`,
+    ),
+  saveRequest: (workspaceId: string, name: string, draft: RequestDraft) =>
+    post<SavedRequest>("/api/network/requests", { workspaceId, name, draft }),
   deleteSavedRequest: (id: string) => request<void>(`/api/network/requests/${id}`, { method: "DELETE" }),
   /** Sends a saved request with its workspace's session (credentials stay in Rune Browser's main process). */
-  sendSavedRequest: (id: string, overrides?: ReplayOverrides) => post<ReplayResult>(`/api/network/requests/${id}/send`, overrides ? { overrides } : {}),
+  sendSavedRequest: (id: string, overrides?: ReplayOverrides) =>
+    post<ReplayResult>(`/api/network/requests/${id}/send`, overrides ? { overrides } : {}),
 
   listSites: () => request<SiteOverride[]>("/api/sites"),
   getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),
   saveSite: (host: string, fields: Partial<Pick<SiteOverride, "css" | "js" | "enabled">>) =>
     request<SiteOverride>(`/api/sites/${encodeURIComponent(host)}`, { method: "PUT", body: JSON.stringify(fields) }),
   deleteSite: (host: string) => request<void>(`/api/sites/${encodeURIComponent(host)}`, { method: "DELETE" }),
-  schedules: (workspace?: string) => request<Schedule[]>(`/api/schedules${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
+  schedules: (workspace?: string) =>
+    request<Schedule[]>(`/api/schedules${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
   scheduleRuns: (filter: { schedule?: string; workspace?: string; before?: number; limit?: number } = {}) => {
-    const params = new URLSearchParams(Object.entries(filter).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]));
+    const params = new URLSearchParams(
+      Object.entries(filter)
+        .filter(([, v]) => v !== undefined && v !== "")
+        .map(([k, v]) => [k, String(v)]),
+    );
     return request<ScheduleRun[]>(`/api/schedules/runs${params.size ? `?${params}` : ""}`);
   },
   upcomingRuns: (workspace?: string) =>
-    request<{ scheduleId: string; name: string; at: string }[]>(`/api/schedules/upcoming${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`),
+    request<{ scheduleId: string; name: string; at: string }[]>(
+      `/api/schedules/upcoming${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`,
+    ),
   createSchedule: (spec: ScheduleSpec) => post<Schedule>("/api/schedules", spec),
   updateSchedule: (id: string, fields: { spec?: ScheduleSpec; paused?: boolean }) =>
     request<Schedule>(`/api/schedules/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(fields) }),
@@ -219,16 +270,28 @@ export const api = {
   mods: () => request<InstalledMod[]>("/api/mods"),
   modGallery: () => request<GalleryResult>("/api/mods/gallery"),
   /** What installing a mod (JSON, a share code or a link) does, before deciding. */
-  reviewMod: (input: ModSource) => post<{ mod: Mod; review: ModReview; installed: InstalledMod | null; source: string }>("/api/mods/review", input),
+  reviewMod: (input: ModSource) =>
+    post<{ mod: Mod; review: ModReview; installed: InstalledMod | null; source: string }>("/api/mods/review", input),
   installMod: (input: ModSource & { source?: string }) => post<InstalledMod>("/api/mods", input),
-  setModEnabled: (id: string, enabled: boolean) => request<InstalledMod>(`/api/mods/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
+  setModEnabled: (id: string, enabled: boolean) =>
+    request<InstalledMod>(`/api/mods/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) }),
   removeMod: (id: string) => request<InstalledMod>(`/api/mods/${id}`, { method: "DELETE" }),
-  recordModExtensions: (id: string, installed: string[]) => post<InstalledMod>(`/api/mods/${id}/extensions`, { installed }),
-  packageMod: (input: { name: string; description: string; author: string; pageChangeIds: string[]; theme: boolean; extensions: ModExtension[] }) =>
-    post<Mod>("/api/mods/package", input),
+  recordModExtensions: (id: string, installed: string[]) =>
+    post<InstalledMod>(`/api/mods/${id}/extensions`, { installed }),
+  packageMod: (input: {
+    name: string;
+    description: string;
+    author: string;
+    pageChangeIds: string[];
+    theme: boolean;
+    extensions: ModExtension[];
+  }) => post<Mod>("/api/mods/package", input),
   addPageChange: (spec: PageChangeSpec) => post<PageChange>("/api/page-changes", spec),
   updatePageChange: (id: string, fields: { enabled?: boolean; change?: PageChangeSpec }) =>
-    request<PageChange>(`/api/page-changes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(fields) }),
+    request<PageChange>(`/api/page-changes/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
   deletePageChange: (id: string) => request<void>(`/api/page-changes/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
