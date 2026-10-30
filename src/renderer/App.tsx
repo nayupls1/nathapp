@@ -19,6 +19,7 @@ import "./lib/schedules";
 import "./lib/updates";
 import { startUnloading } from "./lib/unload";
 import { startWindowChrome } from "./lib/windowChrome";
+import { startShortcuts } from "./lib/shortcuts";
 import { loadSettings } from "./lib/settings";
 import { Icon } from "./components/Icon";
 import {
@@ -41,6 +42,7 @@ export default function App() {
   onMount(async () => {
     startUnloading();
     startWindowChrome();
+    startShortcuts();
     await loadSettings().catch((err) => console.error("Loading settings failed:", err));
     void loadProviders().catch((err) => console.error("Loading providers failed:", err));
     await loadApps();

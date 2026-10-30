@@ -4,6 +4,7 @@ import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Sh
 import { Portal } from "solid-js/web";
 import { closeCommandBar, commandBarOpen, commands, results, type Command } from "../lib/commands";
 import { colors, font, radius, space } from "../theme.stylex";
+import { shortcutLabel } from "../lib/shortcuts";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
 
@@ -152,6 +153,9 @@ function Bar() {
                       <Show when={command.input}>
                         <Icon name="text-cursor-input" size={14} {...stylex.attrs(styles.icon)} />
                       </Show>
+                      <Show when={command.keys && shortcutLabel(command.keys)}>
+                        {(label) => <kbd {...stylex.attrs(styles.keys)}>{label()}</kbd>}
+                      </Show>
                       <span {...stylex.attrs(styles.group)}>{command.group}</span>
                     </li>
                   );
@@ -255,6 +259,17 @@ const styles = stylex.create({
     minWidth: 0,
   },
   group: { flexShrink: 0, color: colors.muted, fontSize: font.xs },
+  keys: {
+    flexShrink: 0,
+    paddingInline: 6,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    color: colors.muted,
+    fontFamily: font.mono,
+    fontSize: font.xs,
+  },
   empty: { paddingBlock: space.lg, textAlign: "center", color: colors.muted },
   hint: {
     margin: 0,

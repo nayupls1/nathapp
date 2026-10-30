@@ -53,6 +53,7 @@ import {
 } from "../lib/store";
 import { settingsSections } from "../lib/settingsSections";
 import { ActivityPage } from "./ActivityPage";
+import { ShortcutSettings } from "./ShortcutSettings";
 import { HistoryPage } from "./History";
 import { ModsPage } from "./ModsPage";
 import { SchedulesPage } from "./SchedulesPage";
@@ -182,6 +183,9 @@ export function SettingsPage(props: { section: string }) {
         </Match>
         <Match when={props.section === "permissions"}>
           <PermissionsSection />
+        </Match>
+        <Match when={props.section === "shortcuts"}>
+          <ShortcutSettings />
         </Match>
         <Match when={props.section === "about"}>
           <AboutSection />

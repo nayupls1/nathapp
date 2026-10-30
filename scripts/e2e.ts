@@ -142,11 +142,19 @@ const site = Bun.serve({
              document.getElementById("target").addEventListener("click", slowWork);
              setTimeout(() => { throw new Error("boom from the page"); }, 0);
            </script>`
-                : path === "/second"
-                  ? `<title>Second page</title><h1>Second</h1>`
-                  : path === "/blocked-by-extension"
-                    ? `<title>Should be blocked</title>`
-                    : `<title>Test site</title><main><h1 id="headline">Hello from the test site</h1><p class="lead">Plain text</p>
+                : path === "/keys"
+                  ? `<title>Keys page</title><h1>Keys</h1><input id="box"><p>needle one</p><p>needle two</p><p>needle three</p>
+           <script>
+             window.got = [];
+             addEventListener("keydown", (e) => {
+               if (e.ctrlKey && e.key === "k") { e.preventDefault(); got.push("k:" + e.keyCode); }
+             });
+           </script>`
+                  : path === "/second"
+                    ? `<title>Second page</title><h1>Second</h1>`
+                    : path === "/blocked-by-extension"
+                      ? `<title>Should be blocked</title>`
+                      : `<title>Test site</title><main><h1 id="headline">Hello from the test site</h1><p class="lead">Plain text</p>
            <button class="cta">Buy now</button> <a id="popup" href="/second" target="_blank">open popup</a></main>`;
     return new Response(`<!doctype html><meta charset="utf-8"><link rel="icon" href="data:,">${body}`, {
       headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -1428,6 +1436,148 @@ try {
     if (after.top !== before.top || after.right !== before.right)
       throw new Error(`after fullscreen: ${JSON.stringify(after)}`);
     return `inset ${before.top}px, corners ${before.radius}; fullscreen fills ${viewport.join("×")}`;
+  });
+
+  await check("keyboard shortcuts: pages keep their own keys, the browser's work everywhere", async () => {
+    const count = await page!.eval<number>(`document.querySelectorAll("nav li").length`);
+    await newTab("New web tab");
+    const tabId = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 1} && document.querySelector("nav li:last-of-type").dataset.appId`,
+      { label: "web tab" },
+    );
+    const tab = `[data-web-tab="${tabId}"]`;
+    await page!.eval(`(() => {
+      const input = document.querySelector('${chromeFor(tab)} [data-address]');
+      input.value = "${site.url.origin}/keys";
+      input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+      input.form.requestSubmit();
+      return true;
+    })()`);
+    await page!.waitFor(`document.querySelector('nav li[data-app-id="${tabId}"]')?.innerText.includes("Keys page")`, {
+      timeoutMs: 20_000,
+      label: "keys page",
+    });
+    const inPage = <T>(code: string) =>
+      page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+    /** A key pressed in the page, as the user would (through the main process's before-input-event). */
+    const press = (keyCode: string, modifiers: string[] = []) =>
+      page!.eval(`(() => {
+        const view = document.querySelector('${tab} webview');
+        view.focus();
+        for (const type of ["keyDown", "keyUp"]) view.sendInputEvent({ type, keyCode: ${JSON.stringify(keyCode)}, modifiers: ${JSON.stringify(modifiers)} });
+        return true;
+      })()`);
+    await waitForValue(async () => ((await inPage<boolean>(`Array.isArray(window.got)`)) ? true : undefined));
+
+    // The page uses Ctrl+K itself: it gets it (with its keyCode), and the command bar stays closed.
+    await press("K", ["control"]);
+    await waitForValue(async () => ((await inPage<string[]>(`window.got`)).includes("k:75") ? true : undefined), 5_000);
+    await Bun.sleep(300);
+    if (await page!.eval<boolean>(`!!document.querySelector("[data-command-bar]")`))
+      throw new Error("the command bar opened although the page used Ctrl+K");
+
+    // Ctrl+F isn't the page's: find in page.
+    await press("F", ["control"]);
+    await page!.waitFor(`document.activeElement === document.querySelector('${tab} [data-find-input]')`, {
+      label: "find bar, focused",
+    });
+    await type(`${tab} [data-find-input]`, "needle");
+    await page!.waitFor(`document.querySelector('${tab} [data-find-count]')?.textContent === "1/3"`, {
+      label: "3 matches",
+    });
+    await page!.eval(
+      `document.querySelector('${tab} [data-find-input]').dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })), true`,
+    );
+    await page!.waitFor(`document.querySelector('${tab} [data-find-count]')?.textContent === "2/3"`, {
+      label: "next match",
+    });
+    await shot("find-in-page.png");
+    await page!.eval(
+      `document.querySelector('${tab} [data-find-input]').dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })), true`,
+    );
+    await page!.waitFor(`!document.querySelector('${tab} [data-find-bar]')`, { label: "find bar closed" });
+
+    // Zoom: in, shown in the address bar, and back.
+    await press("Plus", ["control"]);
+    await page!.waitFor(`document.querySelector('${chromeFor(tab)} [data-zoom]')?.dataset.zoom === "110"`, {
+      label: "zoomed to 110%",
+    });
+    await press("0", ["control"]);
+    await page!.waitFor(`!document.querySelector('${chromeFor(tab)} [data-zoom]')`, { label: "actual size" });
+
+    // The mouse's back and forward buttons in the page (webviews don't act on them themselves).
+    // With a user gesture: Chromium's back skips pages that navigated away without one.
+    await page!.eval(
+      `document.querySelector('${tab} webview').executeJavaScript('location.href = "/second?mouse"; true', true)`,
+    );
+    const guest = await Page.connect(port, 10_000, (t) => t.type === "webview" && t.url.endsWith("/second?mouse"));
+    const mouse = async (button: "back" | "forward") => {
+      for (const type of ["mousePressed", "mouseReleased"])
+        await guest.send("Input.dispatchMouseEvent", { type, x: 40, y: 40, button, clickCount: 1 });
+    };
+    try {
+      await mouse("back");
+      await waitForValue(async () => ((await inPage<string>(`location.pathname`)) === "/keys" ? true : undefined));
+      await mouse("forward");
+      await waitForValue(async () => ((await inPage<string>(`location.pathname`)) === "/second" ? true : undefined));
+    } finally {
+      guest.close();
+    }
+
+    // Ctrl+T is the browser's even in a page; Ctrl+W closes that tab and leaves the window.
+    await press("T", ["control"]);
+    const blank = await page!.waitFor<string>(
+      `document.querySelectorAll("nav li").length === ${count + 2} && document.querySelector('nav li[aria-current="page"]')?.dataset.appId`,
+      { label: "new tab from the page" },
+    );
+    if (blank === tabId) throw new Error("the new tab isn't the one shown");
+    await page!.eval(
+      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, bubbles: true })), true`,
+    );
+    await page!.waitFor(`document.querySelectorAll("nav li").length === ${count + 1}`, { label: "Ctrl+W closed it" });
+
+    // Ctrl+W in Settings goes back to the tabs instead of closing anything.
+    await click('[data-page-link="Settings"]');
+    await page!.waitFor(`!!document.querySelector("[data-settings-shell]")`, { label: "settings" });
+    await page!.eval(
+      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, bubbles: true })), true`,
+    );
+    await page!.waitFor(`!document.querySelector("[data-settings-shell]")`, { label: "back from Settings" });
+    if ((await page!.eval<number>(`document.querySelectorAll("nav li").length`)) !== count + 1)
+      throw new Error("Ctrl+W in Settings closed a tab");
+
+    // Ctrl+1 / Ctrl+9 from inside the page: the first and the last tab.
+    await click(`nav li[data-app-id="${tabId}"]`);
+    await page!.waitFor(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId === "${tabId}"`);
+    await press("1", ["control"]);
+    await Bun.sleep(700);
+    const first = await page!.eval<string>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
+    if (first === tabId && count > 0) throw new Error("Ctrl+1 didn't switch to the first tab");
+
+    // Settings → Keyboard shortcuts: a new key for Find in page, recorded by pressing it, then reset.
+    await openSettingsAt("shortcuts");
+    await page!.waitFor(`!!document.querySelector('[data-shortcut="find.open"]')`, { label: "shortcut list" });
+    await shot("settings-shortcuts.png");
+    await click('[data-shortcut="find.open"] [data-shortcut-add]');
+    await page!.waitFor(`document.activeElement === document.querySelector("[data-shortcut-recording]")`, {
+      label: "recording",
+    });
+    await page!.eval(
+      `document.activeElement.dispatchEvent(new KeyboardEvent("keydown", { key: "u", code: "KeyU", ctrlKey: true, altKey: true, bubbles: true, cancelable: true })), true`,
+    );
+    await page!.waitFor(`!!document.querySelector('[data-shortcut="find.open"] [data-shortcut-key="Ctrl+Alt+U"]')`, {
+      label: "the new key",
+    });
+    const saved = await waitForValue(async () => {
+      const s = await apiCall<{ shortcuts: Record<string, string[]> }>("/api/settings");
+      return s.shortcuts["find.open"]?.includes("Ctrl+Alt+U") ? s.shortcuts["find.open"] : undefined;
+    });
+    await click('[data-shortcut="find.open"] [data-shortcut-reset]');
+    await page!.waitFor(`!document.querySelector('[data-shortcut="find.open"] [data-shortcut-key="Ctrl+Alt+U"]')`, {
+      label: "reset",
+    });
+    await apiCall(`/api/apps/${tabId}`, { method: "DELETE" });
+    return `page kept Ctrl+K, find 3 matches, zoom, mouse back/forward, Ctrl+T/W, Ctrl+1, recorded ${saved.join(", ")}`;
   });
 
   await check("agent sidebar: closed on web tabs until opened (Ctrl+J), remembered per tab", async () => {

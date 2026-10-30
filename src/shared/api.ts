@@ -40,6 +40,9 @@ export interface RuneBridge {
     minimize: () => void;
     toggleMaximize: () => void;
     close: () => void;
+    toggleFullScreen: () => void;
+    /** Quits Rune Browser (Ctrl+Shift+Q). */
+    quit: () => void;
     onMaximized: (fn: (maximized: boolean) => void) => () => void;
   };
   /** Asks for a folder (a system dialog); null if none was picked. */
@@ -74,10 +77,16 @@ export interface RuneBridge {
   web: {
     /** Deletes the cookies and storage of a workspace's web tabs (the workspace was deleted). */
     clearWorkspace: (workspaceId: string) => Promise<void>;
-    /** A page asked to open a link in a new window: open it in a new web tab. */
-    onOpenTab: (fn: (url: string) => void) => () => void;
-    /** A browser shortcut pressed while a web page had focus. */
-    onShortcut: (fn: (name: WebShortcut) => void) => () => void;
+    /** A page asked to open a link in a new window: open it in a new web tab (in the background for Ctrl+click). */
+    onOpenTab: (fn: (url: string, background?: boolean) => void) => () => void;
+    /** A keyboard shortcut pressed while a page had the focus, that the page passed on (main/shortcuts.ts). */
+    onShortcut: (fn: (event: ShortcutEvent) => void) => () => void;
+    /** The keys of every shortcut, for the keys pressed in pages (shared/shortcuts.ts). */
+    setShortcuts: (bindings: Record<string, string[]>) => void;
+    /** Opens DevTools on a page for the user, at a panel (F12, Ctrl+Shift+J, Ctrl+Shift+C). */
+    openDevTools: (webContentsId: number, panel: "elements" | "console" | "sources" | "inspect") => void;
+    /** Saves a page to a file the user picks (Ctrl+S). */
+    savePage: (webContentsId: number) => Promise<void>;
     /** Screenshot of a page (web tab or app preview) as base64 JPEG. */
     capture: (webContentsId: number) => Promise<string>;
     /** Opens a URL in the system browser. */
@@ -152,18 +161,11 @@ export const WEB_PARTITION_PATTERN = /^persist:web(-[\w-]+)?$/;
 export const appPartition = (appId: string) => `persist:app-${appId}`;
 export const APP_PARTITION_PATTERN = /^persist:app-[\w-]+$/;
 
-export type WebShortcut =
-  | "command-bar"
-  | "toggle-agent"
-  | "toggle-sidebar"
-  | "focus-address"
-  | "reload"
-  | "back"
-  | "forward"
-  | "new-tab"
-  | "close-tab"
-  | "reopen-tab"
-  | `workspace-${number}`;
+/** A shortcut (shared/shortcuts.ts) pressed in a page: which one, and in which page. */
+export interface ShortcutEvent {
+  id: string;
+  contentsId?: number;
+}
 
 // --- Providers ------------------------------------------------------------------
 

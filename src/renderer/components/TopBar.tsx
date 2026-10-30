@@ -26,6 +26,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { Icon } from "./Icon";
 import { TabIcon } from "./TabIcon";
 import { WindowControls } from "./WindowControls";
+import { withKeys } from "../lib/shortcuts";
 
 interface Suggestion {
   key: string;
@@ -53,7 +54,7 @@ export function NavRow(props: { compact: boolean }) {
         <Show when={tabId()}>
           <button
             type="button"
-            title={agentHidden() ? "Show the agent (Ctrl+J)" : "Hide the agent (Ctrl+J)"}
+            title={withKeys(agentHidden() ? "Show the agent" : "Hide the agent", "agent.toggle")}
             onClick={() => toggleAgent(tabId()!)}
             {...stylex.attrs(styles.navButton, styles.agentButton, agentShown() && styles.agentOn)}
             data-agent-show={agentHidden() ? "" : undefined}
@@ -94,7 +95,7 @@ export function NavRow(props: { compact: boolean }) {
           fallback={
             <button
               type="button"
-              title="Reload (Ctrl+R)"
+              title={withKeys("Reload", "nav.reload")}
               disabled={!chrome()}
               onClick={() => chrome()?.reload()}
               {...stylex.attrs(styles.navButton)}
@@ -208,6 +209,34 @@ export function AddressBar() {
     s.run();
     finish();
   };
+  /**
+   * Enter with modifiers, like in Chromium: Ctrl+Enter makes "example" www.example.com,
+   * Alt+Enter (Cmd+Enter on macOS) and Shift+Enter open in a new tab. True if it handled it.
+   */
+  const enterWith = (e: KeyboardEvent) => {
+    const typed = text().trim();
+    const newTab = window.rune.window.platform === "darwin" ? e.metaKey : e.altKey || e.shiftKey;
+    const complete = e.ctrlKey && !e.metaKey && /^[\w-]+$/.test(typed);
+    if (!typed || (!newTab && !complete)) return false;
+    e.preventDefault();
+    const chosen = list()[active()];
+    // A suggested tab is switched to, wherever it is.
+    if (!complete && chosen?.key.startsWith("tab:")) {
+      run(chosen);
+      return true;
+    }
+    const target = complete
+      ? `https://www.${typed}.com/`
+      : chosen?.key === "go"
+        ? chosen.title
+        : isExtensionUrl(typed)
+          ? typed
+          : normalizeUrl(typed, settings().web.searchEngine);
+    if (newTab) void newWebTab(target);
+    else open(target);
+    finish();
+    return true;
+  };
   const list = () => suggestions();
   const isActive = (i: number) => i === active();
 
@@ -266,6 +295,7 @@ export function AddressBar() {
         onKeyDown={(e) => {
           const n = list().length;
           if (e.key === "Escape") return finish();
+          if (e.key === "Enter" && enterWith(e)) return;
           if (!n) return;
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             e.preventDefault();

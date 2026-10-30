@@ -43,6 +43,7 @@ import {
 import { isSidebarCollapsed, toggleSidebar } from "./layout";
 import { removeFromSplit, rotateSplit, splitOf, splitWith, unsplit, visibleTabs } from "./splits";
 import { pageOf } from "./webtabs";
+import { runShortcut } from "./shortcuts";
 import { networkTab, setNetworkTab } from "./tabChrome";
 import { unloadOtherTabs } from "./unload";
 import { sendWithShares } from "./sharing";
@@ -64,6 +65,8 @@ export interface Command {
   group: string;
   /** More words it should be found by. */
   keywords?: string;
+  /** The keyboard shortcut that does the same (shared/shortcuts.ts), shown next to it. */
+  keys?: string;
   /** Asks for text first; this is the placeholder. */
   input?: string;
   /** Ranks it regardless of how the query matches (routing). */
@@ -274,7 +277,7 @@ function currentTabCommands(id: string): Command[] {
         ? {
             id: "tab.agent",
             title: "Edit the app",
-            subtitle: "Ctrl+J",
+            keys: "agent.toggle",
             icon: "pencil-ruler",
             group: "App",
             keywords: "show agent panel chat dev mode editing",
@@ -283,7 +286,7 @@ function currentTabCommands(id: string): Command[] {
         : {
             id: "tab.agent",
             title: "Done editing",
-            subtitle: "Ctrl+J",
+            keys: "agent.toggle",
             icon: "check",
             group: "App",
             keywords: "hide agent panel chat mark as done live build publish",
@@ -292,7 +295,7 @@ function currentTabCommands(id: string): Command[] {
       : {
           id: "tab.agent",
           title: isAgentCollapsed(id) ? "Show the agent" : "Hide the agent",
-          subtitle: "Ctrl+J",
+          keys: "agent.toggle",
           icon: "panel-right",
           group: "Tab",
           keywords: "toggle panel chat",
@@ -332,16 +335,40 @@ function currentTabCommands(id: string): Command[] {
   list.push({
     id: "tab.close",
     title: app.kind === "app" ? "Close tab (the app is kept)" : "Close tab",
-    subtitle: "Ctrl+W",
+    keys: "tab.close",
     icon: "x",
     group: "Tab",
     run: () => closeTab(id),
   });
+  // What the browser does to the page (the keys' actions: lib/shortcuts.ts).
+  if (pageOf(id)?.view())
+    list.push(
+      ...(
+        [
+          ["find.open", "Find in page", "search", "search text"],
+          ["zoom.in", "Zoom in", "zoom-in", "bigger larger"],
+          ["zoom.out", "Zoom out", "zoom-out", "smaller"],
+          ["zoom.reset", "Actual size", "scan", "zoom reset 100%"],
+          ["page.print", "Print…", "printer", "pdf paper"],
+          ["page.save", "Save page as…", "download", "download html file"],
+          ["nav.hard-reload", "Reload without the cache", "refresh-ccw", "hard reload cache"],
+          ["page.devtools", "Developer tools", "code-xml", "devtools inspect console f12"],
+        ] as const
+      ).map(([shortcut, title, icon, keywords]): Command => ({
+        id: `page.${shortcut}`,
+        title,
+        icon,
+        group: "Page",
+        keywords,
+        keys: shortcut,
+        run: () => runShortcut(shortcut, { tabId: id, source: "window" }),
+      })),
+    );
   if (app.kind === "web") {
     list.push({
       id: "tab.reload",
       title: "Reload page",
-      subtitle: "Ctrl+R",
+      keys: "nav.reload",
       icon: "rotate-cw",
       group: "Tab",
       run: () => pageOf(id)?.reload(),
@@ -439,7 +466,7 @@ function runeCommands(): Command[] {
     {
       id: "new.web",
       title: "New web tab",
-      subtitle: "Ctrl+T",
+      keys: "tab.new",
       icon: "globe",
       group: "Rune Browser",
       keywords: "browser",
@@ -470,7 +497,7 @@ function runeCommands(): Command[] {
     {
       id: "sidebar.toggle",
       title: isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar",
-      subtitle: "Ctrl+Shift+B",
+      keys: "sidebar.toggle",
       icon: "panel-left",
       group: "Rune Browser",
       keywords: "toggle hide show tabs",
@@ -719,7 +746,7 @@ export function commands(query: string): Command[] {
     {
       id: "tab.reopen",
       title: "Reopen closed tab",
-      subtitle: "Ctrl+Shift+T",
+      keys: "tab.reopen",
       icon: "undo-2",
       group: "Rune Browser",
       keywords: "restore undo close",

@@ -9,6 +9,7 @@
 import {
   app,
   clipboard,
+  dialog,
   ipcMain,
   Menu,
   session,
@@ -26,11 +27,12 @@ import {
   WEB_PARTITION,
   WEB_PARTITION_PATTERN,
   webPartition,
-  type WebShortcut,
 } from "../shared/api";
+import { join } from "node:path";
 import { setupExtensions } from "./extensions";
 import { setupDevtools } from "./devtools";
 import { setupNetwork } from "./network";
+import { setupShortcuts } from "./shortcuts";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
 /** Where Rune Browser serves apps (see the server's runtime). */
@@ -39,30 +41,9 @@ const isAppUrl = (url: string) => /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/
 // Websites get the harmless permissions only (no camera, location, notifications…).
 const allowedPermissions = new Set(["fullscreen", "clipboard-sanitized-write", "pointerLock"]);
 
-function shortcutFor(input: Input): WebShortcut | undefined {
-  if (input.type !== "keyDown") return;
-  const mod = input.control || input.meta;
-  const key = input.key.toLowerCase();
-  if (mod && !input.shift && !input.alt) {
-    if (key === "k") return "command-bar";
-    if (key === "j") return "toggle-agent";
-    if (key === "l") return "focus-address";
-    if (key === "r") return "reload";
-    if (key === "t") return "new-tab";
-  }
-  if (mod && !input.shift && !input.alt && key === "w") return "close-tab";
-  if (mod && input.shift && !input.alt && key === "b") return "toggle-sidebar";
-  if (mod && input.shift && !input.alt && key === "t") return "reopen-tab";
-  // Ctrl+Alt+1…9: the workspace in that place (by the key's position, whatever the layout types).
-  const digit = /^Digit([1-9])$/.exec(input.code ?? "");
-  if (mod && input.alt && !input.shift && digit) return `workspace-${Number(digit[1])}`;
-  if (key === "f5" && !mod) return "reload";
-  if (input.alt && !mod && key === "arrowleft") return "back";
-  if (input.alt && !mod && key === "arrowright") return "forward";
-}
-
 export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   const send = (channel: string, ...args: unknown[]) => getWindow()?.webContents.send(channel, ...args);
+  const shortcuts = setupShortcuts(getWindow);
   const extensions = setupExtensions({
     getWindow,
     webSession: (workspaceId) => webSession(webPartition(workspaceId)),
@@ -70,7 +51,9 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
   });
   /** Websites, and the pages of the extensions running in that session. */
   const isTabUrl = (s: Electron.Session, url: string) => isWebUrl(url) || extensions.isExtensionPage(s, url);
-  const openTab = (s: Electron.Session, url: string) => isTabUrl(s, url) && send("rune:open-tab", url);
+  /** In the background: Ctrl+click and middle click, like in a browser. */
+  const openTab = (s: Electron.Session, url: string, background = false) =>
+    isTabUrl(s, url) && send("rune:open-tab", url, background);
   const network = setupNetwork({
     getWindow,
     webSession: (workspaceId) => webSession(webPartition(workspaceId)),
@@ -110,8 +93,8 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     network.watch(contents);
     devtools.track(contents);
     if (!isPreview()) extensions.trackGuest(contents);
-    contents.setWindowOpenHandler(({ url }) => {
-      openTab(contents.session, url);
+    contents.setWindowOpenHandler(({ url, disposition }) => {
+      openTab(contents.session, url, disposition === "background-tab");
       return { action: "deny" };
     });
     contents.on("will-navigate", (event, url) => {
@@ -121,26 +104,39 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       if (/^(mailto|tel):/i.test(url)) shell.openExternal(url);
       else openTab(contents.session, url);
     });
+    // The browser's reserved keys first, then the extensions' shortcuts, then the page (which may pass a shortcut on).
     contents.on("before-input-event", (event, input) => {
-      const name = shortcutFor(input);
-      if (name) {
-        event.preventDefault();
-        send("rune:shortcut", name);
+      const shortcut = shortcuts.match(input);
+      if (shortcut?.page === "reserved") {
+        if (shortcuts.handlePageInput(contents, input, shortcut)) event.preventDefault();
       } else if (!isPreview() && extensions.handleInput(contents.session, input)) {
+        event.preventDefault();
+      } else if (shortcut && shortcuts.handlePageInput(contents, input, shortcut)) {
         event.preventDefault();
       }
     });
+    contents.on("input-event", (_event, input) => shortcuts.handlePageMouse(contents, input));
+    // Ctrl+scroll zooms, like Ctrl+Plus and Minus.
+    contents.on("zoom-changed", (_event, direction) =>
+      send("rune:shortcut", { id: direction === "in" ? "zoom.in" : "zoom.out", contentsId: contents.id }),
+    );
     contents.on("context-menu", (_event, params) => {
       Menu.buildFromTemplate(contextMenu(contents, params)).popup({ window: getWindow() });
     });
   }
+
+  /** A menu item shows its shortcut (the keys run it from the page, not the menu). */
+  const keys = (id: string) => {
+    const accelerator = shortcuts.accelerator(id);
+    return accelerator ? { accelerator, registerAccelerator: false } : {};
+  };
 
   function contextMenu(contents: WebContents, params: ContextMenuParams): MenuItemConstructorOptions[] {
     const items: MenuItemConstructorOptions[] = [];
     const history = contents.navigationHistory;
     if (params.linkURL && isWebUrl(params.linkURL)) {
       items.push(
-        { label: "Open link in new tab", click: () => openTab(contents.session, params.linkURL) },
+        { label: "Open link in new tab", click: () => openTab(contents.session, params.linkURL, true) },
         { label: "Open link in browser", click: () => shell.openExternal(params.linkURL) },
         { label: "Copy link address", click: () => clipboard.writeText(params.linkURL) },
         { type: "separator" },
@@ -167,12 +163,19 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     const fromExtensions = extensions.menuItems(contents, params);
     if (fromExtensions.length) items.push(...fromExtensions, { type: "separator" });
     items.push(
-      { label: "Back", enabled: history.canGoBack(), click: () => history.goBack() },
-      { label: "Forward", enabled: history.canGoForward(), click: () => history.goForward() },
-      { label: "Reload", click: () => contents.reload() },
+      { label: "Back", enabled: history.canGoBack(), click: () => history.goBack(), ...keys("nav.back") },
+      { label: "Forward", enabled: history.canGoForward(), click: () => history.goForward(), ...keys("nav.forward") },
+      { label: "Reload", click: () => contents.reload(), ...keys("nav.reload") },
+      { type: "separator" },
+      { label: "Save as…", click: () => void savePage(contents), ...keys("page.save") },
+      { label: "Print…", click: () => contents.print(), ...keys("page.print") },
       { type: "separator" },
       { label: "Open page in browser", click: () => shell.openExternal(contents.getURL()) },
-      { label: "Inspect element", click: () => contents.inspectElement(params.x, params.y) },
+      {
+        label: "Inspect element",
+        click: () => contents.inspectElement(params.x, params.y),
+        ...keys("page.inspect"),
+      },
     );
     return items;
   }
@@ -266,6 +269,59 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     if (typeof url === "string" && isWebUrl(url)) void shell.openExternal(url);
   });
 
+  // DevTools for the user, like Chromium's F12, Ctrl+Shift+J (the console) and Ctrl+Shift+C (picking an element).
+  ipcMain.on("rune:open-devtools", (event, id: unknown, panel: unknown) => {
+    const target = typeof id === "number" ? webContents.fromId(id) : undefined;
+    if (!target || target.getType() !== "webview" || target.hostWebContents !== event.sender) return;
+    const show = () => {
+      const call =
+        panel === "console"
+          ? `DevToolsAPI.showPanel("console")`
+          : panel === "sources"
+            ? `DevToolsAPI.showPanel("sources")`
+            : panel === "inspect"
+              ? `DevToolsAPI.enterInspectElementMode()`
+              : null;
+      if (call) void target.devToolsWebContents?.executeJavaScript(`try { ${call} } catch {}`).catch(() => {});
+    };
+    if (target.isDevToolsOpened()) {
+      target.devToolsWebContents?.focus();
+      return show();
+    }
+    target.once("devtools-opened", () => setTimeout(show, 300));
+    target.openDevTools();
+  });
+
+  ipcMain.handle("rune:save-page", async (event, id: unknown) => {
+    const target = typeof id === "number" ? webContents.fromId(id) : undefined;
+    if (!target || target.getType() !== "webview" || target.hostWebContents !== event.sender) return;
+    await savePage(target);
+  });
+
+  async function savePage(contents: WebContents) {
+    const win = getWindow();
+    if (!win) return;
+    const name =
+      (contents.getTitle() || "page")
+        .replace(/[\\/:*?"<>|]+/g, " ")
+        .trim()
+        .slice(0, 120) || "page";
+    const picked = await dialog.showSaveDialog(win, {
+      title: "Save page as",
+      defaultPath: join(app.getPath("downloads"), `${name}.html`),
+      filters: [
+        { name: "Web page, complete", extensions: ["html"] },
+        { name: "Web page, HTML only", extensions: ["htm"] },
+      ],
+    });
+    if (picked.canceled || !picked.filePath || contents.isDestroyed()) return;
+    // .htm: only the HTML; .html: with its images, styles and scripts in a folder next to it.
+    const htmlOnly = picked.filePath.toLowerCase().endsWith(".htm");
+    await contents.savePage(picked.filePath, htmlOnly ? "HTMLOnly" : "HTMLComplete").catch((err) => {
+      console.warn("Saving the page failed:", err);
+    });
+  }
+
   ipcMain.handle("rune:capture", async (event, id: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;
     if (!target || target.getType() !== "webview" || target.hostWebContents !== event.sender) {
@@ -285,8 +341,8 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
 /** Keeps the Rune Browser window on Rune Browser: links open as web tabs instead. */
 export function guardWindow(win: BrowserWindow, rendererOrigin: string, onInput?: (input: Input) => boolean) {
   const send = (channel: string, ...args: unknown[]) => win.webContents.send(channel, ...args);
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isWebUrl(url)) send("rune:open-tab", url);
+  win.webContents.setWindowOpenHandler(({ url, disposition }) => {
+    if (isWebUrl(url)) send("rune:open-tab", url, disposition === "background-tab");
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
@@ -294,13 +350,8 @@ export function guardWindow(win: BrowserWindow, rendererOrigin: string, onInput?
     event.preventDefault();
     if (isWebUrl(url)) send("rune:open-tab", url);
   });
-  // Ctrl+R / F5 reload the current web tab rather than Rune Browser itself.
+  // Rune Browser's own shortcuts are the renderer's (lib/shortcuts.ts); extensions' come first.
   win.webContents.on("before-input-event", (event, input) => {
-    if (shortcutFor(input) === "reload") {
-      event.preventDefault();
-      send("rune:shortcut", "reload");
-    } else if (onInput?.(input)) {
-      event.preventDefault();
-    }
+    if (onInput?.(input)) event.preventDefault();
   });
 }

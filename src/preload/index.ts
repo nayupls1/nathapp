@@ -22,6 +22,8 @@ const bridge: RuneBridge = {
     minimize: () => ipcRenderer.send("rune:window", "minimize"),
     toggleMaximize: () => ipcRenderer.send("rune:window", "toggle-maximize"),
     close: () => ipcRenderer.send("rune:window", "close"),
+    toggleFullScreen: () => ipcRenderer.send("rune:window", "toggle-fullscreen"),
+    quit: () => ipcRenderer.send("rune:window", "quit"),
     onMaximized: listen("rune:maximized"),
   },
   pickFolder: (title) => ipcRenderer.invoke("rune:pick-folder", title),
@@ -39,8 +41,15 @@ const bridge: RuneBridge = {
   },
   web: {
     clearWorkspace: (workspaceId) => ipcRenderer.invoke("rune:clear-workspace", workspaceId),
-    onOpenTab: listen("rune:open-tab"),
+    onOpenTab: (fn) => {
+      const handler = (_event: unknown, url: string, background?: boolean) => fn(url, background === true);
+      ipcRenderer.on("rune:open-tab", handler);
+      return () => void ipcRenderer.removeListener("rune:open-tab", handler);
+    },
     onShortcut: listen("rune:shortcut"),
+    setShortcuts: (bindings) => ipcRenderer.send("rune:shortcuts", bindings),
+    openDevTools: (webContentsId, panel) => ipcRenderer.send("rune:open-devtools", webContentsId, panel),
+    savePage: (webContentsId) => ipcRenderer.invoke("rune:save-page", webContentsId),
     capture: (webContentsId) => ipcRenderer.invoke("rune:capture", webContentsId),
     openExternal: (url) => ipcRenderer.send("rune:open-external", url),
     devtools: (webContentsId, command, params) => ipcRenderer.invoke("rune:devtools", webContentsId, command, params),
