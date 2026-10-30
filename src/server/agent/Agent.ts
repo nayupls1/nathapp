@@ -42,6 +42,8 @@ import { historyTools } from "./historyTools";
 import { describeSource, sourceTools } from "./sourceTools";
 import { Attachments, type AttachedFile } from "./Attachments";
 import { networkReadTools, networkTools } from "./networkTools";
+import { endpointTools } from "./endpointTools";
+import { Endpoints } from "../db/Endpoints";
 import { sharedContext, withSharedTabs, type SharedTabInput } from "./sharedTabs";
 import { appTools, pageTools, registryTools, scheduleTools, siteTools, tabTools, type ToolEnv } from "./tools";
 
@@ -107,6 +109,7 @@ export const make = Effect.gen(function* () {
     | Permissions
     | Secrets
     | Network
+    | Endpoints
     | AppData
     | AppTools
     | PageChanges
@@ -208,6 +211,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(browseTools(env), context)),
             ...(yield* Effect.provide(siteTools(env), context)),
             ...(yield* Effect.provide(networkTools(env), context)),
+            ...(yield* Effect.provide(endpointTools(env), context)),
             ...(yield* Effect.provide(historyTools(env, { site: true }), context)),
             ...(yield* Effect.provide(sourceTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),
@@ -218,6 +222,7 @@ export const make = Effect.gen(function* () {
             ...(yield* Effect.provide(pageTools(env, { site: false }), context)),
             ...(yield* Effect.provide(devtoolsTools(env, { site: false }), context)),
             ...(yield* Effect.provide(networkReadTools(env), context)),
+            ...(yield* Effect.provide(endpointTools(env), context)),
             ...(yield* Effect.provide(historyTools(env, { site: false }), context)),
             ...(yield* Effect.provide(sourceTools(env), context)),
             ...(yield* Effect.provide(registryTools(env), context)),

@@ -16,6 +16,7 @@ const icons: Record<PermissionRequest["action"], string> = {
   "agent.site": "paintbrush",
   "agent.network": "network",
   "app.data": "database",
+  "app.endpoints": "waypoints",
   "app.tool": "wrench",
   "agent.schedule": "calendar-clock",
   "agent.tab": "app-window",

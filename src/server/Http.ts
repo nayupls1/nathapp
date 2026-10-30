@@ -39,6 +39,8 @@ import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
 import { isIcon } from "./icons";
 import { Network } from "./db/Network";
+import { Endpoints } from "./db/Endpoints";
+import { describeEndpoint, type Observation } from "../shared/endpoints";
 import { Settings } from "./db/Settings";
 import { PageChanges, pageChangeError } from "./db/PageChanges";
 import { ScheduleError, Scheduler } from "./scheduler/Scheduler";
@@ -887,7 +889,7 @@ const siteRoutes = HttpRouter.addAll([
     Effect.gen(function* () {
       const sites = yield* Sites;
       const hub = yield* Hub;
-      const host = yield* param("host");
+      const host = decodeURIComponent(yield* param("host"));
       yield* sites.remove(host);
       yield* hub.publish({ type: "site", topic: topics.sites, host });
       yield* snapshot("sites", `Removed the customizations of ${host}`);
@@ -1514,6 +1516,43 @@ const appApiRoutes = HttpRouter.addAll([
       }),
     ),
   ),
+  // The API map of the app's workspace: the APIs of the sites its web tabs used (after the user's OK).
+  HttpRouter.route(
+    "GET",
+    "/app-api/v1/endpoints",
+    handle(
+      Effect.gen(function* () {
+        const app = yield* apiApp;
+        const req = yield* HttpServerRequest.HttpServerRequest;
+        const params = new URL(req.url, "http://localhost").searchParams;
+        const allowed = yield* (yield* Permissions).ask({
+          subject: app.id,
+          action: "app.endpoints",
+          resource: app.workspaceId,
+          title: `Let "${app.name}" read the API map?`,
+          detail:
+            "Its server wants the shapes of the APIs that sites you used call (addresses, parameters, the kinds of values). The map has no values, logins or personal data.",
+          timeoutMs: 60_000,
+        });
+        yield* (yield* Audit).record({
+          actor: "app",
+          actorLabel: app.name,
+          tabId: app.id,
+          action: "endpoints.read",
+          target: params.get("search") || null,
+          outcome: allowed ? "ok" : "denied",
+        });
+        if (!allowed)
+          return yield* fail(
+            403,
+            "The user didn't allow reading the API map. It can be allowed in Rune Browser's Settings → Permissions.",
+          );
+        const limit = Math.min(Math.max(Number(params.get("limit")) || 50, 1), 200);
+        const endpoints = yield* (yield* Endpoints).search(app.workspaceId, params.get("search") ?? "", limit);
+        return json(endpoints.map((e) => ({ ...e, description: describeEndpoint(e) })));
+      }),
+    ),
+  ),
   // The apps whose data this app could ask for: its workspace's.
   HttpRouter.route(
     "GET",
@@ -1915,6 +1954,7 @@ const workspaceRoutes = HttpRouter.addAll([
         yield* secrets.removeScope(workspaceScope(id));
         yield* permissions.forget(workspaceScope(id));
         yield* (yield* Network).removeWorkspace(id);
+        yield* (yield* Endpoints).remove(id);
         yield* workspaces.remove(id);
         yield* youDid(null, "workspace.delete", space.name);
         yield* snapshot("settings", `Deleted the workspace ${space.name}`);
@@ -2357,6 +2397,111 @@ const networkRoutes = HttpRouter.addAll([
   ),
 ]);
 
+// --- The API endpoint map -----------------------------------------------------------
+
+/** Whether the map leaves a host out (Settings: a site turned off covers its subdomains). */
+const mapsHost = (off: readonly string[], host: string) => {
+  const name = host.split(":")[0]!.toLowerCase();
+  return !off.some((site) => name === site || name.endsWith(`.${site}`));
+};
+
+/** An observation from the main process, checked loosely: shapes are bounded in size, never values. */
+const ObservationInput = Schema.Struct({
+  host: str(260),
+  site: str(260),
+  method: str(16),
+  path: str(2000),
+  operation: Schema.NullOr(str(100)),
+  query: Schema.Record(Schema.String, Schema.Unknown),
+  headers: Schema.Record(Schema.String, Schema.Unknown),
+  requestType: Schema.NullOr(str(200)),
+  requestBody: Schema.Unknown,
+  status: Schema.NullOr(Schema.Number),
+  responseType: Schema.NullOr(str(200)),
+  responseBody: Schema.Unknown,
+});
+
+const workspaceParam = Effect.gen(function* () {
+  const req = yield* HttpServerRequest.HttpServerRequest;
+  const id = new URL(req.url, "http://localhost").searchParams.get("workspace");
+  if (!id) return yield* fail(400, "Missing workspace");
+  yield* ensureWorkspace(id);
+  return id;
+});
+
+const endpointRoutes = HttpRouter.addAll([
+  // What web tabs saw (from Electron's main process, which turns requests into shapes).
+  HttpRouter.route(
+    "POST",
+    "/api/endpoints/observe",
+    handle(
+      Effect.gen(function* () {
+        const input = yield* decodeBody(
+          Schema.Struct({
+            workspaceId: str(100),
+            observations: Schema.Array(ObservationInput).check(Schema.isMaxLength(200)),
+          }),
+        );
+        const web = (yield* (yield* Settings).get()).web;
+        if (!web.apiMap || !(yield* (yield* Workspaces).get(input.workspaceId))) return noContent;
+        const kept = (input.observations as unknown as Observation[]).filter(
+          (o) =>
+            mapsHost(web.apiMapOff, o.host) && mapsHost(web.apiMapOff, o.site) && JSON.stringify(o).length < 256 * 1024,
+        );
+        if (kept.length) yield* (yield* Endpoints).record(input.workspaceId, kept);
+        return noContent;
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/endpoints",
+    handle(
+      Effect.gen(function* () {
+        return json(yield* (yield* Endpoints).hosts(yield* workspaceParam));
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "GET",
+    "/api/endpoints/hosts/:host",
+    handle(
+      Effect.gen(function* () {
+        return json(
+          yield* (yield* Endpoints).endpoints(yield* workspaceParam, decodeURIComponent(yield* param("host"))),
+        );
+      }),
+    ),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/endpoints/hosts/:host",
+    handle(
+      Effect.gen(function* () {
+        const workspaceId = yield* workspaceParam;
+        const host = decodeURIComponent(yield* param("host"));
+        yield* (yield* Endpoints).remove(workspaceId, host);
+        yield* youDid(workspaceScope(workspaceId), "endpoints.delete", host);
+        return noContent;
+      }),
+    ),
+  ),
+  // A site's part of the map: its own host's endpoints and what its pages called.
+  HttpRouter.route(
+    "DELETE",
+    "/api/endpoints/sites/:site",
+    handle(
+      Effect.gen(function* () {
+        const workspaceId = yield* workspaceParam;
+        const site = decodeURIComponent(yield* param("site"));
+        yield* (yield* Endpoints).removeSite(workspaceId, site);
+        yield* youDid(workspaceScope(workspaceId), "endpoints.delete", site);
+        return noContent;
+      }),
+    ),
+  ),
+]);
+
 export const routes = Layer.mergeAll(
   health,
   ws,
@@ -2382,6 +2527,7 @@ export const routes = Layer.mergeAll(
   secretRoutes,
   permissionRoutes,
   networkRoutes,
+  endpointRoutes,
   guard,
 );
 

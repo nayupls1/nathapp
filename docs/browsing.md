@@ -43,6 +43,27 @@ Every web tab's traffic is recorded in Electron's main process over the DevTools
 
 The website agent has `network_requests`, `network_request`, `replay_request`, `save_request`, `saved_requests` and `send_saved_request`. Sending anything with the user's session asks first, once per site (permission `agent.network`), and every call is in the activity log.
 
+### API map
+
+While the user browses, web tabs' API calls (fetch, XHR, structured responses) build a map of each site's API: every
+endpoint, grouped by host, with its parameters, request body and responses (`shared/endpoints.ts`).
+
+- **Shapes, never values:** the main process turns a finished request into an observation before it leaves
+  `main/network.ts`. Paths become templates (`/users/123` → `/users/{id}`; uuids, emails, dates, hashes and long ids
+  too). Query and form parameters, JSON fields and the site's own request headers keep their name and kind of value
+  (integer, string, `date`, `email`, `url`…). Credentials (by name, as in redaction) keep only their name, objects keyed
+  by data (ids, emails) become maps, and GraphQL keeps the operation name and the variables' shape, not the query.
+- **Grows over time:** the server merges observations into `api_endpoints` (`db/Endpoints.ts`). Fields seen in only
+  some requests become optional, different kinds become alternatives, responses are kept per status, and paths that
+  differ in one segment (4 or more values, e.g. `/users/ada`, `/users/bob`…) become one template. Each host keeps at most
+  300 endpoints (the least used make room), each workspace 5000.
+- **Browse:** Settings → API map lists the workspace's hosts, their endpoints and each one's shapes.
+- **Agents and apps:** both agents have `api_map` (hosts, a host's endpoints, or a search). Apps' servers call
+  `GET $RUNE_API_URL/endpoints?search=` after the user allows it (`app.endpoints`, audited).
+- **Privacy controls:** a switch turns the map off (it also needs traffic recording). A site can be left out (it covers
+  its subdomains, and deletes what was mapped for it), a host's map can be deleted, and a deleted workspace takes its map
+  with it.
+
 ## Extensions
 
 Web tabs run Chrome extensions (Manifest V3 and V2) with Electron's extension support. Each workspace's session loads its own copy, so an extension only sees the tabs of its workspace and keeps separate data there (`chrome.storage.sync` is the exception: one copy per extension, shared). Settings → Extensions lists them. You can add one from the Chrome Web Store (link or ID), load an unpacked folder, or import from a browser. Store extensions update every 5 hours.

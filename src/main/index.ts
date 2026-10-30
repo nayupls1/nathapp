@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol } from "electron";
 import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { apiMapReporter } from "./apiMap";
 import { startServer, type ServerHandle } from "./server";
 import { setupUpdates } from "./updates";
 import { guardWindow, setupWebTabs } from "./web";
@@ -171,7 +172,10 @@ function createWindow(server: ServerHandle) {
 
 app.whenReady().then(async () => {
   if (!devServerUrl) registerAppProtocol();
-  web = setupWebTabs(() => mainWindow);
+  web = setupWebTabs(
+    () => mainWindow,
+    apiMapReporter(() => server),
+  );
   setupUpdates(() => mainWindow);
 
   try {

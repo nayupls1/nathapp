@@ -38,6 +38,7 @@ import {
   urlMatcher,
   type Captured,
 } from "../shared/network";
+import { observe, type Observation } from "../shared/endpoints";
 import * as cdp from "./cdp";
 import { loadSecretsKey } from "./secretsKey";
 
@@ -64,6 +65,8 @@ export interface NetworkOptions {
   workspaceOf: (session: Session) => string | undefined;
   /** Puts the rules into effect. */
   applyRules: (rules: NetworkRule[]) => void;
+  /** A web tab's API call, as shapes (no values), for the API map. */
+  onApiCall?: (workspaceId: string, observation: Observation) => void;
 }
 
 export function setupNetwork(options: NetworkOptions) {
@@ -113,6 +116,26 @@ export function setupNetwork(options: NetworkOptions) {
     const early = new Map<string, { request?: Record<string, string>; response?: Record<string, string> }>();
 
     const send = <T>(method: string, params: object) => dbg.sendCommand(method, params) as Promise<T>;
+    /** An API call of a web tab (fetch, XHR, structured data) that finished: into the API map, as shapes. */
+    const mapped = (entry: Captured) => {
+      if (workspaceId === undefined || !options.onApiCall || entry.status === null || entry.error) return;
+      if (!["XHR", "Fetch", "EventSource"].includes(entry.type) && !isStructured(entry.mimeType, entry.type)) return;
+      try {
+        const observation = observe({
+          method: entry.method,
+          url: entry.url,
+          pageUrl: contents.isDestroyed() ? entry.url : contents.getURL(),
+          requestHeaders: entry.requestHeaders,
+          requestBody: entry.requestBody,
+          status: entry.status,
+          mimeType: entry.mimeType,
+          responseBody: entry.responseBody,
+        });
+        if (observation) options.onApiCall(workspaceId, observation);
+      } catch (err) {
+        console.warn("Mapping an API call failed:", err);
+      }
+    };
     const finish = (requestId: string) => {
       current.delete(requestId);
       early.delete(requestId);
@@ -192,16 +215,22 @@ export function setupNetwork(options: NetworkOptions) {
           entry.durationMs = Math.round((p.timestamp - entry.startTs) * 1000);
           if (!isStructured(entry.mimeType, entry.type)) {
             entry.bodyNote = "Not kept: only structured data (JSON, XML, forms, text) is";
+            mapped(entry);
           } else if (entry.size > log.limits.body) {
             entry.bodyNote = "Too large to keep";
+            mapped(entry);
           } else {
             void send<{ body: string; base64Encoded: boolean }>("Network.getResponseBody", { requestId: p.requestId })
               .then((r) => {
                 if (r.base64Encoded) entry.bodyNote = "Binary";
                 else log.setBody(entry, r.body);
+                mapped(entry);
                 notify(id);
               })
-              .catch(() => void (entry.bodyNote = "No longer available"));
+              .catch(() => {
+                entry.bodyNote = "No longer available";
+                mapped(entry);
+              });
           }
           break;
         }

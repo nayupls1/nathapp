@@ -93,7 +93,7 @@ More in [Development](docs/development.md).
 - [Concepts](docs/concepts.md): workspaces, apps and their data, agents, AI in
   apps, tools, schedules, secrets, permissions, history and mods
 - [Interface](docs/interface.md): the window, sidebars, command bar, split view, settings
-- [Browsing](docs/browsing.md): web tabs, page changes, network, extensions, keyboard shortcuts
+- [Browsing](docs/browsing.md): web tabs, page changes, network, the API map, extensions, keyboard shortcuts
 - [Architecture](docs/architecture.md): processes, the server's services, where data lives
 - [Development](docs/development.md) and [Releasing](docs/releasing.md)
 

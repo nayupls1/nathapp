@@ -947,6 +947,7 @@ export type PermissionAction =
   | "agent.site"
   | "agent.network"
   | "app.data"
+  | "app.endpoints"
   | "app.tool"
   | "agent.schedule"
   | "agent.tab"

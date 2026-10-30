@@ -33,6 +33,7 @@ import { setupExtensions } from "./extensions";
 import { setupDevtools } from "./devtools";
 import { setupNetwork } from "./network";
 import { setupShortcuts } from "./shortcuts";
+import type { Observation } from "../shared/endpoints";
 
 const isWebUrl = (url: string) => /^https?:/i.test(url);
 /** Where Rune Browser serves apps (see the server's runtime). */
@@ -41,7 +42,10 @@ const isAppUrl = (url: string) => /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/
 // Websites get the harmless permissions only (no camera, location, notifications…).
 const allowedPermissions = new Set(["fullscreen", "clipboard-sanitized-write", "pointerLock"]);
 
-export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
+export function setupWebTabs(
+  getWindow: () => BrowserWindow | undefined,
+  onApiCall?: (workspaceId: string, observation: Observation) => void,
+) {
   const send = (channel: string, ...args: unknown[]) => getWindow()?.webContents.send(channel, ...args);
   const shortcuts = setupShortcuts(getWindow);
   const extensions = setupExtensions({
@@ -59,6 +63,7 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
     webSession: (workspaceId) => webSession(webPartition(workspaceId)),
     workspaceOf: (s) => webSessions.get(s),
     applyRules: (rules) => extensions.setNetworkRules(rules),
+    onApiCall,
   });
 
   const devtools = setupDevtools({ getWindow, isWebTab: (contents) => webSessions.has(contents.session) });

@@ -1,6 +1,7 @@
 // The Rune Browser server's HTTP API. Every request carries the token Electron gave
 // this window; agent output and app status arrive on the hub (realtime.ts).
 import type { Settings } from "../../shared/settings";
+import type { Endpoint, EndpointHost } from "../../shared/endpoints";
 import type { GalleryResult, InstalledMod, Mod, ModExtension, ModReview } from "../../shared/mods";
 import type {
   TabSplit,
@@ -150,6 +151,21 @@ export const api = {
   /** Creates or replaces a secret. The value is never sent back. */
   saveSecret: (scope: string, name: string, value: string) =>
     request<SecretInfo>("/api/secrets", { method: "PUT", body: JSON.stringify({ scope, name, value }) }),
+  /** The API map (shared/endpoints.ts): a workspace's hosts, a host's endpoints. */
+  endpointHosts: (workspaceId: string) =>
+    request<EndpointHost[]>(`/api/endpoints?workspace=${encodeURIComponent(workspaceId)}`),
+  endpoints: (workspaceId: string, host: string) =>
+    request<Endpoint[]>(
+      `/api/endpoints/hosts/${encodeURIComponent(host)}?workspace=${encodeURIComponent(workspaceId)}`,
+    ),
+  deleteEndpointHost: (workspaceId: string, host: string) =>
+    request<void>(`/api/endpoints/hosts/${encodeURIComponent(host)}?workspace=${encodeURIComponent(workspaceId)}`, {
+      method: "DELETE",
+    }),
+  deleteEndpointSite: (workspaceId: string, site: string) =>
+    request<void>(`/api/endpoints/sites/${encodeURIComponent(site)}?workspace=${encodeURIComponent(workspaceId)}`, {
+      method: "DELETE",
+    }),
   deleteSecret: (id: string) => request<void>(`/api/secrets/${id}`, { method: "DELETE" }),
 
   permissions: () => request<PermissionGrant[]>("/api/permissions"),
