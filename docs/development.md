@@ -26,10 +26,10 @@ bun run dev
 | `bun run start`     | Runs the production build (unpackaged). |
 | `bun run package`   | Builds and packages installers for this OS into `release/` (electron-builder, nothing published). |
 | `bun run server`    | Runs only the Bun server standalone (port 3000), with watch mode. |
-| `bun run typecheck` | Type-checks the whole project. |
+| `bun run typecheck` | Type-checks the whole project (`bun check`). |
 | `bun run test`      | Unit tests (`tests/`, bun:test) against the real server with throwaway data. |
 | `bun run e2e`       | Launches the built app with a throwaway profile and drives the UI over the DevTools protocol; add `--agent` to also have the agents build an app and customize a site (uses your own plan). Runs offscreen on Chromium's headless display backend, so no window opens. Screenshots land in `test-results/`. |
-| `bun run check`     | Everything: typecheck, tests, build, e2e. |
+| `bun run check`     | Everything: formatting (`bun fmt --check`), typecheck, tests, build, e2e. |
 | `bun run release`   | Releases, see [Releasing](releasing.md). |
 
 ## Conventions

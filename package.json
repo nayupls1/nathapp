@@ -23,10 +23,10 @@
     "package": "bun run build && electron-builder --publish never",
     "release": "bun scripts/release.ts",
     "server": "bun --watch src/server/index.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun check --no-script",
     "test": "bun test --timeout 30000 tests",
     "e2e": "bun scripts/e2e.ts",
-    "check": "bun run typecheck && bun run test && bun run build && bun run e2e"
+    "check": "bun fmt --check && bun run typecheck && bun run test && bun run build && bun run e2e"
   },
   "devDependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.300",

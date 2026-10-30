@@ -24,7 +24,8 @@ Electron + SolidJS (StyleX) desktop app; Bun server written with Effect v4 (SQLi
 ## Development
 
 - Bun everywhere: `bun install`, `bun run <script>`.
-- Verify changes with `bun run check` (typecheck, unit tests, build, e2e). Chain steps with `&&`, and don't hide failures behind pipes.
+- Format with `bun fmt` before committing (settings in `bunfig.toml`); `bun run check` and CI fail on unformatted files. Type-check with `bun run typecheck` (`bun check`).
+- Verify changes with `bun run check` (formatting, typecheck, unit tests, build, e2e). Chain steps with `&&`, and don't hide failures behind pipes.
   - For UI work, look at the screenshots in `test-results/`.
   - `bun run e2e --agent` exercises real agent runs. They use your own plan; it picks Haiku/low effort.
 - `scripts/lib/cdp.ts` is a small DevTools client for driving the running app if you need to inspect something e2e doesn't cover. Launch it headless as above.
