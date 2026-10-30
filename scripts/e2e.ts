@@ -147,7 +147,7 @@ const site = Bun.serve({
            <script>
              window.got = [];
              addEventListener("keydown", (e) => {
-               if (e.ctrlKey && e.key === "k") { e.preventDefault(); got.push("k:" + e.keyCode); }
+               if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); got.push("k:" + e.keyCode); }
              });
            </script>`
                   : path === "/second"
