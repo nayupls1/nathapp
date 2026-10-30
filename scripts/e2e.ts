@@ -3115,7 +3115,12 @@ try {
   site.stop(true);
   electron.kill();
   await electron.exited;
-  rmSync(profile, { recursive: true, force: true });
+  // Windows may still hold a file of the profile for a moment after Electron exits (EBUSY).
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch (err) {
+    console.warn(`Couldn't remove ${profile}:`, err);
+  }
   rmSync(browserDir, { recursive: true, force: true });
 }
 
