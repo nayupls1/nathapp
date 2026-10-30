@@ -28,8 +28,12 @@ export class Page {
     };
   }
 
-  /** Connects to the first app page exposed on the remote debugging port. */
-  static async connect(port: number, timeoutMs = 20_000): Promise<Page> {
+  /** Connects to the first app page exposed on the remote debugging port (or the first target `pick` picks). */
+  static async connect(
+    port: number,
+    timeoutMs = 20_000,
+    pick?: (target: { type: string; url: string }) => boolean,
+  ): Promise<Page> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       try {
@@ -42,7 +46,7 @@ export class Page {
         const pages = targets.filter(
           (t) => t.type === "page" && !t.url.startsWith("devtools://") && !t.url.startsWith("chrome-extension://"),
         );
-        const target = pages.find((t) => t.url.startsWith("app://")) ?? pages[0];
+        const target = pick ? targets.find(pick) : (pages.find((t) => t.url.startsWith("app://")) ?? pages[0]);
         if (target) {
           const ws = new WebSocket(target.webSocketDebuggerUrl);
           await new Promise((resolve, reject) => {

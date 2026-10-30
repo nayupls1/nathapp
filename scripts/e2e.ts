@@ -1505,6 +1505,25 @@ try {
     await press("0", ["control"]);
     await page!.waitFor(`!document.querySelector('${chromeFor(tab)} [data-zoom]')`, { label: "actual size" });
 
+    // The mouse's back and forward buttons in the page (webviews don't act on them themselves).
+    // With a user gesture: Chromium's back skips pages that navigated away without one.
+    await page!.eval(
+      `document.querySelector('${tab} webview').executeJavaScript('location.href = "/second?mouse"; true', true)`,
+    );
+    const guest = await Page.connect(port, 10_000, (t) => t.type === "webview" && t.url.endsWith("/second?mouse"));
+    const mouse = async (button: "back" | "forward") => {
+      for (const type of ["mousePressed", "mouseReleased"])
+        await guest.send("Input.dispatchMouseEvent", { type, x: 40, y: 40, button, clickCount: 1 });
+    };
+    try {
+      await mouse("back");
+      await waitForValue(async () => ((await inPage<string>(`location.pathname`)) === "/keys" ? true : undefined));
+      await mouse("forward");
+      await waitForValue(async () => ((await inPage<string>(`location.pathname`)) === "/second" ? true : undefined));
+    } finally {
+      guest.close();
+    }
+
     // Ctrl+T is the browser's even in a page; Ctrl+W closes that tab and leaves the window.
     await press("T", ["control"]);
     const blank = await page!.waitFor<string>(
@@ -1558,7 +1577,7 @@ try {
       label: "reset",
     });
     await apiCall(`/api/apps/${tabId}`, { method: "DELETE" });
-    return `page kept Ctrl+K, find 3 matches, zoom, Ctrl+T/W, Ctrl+1, recorded ${saved.join(", ")}`;
+    return `page kept Ctrl+K, find 3 matches, zoom, mouse back/forward, Ctrl+T/W, Ctrl+1, recorded ${saved.join(", ")}`;
   });
 
   await check("agent sidebar: closed on web tabs until opened (Ctrl+J), remembered per tab", async () => {

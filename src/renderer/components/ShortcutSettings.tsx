@@ -8,6 +8,7 @@ import {
   defaultKeys,
   formatCombo,
   isUsableCombo,
+  mouseComboOf,
   shortcutCategories,
   shortcutDef,
   shortcutDefs,
@@ -109,17 +110,30 @@ function ShortcutRow(props: { def: ShortcutDef }) {
   };
   onCleanup(() => recording() && setRecordingShortcut(false));
 
-  const record = (e: KeyboardEvent) => {
+  const recordKey = (e: KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const combo = comboOf({
-      key: e.key,
-      code: e.code,
-      ctrl: e.ctrlKey,
-      alt: e.altKey,
-      shift: e.shiftKey,
-      meta: e.metaKey,
-    });
+    record(
+      comboOf({
+        key: e.key,
+        code: e.code,
+        ctrl: e.ctrlKey,
+        alt: e.altKey,
+        shift: e.shiftKey,
+        meta: e.metaKey,
+      }),
+    );
+  };
+  // The mouse's back and forward buttons can be shortcuts too.
+  const recordMouse = (e: MouseEvent) => {
+    const combo = mouseComboOf(e.button, { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey });
+    if (!combo) return;
+    e.preventDefault();
+    e.stopPropagation();
+    record(combo);
+  };
+
+  const record = (combo: string | null) => {
     if (!combo) return; // a modifier on its own: wait for the key
     if (combo === "Esc") return stop();
     if (!isUsableCombo(combo)) {
@@ -185,12 +199,13 @@ function ShortcutRow(props: { def: ShortcutDef }) {
           <button
             type="button"
             ref={(el) => queueMicrotask(() => el.focus())}
-            onKeyDown={record}
+            onKeyDown={recordKey}
+            onMouseUp={recordMouse}
             onBlur={stop}
             {...stylex.attrs(styles.recording)}
             data-shortcut-recording
           >
-            Press keys… (Esc to cancel)
+            Press keys or a mouse button… (Esc to cancel)
           </button>
         </Show>
         <Show when={isChanged(props.def.id)}>

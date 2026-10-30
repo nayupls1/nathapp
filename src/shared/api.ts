@@ -84,7 +84,7 @@ export interface RuneBridge {
     /** The keys of every shortcut, for the keys pressed in pages (shared/shortcuts.ts). */
     setShortcuts: (bindings: Record<string, string[]>) => void;
     /** Opens DevTools on a page for the user, at a panel (F12, Ctrl+Shift+J, Ctrl+Shift+C). */
-    openDevTools: (webContentsId: number, panel: "elements" | "console" | "inspect") => void;
+    openDevTools: (webContentsId: number, panel: "elements" | "console" | "sources" | "inspect") => void;
     /** Saves a page to a file the user picks (Ctrl+S). */
     savePage: (webContentsId: number) => Promise<void>;
     /** Screenshot of a page (web tab or app preview) as base64 JPEG. */

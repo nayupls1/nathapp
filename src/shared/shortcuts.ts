@@ -86,23 +86,25 @@ export const shortcutDefs: ShortcutDef[] = [
     page: "page",
   },
   { id: "tab.duplicate", label: "Duplicate tab", category: "Tabs", keys: [], page: "page" },
-  { id: "tab.pin", label: "Pin or unpin tab", category: "Tabs", keys: [], page: "page" },
+  // Chromium bookmarks the page; pinning is how Rune Browser keeps a page.
+  { id: "tab.pin", label: "Pin or unpin tab", category: "Tabs", keys: ["Mod+D"], page: "page" },
+  { id: "tab.search", label: "Search tabs", category: "Tabs", keys: ["Mod+Shift+A"], page: "page" },
 
   // --- Navigation
   {
     id: "nav.back",
     label: "Back",
     category: "Navigation",
-    keys: ["Alt+Left", "BrowserBack"],
-    mac: ["Meta+[", "Meta+Left", "BrowserBack"],
+    keys: ["Alt+Left", "BrowserBack", "MouseBack"],
+    mac: ["Meta+[", "Meta+Left", "BrowserBack", "MouseBack"],
     page: "page",
   },
   {
     id: "nav.forward",
     label: "Forward",
     category: "Navigation",
-    keys: ["Alt+Right", "BrowserForward"],
-    mac: ["Meta+]", "Meta+Right", "BrowserForward"],
+    keys: ["Alt+Right", "BrowserForward", "MouseForward"],
+    mac: ["Meta+]", "Meta+Right", "BrowserForward", "MouseForward"],
     page: "page",
   },
   {
@@ -156,6 +158,15 @@ export const shortcutDefs: ShortcutDef[] = [
   { id: "page.print", label: "Print", category: "Page", keys: ["Mod+P"], page: "page" },
   { id: "page.save", label: "Save page as", category: "Page", keys: ["Mod+S"], page: "page" },
   {
+    // In DevTools' Sources panel: Electron can't show view-source: pages.
+    id: "page.source",
+    label: "View page source",
+    category: "Page",
+    keys: ["Ctrl+U"],
+    mac: ["Alt+Meta+U"],
+    page: "page",
+  },
+  {
     id: "page.devtools",
     label: "Developer tools",
     category: "Page",
@@ -189,7 +200,14 @@ export const shortcutDefs: ShortcutDef[] = [
     mac: ["Ctrl+Meta+F"],
     page: "page",
   },
-  { id: "window.close", label: "Close window", category: "Window", keys: ["Mod+Shift+W"], page: "reserved" },
+  {
+    id: "window.close",
+    label: "Close window",
+    category: "Window",
+    keys: ["Mod+Shift+W"],
+    notMac: ["Alt+F4"],
+    page: "reserved",
+  },
   // macOS quits with Cmd+Q from the app menu (main/menu.ts).
   { id: "app.quit", label: "Quit", category: "Window", keys: ["Ctrl+Shift+Q"], mac: [], page: "reserved" },
 
@@ -268,6 +286,8 @@ const KEY_ALIASES: Record<string, string> = {
   browserstop: "BrowserStop",
   browserhome: "BrowserHome",
   browsersearch: "BrowserSearch",
+  mouseback: "MouseBack",
+  mouseforward: "MouseForward",
 };
 
 const MODIFIER_KEYS = new Set([
@@ -356,8 +376,21 @@ export function normalizeCombo(text: string, platform: KeyPlatform): string | nu
   return combo(mods, name);
 }
 
+/** The mouse's back and forward buttons (MouseEvent.button 3 and 4) as keys of a shortcut. */
+export const mouseButtonName = (button: number) => (button === 3 ? "MouseBack" : button === 4 ? "MouseForward" : null);
+
+/** A mouse button pressed with modifiers, written like a key ("Shift+MouseBack"). */
+export const mouseComboOf = (
+  button: number,
+  mods: { ctrl: boolean; alt: boolean; shift: boolean; meta: boolean },
+): string | null => {
+  const name = mouseButtonName(button);
+  return name ? combo(mods, name) : null;
+};
+
 /** Keys that work as shortcuts on their own; everything else needs Ctrl, Alt or Cmd. */
-const standalone = (name: string) => /^F\d+$/.test(name) || name === "Esc" || name.startsWith("Browser");
+const standalone = (name: string) =>
+  /^F\d+$/.test(name) || name === "Esc" || name.startsWith("Browser") || name.startsWith("Mouse");
 
 /** Whether a combo can be a shortcut (what the recorder in Settings accepts). */
 export function isUsableCombo(text: string) {
@@ -380,6 +413,8 @@ const KEY_LABELS: Record<string, string> = {
   BrowserStop: "Browser Stop",
   BrowserHome: "Browser Home",
   BrowserSearch: "Browser Search",
+  MouseBack: "Mouse Back",
+  MouseForward: "Mouse Forward",
 };
 
 /** As shown to people: "Ctrl+Shift+T" (Linux, Windows), "⇧⌘T" (macOS). */

@@ -108,25 +108,30 @@ them are listed and can be changed in Settings → Keyboard shortcuts. The comma
 | Next and previous tab (Ctrl+Tab, Ctrl+PageDown/Up, macOS Cmd+Option+arrows and Cmd+Shift+[ ])      | Same, in the sidebar's order                                                 |
 | Tab 1–8 and last tab (Ctrl+1–9; Alt+1–9 on Linux)                                                  | Same                                                                         |
 | Move tab (Ctrl+Shift+PageUp/Down)                                                                  | Moves it up or down the sidebar                                              |
-| Back, forward (Alt+arrows, macOS Cmd+[ ] and Cmd+arrows, browser keys)                             | Same                                                                         |
+| Back, forward (Alt+arrows, macOS Cmd+[ ] and Cmd+arrows, browser keys, mouse back/forward buttons) | Same                                                                         |
 | Reload, hard reload (Ctrl+R, F5, Ctrl+Shift+R, Shift+F5, Ctrl+F5), stop (Esc)                      | Same                                                                         |
 | Focus the address bar (Ctrl+L, Alt+D, F6), search (Ctrl+E)                                         | Same                                                                         |
 | Find, find next and previous (Ctrl+F, Ctrl+G, F3, Shift+F3, Ctrl+Shift+G)                          | Same, with a find bar                                                        |
 | Zoom in, out, reset (Ctrl+Plus/=, Ctrl+Minus, Ctrl+0, Ctrl+scroll)                                 | Same, per site and workspace, shown in the address bar                       |
 | Print (Ctrl+P), save page (Ctrl+S)                                                                 | Same (.html with its files, or .htm alone)                                   |
 | DevTools, console, inspect (F12, Ctrl+Shift+I/J/C, macOS Cmd+Option+I/J/C)                         | Same                                                                         |
-| Full screen (F11, macOS Cmd+Ctrl+F), close window (Ctrl+Shift+W), quit (Ctrl+Shift+Q, macOS Cmd+Q) | Same                                                                         |
+| Full screen (F11, macOS Cmd+Ctrl+F), close window (Ctrl+Shift+W, Alt+F4), quit (Ctrl+Shift+Q)      | Same (macOS quits with Cmd+Q)                                                |
 | History (Ctrl+H, macOS Cmd+Y)                                                                      | Same                                                                         |
-| Ctrl+click or middle click on a link                                                               | Opens it in a background tab                                                 |
+| Ctrl+click or middle click on a link; Ctrl+Shift+click, Shift+click                                | Same: a background tab; a tab that's shown (one window, so no new window)    |
+| Address bar: Ctrl+Enter (www. and .com), Alt+Enter or Shift+Enter (macOS Cmd+Enter: new tab)       | Same                                                                         |
+| Search tabs (Ctrl+Shift+A)                                                                         | Same, in the command bar                                                     |
+| View source (Ctrl+U, macOS Cmd+Option+U)                                                           | Different: DevTools' Sources panel (Electron can't show view-source: pages)  |
+| Bookmark page (Ctrl+D)                                                                             | Different: pins or unpins the tab (no bookmarks)                             |
 | Downloads (Ctrl+J)                                                                                 | Different: shows or hides the agent (Rune Browser has no downloads page yet) |
 | Bookmarks bar (Ctrl+Shift+B)                                                                       | Different: shows or hides the sidebar (no bookmarks)                         |
 | Search in the address bar (Ctrl+K)                                                                 | Different: the command bar, which also searches                              |
-| Bookmark page (Ctrl+D), bookmark manager (Ctrl+Shift+O)                                            | Not yet: no bookmarks                                                        |
+| Bookmark manager (Ctrl+Shift+O)                                                                    | Not yet: no bookmarks                                                        |
 | New window (Ctrl+N), private window (Ctrl+Shift+N)                                                 | Not yet: one window                                                          |
-| View source (Ctrl+U), open file (Ctrl+O)                                                           | Not yet                                                                      |
+| Open file (Ctrl+O)                                                                                 | Not yet                                                                      |
 | Clear browsing data (Ctrl+Shift+Delete), task manager (Shift+Esc), caret browsing (F7)             | Not yet                                                                      |
 | Home (Alt+Home), menu (Alt+F, F10), focus toolbar (Alt+Shift+T)                                    | Not applicable: no home page or menu                                         |
 
 Rune Browser's own: the command bar (Ctrl+K), the agent (Ctrl+J), the sidebar (Ctrl+Shift+B), workspaces 1–9
-(Ctrl+Alt+1–9), Settings (Ctrl+,) and this list (Ctrl+/). Duplicating, pinning and new apps have no keys by default;
-you can give them some.
+(Ctrl+Alt+1–9), Settings (Ctrl+,) and this list (Ctrl+/). Duplicating and new apps have no keys by default; you can
+give them some. The mouse's back and forward buttons can be given to any action too (Settings records them like keys):
+webviews don't act on them by themselves, so the main process takes them from the page's input events.

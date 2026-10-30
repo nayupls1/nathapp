@@ -115,6 +115,7 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
         event.preventDefault();
       }
     });
+    contents.on("input-event", (_event, input) => shortcuts.handlePageMouse(contents, input));
     // Ctrl+scroll zooms, like Ctrl+Plus and Minus.
     contents.on("zoom-changed", (_event, direction) =>
       send("rune:shortcut", { id: direction === "in" ? "zoom.in" : "zoom.out", contentsId: contents.id }),
@@ -276,9 +277,11 @@ export function setupWebTabs(getWindow: () => BrowserWindow | undefined) {
       const call =
         panel === "console"
           ? `DevToolsAPI.showPanel("console")`
-          : panel === "inspect"
-            ? `DevToolsAPI.enterInspectElementMode()`
-            : null;
+          : panel === "sources"
+            ? `DevToolsAPI.showPanel("sources")`
+            : panel === "inspect"
+              ? `DevToolsAPI.enterInspectElementMode()`
+              : null;
       if (call) void target.devToolsWebContents?.executeJavaScript(`try { ${call} } catch {}`).catch(() => {});
     };
     if (target.isDevToolsOpened()) {

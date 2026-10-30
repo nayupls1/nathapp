@@ -10,6 +10,7 @@ import {
   keymapOf,
   keyPlatform,
   matchShortcut,
+  mouseComboOf,
   resolveBindings,
   type ShortcutDef,
 } from "../../shared/shortcuts";
@@ -161,6 +162,7 @@ const actions: Record<string, Action> = {
   "tab.move-right": { when: hasTab, run: (ctx) => moveTab(ctx, 1) },
   "tab.duplicate": { when: hasTab, run: (ctx) => duplicateApp(ctx.tabId!) },
   "tab.pin": { when: hasTab, run: (ctx) => setTabPinned(ctx.tabId!, !appById(ctx.tabId)?.pinned) },
+  "tab.search": { run: () => openCommandBar() },
 
   "nav.back": { when: (ctx) => !!page(ctx), run: (ctx) => page(ctx)!.back() },
   "nav.forward": { when: (ctx) => !!page(ctx), run: (ctx) => page(ctx)!.forward() },
@@ -189,6 +191,7 @@ const actions: Record<string, Action> = {
     run: (ctx) => window.rune.web.savePage(contentsIdOf(ctx)!),
   },
   "page.devtools": { when: (ctx) => contentsIdOf(ctx) !== undefined, run: (ctx) => devtools(ctx, "elements") },
+  "page.source": { when: (ctx) => contentsIdOf(ctx) !== undefined, run: (ctx) => devtools(ctx, "sources") },
   "page.console": { when: (ctx) => contentsIdOf(ctx) !== undefined, run: (ctx) => devtools(ctx, "console") },
   "page.inspect": { when: (ctx) => contentsIdOf(ctx) !== undefined, run: (ctx) => devtools(ctx, "inspect") },
 
@@ -220,7 +223,7 @@ function focusAddressOf(ctx: Context) {
   focusAddress();
 }
 
-function devtools(ctx: Context, panel: "elements" | "console" | "inspect") {
+function devtools(ctx: Context, panel: "elements" | "console" | "sources" | "inspect") {
   window.rune.web.openDevTools(contentsIdOf(ctx)!, panel);
 }
 
@@ -268,4 +271,18 @@ export function startShortcuts() {
     if (!def || e.defaultPrevented) return;
     if (runShortcut(def.id)) e.preventDefault();
   });
+
+  // The mouse's back and forward buttons over Rune Browser itself: the tab on
+  // screen goes back (pages' own are the main process's). Left alone, they'd
+  // take Rune Browser's own window back.
+  const mouseShortcut = (e: MouseEvent) => {
+    if (recording() || !keymapMemo) return;
+    const pressed = mouseComboOf(e.button, { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, meta: e.metaKey });
+    if (!pressed) return;
+    e.preventDefault();
+    const def = keymapMemo().get(pressed);
+    if (def && e.type === "mouseup") runShortcut(def.id);
+  };
+  window.addEventListener("mousedown", mouseShortcut);
+  window.addEventListener("mouseup", mouseShortcut);
 }

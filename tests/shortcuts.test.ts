@@ -7,6 +7,7 @@ import {
   keymapOf,
   legacyKeyCode,
   matchShortcut,
+  mouseComboOf,
   normalizeCombo,
   resolveBindings,
   shortcutDef,
@@ -181,5 +182,37 @@ describe("the keymap", () => {
     for (const id of ["app.command-bar", "find.open", "page.save", "nav.address", "zoom.in"])
       expect(shortcutDef(id)?.page).toBe("page");
     expect(shortcutDef("nav.stop")?.page).toBe("passive");
+  });
+
+  test("the mouse's back and forward buttons go back and forward, and can be bound like keys", () => {
+    const none = { ctrl: false, alt: false, shift: false, meta: false };
+    expect(mouseComboOf(3, none)).toBe("MouseBack");
+    expect(mouseComboOf(4, { ...none, shift: true })).toBe("Shift+MouseForward");
+    expect(mouseComboOf(1, none)).toBeNull();
+    const map = keymapOf(resolveBindings("linux"));
+    expect(map.get("MouseBack")?.id).toBe("nav.back");
+    expect(map.get("MouseForward")?.id).toBe("nav.forward");
+    expect(keymapOf(resolveBindings("mac")).get("MouseBack")?.id).toBe("nav.back");
+    expect(normalizeCombo("ctrl+mouseback", "linux")).toBe("Ctrl+MouseBack");
+    expect(isUsableCombo("MouseForward")).toBe(true);
+    expect(formatCombo("MouseBack", "linux")).toBe("Mouse Back");
+  });
+
+  test("tabs by number: Ctrl+1…8 and Ctrl+9 for the last everywhere, Alt+1…9 too on Linux", () => {
+    const linux = keymapOf(resolveBindings("linux"));
+    const windows = keymapOf(resolveBindings("windows"));
+    const mac = keymapOf(resolveBindings("mac"));
+    for (let n = 1; n <= 8; n++) {
+      expect(linux.get(`Ctrl+${n}`)?.id).toBe(`tab.select-${n}`);
+      expect(linux.get(`Alt+${n}`)?.id).toBe(`tab.select-${n}`);
+      expect(windows.get(`Ctrl+${n}`)?.id).toBe(`tab.select-${n}`);
+      expect(windows.get(`Alt+${n}`)).toBeUndefined();
+      expect(mac.get(`Meta+${n}`)?.id).toBe(`tab.select-${n}`);
+    }
+    expect(linux.get("Ctrl+9")?.id).toBe("tab.last");
+    // The numpad's digits are digits too.
+    expect(matchShortcut(linux, key("3", "Numpad3", { ctrl: true }))?.id).toBe("tab.select-3");
+    expect(linux.get("Alt+F4")?.id).toBe("window.close");
+    expect(mac.get("Alt+F4")).toBeUndefined();
   });
 });

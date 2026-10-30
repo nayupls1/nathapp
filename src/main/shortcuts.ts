@@ -10,6 +10,7 @@ import {
   keyPlatform,
   legacyKeyCode,
   matchShortcut,
+  mouseComboOf,
   resolveBindings,
   type ShortcutDef,
 } from "../shared/shortcuts";
@@ -86,11 +87,29 @@ export function setupShortcuts(getWindow: () => BrowserWindow | undefined) {
 
   return {
     /** A shortcut's first keys as an Electron accelerator (shown in menus), if it has any. */
-    accelerator: (id: string) => bindings[id]?.find((k) => !/Browser\w+$/.test(k)),
+    accelerator: (id: string) => bindings[id]?.find((k) => !/(Browser|Mouse)\w+$/.test(k)),
 
     /** The shortcut a key in a page is for (keyDown only). */
     match: (input: Input): ShortcutDef | undefined =>
       input.type === "keyDown" ? matchShortcut(keymap, toKey(input)) : undefined,
+
+    /**
+     * The mouse's back and forward buttons in a page: pages don't go back or
+     * forward on their own in a webview, so they're shortcuts like Alt+Left.
+     */
+    handlePageMouse(contents: WebContents, event: Electron.InputEvent) {
+      if (event.type !== "mouseUp") return;
+      const button = (event as Electron.MouseInputEvent).button as string | undefined;
+      const mods = new Set(event.modifiers ?? []);
+      const pressed = mouseComboOf(button === "back" ? 3 : button === "forward" ? 4 : -1, {
+        ctrl: mods.has("control") || mods.has("ctrl"),
+        alt: mods.has("alt"),
+        shift: mods.has("shift"),
+        meta: mods.has("meta") || mods.has("command") || mods.has("cmd"),
+      });
+      const def = pressed ? keymap.get(pressed) : undefined;
+      if (def) send({ id: def.id, contentsId: contents.id });
+    },
 
     /**
      * A key pressed in a page: runs its shortcut in the window when it's one
