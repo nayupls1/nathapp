@@ -147,7 +147,7 @@ const site = Bun.serve({
            <script>
              window.got = [];
              addEventListener("keydown", (e) => {
-               if (e.ctrlKey && e.key === "k") { e.preventDefault(); got.push("k:" + e.keyCode); }
+               if ((e.ctrlKey || e.metaKey) && e.key === "k") { e.preventDefault(); got.push("k:" + e.keyCode); }
              });
            </script>`
                   : path === "/second"
@@ -161,6 +161,10 @@ const site = Bun.serve({
     });
   },
 });
+
+/** Shortcuts' "Mod": Cmd on macOS, Ctrl elsewhere (a KeyboardEvent's property, and sendInputEvent's modifier). */
+const mod = process.platform === "darwin" ? "metaKey" : "ctrlKey";
+const modKey = process.platform === "darwin" ? "meta" : "control";
 
 const results: { name: string; ok: boolean; detail?: string }[] = [];
 let webTabId: string | undefined;
@@ -312,7 +316,7 @@ const type = (selector: string, value: string) =>
 /** Runs a command from the command bar (Ctrl+K): typed, then the first match with this id. */
 const runCommand = async (text: string, id: string) => {
   await page!.eval(
-    `window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })), true`,
+    `window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ${mod}: true, bubbles: true })), true`,
   );
   await page!.waitFor(`!!document.querySelector("[data-command-bar] input")`, { label: "command bar" });
   await type("[data-command-bar] input", text);
@@ -899,7 +903,7 @@ try {
     await shot("sidebar-collapsed.png");
     // Ctrl+Shift+B brings it back.
     await page!.eval(
-      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "B", ctrlKey: true, shiftKey: true, bubbles: true })), true`,
+      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "B", ${mod}: true, shiftKey: true, bubbles: true })), true`,
     );
     await page!.waitFor(`document.querySelector("nav").dataset.sidebar === "expanded"`, {
       label: "expanded by the shortcut",
@@ -1470,14 +1474,14 @@ try {
     await waitForValue(async () => ((await inPage<boolean>(`Array.isArray(window.got)`)) ? true : undefined));
 
     // The page uses Ctrl+K itself: it gets it (with its keyCode), and the command bar stays closed.
-    await press("K", ["control"]);
+    await press("K", [modKey]);
     await waitForValue(async () => ((await inPage<string[]>(`window.got`)).includes("k:75") ? true : undefined), 5_000);
     await Bun.sleep(300);
     if (await page!.eval<boolean>(`!!document.querySelector("[data-command-bar]")`))
       throw new Error("the command bar opened although the page used Ctrl+K");
 
     // Ctrl+F isn't the page's: find in page.
-    await press("F", ["control"]);
+    await press("F", [modKey]);
     await page!.waitFor(`document.activeElement === document.querySelector('${tab} [data-find-input]')`, {
       label: "find bar, focused",
     });
@@ -1498,11 +1502,11 @@ try {
     await page!.waitFor(`!document.querySelector('${tab} [data-find-bar]')`, { label: "find bar closed" });
 
     // Zoom: in, shown in the address bar, and back.
-    await press("Plus", ["control"]);
+    await press("Plus", [modKey]);
     await page!.waitFor(`document.querySelector('${chromeFor(tab)} [data-zoom]')?.dataset.zoom === "110"`, {
       label: "zoomed to 110%",
     });
-    await press("0", ["control"]);
+    await press("0", [modKey]);
     await page!.waitFor(`!document.querySelector('${chromeFor(tab)} [data-zoom]')`, { label: "actual size" });
 
     // The mouse's back and forward buttons in the page (webviews don't act on them themselves).
@@ -1525,14 +1529,14 @@ try {
     }
 
     // Ctrl+T is the browser's even in a page; Ctrl+W closes that tab and leaves the window.
-    await press("T", ["control"]);
+    await press("T", [modKey]);
     const blank = await page!.waitFor<string>(
       `document.querySelectorAll("nav li").length === ${count + 2} && document.querySelector('nav li[aria-current="page"]')?.dataset.appId`,
       { label: "new tab from the page" },
     );
     if (blank === tabId) throw new Error("the new tab isn't the one shown");
     await page!.eval(
-      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, bubbles: true })), true`,
+      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ${mod}: true, bubbles: true })), true`,
     );
     await page!.waitFor(`document.querySelectorAll("nav li").length === ${count + 1}`, { label: "Ctrl+W closed it" });
 
@@ -1540,7 +1544,7 @@ try {
     await click('[data-page-link="Settings"]');
     await page!.waitFor(`!!document.querySelector("[data-settings-shell]")`, { label: "settings" });
     await page!.eval(
-      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ctrlKey: true, bubbles: true })), true`,
+      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", code: "KeyW", ${mod}: true, bubbles: true })), true`,
     );
     await page!.waitFor(`!document.querySelector("[data-settings-shell]")`, { label: "back from Settings" });
     if ((await page!.eval<number>(`document.querySelectorAll("nav li").length`)) !== count + 1)
@@ -1549,7 +1553,7 @@ try {
     // Ctrl+1 / Ctrl+9 from inside the page: the first and the last tab.
     await click(`nav li[data-app-id="${tabId}"]`);
     await page!.waitFor(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId === "${tabId}"`);
-    await press("1", ["control"]);
+    await press("1", [modKey]);
     await Bun.sleep(700);
     const first = await page!.eval<string>(`document.querySelector('nav li[aria-current="page"]')?.dataset.appId`);
     if (first === tabId && count > 0) throw new Error("Ctrl+1 didn't switch to the first tab");
@@ -1593,9 +1597,7 @@ try {
     if (await page!.eval<boolean>(`!!document.querySelector("[data-agent-sidebar]")`))
       throw new Error("the agent sidebar is open on a new web tab");
     const ctrlJ = () =>
-      page!.eval(
-        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true })), true`,
-      );
+      page!.eval(`window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ${mod}: true, bubbles: true })), true`);
     await ctrlJ();
     await page!.waitFor(`!!document.querySelector('[data-agent-for="${tabId}"]')`, { label: "opened with Ctrl+J" });
     // Another tab and back: still open for this one.
@@ -2549,7 +2551,7 @@ try {
       );
       await shot("workspaces.png");
       await page!.eval(
-        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Digit1", ctrlKey: true, altKey: true, bubbles: true })), true`,
+        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "1", code: "Digit1", ${mod}: true, altKey: true, bubbles: true })), true`,
       );
       await page!.waitFor(`${currentWorkspaceName} === "Personal"`, { label: "Ctrl+Alt+1" });
       const back = await tabIds();
@@ -2560,7 +2562,7 @@ try {
       );
       if ((await selected()) !== personalSelected) throw new Error("the tab selected in Personal wasn't restored");
       await page!.eval(
-        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", code: "Digit2", ctrlKey: true, altKey: true, bubbles: true })), true`,
+        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "2", code: "Digit2", ${mod}: true, altKey: true, bubbles: true })), true`,
       );
       await page!.waitFor(`${currentWorkspaceName} === "Client"`, { label: "Ctrl+Alt+2" });
       await click(`[data-workspace="${personal}"]`);
@@ -2617,7 +2619,7 @@ try {
     const bar = "[data-command-bar]";
     const openBar = async () => {
       await page!.eval(
-        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true })), true`,
+        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ${mod}: true, bubbles: true })), true`,
       );
       await page!.waitFor(`!!document.querySelector("${bar} input")`, { label: "command bar" });
     };
@@ -3001,7 +3003,7 @@ try {
     await click(`nav li[data-app-id="${tab.id}"]`);
     // The agent sidebar is closed on web tabs until it's opened (Ctrl+J).
     await page!.eval(
-      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true })), true`,
+      `window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ${mod}: true, bubbles: true })), true`,
     );
     const panel = `[data-agent-for="${tab.id}"]`;
     await page!.waitFor(`!!document.querySelector('${panel} [data-add-source]')`, { label: "add source button" });
@@ -3043,7 +3045,7 @@ try {
       });
       await click(`nav li[data-app-id="${tab.id}"]`);
       await page!.eval(
-        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ctrlKey: true, bubbles: true })), true`,
+        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", ${mod}: true, bubbles: true })), true`,
       );
       const panel = `[data-agent-for="${tab.id}"]`;
       await page!.waitFor(`!!document.querySelector('${panel} [data-composer]')`, { label: "composer" });
@@ -3119,7 +3121,7 @@ try {
       await click(`nav li[data-app-id="${b.id}"] [data-close-tab]`);
       await page!.waitFor(`!document.querySelector('nav li[data-app-id="${b.id}"]')`, { label: "closed" });
       await page!.eval(
-        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "T", ctrlKey: true, shiftKey: true, bubbles: true })), true`,
+        `window.dispatchEvent(new KeyboardEvent("keydown", { key: "T", ${mod}: true, shiftKey: true, bubbles: true })), true`,
       );
       await page!.waitFor(`[...document.querySelectorAll("nav li")].some((li) => li.innerText.includes("Act page"))`, {
         timeoutMs: 20_000,
@@ -3166,7 +3168,12 @@ try {
   site.stop(true);
   electron.kill();
   await electron.exited;
-  rmSync(profile, { recursive: true, force: true });
+  // Windows may still hold a file of the profile for a moment after Electron exits (EBUSY).
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch (err) {
+    console.warn(`Couldn't remove ${profile}:`, err);
+  }
   rmSync(browserDir, { recursive: true, force: true });
 }
 
