@@ -280,6 +280,22 @@ const migrate = Effect.gen(function* () {
       updated_at TEXT NOT NULL DEFAULT (${now})
     )`);
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS sources_tab ON sources (tab_id, added_at)");
+  // The API endpoint map (db/Endpoints.ts): the shapes of the APIs web tabs call, never values.
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS api_endpoints (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      host         TEXT NOT NULL,
+      method       TEXT NOT NULL,
+      path         TEXT NOT NULL,
+      operation    TEXT NOT NULL DEFAULT '',
+      data         TEXT NOT NULL,
+      seen         INTEGER NOT NULL DEFAULT 0,
+      first_seen   TEXT NOT NULL DEFAULT (${now}),
+      last_seen    TEXT NOT NULL DEFAULT (${now}),
+      UNIQUE (workspace_id, host, method, path, operation)
+    )`);
+  yield* sql.unsafe("CREATE INDEX IF NOT EXISTS api_endpoints_host ON api_endpoints (workspace_id, host)");
 });
 
 export const layer = Layer.unwrap(

@@ -8,6 +8,7 @@ import * as AiTokens from "./ai/AiTokens";
 import { ServerConfig, type ServerConfigShape } from "./Config";
 import * as Apps from "./db/Apps";
 import * as Db from "./db/Db";
+import * as Endpoints from "./db/Endpoints";
 import * as Network from "./db/Network";
 import * as PageChanges from "./db/PageChanges";
 import * as Settings from "./db/Settings";
@@ -50,6 +51,7 @@ export const core = (config: ServerConfigShape) =>
         Sites.layer,
         PageChanges.layer,
         Network.layer,
+        Endpoints.layer,
         Hub.layer,
         AiTokens.tokensLayer,
       ),

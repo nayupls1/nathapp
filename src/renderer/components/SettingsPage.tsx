@@ -54,6 +54,7 @@ import {
 import { settingsSections } from "../lib/settingsSections";
 import { ActivityPage } from "./ActivityPage";
 import { ShortcutSettings } from "./ShortcutSettings";
+import { ApiMapPage } from "./ApiMapPage";
 import { HistoryPage } from "./History";
 import { ModsPage } from "./ModsPage";
 import { SchedulesPage } from "./SchedulesPage";
@@ -186,6 +187,9 @@ export function SettingsPage(props: { section: string }) {
         </Match>
         <Match when={props.section === "shortcuts"}>
           <ShortcutSettings />
+        </Match>
+        <Match when={props.section === "api-map"}>
+          <ApiMapPage />
         </Match>
         <Match when={props.section === "about"}>
           <AboutSection />
@@ -859,17 +863,19 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
         ? `Send requests to ${g.resource}`
         : g.action === "app.data"
           ? `Read the data of ${appById(g.resource)?.name ?? "a deleted app"}`
-          : g.action === "app.tool"
-            ? toolLabel(g.resource)
-            : g.action === "agent.schedule"
-              ? "Run things on a schedule"
-              : g.action === "agent.tab"
-                ? `Read the tab ${appById(g.resource)?.name ?? "(deleted)"}`
-                : g.action === "agent.browse"
-                  ? `Use ${g.resource} for you (click, type, fill in forms)`
-                  : g.action === "agent.source"
-                    ? `Change the code in ${g.resource}`
-                    : `Customize ${g.resource}`;
+          : g.action === "app.endpoints"
+            ? "Read the API map"
+            : g.action === "app.tool"
+              ? toolLabel(g.resource)
+              : g.action === "agent.schedule"
+                ? "Run things on a schedule"
+                : g.action === "agent.tab"
+                  ? `Read the tab ${appById(g.resource)?.name ?? "(deleted)"}`
+                  : g.action === "agent.browse"
+                    ? `Use ${g.resource} for you (click, type, fill in forms)`
+                    : g.action === "agent.source"
+                      ? `Change the code in ${g.resource}`
+                      : `Customize ${g.resource}`;
 
 /** "<app id>/<tool id>" as "Use add-expense in Budget". */
 const toolLabel = (resource: string) => {

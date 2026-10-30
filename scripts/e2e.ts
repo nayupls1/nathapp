@@ -2177,6 +2177,59 @@ try {
     return `${secrets.length} kinds of credentials hidden, replayed and saved with the session, blocked by ${rule.pattern}`;
   });
 
+  await check("API map: the site's API learned while browsing, shapes only, browsable, deletable", async () => {
+    if (!webTabId) throw new Error("needs the web tab");
+    const tab = `[data-web-tab="${webTabId}"]`;
+    const inPage = <T>(code: string) =>
+      page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+    const workspaceId = (await apiCall<{ id: string; workspaceId: string }[]>("/api/apps")).find(
+      (a) => a.id === webTabId,
+    )?.workspaceId;
+    await click(`nav li[data-app-id="${webTabId}"]`);
+    await inPage(`location.href = ${JSON.stringify(`${site.url.origin}/feed`)}, true`);
+    await waitForValue(
+      async () =>
+        (await inPage<string>(`document.getElementById("status")?.textContent ?? ""`)) === "Loaded 2 items"
+          ? true
+          : undefined,
+      15_000,
+    );
+    const host = site.url.host;
+    const endpoint = await waitForValue(async () => {
+      const list = await apiCall<{ path: string; method: string; query: Record<string, unknown> }[]>(
+        `/api/endpoints/hosts/${encodeURIComponent(host)}?workspace=${workspaceId}`,
+      );
+      return list.find((e) => e.method === "GET" && e.path === "/api/feed");
+    }, 15_000);
+    const stored = JSON.stringify(endpoint);
+    const secrets = ["cookie-secret-1", "key-secret-2", "bearer-secret-3", "resp-secret-4", "First post"];
+    const leaked = secrets.filter((s) => stored.includes(s));
+    if (leaked.length) throw new Error(`values in the map: ${leaked.join(", ")}`);
+
+    await openSettingsAt("api-map");
+    await page!.waitFor(`!!document.querySelector('[data-api-host="${host}"]')`, { label: "host in the list" });
+    await click(`[data-api-host="${host}"] button`);
+    await page!.waitFor(`!!document.querySelector('[data-api-host="${host}"] [data-endpoint="GET /api/feed"]')`, {
+      label: "endpoint",
+    });
+    await click(`[data-api-host="${host}"] [data-endpoint="GET /api/feed"] button`);
+    const detail = await page!.waitFor<string>(
+      `document.querySelector('[data-api-host="${host}"] [data-endpoint-detail]')?.innerText`,
+      { label: "endpoint detail" },
+    );
+    for (const expected of ["page", "integer", "api_key", "credential", "title", "Response 200"])
+      if (!detail.includes(expected)) throw new Error(`"${expected}" missing from: ${detail}`);
+    const shown = secrets.filter((s) => detail.includes(s));
+    if (shown.length) throw new Error(`values shown: ${shown.join(", ")}`);
+    await shot("api-map.png");
+
+    await click(`[data-api-host="${host}"] [data-api-host-delete]`);
+    await page!.waitFor(`!!document.querySelector("[data-confirm-dialog]")`, { label: "confirm" });
+    await click("[data-confirm-dialog] button", "Delete");
+    await page!.waitFor(`!document.querySelector('[data-api-host="${host}"]')`, { label: "deleted" });
+    return `GET /api/feed with ${Object.keys(endpoint.query).join(", ")}`;
+  });
+
   if (agentPrompt && webTabId) {
     await check("website agent customizes a picked element", async () => {
       const tab = `[data-web-tab="${webTabId}"]`;

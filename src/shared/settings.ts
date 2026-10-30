@@ -80,6 +80,12 @@ export const Settings = Schema.Struct({
     overrides: Schema.Boolean.pipe(withDefault(true)),
     /** Keep web tabs' recent network traffic (in memory, bounded) for the Network panel and the website agent. */
     recordNetwork: Schema.Boolean.pipe(withDefault(true)),
+    /** Learn the APIs sites call (shapes only, never values) into the API map. Needs recordNetwork. */
+    apiMap: Schema.Boolean.pipe(withDefault(true)),
+    /** Sites the API map leaves out (a host covers its subdomains). */
+    apiMapOff: Schema.Array(Schema.String.check(Schema.isMaxLength(253)))
+      .check(Schema.isMaxLength(500))
+      .pipe(withDefault([])),
   }).pipe(withDefault({})),
   tabs: Schema.Struct({
     /** Tabs not used for this many minutes are unloaded (their page closes, its state is kept); 0 = never. */
