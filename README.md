@@ -57,8 +57,8 @@ the same agent can hide, restyle or add things, and those changes stay.
 
 Get the latest release from the
 [releases page](https://github.com/nayupls1/rune-browser/releases/latest).
-Rune Browser updates itself from there (Settings → About; a Beta channel gets
-pre-releases).
+Rune Browser updates itself from there (Settings → About; a Daily channel gets
+builds of the latest changes).
 
 | OS                        | Download              | Notes                                                                                                                   |
 | ------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------- |

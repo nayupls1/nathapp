@@ -2828,20 +2828,20 @@ try {
           label: "not updating from source",
         },
       );
-      await click('[data-section="updates"] [role="radio"]', "Beta");
+      await click('[data-section="updates"] [role="radio"]', "Daily");
       await page!.waitFor(
-        `document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Beta"`,
-        { label: "beta selected" },
+        `document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Daily"`,
+        { label: "daily selected" },
       );
       const stored = await page!.eval<{ channel: string }>(`window.rune.updates.get()`);
-      if (stored.channel !== "beta") throw new Error(`channel: ${stored.channel}`);
+      if (stored.channel !== "daily") throw new Error(`channel: ${stored.channel}`);
       await shot("settings-about.png");
       await click('[data-section="updates"] [role="radio"]', "Stable");
       await page!.waitFor(
         `document.querySelector('[data-section="updates"] [role="radio"][aria-checked="true"]')?.innerText === "Stable"`,
         { label: "stable again" },
       );
-      return `${version}, beta remembered`;
+      return `${version}, daily remembered`;
     },
   );
 
