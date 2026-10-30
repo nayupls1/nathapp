@@ -557,12 +557,15 @@ function UpdatesSection() {
           </Switch>
         </span>
       </Row>
-      <Row label="Channel" description="Beta also gets pre-releases: new features earlier, and sometimes rough edges.">
+      <Row
+        label="Channel"
+        description="Daily also gets builds of the latest changes: new features earlier, and sometimes rough edges."
+      >
         <Segmented
           value={info()?.channel ?? "stable"}
           options={[
             ["stable", "Stable"],
-            ["beta", "Beta"],
+            ["daily", "Daily"],
           ]}
           onChange={(channel) => void setUpdateChannel(channel)}
         />

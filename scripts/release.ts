@@ -1,45 +1,35 @@
 // Releases (see docs/releasing.md):
 //
-//   bun run release 0.2.0          bumps the version on a release branch and opens its PR
-//   bun run release 0.2.0-beta.1   same, for a pre-release (beta channel)
-//   bun run release                after that PR is merged: tags master with the version
-//                                  and pushes the tag, which starts the release workflow
+//   bun run release           tags origin/master with the version in its package.json
+//                             and pushes the tag, which starts the release workflow
+//   bun run release --daily   starts the release workflow on master for a daily build
+//                             (0.2.1-daily.20261031.42, for the daily channel); the
+//                             workflow picks the version and tags it
 import { $ } from "bun";
 
-const SEMVER = /^\d+\.\d+\.\d+(-(alpha|beta|rc)\.\d+)?$/;
+const SEMVER = /^\d+\.\d+\.\d+$/;
+const ACTIONS = "https://github.com/nayupls1/rune-browser/actions/workflows/release.yml";
 
 const fail = (message: string): never => {
   console.error(`✗ ${message}`);
   process.exit(1);
 };
 
-const pkgFile = Bun.file("package.json");
-const pkg = (await pkgFile.json()) as { version: string };
-
-if ((await $`git status --porcelain`.text()).trim()) fail("The working tree has changes: commit or stash them first.");
-await $`git fetch origin --tags --quiet`;
-
-const next = process.argv[2];
-if (next) {
-  if (!SEMVER.test(next)) fail(`"${next}" isn't a version like 0.2.0 or 0.2.0-beta.1.`);
-  if (next === pkg.version) fail(`The version is already ${next}.`);
-  const branch = `release/v${next}`;
-  await $`git switch --quiet -c ${branch} origin/master`;
-  await Bun.write(pkgFile, (await pkgFile.text()).replace(`"version": "${pkg.version}"`, `"version": "${next}"`));
-  await $`git commit --quiet -am ${`Release ${next}`}`;
-  await $`git push --quiet -u origin ${branch}`;
-  await $`gh pr create --base master --head ${branch} --title ${`Release ${next}`} --body ${`Bumps the version to ${next}. After merging, run \`bun run release\` on master to tag it.`}`;
-  console.log(`✓ Opened the release PR for ${next}. Merge it, then run \`bun run release\` on master.`);
+const arg = process.argv[2];
+if (arg === "--daily") {
+  await $`gh workflow run release.yml --ref master`;
+  console.log(`✓ Started a daily release of master. The workflow builds, tests and publishes it: ${ACTIONS}`);
+} else if (arg) {
+  fail(`Unknown argument "${arg}". Set the version in package.json (in a PR), then run \`bun run release\`.`);
 } else {
-  const tag = `v${pkg.version}`;
-  if ((await $`git branch --show-current`.text()).trim() !== "master") fail("Tag releases from master.");
-  if ((await $`git rev-parse HEAD`.text()) !== (await $`git rev-parse origin/master`.text()))
-    fail("master isn't in sync with origin/master: pull first.");
-  if ((await $`git tag --list ${tag}`.text()).trim())
-    fail(`${tag} exists already. Bump the version first: bun run release <version>.`);
-  await $`git tag -a ${tag} -m ${`Rune Browser ${pkg.version}`}`;
+  await $`git fetch origin master --quiet`;
+  const { version } = JSON.parse(await $`git show origin/master:package.json`.text()) as { version: string };
+  if (!SEMVER.test(version)) fail(`master's package.json has "${version}", not a version like 0.2.0.`);
+  const tag = `v${version}`;
+  // On GitHub, not locally: a failed release's tag may be deleted there but still be here.
+  if ((await $`git ls-remote --tags origin ${`refs/tags/${tag}`}`.text()).trim())
+    fail(`${tag} is released already. Bump the version in package.json (in a PR) first.`);
+  await $`git tag --force -a ${tag} -m ${`Rune Browser ${version}`} origin/master`;
   await $`git push --quiet origin ${tag}`;
-  console.log(
-    `✓ Pushed ${tag}. The release workflow builds, tests and publishes it: https://github.com/nayupls1/rune-browser/actions`,
-  );
+  console.log(`✓ Pushed ${tag} (origin/master). The release workflow builds, tests and publishes it: ${ACTIONS}`);
 }

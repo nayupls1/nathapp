@@ -9,30 +9,46 @@ anything may change between minor versions. The version lives in
 `package.json`, and every release is a tag `v<version>` on `master`.
 
 - **Stable:** `0.2.0`. Everyone gets it.
-- **Pre-release:** `0.2.0-beta.1` (or `-alpha.N`, `-rc.N`). Published as a
-  GitHub pre-release; only copies on the **Beta** channel (Settings → About)
-  get it.
+- **Daily:** `0.2.1-daily.20261031.42`: a build of `master`, versioned as the
+  next patch release (package.json's version if that isn't released yet) with
+  the date (UTC) and the release workflow's run number. Published as a GitHub
+  pre-release; only copies on the **Daily** channel (Settings → About) get it.
+  A daily build's version is only in its tag: `package.json` keeps the stable
+  one.
 
 ## Cutting a release
 
+Set the new version in `package.json` in a pull request (on its own, or with
+the last change that goes into the release) and merge it. Then, from any
+branch:
+
 ```sh
-bun run release 0.2.0     # bumps package.json on release/v0.2.0 and opens its PR
-# …CI passes, merge the PR…
-git switch master && git pull
-bun run release           # tags master as v0.2.0 and pushes the tag
+bun run release           # tags origin/master with its package.json version (v0.2.0) and pushes the tag
 ```
+
+It stops if that version is released already.
+
+For a daily build:
+
+```sh
+bun run release --daily   # starts the release workflow on master
+```
+
+The workflow picks the version, tags `master` with it and goes on as below.
 
 Pushing the tag starts the **Release** workflow (`.github/workflows/release.yml`):
 
-1. **Draft:** checks that the tag matches `package.json` and creates a draft
+1. **Draft:** checks that the tag matches `package.json` (or, for a daily
+   build, picks its version and pushes its tag) and creates a draft
    release with GitHub's generated notes: "What's Changed" (the merged pull
    requests since the last release) and the "Full Changelog" compare link.
 2. **Checks:** the whole CI workflow (typecheck, unit tests, build, e2e) on
    Linux, Windows and macOS.
-3. **Build:** on each OS, `bun run build` and electron-builder, which uploads
+3. **Build:** on each OS, `bun run build` (with the daily version written into
+   `package.json` first) and electron-builder, which uploads
    the installers into the draft, with the update feeds the app reads
-   (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`, or `beta*.yml` for
-   pre-releases) and their blockmaps.
+   (`latest.yml`, `latest-linux.yml`, `latest-mac.yml`, or `daily*.yml` for
+   daily builds) and their blockmaps.
 4. **Publish:** adds `SHA256SUMS.txt` and publishes the draft.
 
 Nothing is published unless every step passed. A failed run leaves a draft

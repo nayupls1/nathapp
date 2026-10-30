@@ -1,7 +1,7 @@
 // Updates of Rune Browser itself (main/updates.ts), from its GitHub releases.
 
-/** Stable releases only, or pre-releases (betas) too. */
-export type UpdateChannel = "stable" | "beta";
+/** Stable releases only, or the daily builds too. */
+export type UpdateChannel = "stable" | "daily";
 
 export type UpdateStatus =
   /** Runs from source, or from a package that can't update itself. */

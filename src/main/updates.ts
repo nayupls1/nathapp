@@ -1,5 +1,5 @@
 // Updates of Rune Browser itself. electron-updater reads the GitHub releases
-// (stable ones, or pre-releases too on the beta channel), downloads a newer
+// (stable ones, or the daily pre-releases too on the daily channel), downloads a newer
 // one in the background and installs it when the app quits (or right away
 // with "Restart to update"). Only installed builds update: an AppImage, the
 // deb/rpm packages, the Windows installer. macOS builds aren't signed yet, and
@@ -38,7 +38,7 @@ function errorStatus(err: unknown): UpdateStatus {
 
 export function setupUpdates(getWindow: () => BrowserWindow | undefined) {
   const file = join(app.getPath("userData"), "updates.json");
-  let channel: UpdateChannel = readJson<{ channel?: string }>(file)?.channel === "beta" ? "beta" : "stable";
+  let channel: UpdateChannel = readJson<{ channel?: string }>(file)?.channel === "daily" ? "daily" : "stable";
   let checkedAt: string | null = null;
   const reason = unsupportedReason();
   let status: UpdateStatus = reason ? { state: "unsupported", reason } : { state: "idle" };
@@ -54,7 +54,7 @@ export function setupUpdates(getWindow: () => BrowserWindow | undefined) {
   const check = async () => {
     if (reason || status.state === "checking" || status.state === "downloading" || status.state === "ready")
       return info();
-    autoUpdater.allowPrerelease = channel === "beta";
+    autoUpdater.allowPrerelease = channel === "daily";
     try {
       await autoUpdater.checkForUpdates();
     } catch (err) {
@@ -88,7 +88,7 @@ export function setupUpdates(getWindow: () => BrowserWindow | undefined) {
   ipcMain.handle("rune:updates-get", (event) => (fromWindow(event.sender) ? info() : null));
   ipcMain.handle("rune:updates-check", (event) => (fromWindow(event.sender) ? check() : null));
   ipcMain.handle("rune:updates-set-channel", (event, value: unknown) => {
-    if (!fromWindow(event.sender) || (value !== "stable" && value !== "beta")) return null;
+    if (!fromWindow(event.sender) || (value !== "stable" && value !== "daily")) return null;
     channel = value;
     writeJson(file, { channel });
     // A new channel can mean another latest release.
