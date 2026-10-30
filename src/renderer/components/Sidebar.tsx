@@ -66,6 +66,7 @@ import { Icon } from "./Icon";
 import { IconPicker, TabIcon } from "./TabIcon";
 import { toast } from "./Toast";
 import { Button } from "./ui";
+import { withKeys } from "../lib/shortcuts";
 
 /**
  * What the list shows, in the tabs' order: tab ids, and "split:<id>" for a
@@ -363,7 +364,7 @@ function WorkspaceBar() {
                 type="button"
                 role="tab"
                 aria-selected={current()}
-                title={`${w.name}${i() < 9 ? ` (Ctrl+Alt+${i() + 1})` : ""}`}
+                title={withKeys(w.name, `workspace.select-${i() + 1}`)}
                 onClick={() => void showWorkspace(w.id)}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -435,7 +436,7 @@ function CollapseButton() {
   return (
     <button
       type="button"
-      title={isSidebarCollapsed() ? "Expand the sidebar (Ctrl+Shift+B)" : "Collapse the sidebar (Ctrl+Shift+B)"}
+      title={withKeys(isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar", "sidebar.toggle")}
       aria-label={isSidebarCollapsed() ? "Expand the sidebar" : "Collapse the sidebar"}
       aria-expanded={!isSidebarCollapsed()}
       onClick={toggleSidebar}
@@ -803,7 +804,11 @@ function Item(props: { app: AppSummary; tile?: boolean }) {
       <Show when={!hideName()}>
         <button
           type="button"
-          title={props.app.kind === "app" ? "Close (the app is kept: New tab → Open it again)" : "Close tab (Ctrl+W)"}
+          title={
+            props.app.kind === "app"
+              ? "Close (the app is kept: New tab → Open it again)"
+              : withKeys("Close tab", "tab.close")
+          }
           aria-label={`Close ${props.app.name}`}
           onClick={(e) => {
             e.stopPropagation();

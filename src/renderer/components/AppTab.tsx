@@ -15,6 +15,8 @@ import { watchTopic } from "../lib/realtime";
 import { sendWithShares } from "../lib/sharing";
 import { appMode, isAgentCollapsed, setAgentCollapsed, setRuntime, states } from "../lib/store";
 import { registerPage, type PageInfo } from "../lib/webtabs";
+import { foundInPage, syncZoom } from "../lib/pageTools";
+import { FindBar } from "./FindBar";
 import { registerChrome } from "../lib/tabChrome";
 import { colors, font, radius, space } from "../theme.stylex";
 import { ShowAgentButton } from "./Chat";
@@ -140,6 +142,8 @@ function Workbench(props: { appId: string; active: boolean }) {
     });
     view.addEventListener("did-navigate", () => (first ? (first = false) : clearPicks(props.appId)));
     view.addEventListener("dom-ready", () => (ready = true));
+    view.addEventListener("did-navigate", () => syncZoom(props.appId));
+    view.addEventListener("found-in-page", (e) => foundInPage(props.appId, e.result));
   }
 
   const unregister = registerPage(props.appId, {
@@ -164,6 +168,7 @@ function Workbench(props: { appId: string; active: boolean }) {
     back: () => webview && ready && webview.goBack(),
     forward: () => webview && ready && webview.goForward(),
     focusAddress: () => {},
+    view: () => (webview && ready ? webview : undefined),
     applyOverride: async () => ({ applied: false }),
     overrideChanged: () => {},
     send,
@@ -386,6 +391,7 @@ function Workbench(props: { appId: string; active: boolean }) {
           <Show when={picking()}>
             <div {...stylex.attrs(styles.banner)}>Click an element to pick it · Esc to cancel</div>
           </Show>
+          <FindBar tabId={props.appId} />
           <Show when={loadError() && running()}>
             <div {...stylex.attrs(styles.banner, styles.bannerError)}>
               {loadError()}

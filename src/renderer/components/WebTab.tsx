@@ -44,6 +44,8 @@ import { Icon } from "./Icon";
 import { NetworkPanel } from "./NetworkPanel";
 import { toast } from "./Toast";
 import { changesFor, PageChangesPopover } from "./PageChanges";
+import { FindBar, ZoomBadge } from "./FindBar";
+import { foundInPage, syncZoom } from "../lib/pageTools";
 
 export function WebTab(props: { appId: string; active: boolean }) {
   // A tab that was unloaded comes back where it was (lib/unload.ts).
@@ -411,6 +413,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     back: () => webview && ready && webview.goBack(),
     forward: () => webview && ready && webview.goForward(),
     focusAddress: () => focusAddress(),
+    view: () => (webview && ready ? webview : undefined),
     applyOverride,
     overrideChanged: (changed) => {
       if (changed === host()) void applyOverride();
@@ -480,7 +483,11 @@ export function WebTab(props: { appId: string; active: boolean }) {
         setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
       loaded();
     });
-    view.addEventListener("did-navigate", (e) => navigated(e.url, false));
+    view.addEventListener("did-navigate", (e) => {
+      navigated(e.url, false);
+      syncZoom(props.appId);
+    });
+    view.addEventListener("found-in-page", (e) => foundInPage(props.appId, e.result));
     view.addEventListener("did-navigate-in-page", (e) => e.isMainFrame && navigated(e.url, true));
     view.addEventListener("page-title-updated", (e: PageTitleUpdatedEvent) =>
       updatePage(props.appId, { title: e.title }),
@@ -530,24 +537,27 @@ export function WebTab(props: { appId: string; active: boolean }) {
       stop: () => webview?.stop(),
       go,
       addressExtras: () => (
-        <Show when={changed()}>
-          <button
-            type="button"
-            title={
-              overrideActive()
-                ? "This page is changed: see and turn off the changes"
-                : "The changes to this page are off"
-            }
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect();
-              setMenu(menu() ? undefined : { x: r.left, y: r.bottom + 6 });
-            }}
-            {...stylex.attrs(styles.customized, overrideActive() && styles.customizedOn)}
-            data-customized={overrideActive() ? "on" : "off"}
-          >
-            <Icon name="paintbrush" size={13} />
-          </button>
-        </Show>
+        <>
+          <ZoomBadge tabId={props.appId} />
+          <Show when={changed()}>
+            <button
+              type="button"
+              title={
+                overrideActive()
+                  ? "This page is changed: see and turn off the changes"
+                  : "The changes to this page are off"
+              }
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setMenu(menu() ? undefined : { x: r.left, y: r.bottom + 6 });
+              }}
+              {...stylex.attrs(styles.customized, overrideActive() && styles.customizedOn)}
+              data-customized={overrideActive() ? "on" : "off"}
+            >
+              <Icon name="paintbrush" size={13} />
+            </button>
+          </Show>
+        </>
       ),
       extensions: () => (
         <ExtensionsBar
@@ -583,6 +593,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
           <Show when={picking()}>
             <div {...stylex.attrs(styles.banner)}>Click an element to pick it · Esc to cancel</div>
           </Show>
+          <FindBar tabId={props.appId} />
           <Show when={marker()} keyed>
             {(m) => (
               <span {...stylex.attrs(styles.marker)} style={{ left: `${m.x}px`, top: `${m.y}px` }} data-agent-marker />

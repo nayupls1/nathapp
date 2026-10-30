@@ -78,3 +78,55 @@ Stopped service workers are started again for the events they listened to. Elect
 - **Allowing and blocking permissions:** an extension's details list every permission it asks for with a switch. Blocking one restarts the extension; its calls then fail (in the shim and in the main process) and its events don't come. Optional permissions are granted or taken back there too.
 - `chrome.storage.sync` data isn't imported (Chrome keeps it in a LevelDB that Rune Browser doesn't parse).
 - Settings are imported into each workspace once, when the extension first loads there; later changes stay per workspace.
+
+## Keyboard shortcuts
+
+Rune Browser has Chromium's keyboard shortcuts on every platform (Cmd instead of Ctrl on macOS), plus its own. All of
+them are listed and can be changed in Settings → Keyboard shortcuts. The command bar and tooltips show each action's keys.
+
+- **Registry:** `shared/shortcuts.ts` lists every action with its default keys per platform and who gets the key first. It
+  also matches pressed keys: letters go by what the layout types (Dvorak's Ctrl+T is where its T is), or by position
+  when the layout types no Latin letter; digits always go by position.
+- **Pages first, like Chromium:** in a page, the main process (`main/shortcuts.ts`) handles the keys Chromium reserves
+  right away: new, close, reopen and switch tabs, close the window, quit, and Rune Browser's workspaces. Other keys go
+  to the page first, as a keydown on whatever has the focus (with the legacy `keyCode`). The shortcut only runs if the
+  page doesn't `preventDefault` it, so a site's own Ctrl+K or Ctrl+S keeps working. Esc reaches the page and also
+  stops a load.
+- **Conditional handler:** `lib/shortcuts.ts` has each action's code and when it applies (a tab to close, a page to
+  zoom, something loading to stop). A key whose action doesn't apply is left alone. Keys pressed in Rune Browser's own
+  UI that a component used itself (the agent picker's Ctrl+Tab) aren't taken.
+- **No native menu shortcuts:** Linux and Windows have no application menu, and macOS has only its app, Edit and Window
+  menus. Electron's default menu used to close the window on Ctrl+W, and reload or zoom Rune Browser itself.
+- **Closing tabs:** Ctrl+W never closes the window. Closing the last tab opens a new one, and in Settings or Rune
+  Browser's pages it goes back to the tabs.
+
+### Chromium parity
+
+| Chromium                                                                                           | Rune Browser                                                                 |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| New tab, close tab (Ctrl+W, Ctrl+F4), reopen closed tab                                            | Same                                                                         |
+| Next and previous tab (Ctrl+Tab, Ctrl+PageDown/Up, macOS Cmd+Option+arrows and Cmd+Shift+[ ])      | Same, in the sidebar's order                                                 |
+| Tab 1–8 and last tab (Ctrl+1–9; Alt+1–9 on Linux)                                                  | Same                                                                         |
+| Move tab (Ctrl+Shift+PageUp/Down)                                                                  | Moves it up or down the sidebar                                              |
+| Back, forward (Alt+arrows, macOS Cmd+[ ] and Cmd+arrows, browser keys)                             | Same                                                                         |
+| Reload, hard reload (Ctrl+R, F5, Ctrl+Shift+R, Shift+F5, Ctrl+F5), stop (Esc)                      | Same                                                                         |
+| Focus the address bar (Ctrl+L, Alt+D, F6), search (Ctrl+E)                                         | Same                                                                         |
+| Find, find next and previous (Ctrl+F, Ctrl+G, F3, Shift+F3, Ctrl+Shift+G)                          | Same, with a find bar                                                        |
+| Zoom in, out, reset (Ctrl+Plus/=, Ctrl+Minus, Ctrl+0, Ctrl+scroll)                                 | Same, per site and workspace, shown in the address bar                       |
+| Print (Ctrl+P), save page (Ctrl+S)                                                                 | Same (.html with its files, or .htm alone)                                   |
+| DevTools, console, inspect (F12, Ctrl+Shift+I/J/C, macOS Cmd+Option+I/J/C)                         | Same                                                                         |
+| Full screen (F11, macOS Cmd+Ctrl+F), close window (Ctrl+Shift+W), quit (Ctrl+Shift+Q, macOS Cmd+Q) | Same                                                                         |
+| History (Ctrl+H, macOS Cmd+Y)                                                                      | Same                                                                         |
+| Ctrl+click or middle click on a link                                                               | Opens it in a background tab                                                 |
+| Downloads (Ctrl+J)                                                                                 | Different: shows or hides the agent (Rune Browser has no downloads page yet) |
+| Bookmarks bar (Ctrl+Shift+B)                                                                       | Different: shows or hides the sidebar (no bookmarks)                         |
+| Search in the address bar (Ctrl+K)                                                                 | Different: the command bar, which also searches                              |
+| Bookmark page (Ctrl+D), bookmark manager (Ctrl+Shift+O)                                            | Not yet: no bookmarks                                                        |
+| New window (Ctrl+N), private window (Ctrl+Shift+N)                                                 | Not yet: one window                                                          |
+| View source (Ctrl+U), open file (Ctrl+O)                                                           | Not yet                                                                      |
+| Clear browsing data (Ctrl+Shift+Delete), task manager (Shift+Esc), caret browsing (F7)             | Not yet                                                                      |
+| Home (Alt+Home), menu (Alt+F, F10), focus toolbar (Alt+Shift+T)                                    | Not applicable: no home page or menu                                         |
+
+Rune Browser's own: the command bar (Ctrl+K), the agent (Ctrl+J), the sidebar (Ctrl+Shift+B), workspaces 1–9
+(Ctrl+Alt+1–9), Settings (Ctrl+,) and this list (Ctrl+/). Duplicating, pinning and new apps have no keys by default;
+you can give them some.

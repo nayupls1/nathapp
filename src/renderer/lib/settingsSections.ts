@@ -36,6 +36,13 @@ export const settingsSections: SettingsSection[] = [
   { id: "extensions", label: "Extensions", icon: "blocks", group: "settings" },
   { id: "secrets", label: "Secrets", icon: "key-round", group: "settings" },
   { id: "permissions", label: "Permissions", icon: "shield-check", group: "settings" },
+  {
+    id: "shortcuts",
+    label: "Keyboard shortcuts",
+    icon: "keyboard",
+    group: "settings",
+    keywords: "keys hotkeys keybindings",
+  },
   { id: "history", label: "History", icon: "file-clock", view: HISTORY_VIEW, group: "pages" },
   { id: "schedules", label: "Schedules", icon: "calendar-clock", view: SCHEDULES_VIEW, group: "pages" },
   { id: "mods", label: "Mods", icon: "puzzle", view: MODS_VIEW, group: "pages" },

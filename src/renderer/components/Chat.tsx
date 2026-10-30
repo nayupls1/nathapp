@@ -19,6 +19,7 @@ import { SecretRequestCard } from "./Secrets";
 import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
+import { withKeys } from "../lib/shortcuts";
 
 /**
  * The agent of a tab: its conversation and composer, in the agent sidebar
@@ -92,9 +93,10 @@ export function Chat(props: { appId: string }) {
         </Show>
         <button
           type="button"
-          title={
-            editsApp(props.appId) ? "Done: hide the agent and run the finished app (Ctrl+J)" : "Hide agent (Ctrl+J)"
-          }
+          title={withKeys(
+            editsApp(props.appId) ? "Done: hide the agent and run the finished app" : "Hide agent",
+            "agent.toggle",
+          )}
           onClick={() => setAgentCollapsed(props.appId, true)}
           {...stylex.attrs(styles.headerButton)}
           data-agent-hide
@@ -721,7 +723,10 @@ export function ShowAgentButton(props: { appId: string }) {
   return (
     <button
       type="button"
-      title={editsApp(props.appId) ? "Edit: show the agent and run the dev server (Ctrl+J)" : "Show agent (Ctrl+J)"}
+      title={withKeys(
+        editsApp(props.appId) ? "Edit: show the agent and run the dev server" : "Show agent",
+        "agent.toggle",
+      )}
       onClick={() => setAgentCollapsed(props.appId, false)}
       {...stylex.attrs(styles.showButton)}
       data-agent-show

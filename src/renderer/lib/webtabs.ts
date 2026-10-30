@@ -1,5 +1,6 @@
 // Open web tabs register a handle here so the website agent (RPC from the
-// server), browser shortcuts and site customization updates can reach them.
+// server), keyboard shortcuts and site customization updates can reach them.
+import type { WebviewTag } from "electron";
 import { createStore } from "solid-js/store";
 import { createEffect, createRoot, createSignal } from "solid-js";
 import type {
@@ -9,7 +10,6 @@ import type {
   ReplayOverrides,
   RequestDraft,
   SiteOverride,
-  WebShortcut,
 } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { hostOf } from "../../shared/web";
@@ -59,6 +59,8 @@ export interface PageHandle {
   back: () => void;
   forward: () => void;
   focusAddress: () => void;
+  /** The page's webview, once it's ready (find, zoom, print, DevTools: lib/shortcuts.ts). */
+  view: () => WebviewTag | undefined;
   /** Re-reads the site's customization and applies it and the page changes; returns JS errors. */
   applyOverride: () => Promise<ApplyResult>;
   /** Called when the customization of `host` changed somewhere. */
@@ -280,65 +282,5 @@ watchTopic(topics.sites, (msg) => {
 });
 onConnected(() => void loadPageChanges());
 
-// --- Shortcuts ---------------------------------------------------------------------
-
-function runShortcut(name: WebShortcut) {
-  const id = selectedId();
-  if (name === "command-bar") return openCommandBar();
-  if (name === "new-tab") return void newWebTab();
-  if (name === "reopen-tab") return void reopenClosedTab();
-  if (name === "focus-address") {
-    setSidebarCollapsed(false);
-    return focusAddress();
-  }
-  if (name === "toggle-sidebar") return toggleSidebar();
-  if (name.startsWith("workspace-")) {
-    const target = workspaces[Number(name.slice("workspace-".length)) - 1];
-    if (target) void showWorkspace(target.id);
-    return;
-  }
-  if (!isTab(id)) return;
-  if (name === "toggle-agent") return toggleAgent(id);
-  if (name === "close-tab") return void closeTab(id);
-  const handle = pages.get(id);
-  if (!handle) return;
-  if (name === "reload") void handle.reload().catch(() => {});
-  else if (name === "back") handle.back();
-  else if (name === "forward") handle.forward();
-}
-
-// From web pages (keys pressed while a page has focus) and Ctrl+R in Rune Browser itself.
-window.rune.web.onShortcut(runShortcut);
 // Links that want a new window (web pages, app previews, chat links).
-window.rune.web.onOpenTab((url) => void newWebTab(url));
-
-window.addEventListener("keydown", (e) => {
-  const digit = /^Digit([1-9])$/.exec(e.code);
-  if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && digit) {
-    e.preventDefault();
-    return runShortcut(`workspace-${Number(digit[1])}`);
-  }
-  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
-  if (e.shiftKey) {
-    const shifted = e.key.toLowerCase() === "b" ? "toggle-sidebar" : e.key.toLowerCase() === "t" ? "reopen-tab" : null;
-    if (!shifted) return;
-    e.preventDefault();
-    return runShortcut(shifted);
-  }
-  const key = e.key.toLowerCase();
-  const name: WebShortcut | undefined =
-    key === "k"
-      ? "command-bar"
-      : key === "j"
-        ? "toggle-agent"
-        : key === "t"
-          ? "new-tab"
-          : key === "l"
-            ? "focus-address"
-            : key === "w" && isTab(selectedId())
-              ? "close-tab"
-              : undefined;
-  if (!name) return;
-  e.preventDefault();
-  runShortcut(name);
-});
+window.rune.web.onOpenTab((url, background) => void newWebTab(url, { background }));

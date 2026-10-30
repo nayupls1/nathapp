@@ -85,6 +85,11 @@ export const Settings = Schema.Struct({
     /** Tabs not used for this many minutes are unloaded (their page closes, its state is kept); 0 = never. */
     unloadAfterMinutes: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 24 * 60 })).pipe(withDefault(30)),
   }).pipe(withDefault({})),
+  /** Changed keyboard shortcuts, by action ("tab.close" → ["Ctrl+W"]); [] turns one off. The rest keep their defaults. */
+  shortcuts: Schema.Record(
+    Schema.String.check(Schema.isMaxLength(100)),
+    Schema.Array(Schema.String.check(Schema.isMaxLength(100))).check(Schema.isMaxLength(10)),
+  ).pipe(withDefault({})),
   mods: Schema.Struct({
     /** Galleries to browse mods from: URLs of JSON files listing mods ({ "mods": [...] } or an array). */
     galleries: Schema.Array(Schema.String.check(Schema.isMaxLength(2000)))

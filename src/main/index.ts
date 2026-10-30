@@ -80,6 +80,8 @@ ipcMain.on("rune:window", (event, action: unknown) => {
   if (!win || event.sender !== win.webContents) return;
   if (action === "minimize") win.minimize();
   else if (action === "close") win.close();
+  else if (action === "toggle-fullscreen") win.setFullScreen(!win.isFullScreen());
+  else if (action === "quit") app.quit();
   else if (action === "toggle-maximize") {
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();

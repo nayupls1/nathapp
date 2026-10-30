@@ -1,0 +1,148 @@
+// Keyboard shortcuts pressed while a page (web tab, app preview) has the
+// focus. Keys the browser reserves go straight to the Rune Browser window; the
+// rest go to the page first, like in Chromium: it's given the key, and only
+// when it doesn't use it (preventDefault) does the window run the shortcut.
+// Keys pressed in the window itself are the renderer's (lib/shortcuts.ts),
+// which also tells this one the keymap (the user can change it in Settings).
+import { ipcMain, Menu, type BrowserWindow, type Input, type WebContents } from "electron";
+import {
+  keymapOf,
+  keyPlatform,
+  legacyKeyCode,
+  matchShortcut,
+  resolveBindings,
+  type ShortcutDef,
+} from "../shared/shortcuts";
+import type { ShortcutEvent } from "../shared/api";
+
+const platform = keyPlatform(process.platform);
+
+/** How long a busy page may take to say whether it used a key before the shortcut runs anyway. */
+const PAGE_TIMEOUT_MS = 500;
+
+/**
+ * Hands the key to the page as a keydown on what has the focus (inside
+ * same-origin frames and shadow roots too); true if the page used it. The
+ * page's own key handlers see it like a real key press, including the
+ * keyCode older shortcut libraries read.
+ */
+function dispatchScript(input: Input) {
+  const init = {
+    key: input.key,
+    code: input.code,
+    ctrlKey: input.control,
+    altKey: input.alt,
+    shiftKey: input.shift,
+    metaKey: input.meta,
+    repeat: input.isAutoRepeat,
+    location: input.location ?? 0,
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+  };
+  const keyCode = legacyKeyCode(input.key, input.code);
+  return `(() => {
+    let target = document.activeElement;
+    try {
+      for (;;) {
+        while (target && target.shadowRoot && target.shadowRoot.activeElement) target = target.shadowRoot.activeElement;
+        const inner = target && target.contentDocument && target.contentDocument.activeElement;
+        if (!inner) break;
+        target = inner;
+      }
+    } catch {}
+    target = target || document.body || document.documentElement;
+    if (!target) return false;
+    const event = new KeyboardEvent("keydown", ${JSON.stringify(init)});
+    for (const name of ["keyCode", "which"]) Object.defineProperty(event, name, { get: () => ${keyCode} });
+    return !target.dispatchEvent(event);
+  })()`;
+}
+
+async function pageUsesKey(contents: WebContents, input: Input) {
+  const timeout = new Promise<false>((resolve) => setTimeout(() => resolve(false), PAGE_TIMEOUT_MS));
+  try {
+    return (await Promise.race([contents.executeJavaScript(dispatchScript(input)), timeout])) === true;
+  } catch {
+    return false;
+  }
+}
+
+export function setupShortcuts(getWindow: () => BrowserWindow | undefined) {
+  let bindings: Record<string, readonly string[]> = resolveBindings(platform);
+  let keymap = keymapOf(bindings);
+  const send = (event: ShortcutEvent) => getWindow()?.webContents.send("rune:shortcut", event);
+
+  ipcMain.on("rune:shortcuts", (event, bindings: unknown) => {
+    if (event.sender !== getWindow()?.webContents || !bindings || typeof bindings !== "object") return;
+    const valid: Record<string, string[]> = {};
+    for (const [id, keys] of Object.entries(bindings))
+      if (Array.isArray(keys)) valid[id] = keys.filter((k): k is string => typeof k === "string").slice(0, 10);
+    bindings = valid;
+    keymap = keymapOf(valid);
+  });
+
+  setupMenu();
+
+  return {
+    /** A shortcut's first keys as an Electron accelerator (shown in menus), if it has any. */
+    accelerator: (id: string) => bindings[id]?.find((k) => !/Browser\w+$/.test(k)),
+
+    /** The shortcut a key in a page is for (keyDown only). */
+    match: (input: Input): ShortcutDef | undefined =>
+      input.type === "keyDown" ? matchShortcut(keymap, toKey(input)) : undefined,
+
+    /**
+     * A key pressed in a page: runs its shortcut in the window when it's one
+     * (reserved ones right away, the others once the page passed on it). True
+     * if the page doesn't get the key as it was pressed.
+     */
+    handlePageInput(contents: WebContents, input: Input, def: ShortcutDef) {
+      const event = { id: def.id, contentsId: contents.id };
+      if (def.page === "passive") {
+        send(event);
+        return false;
+      }
+      if (def.page === "reserved") {
+        send(event);
+        return true;
+      }
+      void pageUsesKey(contents, input).then((used) => {
+        if (!used && !contents.isDestroyed()) send(event);
+      });
+      return true;
+    },
+  };
+}
+
+const toKey = (input: Input) => ({
+  key: input.key,
+  code: input.code,
+  ctrl: input.control,
+  alt: input.alt,
+  shift: input.shift,
+  meta: input.meta,
+});
+
+/**
+ * The application menu. Electron's default one closes the window on Ctrl+W,
+ * reloads Rune Browser itself on Ctrl+R and zooms it on Ctrl+Plus; those keys
+ * are the tabs'. Linux and Windows show no menu, so they get none (editing
+ * keys work without one); macOS keeps its app, Edit and Window menus.
+ */
+function setupMenu() {
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      { role: "appMenu" },
+      { role: "editMenu" },
+      {
+        label: "Window",
+        submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }],
+      },
+    ]),
+  );
+}

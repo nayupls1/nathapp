@@ -26,6 +26,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { Icon } from "./Icon";
 import { TabIcon } from "./TabIcon";
 import { WindowControls } from "./WindowControls";
+import { withKeys } from "../lib/shortcuts";
 
 interface Suggestion {
   key: string;
@@ -53,7 +54,7 @@ export function NavRow(props: { compact: boolean }) {
         <Show when={tabId()}>
           <button
             type="button"
-            title={agentHidden() ? "Show the agent (Ctrl+J)" : "Hide the agent (Ctrl+J)"}
+            title={withKeys(agentHidden() ? "Show the agent" : "Hide the agent", "agent.toggle")}
             onClick={() => toggleAgent(tabId()!)}
             {...stylex.attrs(styles.navButton, styles.agentButton, agentShown() && styles.agentOn)}
             data-agent-show={agentHidden() ? "" : undefined}
@@ -94,7 +95,7 @@ export function NavRow(props: { compact: boolean }) {
           fallback={
             <button
               type="button"
-              title="Reload (Ctrl+R)"
+              title={withKeys("Reload", "nav.reload")}
               disabled={!chrome()}
               onClick={() => chrome()?.reload()}
               {...stylex.attrs(styles.navButton)}
