@@ -63,7 +63,12 @@ const appSummary = (source: AppSummary) =>
     const data = yield* appData.overview(source.id).pipe(Effect.orElseSucceed(() => null));
     const lines = [
       `It's an app in Rune Browser${status.state === "running" ? `, running at ${status.url}` : ` (${status.state})`}.`,
-      tools.length ? `Its tools (use_app_tool):\n${tools.slice(0, 40).map((t) => `- ${t.id}: ${t.title}${t.description ? ` — ${clip(t.description, 120)}` : ""}`).join("\n")}` : "",
+      tools.length
+        ? `Its tools (use_app_tool):\n${tools
+            .slice(0, 40)
+            .map((t) => `- ${t.id}: ${t.title}${t.description ? ` — ${clip(t.description, 120)}` : ""}`)
+            .join("\n")}`
+        : "",
       data?.tables.length
         ? `Its data:\n${data.tables
             .slice(0, 30)
@@ -109,7 +114,8 @@ const describe = (recipient: AppSummary, source: AppSummary, input: SharedTabInp
 export const sharedContext = (recipient: AppSummary, inputs: readonly SharedTabInput[]) =>
   Effect.gen(function* () {
     const apps = yield* Apps;
-    if (inputs.length > MAX_SHARED_TABS) return yield* Effect.fail(`At most ${MAX_SHARED_TABS} tabs can be shared with a message.`);
+    if (inputs.length > MAX_SHARED_TABS)
+      return yield* Effect.fail(`At most ${MAX_SHARED_TABS} tabs can be shared with a message.`);
     const texts: string[] = [];
     const summaries: SharedSummary[] = [];
     for (const input of inputs) {
@@ -129,4 +135,5 @@ export const sharedContext = (recipient: AppSummary, inputs: readonly SharedTabI
   });
 
 /** The user's message with the shared tabs before it, as the agent sees it. */
-export const withSharedTabs = (prompt: string, block: string) => (block ? `The user shared these tabs with this message:\n${block}\n\n${prompt}` : prompt);
+export const withSharedTabs = (prompt: string, block: string) =>
+  block ? `The user shared these tabs with this message:\n${block}\n\n${prompt}` : prompt;

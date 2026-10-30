@@ -34,7 +34,12 @@ describe("scopes", () => {
 });
 
 describe("validation", () => {
-  const base: PageChangeSpec = { title: "Hide the banner", scope: { type: "site", value: "example.com" }, action: "hide", selector: ".banner" };
+  const base: PageChangeSpec = {
+    title: "Hide the banner",
+    scope: { type: "site", value: "example.com" },
+    action: "hide",
+    selector: ".banner",
+  };
 
   test("each action needs its fields", () => {
     expect(pageChangeProblem(base)).toBeNull();
@@ -49,7 +54,9 @@ describe("validation", () => {
   });
 
   test("scopes are checked", () => {
-    expect(pageChangeProblem({ ...base, scope: { type: "site", value: "https://example.com/x" } })).toContain("host name");
+    expect(pageChangeProblem({ ...base, scope: { type: "site", value: "https://example.com/x" } })).toContain(
+      "host name",
+    );
     expect(pageChangeProblem({ ...base, scope: { type: "page", value: "example.com" } })).toBeNull();
     expect(pageChangeProblem({ ...base, scope: { type: "page", value: "not a page" } })).toContain("host and path");
     expect(pageChangeProblem({ ...base, scope: { type: "page", value: "example.com/news" } })).toBeNull();
@@ -58,16 +65,32 @@ describe("validation", () => {
   });
 
   test("JavaScript has to parse", () => {
-    const button: PageChangeSpec = { ...base, action: "button", value: "Copy", onClick: "navigator.clipboard.writeText(document.title)" };
+    const button: PageChangeSpec = {
+      ...base,
+      action: "button",
+      value: "Copy",
+      onClick: "navigator.clipboard.writeText(document.title)",
+    };
     expect(pageChangeError(button)).toBeNull();
     expect(pageChangeError({ ...button, onClick: "if (" })).toContain("syntax error");
-    expect(pageChangeError({ ...base, action: "script", selector: undefined, value: "onElement('a', (el) => el.remove())" })).toBeNull();
+    expect(
+      pageChangeError({ ...base, action: "script", selector: undefined, value: "onElement('a', (el) => el.remove())" }),
+    ).toBeNull();
   });
 });
 
 test("hide, style and css become one stylesheet; buttons get a default look", () => {
   const change = (fields: Partial<PageChange>): PageChange =>
-    ({ id: "x", title: "t", scope: { type: "site", value: "a.com" }, enabled: true, createdBy: "user", createdAt: "", updatedAt: "", ...fields }) as PageChange;
+    ({
+      id: "x",
+      title: "t",
+      scope: { type: "site", value: "a.com" },
+      enabled: true,
+      createdBy: "user",
+      createdAt: "",
+      updatedAt: "",
+      ...fields,
+    }) as PageChange;
   const css = pageChangesCss([
     change({ id: "h", action: "hide", selector: ".ad" }),
     change({ id: "s", action: "style", selector: "h1", value: "color: red" }),
@@ -79,7 +102,9 @@ test("hide, style and css become one stylesheet; buttons get a default look", ()
   expect(css).toContain("body { margin: 0 }");
   expect(css).not.toContain("Hi");
   expect(css).not.toContain("rune-button");
-  expect(pageChangesCss([change({ action: "button", selector: "h1", value: "Go", onClick: "1" })])).toContain("button.rune-button");
+  expect(pageChangesCss([change({ action: "button", selector: "h1", value: "Go", onClick: "1" })])).toContain(
+    "button.rune-button",
+  );
 });
 
 describe("API", () => {
@@ -91,23 +116,46 @@ describe("API", () => {
   const history = () => server.api<HistoryEntry[]>("/api/history?target=sites");
 
   test("add, turn off, change and remove; each a snapshot that can be undone", async () => {
-    const spec: PageChangeSpec = { title: "Hide ads", scope: { type: "pattern", value: "*.example.com" }, action: "hide", selector: ".ad", value: "ignored" };
+    const spec: PageChangeSpec = {
+      title: "Hide ads",
+      scope: { type: "pattern", value: "*.example.com" },
+      action: "hide",
+      selector: ".ad",
+      value: "ignored",
+    };
     const added = await server.api<PageChange>("/api/page-changes", { method: "POST", json: spec });
     // Fields an action doesn't use are dropped.
-    expect(added).toMatchObject({ title: "Hide ads", action: "hide", selector: ".ad", enabled: true, createdBy: "user" });
+    expect(added).toMatchObject({
+      title: "Hide ads",
+      action: "hide",
+      selector: ".ad",
+      enabled: true,
+      createdBy: "user",
+    });
     expect(added.value).toBeUndefined();
     expect(await server.api<PageChange[]>("/api/page-changes")).toHaveLength(1);
-    await expect(server.api("/api/page-changes", { method: "POST", json: { ...spec, selector: "" } })).rejects.toThrow("400");
+    await expect(server.api("/api/page-changes", { method: "POST", json: { ...spec, selector: "" } })).rejects.toThrow(
+      "400",
+    );
 
-    const off = await server.api<PageChange>(`/api/page-changes/${added.id}`, { method: "PATCH", json: { enabled: false } });
+    const off = await server.api<PageChange>(`/api/page-changes/${added.id}`, {
+      method: "PATCH",
+      json: { enabled: false },
+    });
     expect(off.enabled).toBe(false);
-    const renamed = await server.api<PageChange>(`/api/page-changes/${added.id}`, { method: "PATCH", json: { change: { ...spec, title: "Hide all ads" } } });
+    const renamed = await server.api<PageChange>(`/api/page-changes/${added.id}`, {
+      method: "PATCH",
+      json: { change: { ...spec, title: "Hide all ads" } },
+    });
     expect(renamed).toMatchObject({ title: "Hide all ads", enabled: false });
 
     await server.api(`/api/page-changes/${added.id}`, { method: "DELETE" });
     expect(await server.api<PageChange[]>("/api/page-changes")).toEqual([]);
     const [removed] = await history();
-    expect(removed).toMatchObject({ summary: "Removed the page change “Hide all ads”", removed: [`@changes/${added.id}.json`] });
+    expect(removed).toMatchObject({
+      summary: "Removed the page change “Hide all ads”",
+      removed: [`@changes/${added.id}.json`],
+    });
 
     // Undoing the removal brings it back as it was.
     await server.api(`/api/history/${removed!.id}/undo`, { method: "POST", json: {} });

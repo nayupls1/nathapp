@@ -12,7 +12,10 @@ import { Apps } from "../src/server/db/Apps";
 import { core } from "../src/server/services";
 import { startServer } from "./lib/server";
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
 const pngUrl = `data:image/png;base64,${PNG.toString("base64")}`;
 
 describe("icon files from the project", () => {
@@ -21,7 +24,10 @@ describe("icon files from the project", () => {
   beforeAll(() => {
     mkdirSync(join(project, "public"), { recursive: true });
     writeFileSync(join(project, "public", "icon.png"), PNG);
-    writeFileSync(join(project, "logo.svg"), `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>`);
+    writeFileSync(
+      join(project, "logo.svg"),
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>`,
+    );
     writeFileSync(join(project, "fake.png"), "not a png");
     writeFileSync(join(project, "big.png"), Buffer.concat([PNG, Buffer.alloc(120_000)]));
     writeFileSync(join(dir, "secret.png"), PNG);
@@ -36,11 +42,17 @@ describe("icon files from the project", () => {
 
   test("anything else is refused", async () => {
     expect(await readIconFile(project, "../secret.png")).toEqual({ error: "../secret.png isn't inside the project." });
-    expect(await readIconFile(project, join(dir, "secret.png"))).toMatchObject({ error: expect.stringContaining("isn't inside") });
+    expect(await readIconFile(project, join(dir, "secret.png"))).toMatchObject({
+      error: expect.stringContaining("isn't inside"),
+    });
     expect(await readIconFile(project, "link.png")).toMatchObject({ error: expect.stringContaining("isn't inside") });
-    expect(await readIconFile(project, "fake.png")).toMatchObject({ error: expect.stringContaining("isn't a valid PNG") });
+    expect(await readIconFile(project, "fake.png")).toMatchObject({
+      error: expect.stringContaining("isn't a valid PNG"),
+    });
     expect(await readIconFile(project, "big.png")).toMatchObject({ error: expect.stringContaining("too big") });
-    expect(await readIconFile(project, "missing.png")).toMatchObject({ error: expect.stringContaining("doesn't exist") });
+    expect(await readIconFile(project, "missing.png")).toMatchObject({
+      error: expect.stringContaining("doesn't exist"),
+    });
     expect(await readIconFile(project, "notes.txt")).toMatchObject({ error: expect.stringContaining("use a PNG") });
   });
 });
@@ -79,11 +91,15 @@ describe("PUT /api/apps/:id/icon", () => {
   let tab: AppSummary;
   beforeAll(async () => {
     server = await startServer();
-    tab = await server.api<AppSummary>("/api/apps", { method: "POST", json: { kind: "web", url: "https://example.com/" } });
+    tab = await server.api<AppSummary>("/api/apps", {
+      method: "POST",
+      json: { kind: "web", url: "https://example.com/" },
+    });
   });
   afterAll(() => server.stop());
 
-  const put = (icon: string | null) => server.api<AppSummary>(`/api/apps/${tab.id}/icon`, { method: "PUT", json: { icon } });
+  const put = (icon: string | null) =>
+    server.api<AppSummary>(`/api/apps/${tab.id}/icon`, { method: "PUT", json: { icon } });
 
   test("takes a Lucide icon, an emoji or a small image", async () => {
     expect((await put("rocket")).icon).toBe("rocket");

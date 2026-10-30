@@ -19,7 +19,9 @@ export function paneRect(tabId: string): { left: number; top: number; width: num
   if (!split || i === -1) return null;
   const offset = split.sizes.slice(0, i).reduce((a, b) => a + b, 0);
   const size = split.sizes[i]!;
-  return split.direction === "row" ? { left: offset, top: 0, width: size, height: 1 } : { left: 0, top: offset, width: 1, height: size };
+  return split.direction === "row"
+    ? { left: offset, top: 0, width: size, height: 1 }
+    : { left: 0, top: offset, width: 1, height: size };
 }
 
 /** The gap between panes: each is its own rounded card, like the page outside a split. */
@@ -35,7 +37,14 @@ export function paneStyle(tabId: string): JSX.CSSProperties | undefined {
   const right = inner(r.left + r.width < 0.999);
   const bottom = inner(r.top + r.height < 0.999);
   const at = (v: number, px: number) => `calc(${v * 100}% + ${px}px)`;
-  return { left: at(r.left, left), top: at(r.top, top), width: at(r.width, -left - right), height: at(r.height, -top - bottom), right: "auto", bottom: "auto" };
+  return {
+    left: at(r.left, left),
+    top: at(r.top, top),
+    width: at(r.width, -left - right),
+    height: at(r.height, -top - bottom),
+    right: "auto",
+    bottom: "auto",
+  };
 }
 
 /** The handles between the panes of the split on screen, and the focused pane's outline. */
@@ -82,10 +91,17 @@ export function SplitChrome() {
         const isColumn = () => split().direction === "column";
         return (
           <>
-            <Show when={focused()}>{(style) => <div {...stylex.attrs(styles.focus)} style={style()} data-split-focus />}</Show>
+            <Show when={focused()}>
+              {(style) => <div {...stylex.attrs(styles.focus)} style={style()} data-split-focus />}
+            </Show>
             <For each={split().tabs.slice(0, -1)}>
               {(_, i) => {
-                const at = () => `${split().sizes.slice(0, i() + 1).reduce((a, b) => a + b, 0) * 100}%`;
+                const at = () =>
+                  `${
+                    split()
+                      .sizes.slice(0, i() + 1)
+                      .reduce((a, b) => a + b, 0) * 100
+                  }%`;
                 return (
                   <div
                     role="separator"
@@ -101,7 +117,12 @@ export function SplitChrome() {
               }}
             </For>
             <Show when={dragging()}>
-              {(direction) => <div {...stylex.attrs(styles.shield)} style={{ cursor: direction() === "row" ? "col-resize" : "row-resize" }} />}
+              {(direction) => (
+                <div
+                  {...stylex.attrs(styles.shield)}
+                  style={{ cursor: direction() === "row" ? "col-resize" : "row-resize" }}
+                />
+              )}
             </Show>
           </>
         );
@@ -110,7 +131,12 @@ export function SplitChrome() {
   );
 }
 
-const sideLabels: Record<SplitSide, string> = { left: "Split left", right: "Split right", top: "Split above", bottom: "Split below" };
+const sideLabels: Record<SplitSide, string> = {
+  left: "Split left",
+  right: "Split right",
+  top: "Split above",
+  bottom: "Split below",
+};
 
 /**
  * While a tab is dragged from the sidebar: drop it on a side of the tab on

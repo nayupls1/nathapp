@@ -2,7 +2,19 @@
 // pushes chat events, app runtime status and logs, site customization changes
 // and provider status on topics; the renderer answers RPC requests (the agents
 // use them to reach pages open in tabs).
-import type { AppSummary, AuditEntry, ChatEvent, ContextSource, HistoryEntry, LogLine, PermissionRequest, ProviderStatus, RuntimeStatus, ScheduleRun, WorkspaceInfo } from "./api";
+import type {
+  AppSummary,
+  AuditEntry,
+  ChatEvent,
+  ContextSource,
+  HistoryEntry,
+  LogLine,
+  PermissionRequest,
+  ProviderStatus,
+  RuntimeStatus,
+  ScheduleRun,
+  WorkspaceInfo,
+} from "./api";
 import type { Settings } from "./settings";
 
 export const topics = {

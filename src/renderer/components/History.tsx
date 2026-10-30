@@ -16,7 +16,12 @@ import { Button } from "./ui";
 
 const PAGE = 50;
 
-const actorIcons: Record<HistoryEntry["actor"], string> = { agent: "bot", user: "user", app: "app-window", rune: "camera" };
+const actorIcons: Record<HistoryEntry["actor"], string> = {
+  agent: "bot",
+  user: "user",
+  app: "app-window",
+  rune: "camera",
+};
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 
@@ -39,7 +44,9 @@ export function HistoryList(props: {
   const [entries, setEntries] = createSignal<HistoryEntry[]>([]);
   const [more, setMore] = createSignal(false);
   const [open, setOpen] = createSignal<number | null>(null);
-  const matches = (e: HistoryEntry) => (!props.target || e.target === props.target) && (!props.workspaceId || !e.workspaceId || e.workspaceId === props.workspaceId);
+  const matches = (e: HistoryEntry) =>
+    (!props.target || e.target === props.target) &&
+    (!props.workspaceId || !e.workspaceId || e.workspaceId === props.workspaceId);
 
   const load = async (before?: number) => {
     const page = await api.history({ target: props.target, workspace: props.workspaceId, before, limit: PAGE });
@@ -82,13 +89,21 @@ function Stats(props: { entry: HistoryEntry }) {
   const files = () => {
     const dbs = new Set(Object.keys(props.entry.data));
     const count = (paths: string[]) => paths.filter((p) => !dbs.has(p)).length;
-    return { added: count(props.entry.added), modified: count(props.entry.modified), removed: count(props.entry.removed) };
+    return {
+      added: count(props.entry.added),
+      modified: count(props.entry.modified),
+      removed: count(props.entry.removed),
+    };
   };
   const tables = () =>
     Object.values(props.entry.data).flatMap((t) =>
       Object.entries(t).map(([name, [before, after]]) => {
         const delta = (after ?? 0) - (before ?? 0);
-        return after === null ? `${name} removed` : before === null ? `${name} new` : `${name} ${delta > 0 ? "+" : ""}${delta}`;
+        return after === null
+          ? `${name} removed`
+          : before === null
+            ? `${name} new`
+            : `${name} ${delta > 0 ? "+" : ""}${delta}`;
       }),
     );
   const dataChanged = () => Object.keys(props.entry.data).length > 0;
@@ -113,7 +128,13 @@ function Stats(props: { entry: HistoryEntry }) {
   );
 }
 
-function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean; onToggle: () => void; restoreAllIn?: string }) {
+function Entry(props: {
+  entry: HistoryEntry;
+  showTarget: boolean;
+  open: boolean;
+  onToggle: () => void;
+  restoreAllIn?: string;
+}) {
   const [detail] = createResource(
     () => (props.open ? props.entry.id : undefined),
     (id) => api.historyDetail(id),
@@ -162,14 +183,18 @@ function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean;
   const restoreAll = () =>
     run(async () => {
       const data = withData();
-      const scope = props.restoreAllIn ? (workspaces.find((w) => w.id === props.restoreAllIn)?.name ?? "this workspace") : "all workspaces";
+      const scope = props.restoreAllIn
+        ? (workspaces.find((w) => w.id === props.restoreAllIn)?.name ?? "this workspace")
+        : "all workspaces";
       const ok = await confirmDialog(
         `Put everything back to how it was on ${when(props.entry.at)}? Rune Browser's settings, the site customizations and the apps in ${scope} go back to that moment${data ? ", their data too (what was added since is lost)" : "; the apps' data stays as it is"}. Apps made since stay as they are. Each can be undone on its own.`,
         { confirmLabel: "Restore everything", danger: true },
       );
       if (!ok) return;
       const { restored } = await api.restoreAll(props.entry.id, data, props.restoreAllIn || undefined);
-      return restored.length ? `Restored ${restored.map(targetName).join(", ")}.` : "Everything already was the way it was then.";
+      return restored.length
+        ? `Restored ${restored.map(targetName).join(", ")}.`
+        : "Everything already was the way it was then.";
     });
 
   return (
@@ -202,7 +227,12 @@ function Entry(props: { entry: HistoryEntry; showTarget: boolean; open: boolean;
               Restore this version
             </Button>
             <Show when={props.restoreAllIn !== undefined}>
-              <Button onClick={() => void restoreAll()} disabled={busy()} title="Settings, site customizations and every app back to this moment" data-restore-all>
+              <Button
+                onClick={() => void restoreAll()}
+                disabled={busy()}
+                title="Settings, site customizations and every app back to this moment"
+                data-restore-all
+              >
                 <Icon name="rewind" size={14} />
                 Restore everything to here
               </Button>
@@ -244,26 +274,40 @@ function FileDiff(props: { file: HistoryFile; open: boolean }) {
   const isRemoved = () => props.file.status === "removed";
   return (
     <div {...stylex.attrs(styles.file)} data-history-file={props.file.path}>
-      <button type="button" disabled={!expandable()} onClick={() => setOpen((o) => !o)} {...stylex.attrs(styles.fileHead)}>
+      <button
+        type="button"
+        disabled={!expandable()}
+        onClick={() => setOpen((o) => !o)}
+        {...stylex.attrs(styles.fileHead)}
+      >
         <Icon name={props.file.kind === "data" ? "database" : "file"} size={13} {...stylex.attrs(styles.fileIcon)} />
         <code {...stylex.attrs(styles.path)}>{props.file.path}</code>
-        <span {...stylex.attrs(styles.fileStatus, isAdded() && styles.added, isRemoved() && styles.removed)}>{statusLabels[props.file.status]}</span>
+        <span {...stylex.attrs(styles.fileStatus, isAdded() && styles.added, isRemoved() && styles.removed)}>
+          {statusLabels[props.file.status]}
+        </span>
         <Show when={props.file.kind === "text"}>
           <span {...stylex.attrs(styles.lineStats)}>
-            <span {...stylex.attrs(styles.added)}>+{props.file.linesAdded}</span> <span {...stylex.attrs(styles.removed)}>−{props.file.linesRemoved}</span>
+            <span {...stylex.attrs(styles.added)}>+{props.file.linesAdded}</span>{" "}
+            <span {...stylex.attrs(styles.removed)}>−{props.file.linesRemoved}</span>
           </span>
         </Show>
         <Show when={props.file.kind === "binary" || props.file.kind === "large"}>
-          <span {...stylex.attrs(styles.lineStats)}>{props.file.kind === "binary" ? "binary" : "too large to show"}</span>
+          <span {...stylex.attrs(styles.lineStats)}>
+            {props.file.kind === "binary" ? "binary" : "too large to show"}
+          </span>
         </Show>
       </button>
       <Show when={props.file.kind === "data"}>
         <div {...stylex.attrs(styles.tables)}>
-          <Show when={Object.keys(props.file.tables ?? {}).length} fallback={<span>Rows were changed (the number of rows stayed the same).</span>}>
+          <Show
+            when={Object.keys(props.file.tables ?? {}).length}
+            fallback={<span>Rows were changed (the number of rows stayed the same).</span>}
+          >
             <For each={Object.entries(props.file.tables ?? {})}>
               {([name, [before, after]]) => (
                 <span>
-                  <code>{name}</code>: {before === null ? "new table" : `${before} rows`} → {after === null ? "removed" : `${after} rows`}
+                  <code>{name}</code>: {before === null ? "new table" : `${before} rows`} →{" "}
+                  {after === null ? "removed" : `${after} rows`}
                 </span>
               )}
             </For>
@@ -313,8 +357,8 @@ export function HistoryPage() {
           History
         </h1>
         <p {...stylex.attrs(styles.muted)}>
-          Every change agents and you make is saved: apps with their data, site customizations and settings. Undo a single change, or
-          restore an earlier version.
+          Every change agents and you make is saved: apps with their data, site customizations and settings. Undo a
+          single change, or restore an earlier version.
         </p>
       </header>
       <div {...stylex.attrs(styles.filters)}>
@@ -331,7 +375,12 @@ export function HistoryPage() {
             <option value="all">All workspaces</option>
           </Show>
         </select>
-        <select value={target()} onChange={(e) => setTarget(e.currentTarget.value)} {...stylex.attrs(styles.select)} data-history-target>
+        <select
+          value={target()}
+          onChange={(e) => setTarget(e.currentTarget.value)}
+          {...stylex.attrs(styles.select)}
+          data-history-target
+        >
           <option value="">Everything</option>
           <option value="settings">Settings</option>
           <option value="sites">Site customizations</option>
@@ -339,7 +388,12 @@ export function HistoryPage() {
         </select>
       </div>
       <div {...stylex.attrs(styles.card)}>
-        <HistoryList target={target() || undefined} workspaceId={workspace()} showTarget={!target()} restoreAllIn={workspace() ?? ""} />
+        <HistoryList
+          target={target() || undefined}
+          workspaceId={workspace()}
+          showTarget={!target()}
+          restoreAllIn={workspace() ?? ""}
+        />
       </div>
     </div>
   );
@@ -369,16 +423,35 @@ export function HistoryPanel(props: { appId: string; onClose: () => void }) {
         </button>
       </div>
       <div {...stylex.attrs(styles.panelBody)}>
-        <HistoryList target={`app:${props.appId}`} empty="No snapshots yet: they're saved when the agent works on the app." />
+        <HistoryList
+          target={`app:${props.appId}`}
+          empty="No snapshots yet: they're saved when the agent works on the app."
+        />
       </div>
     </div>
   );
 }
 
 const styles = stylex.create({
-  page: { maxWidth: 900, marginInline: "auto", paddingBlock: space.xxl, paddingInline: space.xl, display: "flex", flexDirection: "column", gap: space.lg },
+  page: {
+    maxWidth: 900,
+    marginInline: "auto",
+    paddingBlock: space.xxl,
+    paddingInline: space.xl,
+    display: "flex",
+    flexDirection: "column",
+    gap: space.lg,
+  },
   header: { display: "flex", flexDirection: "column", gap: space.xs },
-  title: { display: "flex", alignItems: "center", gap: space.sm, margin: 0, fontSize: font.xxl, fontWeight: 650, letterSpacing: "-0.02em" },
+  title: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    margin: 0,
+    fontSize: font.xxl,
+    fontWeight: 650,
+    letterSpacing: "-0.02em",
+  },
   accent: { color: colors.accent },
   muted: { margin: 0, color: colors.muted, fontSize: font.sm, lineHeight: 1.5 },
   filters: { display: "flex", gap: space.sm },
@@ -450,12 +523,25 @@ const styles = stylex.create({
     textOverflow: "ellipsis",
   },
   chevron: { flexShrink: 0, color: colors.muted },
-  body: { display: "flex", flexDirection: "column", gap: space.sm, paddingInline: space.lg, paddingBottom: space.md, paddingTop: space.xs },
+  body: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.sm,
+    paddingInline: space.lg,
+    paddingBottom: space.md,
+    paddingTop: space.xs,
+  },
   actions: { display: "flex", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
   check: { display: "flex", alignItems: "center", gap: 6, color: colors.muted, fontSize: font.sm, cursor: "pointer" },
   message: { margin: 0, fontSize: font.sm, color: colors.muted },
   messageError: { color: colors.danger },
-  file: { borderRadius: radius.md, borderWidth: 1, borderStyle: "solid", borderColor: colors.border, overflow: "hidden" },
+  file: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: colors.border,
+    overflow: "hidden",
+  },
   fileHead: {
     display: "flex",
     alignItems: "center",
@@ -473,7 +559,15 @@ const styles = stylex.create({
   path: { flex: 1, minWidth: 0, fontFamily: font.mono, fontSize: font.xs, overflowWrap: "anywhere" },
   fileStatus: { flexShrink: 0, color: colors.muted, fontSize: font.xs },
   lineStats: { flexShrink: 0, color: colors.muted, fontFamily: font.mono, fontSize: font.xs },
-  tables: { display: "flex", flexDirection: "column", gap: 2, paddingBlock: 6, paddingInline: space.md, color: colors.muted, fontSize: font.xs },
+  tables: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    paddingBlock: 6,
+    paddingInline: space.md,
+    color: colors.muted,
+    fontSize: font.xs,
+  },
   diff: { maxHeight: 420, overflow: "auto", fontFamily: font.mono, fontSize: 12, lineHeight: 1.5 },
   hunkHead: { paddingInline: space.sm, backgroundColor: colors.surfaceHover, color: colors.muted },
   line: { whiteSpace: "pre", paddingRight: space.sm, minWidth: "fit-content" },
@@ -504,10 +598,25 @@ const styles = stylex.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  panelHeader: { display: "flex", alignItems: "center", gap: 6, height: 34, flexShrink: 0, paddingInline: space.md, color: colors.muted },
+  panelHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    flexShrink: 0,
+    paddingInline: space.md,
+    color: colors.muted,
+  },
   panelTitle: { flex: 1, fontSize: font.xs, fontWeight: 600 },
   panelBody: { overflowY: "auto", borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: colors.border },
-  linkButton: { padding: 0, borderWidth: 0, backgroundColor: "transparent", color: colors.accent, fontSize: font.xs, cursor: "pointer" },
+  linkButton: {
+    padding: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    color: colors.accent,
+    fontSize: font.xs,
+    cursor: "pointer",
+  },
   iconButton: {
     display: "grid",
     placeItems: "center",

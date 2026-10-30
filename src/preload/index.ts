@@ -62,13 +62,15 @@ const bridge: RuneBridge = {
     prepare: (workspaceId) => ipcRenderer.invoke("rune:extensions-prepare", workspaceId),
     actions: (workspaceId, webContentsId) => ipcRenderer.invoke("rune:extensions-actions", workspaceId, webContentsId),
     click: (workspaceId, extensionId) => ipcRenderer.invoke("rune:extensions-click", workspaceId, extensionId),
-    actionMenu: (workspaceId, extensionId) => ipcRenderer.invoke("rune:extensions-action-menu", workspaceId, extensionId),
+    actionMenu: (workspaceId, extensionId) =>
+      ipcRenderer.invoke("rune:extensions-action-menu", workspaceId, extensionId),
     detectBrowsers: () => ipcRenderer.invoke("rune:extensions-detect"),
     import: (request) => ipcRenderer.invoke("rune:extensions-import", request),
     install: (input) => ipcRenderer.invoke("rune:extensions-install", input),
     loadUnpacked: () => ipcRenderer.invoke("rune:extensions-load-unpacked"),
     setEnabled: (id, enabled) => ipcRenderer.invoke("rune:extensions-set-enabled", id, enabled),
-    setPermission: (id, permission, allowed) => ipcRenderer.invoke("rune:extensions-set-permission", id, permission, allowed),
+    setPermission: (id, permission, allowed) =>
+      ipcRenderer.invoke("rune:extensions-set-permission", id, permission, allowed),
     setPinned: (id, pinned) => ipcRenderer.invoke("rune:extensions-set-pinned", id, pinned),
     remove: (id) => ipcRenderer.invoke("rune:extensions-remove", id),
     setAutoUpdate: (enabled) => ipcRenderer.invoke("rune:extensions-set-auto-update", enabled),

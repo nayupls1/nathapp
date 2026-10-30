@@ -42,7 +42,11 @@ async function encryptCookies(binary: string) {
   const copy = `${binary}.fuses-${process.pid}`;
   try {
     copyFileSync(binary, copy);
-    await flipFuses(copy, { version: FuseVersion.V1, resetAdHocDarwinSignature: process.platform === "darwin", [FuseV1Options.EnableCookieEncryption]: true });
+    await flipFuses(copy, {
+      version: FuseVersion.V1,
+      resetAdHocDarwinSignature: process.platform === "darwin",
+      [FuseV1Options.EnableCookieEncryption]: true,
+    });
     chmodSync(copy, statSync(binary).mode);
     renameSync(copy, binary);
   } finally {

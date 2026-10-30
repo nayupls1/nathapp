@@ -23,20 +23,54 @@ const target = (fields: Partial<Target> = {}): Target => ({
 
 describe("what needs a confirmation every time", () => {
   test("buying, paying, sending, posting and deleting", () => {
-    for (const label of ["Place order", "Buy now", "Pay 34 €", "Send", "Post", "Delete account", "Checkout", "Confirm purchase", "Subscribe"]) {
+    for (const label of [
+      "Place order",
+      "Buy now",
+      "Pay 34 €",
+      "Send",
+      "Post",
+      "Delete account",
+      "Checkout",
+      "Confirm purchase",
+      "Subscribe",
+    ]) {
       expect(needsConfirmation(target({ label }), "click")).toContain(label);
     }
   });
   test("ordinary clicks and typing don't", () => {
-    for (const label of ["Next", "Search", "Show more", "Sign in", "Sort by price", "Add filter"]) expect(needsConfirmation(target({ label }), "click")).toBeNull();
+    for (const label of ["Next", "Search", "Show more", "Sign in", "Sort by price", "Add filter"])
+      expect(needsConfirmation(target({ label }), "click")).toBeNull();
     expect(needsConfirmation(target({ tag: "input", type: "text", name: "q" }), "type")).toBeNull();
   });
   test("card details and forms that take them", () => {
-    expect(needsConfirmation(target({ tag: "input", type: "text", autocomplete: "cc-number" }), "type")).toContain("payment details");
-    expect(needsConfirmation(target({ tag: "input", type: "text", name: "card_cvc" }), "type")).toContain("payment details");
-    expect(needsConfirmation(target({ label: "Continue", form: { action: "/pay", label: "Continue", payment: true } }), "click")).toContain("payment details");
-    expect(needsConfirmation(target({ tag: "input", type: "search", form: { action: "/search", label: "Search", payment: false } }), "submit")).toBeNull();
-    expect(needsConfirmation(target({ tag: "textarea", type: "textarea", form: { action: "/messages/send", label: "Send", payment: false } }), "submit")).toContain("submit the form");
+    expect(needsConfirmation(target({ tag: "input", type: "text", autocomplete: "cc-number" }), "type")).toContain(
+      "payment details",
+    );
+    expect(needsConfirmation(target({ tag: "input", type: "text", name: "card_cvc" }), "type")).toContain(
+      "payment details",
+    );
+    expect(
+      needsConfirmation(
+        target({ label: "Continue", form: { action: "/pay", label: "Continue", payment: true } }),
+        "click",
+      ),
+    ).toContain("payment details");
+    expect(
+      needsConfirmation(
+        target({ tag: "input", type: "search", form: { action: "/search", label: "Search", payment: false } }),
+        "submit",
+      ),
+    ).toBeNull();
+    expect(
+      needsConfirmation(
+        target({
+          tag: "textarea",
+          type: "textarea",
+          form: { action: "/messages/send", label: "Send", payment: false },
+        }),
+        "submit",
+      ),
+    ).toContain("submit the form");
   });
 });
 
@@ -49,8 +83,9 @@ describe("browse tools", () => {
       rpc: (method: string, params: any) =>
         Effect.sync(() => {
           if (method === "page.target") return page;
-          if (method === "page.act") return acted.push(params), true;
-          if (method === "page.settle" || method === "page.info") return { url: "https://shop.example/next", title: "Next page" };
+          if (method === "page.act") return (acted.push(params), true);
+          if (method === "page.settle" || method === "page.info")
+            return { url: "https://shop.example/next", title: "Next page" };
           throw new Error(method);
         }),
     } as unknown as HubShape;
@@ -97,7 +132,9 @@ describe("browse tools", () => {
   });
 
   test("passwords are never typed", async () => {
-    const { asked, acted, run } = setup(target({ tag: "input", type: "password", name: "pw" }), { "agent.browse": true });
+    const { asked, acted, run } = setup(target({ tag: "input", type: "password", name: "pw" }), {
+      "agent.browse": true,
+    });
     const result = await run("type_text", { selector: "#pw", value: "hunter2" });
     expect(result.error).toBe(true);
     expect(result.text).toContain("sign in themselves");
@@ -106,8 +143,13 @@ describe("browse tools", () => {
   });
 
   test("Enter in a search form needs no confirmation; a missing element is an error for the agent", async () => {
-    const search = setup(target({ tag: "input", type: "search", form: { action: "/search", label: "Search", payment: false } }), { "agent.browse": true });
-    expect((await search.run("type_text", { selector: "input", value: "socks", submit: true })).text).toContain("pressed Enter");
+    const search = setup(
+      target({ tag: "input", type: "search", form: { action: "/search", label: "Search", payment: false } }),
+      { "agent.browse": true },
+    );
+    expect((await search.run("type_text", { selector: "input", value: "socks", submit: true })).text).toContain(
+      "pressed Enter",
+    );
     expect(search.acted).toEqual([
       { tabId: "tab", kind: "type", x: 10, y: 20, value: "socks", clear: false },
       { tabId: "tab", kind: "key", key: "Enter" },

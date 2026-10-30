@@ -17,7 +17,13 @@ import type { ToolEnv } from "./tools";
 const CHANGES = "@changes/";
 
 const line = (e: HistoryEntry) => {
-  const files = [e.added.length && `+${e.added.length}`, e.modified.length && `~${e.modified.length}`, e.removed.length && `-${e.removed.length}`].filter(Boolean).join(" ");
+  const files = [
+    e.added.length && `+${e.added.length}`,
+    e.modified.length && `~${e.modified.length}`,
+    e.removed.length && `-${e.removed.length}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
   return `#${e.id} ${e.at.slice(0, 16).replace("T", " ")} · ${e.actorLabel} · ${e.summary.slice(0, 120)}${files ? ` (${files} files)` : ""}`;
 };
 
@@ -27,14 +33,21 @@ export const historyTools = Effect.fn(function* (env: ToolEnv, options: { site: 
   const sites = yield* Sites;
   const hub = yield* Hub;
   const target = options.site ? "sites" : appTarget(env.tabId);
-  const what = options.site ? "the site customizations (page changes and site overrides)" : "this app (its files; its data only when asked)";
+  const what = options.site
+    ? "the site customizations (page changes and site overrides)"
+    : "this app (its files; its data only when asked)";
   const currentUrl = hub.rpc<{ url: string }>("page.info", { tabId: env.tabId }).pipe(Effect.map((p) => p.url));
 
   /** A snapshot of this agent's target. */
   const own = (id: number) =>
     Effect.gen(function* () {
       const entry = yield* history.entry(id).pipe(Effect.orElseSucceed(() => null));
-      if (!entry || entry.target !== target) return yield* Effect.fail(new Error(`No snapshot #${id} of ${options.site ? "the site customizations" : "this app"} (see list_snapshots).`));
+      if (!entry || entry.target !== target)
+        return yield* Effect.fail(
+          new Error(
+            `No snapshot #${id} of ${options.site ? "the site customizations" : "this app"} (see list_snapshots).`,
+          ),
+        );
       return entry;
     });
 
@@ -48,7 +61,9 @@ export const historyTools = Effect.fn(function* (env: ToolEnv, options: { site: 
       `The saved versions of ${what}, newest first: snapshot id, when, who made the change and what it was. Taken before and after every agent turn and when the user changes things.`,
       Schema.Struct({ limit: Schema.optionalKey(Schema.Finite) }),
       ({ limit }) =>
-        history.list({ target, limit: Math.min(Math.max(Math.floor(limit ?? 20), 1), 100) }).pipe(Effect.map((entries) => (entries.length ? entries.map(line).join("\n") : "No snapshots yet."))),
+        history
+          .list({ target, limit: Math.min(Math.max(Math.floor(limit ?? 20), 1), 100) })
+          .pipe(Effect.map((entries) => (entries.length ? entries.map(line).join("\n") : "No snapshots yet."))),
     ),
 
     tool(
@@ -60,7 +75,11 @@ export const historyTools = Effect.fn(function* (env: ToolEnv, options: { site: 
           const entry = yield* own(id);
           if (path) {
             const content = yield* history.fileAt(entry.id, path);
-            if (content === null) return text(`${path} isn't in snapshot #${id} (or isn't text). Its files: ${(yield* history.paths(entry.id)).slice(0, 80).join(", ")}`, true);
+            if (content === null)
+              return text(
+                `${path} isn't in snapshot #${id} (or isn't text). Its files: ${(yield* history.paths(entry.id)).slice(0, 80).join(", ")}`,
+                true,
+              );
             return content.length > 30_000 ? `${content.slice(0, 30_000)}\n… (more)` : content;
           }
           const detail = yield* history.detail(entry.id);
@@ -82,7 +101,14 @@ export const historyTools = Effect.fn(function* (env: ToolEnv, options: { site: 
       options.site
         ? "Bring this site's page changes and override back to how they were in a snapshot (other sites stay as they are). The current state is saved first, so this can be undone too."
         : "Bring the app's files back to how they were in a snapshot (its data stays as it is unless data is true). The current state is saved first, so this can be undone too.",
-      Schema.Struct({ id: Schema.Finite, data: Schema.optionalKey(Schema.Boolean.annotate({ description: options.site ? "Ignored for websites" : "Also bring back the app's data" })) }),
+      Schema.Struct({
+        id: Schema.Finite,
+        data: Schema.optionalKey(
+          Schema.Boolean.annotate({
+            description: options.site ? "Ignored for websites" : "Also bring back the app's data",
+          }),
+        ),
+      }),
       (args) =>
         Effect.gen(function* () {
           const entry = yield* own(args.id);
@@ -111,7 +137,8 @@ export const historyTools = Effect.fn(function* (env: ToolEnv, options: { site: 
           const js = (yield* history.fileAt(entry.id, `${host}/script.js`)) ?? "";
           const meta = yield* history.fileAt(entry.id, `${host}/site.json`);
           if (meta === null) yield* sites.remove(host);
-          else yield* sites.save(host, { css, js, enabled: (JSON.parse(meta) as { enabled?: boolean }).enabled ?? true });
+          else
+            yield* sites.save(host, { css, js, enabled: (JSON.parse(meta) as { enabled?: boolean }).enabled ?? true });
           yield* history.record("sites", { ...by, summary: `Restored ${host} to snapshot #${entry.id}` });
           yield* hub.publish({ type: "page-changes", topic: topics.sites });
           yield* hub.publish({ type: "site", topic: topics.sites, host });

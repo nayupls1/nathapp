@@ -12,7 +12,10 @@ import { readConfig } from "../src/server/Config";
 import { core } from "../src/server/services";
 import { startServer } from "./lib/server";
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+const PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+  "base64",
+);
 
 describe("attachments over the API", () => {
   let server: Awaited<ReturnType<typeof startServer>>;
@@ -20,11 +23,17 @@ describe("attachments over the API", () => {
   afterAll(() => server.stop());
 
   test("an image is uploaded and served inline; other files only as downloads", async () => {
-    const tab = await server.api<{ id: string }>("/api/apps", { method: "POST", json: { kind: "web", url: "https://example.com" } });
-    const image = await server.api<{ id: string; name: string; mime: string; size: number }>(`/api/apps/${tab.id}/attachments`, {
+    const tab = await server.api<{ id: string }>("/api/apps", {
       method: "POST",
-      json: { name: "shot.png", mime: "image/png", data: PNG.toString("base64") },
+      json: { kind: "web", url: "https://example.com" },
     });
+    const image = await server.api<{ id: string; name: string; mime: string; size: number }>(
+      `/api/apps/${tab.id}/attachments`,
+      {
+        method: "POST",
+        json: { name: "shot.png", mime: "image/png", data: PNG.toString("base64") },
+      },
+    );
     expect(image).toMatchObject({ name: "shot.png", mime: "image/png", size: PNG.length });
     const res = await fetch(`${server.url}/api/apps/${tab.id}/attachments/${image.id}?token=${server.token}`);
     expect(res.headers.get("content-type")).toBe("image/png");
@@ -39,9 +48,16 @@ describe("attachments over the API", () => {
     expect(download.headers.get("content-disposition")).toContain("attachment");
     // Another tab can't reach it, and without the token nothing is served.
     const other = await server.api<{ id: string }>("/api/apps", { method: "POST", json: { kind: "app" } });
-    expect((await fetch(`${server.url}/api/apps/${other.id}/attachments/${image.id}?token=${server.token}`)).status).toBe(404);
+    expect(
+      (await fetch(`${server.url}/api/apps/${other.id}/attachments/${image.id}?token=${server.token}`)).status,
+    ).toBe(404);
     expect((await fetch(`${server.url}/api/apps/${tab.id}/attachments/${image.id}`)).status).toBe(401);
-    await expect(server.api(`/api/apps/${tab.id}/attachments`, { method: "POST", json: { name: "empty.txt", mime: "text/plain", data: "" } })).rejects.toThrow("empty");
+    await expect(
+      server.api(`/api/apps/${tab.id}/attachments`, {
+        method: "POST",
+        json: { name: "empty.txt", mime: "text/plain", data: "" },
+      }),
+    ).rejects.toThrow("empty");
   });
 });
 
@@ -71,7 +87,9 @@ describe("what the provider gets", () => {
         return yield* attachments.forTurn("Make it like this", files);
       }),
     );
-    expect(result.prompt).toStartWith('<attached-file name="notes.md">\n# Ideas\nDark mode\n</attached-file>\n\nMake it like this');
+    expect(result.prompt).toStartWith(
+      '<attached-file name="notes.md">\n# Ideas\nDark mode\n</attached-file>\n\nMake it like this',
+    );
     expect(result.prompt).toContain("- data.zip: ");
     expect(result.files.map((f) => f.name)).toEqual(["shot.png", "spec.pdf", "data.zip"]);
   });

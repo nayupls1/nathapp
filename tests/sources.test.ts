@@ -28,7 +28,10 @@ afterAll(async () => {
 
 mkdirSync(join(folder, "src"), { recursive: true });
 mkdirSync(join(folder, "node_modules", "dep"), { recursive: true });
-writeFileSync(join(folder, "src", "cart.ts"), "export function addToCart(item) {\n  layoutThrash();\n  return item;\n}\n");
+writeFileSync(
+  join(folder, "src", "cart.ts"),
+  "export function addToCart(item) {\n  layoutThrash();\n  return item;\n}\n",
+);
 writeFileSync(join(folder, "src", "style.css"), ".banner { height: auto; }\n");
 writeFileSync(join(folder, "node_modules", "dep", "index.js"), "addToCart();\n");
 writeFileSync(join(folder, ".env"), "API_KEY=sk-live-123\n");
@@ -49,7 +52,13 @@ describe("sources", () => {
         const hits = yield* sources.search(source, { query: "addToCart" });
         const read = yield* sources.readText(source, "src/cart.ts");
         const refused = yield* Effect.all(
-          ["../" + outside.split("/").pop() + "/secret.txt", "escape/secret.txt", ".env", ".git/config", "/etc/passwd"].map((p) =>
+          [
+            "../" + outside.split("/").pop() + "/secret.txt",
+            "escape/secret.txt",
+            ".env",
+            ".git/config",
+            "/etc/passwd",
+          ].map((p) =>
             sources.readText(source, p).pipe(
               Effect.flip,
               Effect.map((e) => e.message),
@@ -78,8 +87,16 @@ describe("sources", () => {
     const errors = await run(
       Effect.gen(function* () {
         const sources = yield* Sources;
-        const fail = <A>(e: Effect.Effect<A, { message: string }>) => e.pipe(Effect.flip, Effect.map((x) => x.message));
-        return [yield* fail(sources.addFolder(tab.id, dataDir)), yield* fail(sources.addFolder(tab.id, "/")), yield* fail(sources.addGit(tab.id, "file:///etc"))];
+        const fail = <A>(e: Effect.Effect<A, { message: string }>) =>
+          e.pipe(
+            Effect.flip,
+            Effect.map((x) => x.message),
+          );
+        return [
+          yield* fail(sources.addFolder(tab.id, dataDir)),
+          yield* fail(sources.addFolder(tab.id, "/")),
+          yield* fail(sources.addGit(tab.id, "file:///etc")),
+        ];
       }),
     );
     expect(errors[0]).toContain("Rune Browser's own data");
@@ -108,9 +125,16 @@ describe("sources", () => {
   test("the agent's tools read, search and change the code; a change needs the user's OK", async () => {
     const tab = await run(Effect.flatMap(Apps, (apps) => apps.create(DEFAULT_WORKSPACE, "app", null)));
     const logged: string[] = [];
-    const env = { tabId: tab.id, label: "Test agent", log: (line: string) => Effect.sync(() => void logged.push(line)), message: () => Effect.void };
+    const env = {
+      tabId: tab.id,
+      label: "Test agent",
+      log: (line: string) => Effect.sync(() => void logged.push(line)),
+      message: () => Effect.void,
+    };
     const call = (tools: Tool[], name: string, args: object) =>
-      Effect.flatMap(Effect.succeed(tools.find((t) => t.name === name)!), (t) => t.run(args)).pipe(Effect.map((r) => ({ text: (r.content[0] as { text: string }).text, error: !!r.isError })));
+      Effect.flatMap(Effect.succeed(tools.find((t) => t.name === name)!), (t) => t.run(args)).pipe(
+        Effect.map((r) => ({ text: (r.content[0] as { text: string }).text, error: !!r.isError })),
+      );
     const answers: boolean[] = [];
     const result = await runtime.runPromise(
       Effect.scoped(
@@ -137,7 +161,11 @@ describe("sources", () => {
               yield* Effect.sleep(20);
             }
           });
-          const edit = { path: "src/cart.ts", old_string: "  layoutThrash();", new_string: "  requestAnimationFrame(layoutThrash);" };
+          const edit = {
+            path: "src/cart.ts",
+            old_string: "  layoutThrash();",
+            new_string: "  requestAnimationFrame(layoutThrash);",
+          };
           yield* Effect.forkChild(answer);
           const denied = yield* call(tools, "edit_source_file", edit);
           const allowed = yield* call(tools, "edit_source_file", edit);
@@ -158,7 +186,18 @@ describe("sources", () => {
   });
 
   test("credential files", () => {
-    for (const p of [".env", ".env.local", "config/.env.production", "certs/server.pem", ".ssh/id_ed25519", ".npmrc", "credentials.json", ".git/HEAD"]) expect(isSecretPath(p)).toBe(true);
-    for (const p of [".env.example", "src/env.ts", "README.md", "keys.ts", "public/key.svg"]) expect(isSecretPath(p)).toBe(false);
+    for (const p of [
+      ".env",
+      ".env.local",
+      "config/.env.production",
+      "certs/server.pem",
+      ".ssh/id_ed25519",
+      ".npmrc",
+      "credentials.json",
+      ".git/HEAD",
+    ])
+      expect(isSecretPath(p)).toBe(true);
+    for (const p of [".env.example", "src/env.ts", "README.md", "keys.ts", "public/key.svg"])
+      expect(isSecretPath(p)).toBe(false);
   });
 });

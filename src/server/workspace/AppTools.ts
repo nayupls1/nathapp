@@ -19,7 +19,10 @@ import { AppData, AppDataError, type TableSchema } from "./AppData";
 import { Runtime } from "./Runtime";
 import { Workspace } from "./Workspace";
 
-export class AppToolError extends Data.TaggedError("AppToolError")<{ readonly status: 400 | 403 | 404 | 409 | 502; readonly message: string }> {}
+export class AppToolError extends Data.TaggedError("AppToolError")<{
+  readonly status: 400 | 403 | 404 | 409 | 502;
+  readonly message: string;
+}> {}
 
 /** Who is calling: the user (Rune Browser's UI), an agent working in a tab, or an app's server. */
 export type ToolCaller =
@@ -38,7 +41,12 @@ export interface AppToolsShape {
   readonly list: (appId: string) => Effect.Effect<AppTool[]>;
   /** The tools of every app in a workspace. */
   readonly catalog: (workspaceId: string) => Effect.Effect<AppToolsInfo[]>;
-  readonly call: (caller: ToolCaller, appId: string, toolId: string, args: ToolArgs) => Effect.Effect<ToolResult, AppToolError>;
+  readonly call: (
+    caller: ToolCaller,
+    appId: string,
+    toolId: string,
+    args: ToolArgs,
+  ) => Effect.Effect<ToolResult, AppToolError>;
 }
 
 export class AppTools extends Context.Service<AppTools, AppToolsShape>()("rune/AppTools") {}
@@ -56,7 +64,13 @@ const slug = (table: string) =>
         .slice(0, 50);
 
 const paramType = (sqlType: string): ToolParam["type"] =>
-  /INT/i.test(sqlType) ? "integer" : /REAL|FLOA|DOUB|NUM|DEC/i.test(sqlType) ? "number" : /BOOL/i.test(sqlType) ? "boolean" : "string";
+  /INT/i.test(sqlType)
+    ? "integer"
+    : /REAL|FLOA|DOUB|NUM|DEC/i.test(sqlType)
+      ? "number"
+      : /BOOL/i.test(sqlType)
+        ? "boolean"
+        : "string";
 
 /** The basic tools for one table. */
 export function dataTools(table: TableSchema, mode: "all" | "read"): AppTool[] {
@@ -70,7 +84,10 @@ export function dataTools(table: TableSchema, mode: "all" | "read"): AppTool[] {
   const keyParams = Object.fromEntries(
     table.key.map((k) => {
       const column = table.columns.find((c) => c.name === k);
-      return [k, column ? columnParam(column, true) : { type: "integer", description: "The row's id (rowid)", required: true }];
+      return [
+        k,
+        column ? columnParam(column, true) : { type: "integer", description: "The row's id (rowid)", required: true },
+      ];
     }),
   ) as Record<string, ToolParam>;
   const base = { source: "data" as const, table: table.name };
@@ -84,7 +101,10 @@ export function dataTools(table: TableSchema, mode: "all" | "read"): AppTool[] {
       op: "list",
       params: {
         search: { type: "string", description: "Text to look for in any text column" },
-        where: { type: "object", description: `Column values the rows must have, e.g. {"${table.columns[0]?.name ?? "id"}": …}` },
+        where: {
+          type: "object",
+          description: `Column values the rows must have, e.g. {"${table.columns[0]?.name ?? "id"}": …}`,
+        },
         order: { type: "string", description: "Column to sort by" },
         desc: { type: "boolean", description: "Newest/largest first" },
         limit: { type: "integer", description: "Rows per page (default 50, at most 500)" },
@@ -112,9 +132,21 @@ export function dataTools(table: TableSchema, mode: "all" | "read"): AppTool[] {
       description: `Changes the given columns of one row (picked by ${table.key.join(", ")}).`,
       readOnly: false,
       op: "update",
-      params: { ...Object.fromEntries(editable.filter((c) => !table.key.includes(c.name)).map((c) => [c.name, columnParam(c, false)])), ...keyParams },
+      params: {
+        ...Object.fromEntries(
+          editable.filter((c) => !table.key.includes(c.name)).map((c) => [c.name, columnParam(c, false)]),
+        ),
+        ...keyParams,
+      },
     },
-    { ...base, id: `delete-${name}`, title: `Delete a row of ${table.name}`, readOnly: false, op: "delete", params: keyParams },
+    {
+      ...base,
+      id: `delete-${name}`,
+      title: `Delete a row of ${table.name}`,
+      readOnly: false,
+      op: "delete",
+      params: keyParams,
+    },
   );
   return tools;
 }
@@ -131,7 +163,8 @@ export function checkParams(tool: AppTool, params: Record<string, unknown>): str
       spec.type === "string"
         ? typeof value === "string" || typeof value === "number"
         : spec.type === "number"
-          ? typeof value === "number" || (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value)))
+          ? typeof value === "number" ||
+            (typeof value === "string" && value.trim() !== "" && !Number.isNaN(Number(value)))
           : spec.type === "integer"
             ? Number.isInteger(typeof value === "string" && value.trim() !== "" ? Number(value) : value)
             : spec.type === "boolean"
@@ -140,7 +173,9 @@ export function checkParams(tool: AppTool, params: Record<string, unknown>): str
     if (!ok) return `${name} should be ${spec.type === "integer" ? "an integer" : `a ${spec.type}`}`;
   }
   const unknown = Object.keys(params).filter((k) => !(k in tool.params));
-  return unknown.length ? `${tool.id} has no ${unknown.join(", ")} (it takes ${Object.keys(tool.params).join(", ") || "nothing"})` : null;
+  return unknown.length
+    ? `${tool.id} has no ${unknown.join(", ")} (it takes ${Object.keys(tool.params).join(", ") || "nothing"})`
+    : null;
 }
 
 /** Strings from forms as the param's type. */
@@ -165,7 +200,9 @@ export const make = Effect.gen(function* () {
   const toolsOf = (appId: string) =>
     Effect.gen(function* () {
       const manifest = yield* workspace.manifest(appId).pipe(Effect.orElseSucceed(() => null));
-      const endpoints = new Map((manifest?.actions ?? []).flatMap((a) => (a.endpoint ? [[a.id, a.endpoint] as const] : [])));
+      const endpoints = new Map(
+        (manifest?.actions ?? []).flatMap((a) => (a.endpoint ? [[a.id, a.endpoint] as const] : [])),
+      );
       if (!manifest) return { tools: [] as AppTool[], endpoints };
       const actions: AppTool[] = (manifest.actions ?? []).map((a) => ({
         id: a.id,
@@ -213,7 +250,8 @@ export const make = Effect.gen(function* () {
   const authorize = (caller: ToolCaller, from: AppSummary | null, target: AppSummary, tool: AppTool) =>
     Effect.gen(function* () {
       if (caller.kind === "user" || from?.id === target.id) return;
-      if (!from || from.workspaceId !== target.workspaceId) return yield* new AppToolError({ status: 404, message: "No such app in this workspace" });
+      if (!from || from.workspaceId !== target.workspaceId)
+        return yield* new AppToolError({ status: 404, message: "No such app in this workspace" });
       const who = caller.kind === "agent" ? `The agent in "${from.name}"` : `"${from.name}"`;
       const allowed = tool.readOnly
         ? yield* permissions.ask({
@@ -257,33 +295,68 @@ export const make = Effect.gen(function* () {
           const where = (params.where ?? {}) as Record<string, string | number | null>;
           const page = yield* appData.rows(appId, table, {
             search: params.search as string | undefined,
-            where: Object.fromEntries(Object.entries(where).map(([k, v]) => [k, typeof v === "boolean" ? Number(v) : v])),
+            where: Object.fromEntries(
+              Object.entries(where).map(([k, v]) => [k, typeof v === "boolean" ? Number(v) : v]),
+            ),
             orderBy: params.order as string | undefined,
             desc: params.desc === true,
             limit: (params.limit as number | undefined) ?? 50,
             offset: params.offset as number | undefined,
           });
-          return { ok: true, status: 200, message: `${page.total} rows${page.rows.length < page.total ? ` (${page.rows.length} shown)` : ""}`, data: page };
+          return {
+            ok: true,
+            status: 200,
+            message: `${page.total} rows${page.rows.length < page.total ? ` (${page.rows.length} shown)` : ""}`,
+            data: page,
+          };
         }
         case "get":
-          return { ok: true, status: 200, message: "Found it", data: yield* appData.getRow(appId, table, keyOf([...schema.key])) };
+          return {
+            ok: true,
+            status: 200,
+            message: "Found it",
+            data: yield* appData.getRow(appId, table, keyOf([...schema.key])),
+          };
         case "add":
-          return { ok: true, status: 200, message: `Added a row to ${table}`, data: yield* appData.insertRow(appId, table, params) };
+          return {
+            ok: true,
+            status: 200,
+            message: `Added a row to ${table}`,
+            data: yield* appData.insertRow(appId, table, params),
+          };
         case "update":
-          return { ok: true, status: 200, message: `Changed a row of ${table}`, data: yield* appData.updateRow(appId, table, keyOf([...schema.key]), rest()) };
+          return {
+            ok: true,
+            status: 200,
+            message: `Changed a row of ${table}`,
+            data: yield* appData.updateRow(appId, table, keyOf([...schema.key]), rest()),
+          };
         default:
           yield* appData.deleteRow(appId, table, keyOf([...schema.key]));
           return { ok: true, status: 200, message: `Deleted a row of ${table}` };
       }
-    }).pipe(Effect.catchTag("AppDataError", (e) => Effect.succeed({ ok: false, status: e.status, message: e.message } satisfies ToolResult)));
+    }).pipe(
+      Effect.catchTag("AppDataError", (e) =>
+        Effect.succeed({ ok: false, status: e.status, message: e.message } satisfies ToolResult),
+      ),
+    );
 
   /** POSTs { input, params } to the app's endpoint (starting the app if needed). */
-  const runAction = (target: AppSummary, endpoint: string, caller: ToolCaller, args: ToolArgs, params: Record<string, unknown>) =>
+  const runAction = (
+    target: AppSummary,
+    endpoint: string,
+    caller: ToolCaller,
+    args: ToolArgs,
+    params: Record<string, unknown>,
+  ) =>
     Effect.gen(function* () {
       yield* runtime.ensure(target.id);
       const status = yield* runtime.settled(target.id, 90_000);
       if (status.state !== "running" || !status.url) {
-        return yield* new AppToolError({ status: 409, message: `${target.name} isn't running${status.error ? `: ${status.error}` : ""}` });
+        return yield* new AppToolError({
+          status: 409,
+          message: `${target.name} isn't running${status.error ? `: ${status.error}` : ""}`,
+        });
       }
       return yield* Effect.tryPromise({
         try: async () => {
@@ -308,9 +381,18 @@ export const make = Effect.gen(function* () {
           } catch {
             // plain text
           }
-          return { ok: res.ok, status: res.status, message: message.slice(0, 500), ...(data !== undefined ? { data } : {}) } satisfies ToolResult;
+          return {
+            ok: res.ok,
+            status: res.status,
+            message: message.slice(0, 500),
+            ...(data !== undefined ? { data } : {}),
+          } satisfies ToolResult;
         },
-        catch: (err) => new AppToolError({ status: 502, message: `${target.name} didn't answer: ${err instanceof Error ? err.message : String(err)}` }),
+        catch: (err) =>
+          new AppToolError({
+            status: 502,
+            message: `${target.name} didn't answer: ${err instanceof Error ? err.message : String(err)}`,
+          }),
       });
     });
 
@@ -338,8 +420,14 @@ export const make = Effect.gen(function* () {
           detail,
         });
 
-      if (tool.path) return yield* new AppToolError({ status: 400, message: `"${tool.title}" opens a page in ${target.name}; only the user can do that.` });
-      yield* authorize(caller, from, target, tool).pipe(Effect.tapError((e) => (e.status === 403 ? record("denied", null) : Effect.void)));
+      if (tool.path)
+        return yield* new AppToolError({
+          status: 400,
+          message: `"${tool.title}" opens a page in ${target.name}; only the user can do that.`,
+        });
+      yield* authorize(caller, from, target, tool).pipe(
+        Effect.tapError((e) => (e.status === 403 ? record("denied", null) : Effect.void)),
+      );
       const params = coerce(tool, args.params ?? {});
       const problem = checkParams(tool, params);
       if (problem) {
@@ -349,7 +437,9 @@ export const make = Effect.gen(function* () {
       const result: ToolResult =
         tool.source === "data"
           ? yield* runData(appId, tool, params)
-          : yield* runAction(target, endpoints.get(tool.id)!, caller, args, params).pipe(Effect.tapError((e) => record("error", e.message)));
+          : yield* runAction(target, endpoints.get(tool.id)!, caller, args, params).pipe(
+              Effect.tapError((e) => record("error", e.message)),
+            );
       yield* record(result.ok ? "ok" : "error", result.ok ? null : `${result.status}: ${result.message.slice(0, 200)}`);
       return result;
     });
@@ -361,7 +451,13 @@ export const make = Effect.gen(function* () {
         const out: AppToolsInfo[] = [];
         for (const app of yield* apps.list()) {
           if (app.kind !== "app" || app.workspaceId !== workspaceId) continue;
-          out.push({ appId: app.id, appName: app.name, appIcon: app.icon, workspaceId: app.workspaceId, tools: yield* list(app.id) });
+          out.push({
+            appId: app.id,
+            appName: app.name,
+            appIcon: app.icon,
+            workspaceId: app.workspaceId,
+            tools: yield* list(app.id),
+          });
         }
         return out;
       }),

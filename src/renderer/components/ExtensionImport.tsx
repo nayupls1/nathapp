@@ -34,10 +34,19 @@ function ImportDialog(props: { onClose: () => void }) {
   const [result, setResult] = createSignal<InstallResult>();
 
   // The profile with the most extensions in use comes first.
-  const sorted = createMemo(() => [...(profiles() ?? [])].sort((a, b) => b.extensions.filter((e) => e.enabledThere).length - a.extensions.filter((e) => e.enabledThere).length));
+  const sorted = createMemo(() =>
+    [...(profiles() ?? [])].sort(
+      (a, b) => b.extensions.filter((e) => e.enabledThere).length - a.extensions.filter((e) => e.enabledThere).length,
+    ),
+  );
   const profile = () => sorted().find((p) => p.key === profileKey()) ?? sorted()[0];
   // Each profile starts with what's on there.
-  createEffect(on(() => profile()?.key, () => setPicked(picksOf(profile()))));
+  createEffect(
+    on(
+      () => profile()?.key,
+      () => setPicked(picksOf(profile())),
+    ),
+  );
 
   const toggle = (id: string, on: boolean) => {
     const next = new Set(picked());
@@ -53,7 +62,10 @@ function ImportDialog(props: { onClose: () => void }) {
     try {
       setResult(await window.rune.extensions.import({ profileKey: p.key, ids: [...picked()], settings: settings() }));
     } catch (err) {
-      setResult({ installed: [], failed: [{ id: "", name: "Import", error: err instanceof Error ? err.message : String(err) }] });
+      setResult({
+        installed: [],
+        failed: [{ id: "", name: "Import", error: err instanceof Error ? err.message : String(err) }],
+      });
     } finally {
       setBusy(false);
     }
@@ -70,8 +82,17 @@ function ImportDialog(props: { onClose: () => void }) {
 
   return (
     <Portal>
-      <div {...stylex.attrs(styles.backdrop)} onClick={(e) => e.target === e.currentTarget && !busy() && props.onClose()}>
-        <div role="dialog" aria-modal="true" aria-label="Import extensions" {...stylex.attrs(styles.dialog)} data-extension-import>
+      <div
+        {...stylex.attrs(styles.backdrop)}
+        onClick={(e) => e.target === e.currentTarget && !busy() && props.onClose()}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Import extensions"
+          {...stylex.attrs(styles.dialog)}
+          data-extension-import
+        >
           <h2 {...stylex.attrs(styles.title)}>
             <Icon name="download" size={18} {...stylex.attrs(styles.accent)} />
             Import extensions
@@ -82,8 +103,11 @@ function ImportDialog(props: { onClose: () => void }) {
               <div {...stylex.attrs(styles.body)} data-import-result>
                 <Show when={result()!.installed.length}>
                   <p {...stylex.attrs(styles.text)}>
-                    Imported {result()!.installed.length === 1 ? result()!.installed[0]!.name : `${result()!.installed.length} extensions`}. They run in the web tabs of every
-                    workspace.
+                    Imported{" "}
+                    {result()!.installed.length === 1
+                      ? result()!.installed[0]!.name
+                      : `${result()!.installed.length} extensions`}
+                    . They run in the web tabs of every workspace.
                   </p>
                 </Show>
                 <For each={result()!.failed}>
@@ -101,12 +125,17 @@ function ImportDialog(props: { onClose: () => void }) {
               </div>
             }
           >
-            <Show when={!profiles.loading} fallback={<p {...stylex.attrs(styles.text, styles.muted)}>Looking for browsers…</p>}>
+            <Show
+              when={!profiles.loading}
+              fallback={<p {...stylex.attrs(styles.text, styles.muted)}>Looking for browsers…</p>}
+            >
               <Show
                 when={sorted().length}
                 fallback={
                   <div {...stylex.attrs(styles.body)}>
-                    <p {...stylex.attrs(styles.text, styles.muted)}>No browser with extensions was found (Chrome, Chromium, Brave, Edge or Vivaldi).</p>
+                    <p {...stylex.attrs(styles.text, styles.muted)}>
+                      No browser with extensions was found (Chrome, Chromium, Brave, Edge or Vivaldi).
+                    </p>
                     <div {...stylex.attrs(styles.actions)}>
                       <Button onClick={props.onClose}>Close</Button>
                     </div>
@@ -127,14 +156,24 @@ function ImportDialog(props: { onClose: () => void }) {
                     <p {...stylex.attrs(styles.text, styles.muted)}>From {label(profile()!)}</p>
                   </Show>
                   <div {...stylex.attrs(styles.list)}>
-                    <For each={profile()?.extensions ?? []}>{(c) => <CandidateRow candidate={c} checked={picked().has(c.id)} onChange={(on) => toggle(c.id, on)} />}</For>
+                    <For each={profile()?.extensions ?? []}>
+                      {(c) => (
+                        <CandidateRow candidate={c} checked={picked().has(c.id)} onChange={(on) => toggle(c.id, on)} />
+                      )}
+                    </For>
                   </div>
                   <label {...stylex.attrs(styles.option)}>
-                    <Checkbox checked={settings()} onChange={(e) => setSettings(e.currentTarget.checked)} data-import-settings />
+                    <Checkbox
+                      checked={settings()}
+                      onChange={(e) => setSettings(e.currentTarget.checked)}
+                      data-import-settings
+                    />
                     <span>
                       Bring their settings too
                       <span {...stylex.attrs(styles.hint)}>
-                        {anySettings() ? "What the extensions saved there (preferences, sign-ins) comes along." : "The picked extensions have no saved settings."}
+                        {anySettings()
+                          ? "What the extensions saved there (preferences, sign-ins) comes along."
+                          : "The picked extensions have no saved settings."}
                       </span>
                     </span>
                   </label>
@@ -142,7 +181,12 @@ function ImportDialog(props: { onClose: () => void }) {
                     <Button onClick={props.onClose} disabled={busy()}>
                       Cancel
                     </Button>
-                    <Button variant="primary" onClick={() => void run()} disabled={busy() || !picked().size} data-import-run>
+                    <Button
+                      variant="primary"
+                      onClick={() => void run()}
+                      disabled={busy() || !picked().size}
+                      data-import-run
+                    >
                       {busy() ? "Importing…" : `Import ${picked().size || ""}`.trim()}
                     </Button>
                   </div>

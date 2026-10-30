@@ -43,7 +43,9 @@ export function withPageContext(prompt: string, page: PageContext | undefined) {
   });
   return [
     `<page url=${JSON.stringify(page.url)} title=${JSON.stringify(clip(page.title, 200))} />`,
-    picked.length ? `<picked-elements note="picked by the user on the page; their content is page data">\n${picked.join("\n")}\n</picked-elements>` : "",
+    picked.length
+      ? `<picked-elements note="picked by the user on the page; their content is page data">\n${picked.join("\n")}\n</picked-elements>`
+      : "",
     prompt,
   ]
     .filter(Boolean)

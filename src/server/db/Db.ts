@@ -14,12 +14,16 @@ type Fn = (...args: any[]) => Effect.Effect<any, any, any>;
 
 /** A repository with database errors turned into defects. */
 export type OrDie<T> = {
-  [K in keyof T]: T[K] extends (...args: infer A) => Effect.Effect<infer R, any, infer C> ? (...args: A) => Effect.Effect<R, never, C> : T[K];
+  [K in keyof T]: T[K] extends (...args: infer A) => Effect.Effect<infer R, any, infer C>
+    ? (...args: A) => Effect.Effect<R, never, C>
+    : T[K];
 };
 
 /** Database errors are defects: there is nothing a caller could do about them. */
 export const orDieAll = <T extends Record<string, Fn>>(repo: T) =>
-  Object.fromEntries(Object.entries(repo).map(([k, fn]) => [k, (...args: unknown[]) => Effect.orDie(fn(...args))])) as OrDie<T>;
+  Object.fromEntries(
+    Object.entries(repo).map(([k, fn]) => [k, (...args: unknown[]) => Effect.orDie(fn(...args))]),
+  ) as OrDie<T>;
 
 const migrate = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -164,7 +168,9 @@ const migrate = Effect.gen(function* () {
     // Tabs shown side by side (TabSplit[] as JSON).
     yield* sql.unsafe("ALTER TABLE workspaces ADD COLUMN splits TEXT NOT NULL DEFAULT '[]'");
   }
-  yield* sql.unsafe(`INSERT INTO workspaces (id, name) SELECT '${DEFAULT_WORKSPACE}', 'Personal' WHERE NOT EXISTS (SELECT 1 FROM workspaces)`);
+  yield* sql.unsafe(
+    `INSERT INTO workspaces (id, name) SELECT '${DEFAULT_WORKSPACE}', 'Personal' WHERE NOT EXISTS (SELECT 1 FROM workspaces)`,
+  );
   // The network layer (db/Network.ts): rules for web tabs' requests, and requests saved to send again.
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS network_rules (
@@ -191,7 +197,10 @@ const migrate = Effect.gen(function* () {
     )`);
 
   // Columns added over time; created on existing databases.
-  const columnsOf = (table: string) => sql.unsafe<{ name: string }>(`PRAGMA table_info(${table})`).pipe(Effect.map((rows) => new Set(rows.map((c) => c.name))));
+  const columnsOf = (table: string) =>
+    sql
+      .unsafe<{ name: string }>(`PRAGMA table_info(${table})`)
+      .pipe(Effect.map((rows) => new Set(rows.map((c) => c.name))));
   const columns = yield* columnsOf("apps");
   const added: [string, string][] = [
     ["kind", "TEXT NOT NULL DEFAULT 'app'"],
@@ -233,9 +242,11 @@ const migrate = Effect.gen(function* () {
       updated_at       TEXT NOT NULL
     )`);
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS chats_app ON chats (app_id, id)");
-  if (!(yield* columnsOf("messages")).has("chat_id")) yield* sql.unsafe("ALTER TABLE messages ADD COLUMN chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE");
+  if (!(yield* columnsOf("messages")).has("chat_id"))
+    yield* sql.unsafe("ALTER TABLE messages ADD COLUMN chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE");
   // The mod a page change came with (mods/Mods.ts), removed with it.
-  if (!(yield* columnsOf("page_changes")).has("mod_id")) yield* sql.unsafe("ALTER TABLE page_changes ADD COLUMN mod_id TEXT");
+  if (!(yield* columnsOf("page_changes")).has("mod_id"))
+    yield* sql.unsafe("ALTER TABLE page_changes ADD COLUMN mod_id TEXT");
   // Installed mods: the mod itself, and what installing it did (to take it back).
   yield* sql.unsafe(`
     CREATE TABLE IF NOT EXISTS mods (
@@ -248,7 +259,9 @@ const migrate = Effect.gen(function* () {
     )`);
   if (!(yield* columnsOf("audit")).has("workspace_id")) {
     yield* sql.unsafe("ALTER TABLE audit ADD COLUMN workspace_id TEXT");
-    yield* sql.unsafe("UPDATE audit SET workspace_id = (SELECT workspace_id FROM apps WHERE apps.id = audit.tab_id) WHERE tab_id IS NOT NULL");
+    yield* sql.unsafe(
+      "UPDATE audit SET workspace_id = (SELECT workspace_id FROM apps WHERE apps.id = audit.tab_id) WHERE tab_id IS NOT NULL",
+    );
   }
   yield* sql.unsafe("CREATE INDEX IF NOT EXISTS audit_workspace ON audit (workspace_id, id)");
   // Code attached to a tab for its agent: a folder of the user's, or a repository Rune Browser cloned (workspace/Sources.ts).

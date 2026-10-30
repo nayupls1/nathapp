@@ -41,4 +41,5 @@ export function release(contents: WebContents, user: string) {
 }
 
 /** Sends a command over the page's connection. */
-export const send = <T = any>(contents: WebContents, method: string, params: object = {}) => contents.debugger.sendCommand(method, params) as Promise<T>;
+export const send = <T = any>(contents: WebContents, method: string, params: object = {}) =>
+  contents.debugger.sendCommand(method, params) as Promise<T>;

@@ -20,25 +20,66 @@ import { inferManifest, parseGitProgress, parseGitSource, Workspace } from "../s
 
 describe("repository links", () => {
   test("links, shorthands and branch pages become a clone URL, a branch and a name", () => {
-    expect(parseGitSource("https://github.com/owner/repo")).toEqual({ url: "https://github.com/owner/repo", branch: null, name: "repo" });
-    expect(parseGitSource("https://github.com/owner/repo.git/")).toEqual({ url: "https://github.com/owner/repo.git", branch: null, name: "repo" });
+    expect(parseGitSource("https://github.com/owner/repo")).toEqual({
+      url: "https://github.com/owner/repo",
+      branch: null,
+      name: "repo",
+    });
+    expect(parseGitSource("https://github.com/owner/repo.git/")).toEqual({
+      url: "https://github.com/owner/repo.git",
+      branch: null,
+      name: "repo",
+    });
     expect(parseGitSource("owner/repo")).toEqual({ url: "https://github.com/owner/repo", branch: null, name: "repo" });
-    expect(parseGitSource("github.com/owner/repo")).toEqual({ url: "https://github.com/owner/repo", branch: null, name: "repo" });
-    expect(parseGitSource("https://github.com/owner/repo/tree/next?tab=readme#x")).toEqual({ url: "https://github.com/owner/repo", branch: "next", name: "repo" });
-    expect(parseGitSource("https://gitlab.com/group/proj/-/tree/dev")).toEqual({ url: "https://gitlab.com/group/proj", branch: "dev", name: "proj" });
+    expect(parseGitSource("github.com/owner/repo")).toEqual({
+      url: "https://github.com/owner/repo",
+      branch: null,
+      name: "repo",
+    });
+    expect(parseGitSource("https://github.com/owner/repo/tree/next?tab=readme#x")).toEqual({
+      url: "https://github.com/owner/repo",
+      branch: "next",
+      name: "repo",
+    });
+    expect(parseGitSource("https://gitlab.com/group/proj/-/tree/dev")).toEqual({
+      url: "https://gitlab.com/group/proj",
+      branch: "dev",
+      name: "proj",
+    });
     expect(parseGitSource("https://github.com/owner/repo", "release/1.x")?.branch).toBe("release/1.x");
-    expect(parseGitSource("git@github.com:owner/repo.git")).toEqual({ url: "git@github.com:owner/repo.git", branch: null, name: "repo" });
+    expect(parseGitSource("git@github.com:owner/repo.git")).toEqual({
+      url: "git@github.com:owner/repo.git",
+      branch: null,
+      name: "repo",
+    });
     expect(parseGitSource("ssh://git@host.example:2222/team/app.git")?.name).toBe("app");
-    for (const bad of ["file:///etc", "/home/me/project", "http://example.com/x/y", "not a link", "../x", "https://github.com/owner/repo", ""]) {
+    for (const bad of [
+      "file:///etc",
+      "/home/me/project",
+      "http://example.com/x/y",
+      "not a link",
+      "../x",
+      "https://github.com/owner/repo",
+      "",
+    ]) {
       if (bad === "https://github.com/owner/repo") expect(parseGitSource(bad, "bad branch; rm")).toBeNull();
       else expect(parseGitSource(bad)).toBeNull();
     }
   });
 
   test("git's progress lines", () => {
-    expect(parseGitProgress("Receiving objects:  45% (450/1000), 1.20 MiB | 2.00 MiB/s")).toEqual({ phase: "Receiving objects (1.20 MiB · 2.00 MiB/s)", percent: 45 });
-    expect(parseGitProgress("Resolving deltas: 100% (20/20), done.")).toEqual({ phase: "Resolving deltas", percent: 100 });
-    expect(parseGitProgress("remote: Counting objects:  12% (3/25)")).toEqual({ phase: "Counting objects", percent: 12 });
+    expect(parseGitProgress("Receiving objects:  45% (450/1000), 1.20 MiB | 2.00 MiB/s")).toEqual({
+      phase: "Receiving objects (1.20 MiB · 2.00 MiB/s)",
+      percent: 45,
+    });
+    expect(parseGitProgress("Resolving deltas: 100% (20/20), done.")).toEqual({
+      phase: "Resolving deltas",
+      percent: 100,
+    });
+    expect(parseGitProgress("remote: Counting objects:  12% (3/25)")).toEqual({
+      phase: "Counting objects",
+      percent: 12,
+    });
     expect(parseGitProgress("Cloning into '/tmp/x'...")).toBeNull();
   });
 });
@@ -58,7 +99,10 @@ describe("projects", () => {
       const apps = yield* Apps;
       const projects = yield* Projects;
       const app = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
-      yield* projects.create(app.id, "api", { name: `By ${actor}`, by: { actor, actorLabel: actor === "user" ? "You" : "App builder" } });
+      yield* projects.create(app.id, "api", {
+        name: `By ${actor}`,
+        by: { actor, actorLabel: actor === "user" ? "You" : "App builder" },
+      });
       yield* (yield* Runtime).stop(app.id);
       return (yield* apps.get(app.id))!;
     });
@@ -72,14 +116,29 @@ describe("projects", () => {
         for (const actor of ["user", "agent"] as const) {
           const app = yield* createApp(actor);
           const [first] = yield* history.list({ target: appTarget(app.id) });
-          out.push({ name: app.name, mode: app.mode, manifest: !!(yield* workspace.info(app.id)), first: first && { actor: first.actor, summary: first.summary } });
+          out.push({
+            name: app.name,
+            mode: app.mode,
+            manifest: !!(yield* workspace.info(app.id)),
+            first: first && { actor: first.actor, summary: first.summary },
+          });
         }
         return out;
       }),
     );
     expect(result).toEqual([
-      { name: "By user", mode: "dev", manifest: true, first: { actor: "user", summary: "Started from the api template" } },
-      { name: "By agent", mode: "dev", manifest: true, first: { actor: "agent", summary: "Started from the api template" } },
+      {
+        name: "By user",
+        mode: "dev",
+        manifest: true,
+        first: { actor: "user", summary: "Started from the api template" },
+      },
+      {
+        name: "By agent",
+        mode: "dev",
+        manifest: true,
+        first: { actor: "agent", summary: "Started from the api template" },
+      },
     ]);
   });
 
@@ -107,7 +166,14 @@ describe("projects", () => {
         };
       }),
     );
-    expect(result).toEqual({ name: "By user copy", server: true, deps: false, files: false, secrets: [], first: "Copied from By user" });
+    expect(result).toEqual({
+      name: "By user copy",
+      server: true,
+      deps: false,
+      files: false,
+      secrets: [],
+      first: "Copied from By user",
+    });
   });
 
   test("moving a tab takes it out of its split; deleting it removes everything it had", async () => {
@@ -121,7 +187,9 @@ describe("projects", () => {
         const history = yield* History;
         const a = yield* createApp("user");
         const b = yield* apps.create(DEFAULT_WORKSPACE, "web", "https://example.com/");
-        yield* workspaces.setSplits(DEFAULT_WORKSPACE, [{ id: "s", direction: "row", tabs: [a.id, b.id], sizes: [0.5, 0.5] }]);
+        yield* workspaces.setSplits(DEFAULT_WORKSPACE, [
+          { id: "s", direction: "row", tabs: [a.id, b.id], sizes: [0.5, 0.5] },
+        ]);
         const other = yield* workspaces.create("Other", null);
         const moved = yield* projects.move(b.id, other.id);
         const splits = (yield* workspaces.get(DEFAULT_WORKSPACE))!.splits;
@@ -154,17 +222,34 @@ describe("importing an existing project", () => {
 
   test("rune.json from package.json's scripts", () => {
     const port = " --port $PORT --strictPort --host 127.0.0.1";
-    expect(inferManifest({ scripts: { dev: "vite", build: "vite build", start: "node server.js" } })).toEqual({ dev: `bun run dev${port}`, build: "bun run build", start: "bun run start" });
+    expect(inferManifest({ scripts: { dev: "vite", build: "vite build", start: "node server.js" } })).toEqual({
+      dev: `bun run dev${port}`,
+      build: "bun run build",
+      start: "bun run start",
+    });
     // Vite sites: the dev server gets Rune Browser's port; the build is served with vite preview.
-    expect(inferManifest({ scripts: { dev: "vite", build: "tsc && vite build" } })).toEqual({ dev: `bun run dev${port}`, build: "bun run build", start: `bunx vite preview${port}` });
-    expect(inferManifest({ scripts: { dev: "vite dev", build: "vite build", preview: "vite preview", start: "vite" } })).toEqual({
+    expect(inferManifest({ scripts: { dev: "vite", build: "tsc && vite build" } })).toEqual({
+      dev: `bun run dev${port}`,
+      build: "bun run build",
+      start: `bunx vite preview${port}`,
+    });
+    expect(
+      inferManifest({ scripts: { dev: "vite dev", build: "vite build", preview: "vite preview", start: "vite" } }),
+    ).toEqual({
       dev: `bun run dev${port}`,
       build: "bun run build",
       start: `bun run preview${port}`,
     });
     // Next.js and the like read $PORT themselves.
-    expect(inferManifest({ scripts: { dev: "next dev", build: "next build", start: "next start" } })).toEqual({ dev: "bun run dev", build: "bun run build", start: "bun run start" });
-    expect(inferManifest({ scripts: { start: "node server.js" } })).toEqual({ dev: "bun run start", start: "bun run start" });
+    expect(inferManifest({ scripts: { dev: "next dev", build: "next build", start: "next start" } })).toEqual({
+      dev: "bun run dev",
+      build: "bun run build",
+      start: "bun run start",
+    });
+    expect(inferManifest({ scripts: { start: "node server.js" } })).toEqual({
+      dev: "bun run start",
+      start: "bun run start",
+    });
     expect(inferManifest({ scripts: { test: "jest" } })).toBeNull();
     expect(inferManifest(null)).toBeNull();
   });
@@ -172,8 +257,14 @@ describe("importing an existing project", () => {
   test("a folder becomes the app's project, named after it, like any other app", async () => {
     const folder = join(source, "budget-tool");
     mkdirSync(join(folder, "node_modules", "dep"), { recursive: true });
-    writeFileSync(join(folder, "package.json"), JSON.stringify({ name: "budget-tool", scripts: { dev: "bun --hot server.ts", start: "bun server.ts" } }));
-    writeFileSync(join(folder, "server.ts"), "Bun.serve({ port: Number(process.env.PORT), fetch: () => new Response('hi') });");
+    writeFileSync(
+      join(folder, "package.json"),
+      JSON.stringify({ name: "budget-tool", scripts: { dev: "bun --hot server.ts", start: "bun server.ts" } }),
+    );
+    writeFileSync(
+      join(folder, "server.ts"),
+      "Bun.serve({ port: Number(process.env.PORT), fetch: () => new Response('hi') });",
+    );
     const plain = join(source, "notes");
     mkdirSync(plain);
     writeFileSync(join(plain, "README.md"), "Just notes");
@@ -186,13 +277,25 @@ describe("importing an existing project", () => {
         const a = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
         const project = yield* projects.importApp(a.id, { kind: "folder", path: folder });
         yield* (yield* Runtime).stop(a.id);
-        const again = yield* projects.importApp(a.id, { kind: "folder", path: plain }).pipe(Effect.flip, Effect.map((e) => e.message));
+        const again = yield* projects.importApp(a.id, { kind: "folder", path: plain }).pipe(
+          Effect.flip,
+          Effect.map((e) => e.message),
+        );
         const b = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
         const none = yield* projects.importApp(b.id, { kind: "folder", path: plain });
         const c = yield* apps.create(DEFAULT_WORKSPACE, "app", null);
-        const notFolder = yield* projects.importApp(c.id, { kind: "folder", path: join(source, "missing") }).pipe(Effect.flip, Effect.map((e) => e.message));
-        const own = yield* projects.importApp(c.id, { kind: "folder", path: dataDir }).pipe(Effect.flip, Effect.map((e) => e.message));
-        const git = yield* projects.importApp(c.id, { kind: "git", url: "file:///etc" }).pipe(Effect.flip, Effect.map((e) => e.message));
+        const notFolder = yield* projects.importApp(c.id, { kind: "folder", path: join(source, "missing") }).pipe(
+          Effect.flip,
+          Effect.map((e) => e.message),
+        );
+        const own = yield* projects.importApp(c.id, { kind: "folder", path: dataDir }).pipe(
+          Effect.flip,
+          Effect.map((e) => e.message),
+        );
+        const git = yield* projects.importApp(c.id, { kind: "git", url: "file:///etc" }).pipe(
+          Effect.flip,
+          Effect.map((e) => e.message),
+        );
         return {
           manifest: project?.manifest,
           name: (yield* apps.get(a.id))!.name,

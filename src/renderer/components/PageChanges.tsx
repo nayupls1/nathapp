@@ -45,14 +45,23 @@ function Switch(props: { checked: boolean; label: string; onChange: (checked: bo
 }
 
 async function removeChange(change: PageChange) {
-  if (await confirmDialog(`Remove “${change.title}”? It can be brought back from History.`, { confirmLabel: "Remove", danger: true })) {
+  if (
+    await confirmDialog(`Remove “${change.title}”? It can be brought back from History.`, {
+      confirmLabel: "Remove",
+      danger: true,
+    })
+  ) {
     await api.deletePageChange(change.id);
   }
 }
 
 /** The host a scope is about (patterns: when they name one). */
 const hostOfScope = (scope: PageScope) =>
-  scope.type === "page" ? scope.value.split("/")[0]! : scope.type === "site" ? scope.value : (/^(?:\*\.)?([\w.-]+\.[a-z]{2,})(?:\/|$)/i.exec(scope.value)?.[1] ?? null);
+  scope.type === "page"
+    ? scope.value.split("/")[0]!
+    : scope.type === "site"
+      ? scope.value
+      : (/^(?:\*\.)?([\w.-]+\.[a-z]{2,})(?:\/|$)/i.exec(scope.value)?.[1] ?? null);
 
 /** Where else a change could apply: one page, its whole site, or the site with its subdomains. */
 function scopeChoices(change: PageChange, url?: string): { label: string; scope: PageScope }[] {
@@ -69,7 +78,8 @@ function scopeChoices(change: PageChange, url?: string): { label: string; scope:
 /** Moves a change to another scope. */
 const rescope = (change: PageChange, scope: PageScope) => {
   const spec: PageChangeSpec = { title: change.title, scope, action: change.action };
-  for (const key of ["selector", "value", "name", "position", "onClick"] as const) if (change[key] !== undefined) Object.assign(spec, { [key]: change[key] });
+  for (const key of ["selector", "value", "name", "position", "onClick"] as const)
+    if (change[key] !== undefined) Object.assign(spec, { [key]: change[key] });
   return api.updatePageChange(change.id, { change: spec });
 };
 
@@ -78,15 +88,17 @@ function ChangeRow(props: { change: PageChange; url?: string; error?: string }) 
   const detail = () => [props.change.action, props.change.selector].filter(Boolean).join(" ");
   const [scopeMenu, setScopeMenu] = createSignal<MenuPosition>();
   const choices = () =>
-    scopeChoices(props.change, props.url).map(
-      (c): MenuItem => ({
-        label: c.label,
-        checked: c.scope.type === props.change.scope.type && c.scope.value === props.change.scope.value,
-        onSelect: () => void rescope(props.change, c.scope),
-      }),
-    );
+    scopeChoices(props.change, props.url).map((c): MenuItem => ({
+      label: c.label,
+      checked: c.scope.type === props.change.scope.type && c.scope.value === props.change.scope.value,
+      onSelect: () => void rescope(props.change, c.scope),
+    }));
   return (
-    <div {...stylex.attrs(styles.row)} data-page-change={props.change.id} data-enabled={props.change.enabled ? "on" : "off"}>
+    <div
+      {...stylex.attrs(styles.row)}
+      data-page-change={props.change.id}
+      data-enabled={props.change.enabled ? "on" : "off"}
+    >
       <Icon name={actionIcons[props.change.action]} size={14} {...stylex.attrs(styles.rowIcon)} />
       <div {...stylex.attrs(styles.rowText)}>
         <span {...stylex.attrs(styles.rowTitle)}>{props.change.title}</span>
@@ -105,7 +117,11 @@ function ChangeRow(props: { change: PageChange; url?: string; error?: string }) 
             <Icon name="chevron-down" size={11} />
           </button>{" "}
           · {detail()}
-          {props.change.modId ? ` · from the mod ${modName(props.change.modId) ?? props.change.modId}` : props.change.createdBy === "agent" ? " · by the agent" : ""}
+          {props.change.modId
+            ? ` · from the mod ${modName(props.change.modId) ?? props.change.modId}`
+            : props.change.createdBy === "agent"
+              ? " · by the agent"
+              : ""}
         </span>
         <Show when={props.error}>
           <span {...stylex.attrs(styles.rowError)} data-page-change-error>
@@ -116,8 +132,18 @@ function ChangeRow(props: { change: PageChange; url?: string; error?: string }) 
       <Show when={scopeMenu() && choices().length}>
         <ContextMenu items={choices()} position={scopeMenu()!} onClose={() => setScopeMenu()} />
       </Show>
-      <Switch checked={props.change.enabled} label={`${props.change.title} on`} onChange={(enabled) => void api.updatePageChange(props.change.id, { enabled })} />
-      <button type="button" title="Remove" onClick={() => void removeChange(props.change)} {...stylex.attrs(styles.iconButton)} data-remove-page-change>
+      <Switch
+        checked={props.change.enabled}
+        label={`${props.change.title} on`}
+        onChange={(enabled) => void api.updatePageChange(props.change.id, { enabled })}
+      />
+      <button
+        type="button"
+        title="Remove"
+        onClick={() => void removeChange(props.change)}
+        {...stylex.attrs(styles.iconButton)}
+        data-remove-page-change
+      >
         <Icon name="trash" size={14} />
       </button>
     </div>
@@ -125,7 +151,12 @@ function ChangeRow(props: { change: PageChange; url?: string; error?: string }) 
 }
 
 /** What's changed on the page open in a web tab. */
-export function PageChangesPopover(props: { url: string; errors: Record<string, string>; position: { x: number; y: number }; onClose: () => void }) {
+export function PageChangesPopover(props: {
+  url: string;
+  errors: Record<string, string>;
+  position: { x: number; y: number };
+  onClose: () => void;
+}) {
   let panel!: HTMLDivElement;
   const host = () => hostOf(props.url);
   const override = () => cachedOverride(host());
@@ -138,9 +169,11 @@ export function PageChangesPopover(props: { url: string; errors: Record<string, 
     setPos({ x: Math.max(4, Math.min(props.position.x, window.innerWidth - rect.width - 8)), y: props.position.y });
     const onPointer = (e: PointerEvent) => {
       // The confirm dialog is outside the panel but part of it.
-      if (!panel.contains(e.target as Node) && !(e.target as Element).closest?.("[data-confirm-dialog]")) props.onClose();
+      if (!panel.contains(e.target as Node) && !(e.target as Element).closest?.("[data-confirm-dialog]"))
+        props.onClose();
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !document.querySelector("[data-confirm-dialog]") && props.onClose();
+    const onKey = (e: KeyboardEvent) =>
+      e.key === "Escape" && !document.querySelector("[data-confirm-dialog]") && props.onClose();
     document.addEventListener("pointerdown", onPointer, true);
     document.addEventListener("keydown", onKey, true);
     onCleanup(() => {
@@ -151,7 +184,13 @@ export function PageChangesPopover(props: { url: string; errors: Record<string, 
 
   return (
     <Portal>
-      <div ref={panel} {...stylex.attrs(styles.popover)} style={{ left: `${pos().x}px`, top: `${pos().y}px` }} data-page-changes data-url={props.url}>
+      <div
+        ref={panel}
+        {...stylex.attrs(styles.popover)}
+        style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
+        data-page-changes
+        data-url={props.url}
+      >
         <div {...stylex.attrs(styles.header)}>
           <span {...stylex.attrs(styles.title)}>Changes on this page</span>
           <button type="button" title="Close" onClick={props.onClose} {...stylex.attrs(styles.iconButton)}>
@@ -166,12 +205,22 @@ export function PageChangesPopover(props: { url: string; errors: Record<string, 
                 <span {...stylex.attrs(styles.rowTitle)}>Custom CSS and JavaScript</span>
                 <span {...stylex.attrs(styles.rowMeta)}>All of {host()} · the site's customization</span>
               </div>
-              <Switch checked={override()!.enabled} label="Site customization on" onChange={(enabled) => void api.saveSite(host(), { enabled })} />
+              <Switch
+                checked={override()!.enabled}
+                label="Site customization on"
+                onChange={(enabled) => void api.saveSite(host(), { enabled })}
+              />
               <button
                 type="button"
                 title="Remove"
                 onClick={async () => {
-                  if (await confirmDialog(`Remove the custom CSS and JavaScript of ${host()}?`, { confirmLabel: "Remove", danger: true })) await api.deleteSite(host());
+                  if (
+                    await confirmDialog(`Remove the custom CSS and JavaScript of ${host()}?`, {
+                      confirmLabel: "Remove",
+                      danger: true,
+                    })
+                  )
+                    await api.deleteSite(host());
                 }}
                 {...stylex.attrs(styles.iconButton)}
               >
@@ -179,12 +228,16 @@ export function PageChangesPopover(props: { url: string; errors: Record<string, 
               </button>
             </div>
           </Show>
-          <For each={changes()}>{(change) => <ChangeRow change={change} url={props.url} error={props.errors[change.id]} />}</For>
+          <For each={changes()}>
+            {(change) => <ChangeRow change={change} url={props.url} error={props.errors[change.id]} />}
+          </For>
           <Show when={!customized() && !changes().length}>
             <p {...stylex.attrs(styles.empty)}>Nothing is changed here anymore.</p>
           </Show>
         </div>
-        <p {...stylex.attrs(styles.footer)}>Ask the agent to hide, change or add things; every page change is listed in Settings.</p>
+        <p {...stylex.attrs(styles.footer)}>
+          Ask the agent to hide, change or add things; every page change is listed in Settings.
+        </p>
       </div>
     </Portal>
   );
@@ -193,7 +246,14 @@ export function PageChangesPopover(props: { url: string; errors: Record<string, 
 /** Every page change, for Settings. */
 export function PageChangeRows() {
   return (
-    <Show when={pageChanges().length} fallback={<p {...stylex.attrs(styles.empty)}>No page changes yet. Ask the website agent to hide, change or add something on a page.</p>}>
+    <Show
+      when={pageChanges().length}
+      fallback={
+        <p {...stylex.attrs(styles.empty)}>
+          No page changes yet. Ask the website agent to hide, change or add something on a page.
+        </p>
+      }
+    >
       <div {...stylex.attrs(styles.settingsList)}>
         <For each={pageChanges()}>{(change) => <ChangeRow change={change} />}</For>
       </div>
@@ -219,11 +279,25 @@ const styles = stylex.create({
     fontFamily: font.sans,
     fontSize: font.sm,
   },
-  header: { display: "flex", alignItems: "center", gap: space.sm, paddingBlock: 6, paddingLeft: space.md, paddingRight: 6 },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    paddingBlock: 6,
+    paddingLeft: space.md,
+    paddingRight: 6,
+  },
   title: { flex: 1, fontSize: font.xs, fontWeight: 600, color: colors.muted },
   list: { display: "flex", flexDirection: "column", overflowY: "auto", paddingInline: 6 },
   settingsList: { display: "flex", flexDirection: "column", gap: 2 },
-  row: { display: "flex", alignItems: "center", gap: space.sm, paddingBlock: 6, paddingInline: 6, borderRadius: radius.sm },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    paddingBlock: 6,
+    paddingInline: 6,
+    borderRadius: radius.sm,
+  },
   rowIcon: { flexShrink: 0, color: colors.accent },
   rowText: { display: "flex", flexDirection: "column", flex: 1, minWidth: 0 },
   rowTitle: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm },

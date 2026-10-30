@@ -118,7 +118,11 @@ export const scrollScript = (direction: "down" | "up", pixels: number | null, se
 })()`;
 
 /** Runs in the page: resolves true once the text or selector is there, false after the timeout. */
-export const waitForScript = (text: string | null, selector: string | null, timeoutMs: number) => `new Promise((resolve) => {
+export const waitForScript = (
+  text: string | null,
+  selector: string | null,
+  timeoutMs: number,
+) => `new Promise((resolve) => {
   const text = ${JSON.stringify(text?.toLowerCase() ?? null)};
   const sel = ${JSON.stringify(selector)};
   const there = () => { try { return (sel ? !!document.querySelector(sel) : true) && (text ? (document.body?.innerText || "").toLowerCase().includes(text) : true); } catch { return false; } };

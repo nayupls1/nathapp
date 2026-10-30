@@ -71,9 +71,21 @@ describe("shortcuts", () => {
   });
 
   test("Chrome's key syntax", () => {
-    expect(parseShortcut("Ctrl+Shift+X", "linux")).toEqual({ ctrl: true, alt: false, shift: true, meta: false, code: "KeyX" });
+    expect(parseShortcut("Ctrl+Shift+X", "linux")).toEqual({
+      ctrl: true,
+      alt: false,
+      shift: true,
+      meta: false,
+      code: "KeyX",
+    });
     // Ctrl means Command on a Mac; MacCtrl is the real Control key.
-    expect(parseShortcut("Ctrl+Shift+X", "mac")).toEqual({ ctrl: false, alt: false, shift: true, meta: true, code: "KeyX" });
+    expect(parseShortcut("Ctrl+Shift+X", "mac")).toEqual({
+      ctrl: false,
+      alt: false,
+      shift: true,
+      meta: true,
+      code: "KeyX",
+    });
     expect(parseShortcut("MacCtrl+Comma", "mac")?.ctrl).toBe(true);
     expect(parseShortcut("Alt+Shift+L", "linux")?.code).toBe("KeyL");
     expect(parseShortcut("Alt+7", "linux")?.code).toBe("Digit7");
@@ -111,7 +123,11 @@ describe("Chrome's profile data", () => {
         cccccccccccccccccccccccccccccccc: { location: 8, path: "/home/someone/copy-url" },
         // The browser's own components, themes and hosted apps aren't offered.
         mhjfbmdgcfjbbpaeojofohoefgiehjai: { location: 5, path: "/usr/lib/chromium/resources/pdf" },
-        aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: { location: 1, path: "theme", manifest: { manifest_version: 3, name: "Dark", version: "1", theme: {} } },
+        aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: {
+          location: 1,
+          path: "theme",
+          manifest: { manifest_version: 3, name: "Dark", version: "1", theme: {} },
+        },
         "not-an-id": { location: 1, path: "x" },
       },
       pinned_extensions: [ID, "nonsense"],
@@ -128,7 +144,10 @@ describe("Chrome's profile data", () => {
     expect(list.map((e) => e.id).sort()).toEqual([ID, OTHER, "cccccccccccccccccccccccccccccccc"].sort());
     expect(list.find((e) => e.id === ID)).toMatchObject({ enabled: true, unpacked: false, fromWebStore: true });
     expect(list.find((e) => e.id === OTHER)?.enabled).toBe(false);
-    expect(list.find((e) => e.id === "cccccccccccccccccccccccccccccccc")).toMatchObject({ unpacked: true, path: "/home/someone/copy-url" });
+    expect(list.find((e) => e.id === "cccccccccccccccccccccccccccccccc")).toMatchObject({
+      unpacked: true,
+      path: "/home/someone/copy-url",
+    });
   });
 
   test("Secure Preferences can disable what Preferences lists", () => {
@@ -162,19 +181,30 @@ describe("manifests", () => {
 
   test("permissions Rune Browser doesn't provide", () => {
     expect(
-      unsupportedPermissions({ manifest_version: 3, name: "x", version: "1", permissions: ["storage", "privacy", "userScripts", "https://*/*", "tabs"] }),
+      unsupportedPermissions({
+        manifest_version: 3,
+        name: "x",
+        version: "1",
+        permissions: ["storage", "privacy", "userScripts", "https://*/*", "tabs"],
+      }),
     ).toEqual(["privacy", "userScripts"]);
     // Each one says what it's for and what's different; unknown ones too.
     expect(permissionAbout("storage")).toEqual({ description: "Store its settings and data", limited: null });
     expect(permissionAbout("history").limited).toContain("empty");
     expect(permissionAbout("fileSystem.write").limited).toContain("Chrome apps");
-    expect(permissionAbout("somethingNew")).toMatchObject({ description: "somethingNew", limited: expect.stringContaining("keeps working") });
+    expect(permissionAbout("somethingNew")).toMatchObject({
+      description: "somethingNew",
+      limited: expect.stringContaining("keeps working"),
+    });
   });
 
   test("the ID of an extension without a key, like Chromium derives it", () => {
     expect(idSourceForPath("/home/me/ext", "linux")).toEqual({ text: "/home/me/ext", encoding: "utf8" });
     // Windows: UTF-16, drive letter upper-cased.
-    expect(idSourceForPath("c:\\Users\\me\\ext", "windows")).toEqual({ text: "C:\\Users\\me\\ext", encoding: "utf16le" });
+    expect(idSourceForPath("c:\\Users\\me\\ext", "windows")).toEqual({
+      text: "C:\\Users\\me\\ext",
+      encoding: "utf16le",
+    });
     const { text, encoding } = idSourceForPath("C:\\ext", "windows");
     expect(Buffer.from(text, encoding)).toEqual(Buffer.from([0x43, 0, 0x3a, 0, 0x5c, 0, 0x65, 0, 0x78, 0, 0x74, 0]));
   });
@@ -234,7 +264,12 @@ describe("network rules as DNR rules", () => {
       rule({ pattern: "ads.example" }),
       rule({ pattern: "elsewhere.example", workspaceId: "other" }),
       rule({ pattern: "off.example", enabled: false }),
-      rule({ pattern: "api.example", action: "modify", requestHeaders: { "X-Debug": "1", Cookie: null }, workspaceId: "ws" }),
+      rule({
+        pattern: "api.example",
+        action: "modify",
+        requestHeaders: { "X-Debug": "1", Cookie: null },
+        workspaceId: "ws",
+      }),
       rule({ pattern: "nothing.example", action: "modify" }),
     ];
     const dnr = networkRulesToDnr(rules, "ws");
@@ -253,7 +288,8 @@ describe("network rules as DNR rules", () => {
   });
 
   test("Google's sign-in gets the user agent that names Electron, below the rules", () => {
-    const ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Electron/44.0.0 Safari/537.36";
+    const ua =
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Electron/44.0.0 Safari/537.36";
     const dnr = networkRulesToDnr([rule({ pattern: "ads.example" })], "ws", ua);
     expect(dnr).toHaveLength(2);
     const signIn = dnr[1]!;
@@ -261,7 +297,10 @@ describe("network rules as DNR rules", () => {
     expect(signIn.condition.requestDomains).toEqual(["accounts.google.com"]);
     expect(signIn.condition.resourceTypes).toContain("main_frame");
     expect(signIn.condition.resourceTypes).toContain("xmlhttprequest");
-    expect(signIn.action).toEqual({ type: "modifyHeaders", requestHeaders: [{ header: "User-Agent", operation: "set", value: ua }] });
+    expect(signIn.action).toEqual({
+      type: "modifyHeaders",
+      requestHeaders: [{ header: "User-Agent", operation: "set", value: ua }],
+    });
     expect(signIn.priority).toBeLessThan(dnr[0]!.priority);
   });
 });
@@ -317,7 +356,11 @@ const varint = (n: number) => {
 const field = (n: number, value: Buffer) => Buffer.concat([varint(n * 8 + 2), varint(value.length), value]);
 
 const keyPair = () =>
-  generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "der" }, privateKeyEncoding: { type: "pkcs8", format: "der" } });
+  generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "der" },
+    privateKeyEncoding: { type: "pkcs8", format: "der" },
+  });
 
 /** A CRX3 file, signed with `signer` (the extension's own key unless given). */
 function crx3(zip: Buffer, opts: { tamper?: boolean; signer?: ReturnType<typeof keyPair> } = {}) {
@@ -327,22 +370,36 @@ function crx3(zip: Buffer, opts: { tamper?: boolean; signer?: ReturnType<typeof 
   const signedData = field(1, crxId);
   const length = Buffer.alloc(4);
   length.writeUInt32LE(signedData.length);
-  const signature = sign("sha256", Buffer.concat([Buffer.from("CRX3 SignedData\x00", "latin1"), length, signedData, zip]), {
-    key: signer.privateKey,
-    format: "der",
-    type: "pkcs8",
-  });
-  const header = Buffer.concat([field(2, Buffer.concat([field(1, own.publicKey), field(2, signature)])), field(10000, signedData)]);
+  const signature = sign(
+    "sha256",
+    Buffer.concat([Buffer.from("CRX3 SignedData\x00", "latin1"), length, signedData, zip]),
+    {
+      key: signer.privateKey,
+      format: "der",
+      type: "pkcs8",
+    },
+  );
+  const header = Buffer.concat([
+    field(2, Buffer.concat([field(1, own.publicKey), field(2, signature)])),
+    field(10000, signedData),
+  ]);
   const head = Buffer.alloc(12);
   head.write("Cr24", 0, "latin1");
   head.writeUInt32LE(3, 4);
   head.writeUInt32LE(header.length, 8);
   const body = opts.tamper ? Buffer.concat([zip.subarray(0, -1), Buffer.from([zip[zip.length - 1]! ^ 1])]) : zip;
-  return { file: Buffer.concat([head, header, body]), id: extensionIdFromHash(createHash("sha256").update(own.publicKey).digest("hex")), key: own.publicKey };
+  return {
+    file: Buffer.concat([head, header, body]),
+    id: extensionIdFromHash(createHash("sha256").update(own.publicKey).digest("hex")),
+    key: own.publicKey,
+  };
 }
 
 describe("CRX packages", () => {
-  const zip = zipOf({ "manifest.json": '{"manifest_version":3,"name":"x","version":"1"}', "js/background.js": "console.log('hi')".repeat(20) });
+  const zip = zipOf({
+    "manifest.json": '{"manifest_version":3,"name":"x","version":"1"}',
+    "js/background.js": "console.log('hi')".repeat(20),
+  });
 
   test("a signed CRX3 gives its ID, key and files", () => {
     const { file, id, key } = crx3(zip);

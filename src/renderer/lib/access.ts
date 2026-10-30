@@ -11,7 +11,14 @@ export const FULL_ACCESS_WARNING =
 /** Switches the mode; turning full access on asks first. Returns whether it changed. */
 export async function setFullAccess(on: boolean) {
   if (on === fullAccess()) return false;
-  if (on && !(await confirmDialog(`Give agents full access? ${FULL_ACCESS_WARNING}`, { confirmLabel: "Give full access", danger: true }))) return false;
+  if (
+    on &&
+    !(await confirmDialog(`Give agents full access? ${FULL_ACCESS_WARNING}`, {
+      confirmLabel: "Give full access",
+      danger: true,
+    }))
+  )
+    return false;
   updateSettings((s) => ({ ...s, agent: { ...s.agent, permissions: on ? "full" : "ask" } }));
   return true;
 }

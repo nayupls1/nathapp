@@ -16,7 +16,8 @@ export { requests as permissionRequests };
 export { version as securityVersion };
 
 watchTopic(topics.permissions, (msg) => {
-  if (msg.type === "permission-request") setRequests((list) => (list.some((r) => r.id === msg.request.id) ? list : [...list, msg.request]));
+  if (msg.type === "permission-request")
+    setRequests((list) => (list.some((r) => r.id === msg.request.id) ? list : [...list, msg.request]));
   else if (msg.type === "permission-resolved") setRequests((list) => list.filter((r) => r.id !== msg.id));
 });
 

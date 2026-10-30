@@ -6,7 +6,19 @@
 // by apis.ts. The Rune Browser window shows their toolbar buttons and popups, and
 // manages them in Settings → Extensions (import from Chrome, the Chrome Web
 // Store, a folder).
-import { app, dialog, ipcMain, Menu, webContents, type BrowserWindow, type ContextMenuParams, type Input, type MenuItemConstructorOptions, type Session, type WebContents } from "electron";
+import {
+  app,
+  dialog,
+  ipcMain,
+  Menu,
+  webContents,
+  type BrowserWindow,
+  type ContextMenuParams,
+  type Input,
+  type MenuItemConstructorOptions,
+  type Session,
+  type WebContents,
+} from "electron";
 import { createHash, randomUUID } from "node:crypto";
 import { cpSync, existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +49,17 @@ import { builtinExtensionDir } from "./builtin";
 import { detectBrowsers, importExtensions, platform, storageFolders } from "./browsers";
 import { Contexts, dispatch, ExtensionState, STATE_FOLDER, stateFile, workerStatus, type ActionState } from "./host";
 import { hasHostsFor } from "./native";
-import { commandsOf as registryCommandsOf, describe, extensionsDir, forgetIcons, idForPath, imageDataUrl, readManifest, Registry, type InstalledExtension } from "./registry";
+import {
+  commandsOf as registryCommandsOf,
+  describe,
+  extensionsDir,
+  forgetIcons,
+  idForPath,
+  imageDataUrl,
+  readManifest,
+  Registry,
+  type InstalledExtension,
+} from "./registry";
 import { checkUpdates, downloadFromWebStore, downloadUpdate, WEB_STORE_UPDATE_URL } from "./webstore";
 
 export interface ExtensionsOptions {
@@ -141,9 +163,11 @@ export function setupExtensions(options: ExtensionsOptions) {
     window: getWindow,
     tabs: tabsOf,
     active: activeOf,
-    hasActiveTab: (s, id, tabId) => !registry.get(id)?.denied?.includes("activeTab") && (grants.get(grantKey(s, id))?.has(tabId) ?? false),
+    hasActiveTab: (s, id, tabId) =>
+      !registry.get(id)?.denied?.includes("activeTab") && (grants.get(grantKey(s, id))?.has(tabId) ?? false),
     grantActiveTab,
-    requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) => ask<number | null>("rune:extensions-tab", request, null, 15_000),
+    requestTab: (request: DistributiveOmit<ExtensionTabRequest, "requestId">) =>
+      ask<number | null>("rune:extensions-tab", request, null, 15_000),
     requestPermission: (s, id, permissions, origins) => {
       let name = id;
       try {
@@ -151,13 +175,23 @@ export function setupExtensions(options: ExtensionsOptions) {
       } catch {
         // the ID then
       }
-      return ask<boolean>("rune:extensions-permission", { extensionId: id, name, permissions, origins }, false, 5 * 60_000);
+      return ask<boolean>(
+        "rune:extensions-permission",
+        { extensionId: id, name, permissions, origins },
+        false,
+        5 * 60_000,
+      );
     },
     openPopup: (s, id, url) => openPopup(s, id, url),
     actionsChanged,
     commandsOf,
     // Electron's own user agent, without Rune Browser's name.
-    rules: (s) => networkRulesToDnr(networkRules, options.workspaceOf(s) ?? "", app.userAgentFallback.replace(/ RuneBrowser\/\S+/gi, "")),
+    rules: (s) =>
+      networkRulesToDnr(
+        networkRules,
+        options.workspaceOf(s) ?? "",
+        app.userAgentFallback.replace(/ RuneBrowser\/\S+/gi, ""),
+      ),
     whenLoaded: (s, id) => loading.get(stateKey(s, id)) ?? Promise.resolve(),
     reload: (s, id) => {
       const entry = registry.get(id);
@@ -197,7 +231,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     const frame = event.senderFrame;
     const id = extensionIdOf(frame?.url);
     const s = event.sender.session;
-    if (!frame || !id || !attached.has(s) || !loaded(s, id) || typeof method !== "string") return { error: "Not an extension" };
+    if (!frame || !id || !attached.has(s) || !loaded(s, id) || typeof method !== "string")
+      return { error: "Not an extension" };
     const key = `f:${frame.processId}:${frame.routingId}`;
     const contents = event.sender;
     const ctx =
@@ -213,7 +248,8 @@ export function setupExtensions(options: ExtensionsOptions) {
         send: (name, a) => {
           if (!frame.isDestroyed() && !frame.detached) frame.send("crx:event", name, a);
         },
-        alive: () => !frame.isDestroyed() && !frame.detached && !contents.isDestroyed() && extensionIdOf(frame.url) === id,
+        alive: () =>
+          !frame.isDestroyed() && !frame.detached && !contents.isDestroyed() && extensionIdOf(frame.url) === id,
       });
     return apis.handle(ctx, method, Array.isArray(args) ? args : []);
   });
@@ -313,7 +349,9 @@ export function setupExtensions(options: ExtensionsOptions) {
   // (importing or updating while the workspace starts, toggling it quickly…).
   const queues = new Map<string, Promise<void>>();
   function queued(key: string, fn: () => Promise<void> | void) {
-    const next = (queues.get(key) ?? Promise.resolve()).then(fn).catch((err) => console.error("Loading an extension failed:", err));
+    const next = (queues.get(key) ?? Promise.resolve())
+      .then(fn)
+      .catch((err) => console.error("Loading an extension failed:", err));
     queues.set(key, next);
     void next.then(() => queues.get(key) === next && queues.delete(key));
     return next;
@@ -344,8 +382,13 @@ export function setupExtensions(options: ExtensionsOptions) {
     }
     // runtime.onInstalled / onStartup, which Electron doesn't send.
     const previous = st.stored.version;
-    if (!previous) st.lifecycle = { event: "runtime.onInstalled", details: firstSeed ? { reason: "update", previousVersion: version } : { reason: "install" } };
-    else if (previous !== version) st.lifecycle = { event: "runtime.onInstalled", details: { reason: "update", previousVersion: previous } };
+    if (!previous)
+      st.lifecycle = {
+        event: "runtime.onInstalled",
+        details: firstSeed ? { reason: "update", previousVersion: version } : { reason: "install" },
+      };
+    else if (previous !== version)
+      st.lifecycle = { event: "runtime.onInstalled", details: { reason: "update", previousVersion: previous } };
     else st.lifecycle = startedThisRun.has(key) ? null : { event: "runtime.onStartup", details: null };
     st.resetRulesets = st.lifecycle?.event === "runtime.onInstalled";
     startedThisRun.add(key);
@@ -452,7 +495,8 @@ export function setupExtensions(options: ExtensionsOptions) {
 
   // --- Toolbar buttons and popups ---------------------------------------------------------------------
 
-  const cssColor = (c: [number, number, number, number] | null) => (c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${(c[3] / 255).toFixed(3)})` : null);
+  const cssColor = (c: [number, number, number, number] | null) =>
+    c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${(c[3] / 255).toFixed(3)})` : null;
 
   /** What its toolbar button opens: its popup, or its side panel when it asked for that. */
   function popupOf(s: Session, id: string, a: ActionState) {
@@ -618,7 +662,11 @@ export function setupExtensions(options: ExtensionsOptions) {
 
   async function installFromStore(input: string): Promise<InstallResult> {
     const id = webStoreId(input);
-    if (!id) return { installed: [], failed: [{ id: input, name: input, error: "That isn't a Chrome Web Store link or extension ID" }] };
+    if (!id)
+      return {
+        installed: [],
+        failed: [{ id: input, name: input, error: "That isn't a Chrome Web Store link or extension ID" }],
+      };
     try {
       const previous = registry.get(id);
       const { dir } = await downloadFromWebStore(id);
@@ -645,7 +693,9 @@ export function setupExtensions(options: ExtensionsOptions) {
 
   async function loadUnpacked(): Promise<InstallResult | null> {
     const win = getWindow();
-    const picked = win ? await dialog.showOpenDialog(win, { title: "Load an unpacked extension", properties: ["openDirectory"] }) : null;
+    const picked = win
+      ? await dialog.showOpenDialog(win, { title: "Load an unpacked extension", properties: ["openDirectory"] })
+      : null;
     const dir = picked?.filePaths[0];
     if (!dir || picked?.canceled) return null;
     let info;
@@ -654,7 +704,8 @@ export function setupExtensions(options: ExtensionsOptions) {
     } catch {
       return { installed: [], failed: [{ id: "", name: dir, error: "There's no manifest.json in that folder" }] };
     }
-    if (info.manifest.theme || info.manifest.app) return { installed: [], failed: [{ id: "", name: info.name, error: "Themes and apps aren't supported" }] };
+    if (info.manifest.theme || info.manifest.app)
+      return { installed: [], failed: [{ id: "", name: info.name, error: "Themes and apps aren't supported" }] };
     const id = idForDir(dir, info.manifest.key);
     const previous = registry.get(id);
     const entry: InstalledExtension = {
@@ -722,7 +773,11 @@ export function setupExtensions(options: ExtensionsOptions) {
     if (allowed) denied.delete(permission);
     else denied.add(permission);
     const granted = entry.granted ?? { permissions: [], origins: [] };
-    const grantedNow = required ? granted.permissions : allowed ? [...new Set([...granted.permissions, permission])] : granted.permissions.filter((p) => p !== permission);
+    const grantedNow = required
+      ? granted.permissions
+      : allowed
+        ? [...new Set([...granted.permissions, permission])]
+        : granted.permissions.filter((p) => p !== permission);
     registry.update(id, { denied: [...denied], granted: { ...granted, permissions: grantedNow } });
     // It starts over with what it may use now (its pages and worker learn it as they start).
     for (const s of sessions()) {
@@ -800,7 +855,8 @@ export function setupExtensions(options: ExtensionsOptions) {
 
   // --- IPC from the Rune Browser window ---------------------------------------------------------------------------
 
-  const fromWindow = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) => event.sender === getWindow()?.webContents;
+  const fromWindow = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent) =>
+    event.sender === getWindow()?.webContents;
   const validWorkspace = (w: unknown): w is string => typeof w === "string" && /^[\w-]+$/.test(w);
   const handle = (channel: string, fn: (...args: any[]) => unknown) =>
     ipcMain.handle(channel, (event, ...args) => {
@@ -812,18 +868,28 @@ export function setupExtensions(options: ExtensionsOptions) {
     const list = registry.list().map((e) => describe(e, errors.get(e.id) ?? null, hasHostsFor(e.id)));
     return { extensions: list, autoUpdate: registry.autoUpdate };
   });
-  handle("rune:extensions-prepare", (workspaceId: unknown) => (validWorkspace(workspaceId) ? prepare(workspaceId) : undefined));
-  handle("rune:extensions-actions", (workspaceId: unknown, tabId: unknown) => (validWorkspace(workspaceId) ? actionsFor(workspaceId, typeof tabId === "number" ? tabId : null) : []));
-  handle("rune:extensions-click", (workspaceId: unknown, id: unknown) => (validWorkspace(workspaceId) && isExtensionId(id) ? clickAction(workspaceId, id) : null));
+  handle("rune:extensions-prepare", (workspaceId: unknown) =>
+    validWorkspace(workspaceId) ? prepare(workspaceId) : undefined,
+  );
+  handle("rune:extensions-actions", (workspaceId: unknown, tabId: unknown) =>
+    validWorkspace(workspaceId) ? actionsFor(workspaceId, typeof tabId === "number" ? tabId : null) : [],
+  );
+  handle("rune:extensions-click", (workspaceId: unknown, id: unknown) =>
+    validWorkspace(workspaceId) && isExtensionId(id) ? clickAction(workspaceId, id) : null,
+  );
   handle("rune:extensions-detect", () => detectBrowsers(registry));
   handle("rune:extensions-import", (request: ImportRequest) => importFrom(request));
   handle("rune:extensions-install", (input: unknown) => installFromStore(String(input ?? "")));
   handle("rune:extensions-load-unpacked", () => loadUnpacked());
-  handle("rune:extensions-set-enabled", (id: unknown, enabled: unknown) => isExtensionId(id) && setEnabled(id, enabled === true));
+  handle(
+    "rune:extensions-set-enabled",
+    (id: unknown, enabled: unknown) => isExtensionId(id) && setEnabled(id, enabled === true),
+  );
   handle("rune:extensions-set-pinned", (id: unknown, pinned: unknown) => {
     if (!isExtensionId(id) || !registry.update(id, { pinned: pinned === true })) return;
     listChanged();
-    for (const s of sessions()) void dispatch(contexts, state(s, id), s, id, "action.onUserSettingsChanged", [{ isOnToolbar: pinned === true }]);
+    for (const s of sessions())
+      void dispatch(contexts, state(s, id), s, id, "action.onUserSettingsChanged", [{ isOnToolbar: pinned === true }]);
   });
   handle("rune:extensions-remove", (id: unknown) => (isExtensionId(id) ? remove(id) : undefined));
   handle("rune:extensions-set-permission", (id: unknown, permission: unknown, allowed: unknown) => {
@@ -847,8 +913,24 @@ export function setupExtensions(options: ExtensionsOptions) {
       { label: info.name.replace(/&/g, "&&"), enabled: false },
       { type: "separator" },
       ...(own.length ? [...own, { type: "separator" as const }] : []),
-      { label: entry.pinned ? "Unpin" : "Pin to toolbar", click: () => registry.update(id, { pinned: !entry.pinned }) && listChanged() },
-      ...(info.optionsUrl ? [{ label: "Options", click: () => void ask("rune:extensions-tab", { action: "open", workspaceId, url: info.optionsUrl!, active: true }, null, 15_000) }] : []),
+      {
+        label: entry.pinned ? "Unpin" : "Pin to toolbar",
+        click: () => registry.update(id, { pinned: !entry.pinned }) && listChanged(),
+      },
+      ...(info.optionsUrl
+        ? [
+            {
+              label: "Options",
+              click: () =>
+                void ask(
+                  "rune:extensions-tab",
+                  { action: "open", workspaceId, url: info.optionsUrl!, active: true },
+                  null,
+                  15_000,
+                ),
+            },
+          ]
+        : []),
       { label: "Manage extensions", click: () => send("rune:extensions-manage") },
     ];
     Menu.buildFromTemplate(items).popup({ window: getWindow() });

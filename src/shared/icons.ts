@@ -2,7 +2,10 @@
 
 /** Icon names ranked by how well their name and tags match the query words. */
 export function rankIcons(tags: Record<string, string[]>, query: string, limit = 30): string[] {
-  const words = query.toLowerCase().split(/[\s,-]+/).filter(Boolean);
+  const words = query
+    .toLowerCase()
+    .split(/[\s,-]+/)
+    .filter(Boolean);
   if (!words.length) return [];
   const scored: [string, number][] = [];
   for (const [name, keywords] of Object.entries(tags)) {

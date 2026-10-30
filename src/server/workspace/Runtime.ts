@@ -41,7 +41,11 @@ export interface RuntimeShape {
   /** Waits until the app is running, crashed or stopped (or the timeout passes). */
   readonly settled: (appId: string, timeoutMs?: number) => Effect.Effect<RuntimeStatus>;
   /** Runs a one-off command in the app's sandbox (installs, scripts, migrations). */
-  readonly exec: (appId: string, command: string, timeoutMs?: number) => Effect.Effect<{ code: number | null; output: string; timedOut: boolean }>;
+  readonly exec: (
+    appId: string,
+    command: string,
+    timeoutMs?: number,
+  ) => Effect.Effect<{ code: number | null; output: string; timedOut: boolean }>;
   /** Stops the app and forgets it (the app was deleted). */
   readonly forget: (appId: string) => Effect.Effect<void>;
 }
@@ -105,7 +109,16 @@ export const make = Effect.gen(function* () {
     let state = states.get(appId);
     if (!state) {
       state = {
-        status: { mode: "dev", state: "stopped", url: null, port: null, exitCode: null, error: null, startedAt: null, sandbox: "none" },
+        status: {
+          mode: "dev",
+          state: "stopped",
+          url: null,
+          port: null,
+          exitCode: null,
+          error: null,
+          startedAt: null,
+          sandbox: "none",
+        },
         logs: [],
         redact: [],
         port: null,
@@ -142,7 +155,9 @@ export const make = Effect.gen(function* () {
     if (!lines.length) return;
     // A server that ignores $PORT never shows up: say so when its output names another port.
     if (stream !== "system" && state.status.state === "starting" && !state.portHint && state.port) {
-      const other = lines.map((l) => /\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d{2,5})\b/.exec(l.text)?.[1]).find((p) => p && Number(p) !== state.port);
+      const other = lines
+        .map((l) => /\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\]):(\d{2,5})\b/.exec(l.text)?.[1])
+        .find((p) => p && Number(p) !== state.port);
       if (other) {
         state.portHint = true;
         lines.push({
@@ -201,7 +216,9 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         log(appId, "system", `$ ${command}`);
         const { exited } = yield* spawnIn(appId, command, env);
-        const code = yield* Effect.promise(() => exited).pipe(Effect.timeoutOrElse({ duration: timeoutMs, orElse: () => Effect.succeed("timeout" as const) }));
+        const code = yield* Effect.promise(() => exited).pipe(
+          Effect.timeoutOrElse({ duration: timeoutMs, orElse: () => Effect.succeed("timeout" as const) }),
+        );
         return code;
       }),
     );
@@ -233,9 +250,9 @@ export const make = Effect.gen(function* () {
       state.portHint = false;
       const kind = yield* sandbox.kind;
       setStatus(appId, { mode, sandbox: kind, exitCode: null, error: null, url: null, port: null, startedAt: null });
-      const manifest = yield* workspace.manifest(appId).pipe(
-        Effect.catch((err) => Effect.sync(() => (fail(appId, err.message), undefined))),
-      );
+      const manifest = yield* workspace
+        .manifest(appId)
+        .pipe(Effect.catch((err) => Effect.sync(() => (fail(appId, err.message), undefined))));
       if (manifest === undefined) return;
       if (manifest === null) {
         setStatus(appId, { state: "stopped" });
@@ -243,27 +260,49 @@ export const make = Effect.gen(function* () {
       }
       const env = yield* appEnv(appId, mode, null);
       // The app's secrets: for build and serve, not for installing dependencies.
-      const secretEnv = yield* secrets.envFor(appId).pipe(
-        Effect.catchTag("VaultLocked", (e) => Effect.sync(() => (log(appId, "system", `${e.message}; starting without secrets`), {} as Record<string, string>))),
-      );
+      const secretEnv = yield* secrets
+        .envFor(appId)
+        .pipe(
+          Effect.catchTag("VaultLocked", (e) =>
+            Effect.sync(
+              () => (log(appId, "system", `${e.message}; starting without secrets`), {} as Record<string, string>),
+            ),
+          ),
+        );
       const names = Object.keys(secretEnv);
-      state.redact = Object.values(secretEnv).filter((v) => v.length >= 4).sort((a, b) => b.length - a.length);
+      state.redact = Object.values(secretEnv)
+        .filter((v) => v.length >= 4)
+        .sort((a, b) => b.length - a.length);
       if (names.length) {
         log(appId, "system", `Secrets: ${names.join(", ")}`);
-        yield* audit.record({ actor: "rune", actorLabel: "Rune Browser", tabId: appId, action: "secret.inject", target: names.join(", "), detail: `Started in ${mode} mode` });
+        yield* audit.record({
+          actor: "rune",
+          actorLabel: "Rune Browser",
+          tabId: appId,
+          action: "secret.inject",
+          target: names.join(", "),
+          detail: `Started in ${mode} mode`,
+        });
       }
 
       if (needsInstall(appId, manifest)) {
         setStatus(appId, { state: "installing" });
         const code = yield* runToEnd(appId, manifest.install ?? "bun install", env);
-        if (code !== 0) return fail(appId, code === "timeout" ? "Installing dependencies timed out" : `Installing dependencies failed (exit code ${code})`);
+        if (code !== 0)
+          return fail(
+            appId,
+            code === "timeout"
+              ? "Installing dependencies timed out"
+              : `Installing dependencies failed (exit code ${code})`,
+          );
         writeFileSync(installStamp(appId), new Date().toISOString());
       }
 
       if (mode === "live" && manifest.build) {
         setStatus(appId, { state: "building" });
         const code = yield* runToEnd(appId, manifest.build, { ...secretEnv, ...env });
-        if (code !== 0) return fail(appId, code === "timeout" ? "The build timed out" : `The build failed (exit code ${code})`);
+        if (code !== 0)
+          return fail(appId, code === "timeout" ? "The build timed out" : `The build failed (exit code ${code})`);
       }
 
       const port = yield* Effect.promise(() => freePort(state.port));
@@ -278,7 +317,11 @@ export const make = Effect.gen(function* () {
           const ready = yield* Effect.forkScoped(
             Effect.gen(function* () {
               while (!(yield* Effect.promise(() => listening(port)))) yield* Effect.sleep(250);
-              setStatus(appId, { state: "running", url: `http://127.0.0.1:${port}`, startedAt: new Date().toISOString() });
+              setStatus(appId, {
+                state: "running",
+                url: `http://127.0.0.1:${port}`,
+                startedAt: new Date().toISOString(),
+              });
             }),
           );
           const code = yield* Effect.promise(() => exited);
@@ -310,7 +353,8 @@ export const make = Effect.gen(function* () {
       const deadline = Date.now() + timeoutMs;
       for (;;) {
         const { state } = stateOf(appId).status;
-        if (state === "running" || state === "crashed" || state === "stopped" || Date.now() > deadline) return stateOf(appId).status;
+        if (state === "running" || state === "crashed" || state === "stopped" || Date.now() > deadline)
+          return stateOf(appId).status;
         yield* Effect.sleep(200);
       }
     });
@@ -364,7 +408,10 @@ export const make = Effect.gen(function* () {
           child.stdout!.on("data", append);
           child.stderr!.on("data", append);
           const code = yield* Effect.promise(
-            () => new Promise<number | null>((resolve) => (child.once("exit", resolve), child.once("error", () => resolve(-1)))),
+            () =>
+              new Promise<number | null>(
+                (resolve) => (child.once("exit", resolve), child.once("error", () => resolve(-1))),
+              ),
           ).pipe(Effect.timeoutOrElse({ duration: timeoutMs, orElse: () => Effect.succeed("timeout" as const) }));
           return {
             code: code === "timeout" ? null : code,

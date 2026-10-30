@@ -22,7 +22,11 @@ const examples = [
 export function NewApp(props: { appId: string }) {
   const send = (prompt: string) => sendWithShares(props.appId, prompt);
   // Ready to type: the agent sidebar's composer.
-  onMount(() => queueMicrotask(() => document.querySelector<HTMLTextAreaElement>(`[data-agent-for="${props.appId}"] textarea`)?.focus()));
+  onMount(() =>
+    queueMicrotask(() =>
+      document.querySelector<HTMLTextAreaElement>(`[data-agent-for="${props.appId}"] textarea`)?.focus(),
+    ),
+  );
   const [presets] = createResource(() => api.presets().catch(() => []));
   const [starting, setStarting] = createSignal<string>();
 
@@ -85,7 +89,8 @@ export function NewApp(props: { appId: string }) {
       <div {...stylex.attrs(styles.newInner)}>
         <h1 {...stylex.attrs(styles.title)}>What do you want to build?</h1>
         <p {...stylex.attrs(styles.subtitle)}>
-          Describe an app to the agent and it builds it: a real project with its own server and database, running right here.
+          Describe an app to the agent and it builds it: a real project with its own server and database, running right
+          here.
         </p>
         <Show
           when={isAgentCollapsed(props.appId)}
@@ -126,7 +131,9 @@ export function NewApp(props: { appId: string }) {
                     data-template={preset.id}
                   >
                     <strong>{preset.name}</strong>
-                    <span {...stylex.attrs(styles.presetStack)}>{starting() === preset.id ? "Setting up…" : preset.stack}</span>
+                    <span {...stylex.attrs(styles.presetStack)}>
+                      {starting() === preset.id ? "Setting up…" : preset.stack}
+                    </span>
                   </button>
                 )}
               </For>
@@ -181,13 +188,27 @@ export function NewApp(props: { appId: string }) {
                     <span {...stylex.attrs(styles.presetStack)}>{percent()}%</span>
                   </Show>
                   <Show when={cloning()}>
-                    <button type="button" onClick={() => void api.cancelImport(props.appId).catch(() => {})} {...stylex.attrs(styles.linkButton)} data-import-cancel>
+                    <button
+                      type="button"
+                      onClick={() => void api.cancelImport(props.appId).catch(() => {})}
+                      {...stylex.attrs(styles.linkButton)}
+                      data-import-cancel
+                    >
                       Cancel
                     </button>
                   </Show>
                 </div>
-                <div {...stylex.attrs(styles.track)} role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent() ?? undefined}>
-                  <div {...stylex.attrs(styles.bar, indeterminate() && styles.barBusy)} style={{ width: hasPercent() ? `${percent()}%` : "30%" }} />
+                <div
+                  {...stylex.attrs(styles.track)}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={percent() ?? undefined}
+                >
+                  <div
+                    {...stylex.attrs(styles.bar, indeterminate() && styles.barBusy)}
+                    style={{ width: hasPercent() ? `${percent()}%` : "30%" }}
+                  />
                 </div>
               </div>
             )}
@@ -204,7 +225,6 @@ export function NewApp(props: { appId: string }) {
     </div>
   );
 }
-
 
 const busy = stylex.keyframes({
   from: { transform: "translateX(-100%)" },
@@ -224,7 +244,15 @@ const styles = stylex.create({
   newInner: { width: "100%", maxWidth: 640, display: "flex", flexDirection: "column", gap: space.lg },
   title: { margin: 0, fontSize: 28, fontWeight: 650, letterSpacing: "-0.02em" },
   subtitle: { margin: 0, marginTop: -8, color: colors.muted, fontSize: font.md, lineHeight: 1.5 },
-  describeHint: { display: "flex", alignItems: "center", gap: space.sm, margin: 0, color: colors.accent, fontSize: font.md, fontWeight: 600 },
+  describeHint: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    margin: 0,
+    color: colors.accent,
+    fontSize: font.md,
+    fontWeight: 600,
+  },
   chips: { display: "flex", flexWrap: "wrap", gap: space.sm },
   example: {
     paddingBlock: 6,
@@ -239,7 +267,13 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   presets: { display: "flex", flexDirection: "column", gap: space.sm, marginTop: space.sm },
-  presetsLabel: { color: colors.muted, fontSize: font.xs, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" },
+  presetsLabel: {
+    color: colors.muted,
+    fontSize: font.xs,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
   preset: {
     display: "flex",
     flexDirection: "column",
@@ -286,8 +320,26 @@ const styles = stylex.create({
   },
   progress: { display: "flex", flexDirection: "column", gap: 6 },
   progressHead: { display: "flex", alignItems: "baseline", gap: space.sm },
-  progressPhase: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.sm },
-  track: { position: "relative", height: 4, borderRadius: radius.full, backgroundColor: colors.border, overflow: "hidden" },
+  progressPhase: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: font.sm,
+  },
+  track: {
+    position: "relative",
+    height: 4,
+    borderRadius: radius.full,
+    backgroundColor: colors.border,
+    overflow: "hidden",
+  },
   bar: { height: "100%", borderRadius: radius.full, backgroundColor: colors.accent, transition: "width 200ms" },
-  barBusy: { animationName: busy, animationDuration: "1.2s", animationIterationCount: "infinite", animationTimingFunction: "ease-in-out" },
+  barBusy: {
+    animationName: busy,
+    animationDuration: "1.2s",
+    animationIterationCount: "infinite",
+    animationTimingFunction: "ease-in-out",
+  },
 });

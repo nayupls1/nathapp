@@ -237,7 +237,13 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       .catch((err) => console.error("Enabling the extension's rulesets:", err));
     // Never holds the extension up for long.
     const settled = Promise.race([ready, new Promise((resolve) => setTimeout(resolve, 10_000))]);
-    for (const name of ["getEnabledRulesets", "updateEnabledRulesets", "updateStaticRules", "getDisabledRuleIds", "getAvailableStaticRuleCount"]) {
+    for (const name of [
+      "getEnabledRulesets",
+      "updateEnabledRulesets",
+      "updateStaticRules",
+      "getDisabledRuleIds",
+      "getAvailableStaticRuleCount",
+    ]) {
       const original = dnr[name];
       if (typeof original !== "function") continue;
       define(dnr, name, (...args: any[]) => {
@@ -252,7 +258,9 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       });
     }
   }
-  const permissions: string[] = [...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])].filter((p: unknown) => typeof p === "string");
+  const permissions: string[] = [...(manifest.permissions ?? []), ...(manifest.optional_permissions ?? [])].filter(
+    (p: unknown) => typeof p === "string",
+  );
   const has = (p: string) => permissions.includes(p);
   const base = `chrome-extension://${info.id}/`;
   const here = () => {
@@ -268,7 +276,10 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
 
   const ICON_SIZE = 32;
   const pickSize = (sizes: string[]) => {
-    const n = sizes.map(Number).filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+    const n = sizes
+      .map(Number)
+      .filter((x) => Number.isFinite(x))
+      .sort((a, b) => a - b);
     const best = n.find((x) => x >= ICON_SIZE) ?? n[n.length - 1];
     return best === undefined ? sizes[0] : String(best);
   };
@@ -333,7 +344,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   // --- chrome.tabs ---------------------------------------------------------------------------
 
   const nativeTabs: any = c.tabs ?? {};
-  const bindNative = (name: string) => (typeof nativeTabs[name] === "function" ? nativeTabs[name].bind(nativeTabs) : api(`tabs.${name}`));
+  const bindNative = (name: string) =>
+    typeof nativeTabs[name] === "function" ? nativeTabs[name].bind(nativeTabs) : api(`tabs.${name}`);
   const tabs = {
     TAB_ID_NONE: -1,
     TAB_INDEX_NONE: -1,
@@ -342,21 +354,33 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     getCurrent: api("tabs.getCurrent"),
     query: api("tabs.query", ([q]) => [q ?? {}]),
     create: api("tabs.create", ([p]) => [p ?? {}]),
-    update: api("tabs.update", (args) => (typeof args[0] === "number" ? [args[0], args[1] ?? {}] : [null, args[0] ?? {}])),
+    update: api("tabs.update", (args) =>
+      typeof args[0] === "number" ? [args[0], args[1] ?? {}] : [null, args[0] ?? {}],
+    ),
     remove: api("tabs.remove", ([ids]) => [Array.isArray(ids) ? ids : [ids]]),
-    reload: api("tabs.reload", (args) => (typeof args[0] === "number" ? [args[0], args[1] ?? {}] : [null, args[0] ?? {}])),
+    reload: api("tabs.reload", (args) =>
+      typeof args[0] === "number" ? [args[0], args[1] ?? {}] : [null, args[0] ?? {}],
+    ),
     duplicate: api("tabs.duplicate"),
     highlight: api("tabs.highlight", ([i]) => [i ?? {}]),
     move: api("tabs.move", ([ids, props]) => [Array.isArray(ids) ? ids : [ids], props ?? {}]),
     discard: api("tabs.get", ([id]) => [id ?? null]),
     goBack: api("tabs.goBack", ([id]) => [typeof id === "number" ? id : null]),
     goForward: api("tabs.goForward", ([id]) => [typeof id === "number" ? id : null]),
-    captureVisibleTab: api("tabs.captureVisibleTab", (args) => (typeof args[0] === "number" || args[0] == null ? [args[1] ?? {}] : [args[0] ?? {}])),
+    captureVisibleTab: api("tabs.captureVisibleTab", (args) =>
+      typeof args[0] === "number" || args[0] == null ? [args[1] ?? {}] : [args[0] ?? {}],
+    ),
     detectLanguage: resolved("und"),
     group: api("unsupported", () => ["tabs.group"]),
     ungroup: api("unsupported", () => ["tabs.ungroup"]),
-    getSelected: api("tabs.query", () => [{ active: true, currentWindow: true }], (list: any[]) => list[0]),
-    getAllInWindow: api("tabs.query", ([windowId]) => [typeof windowId === "number" ? { windowId } : { currentWindow: true }]),
+    getSelected: api(
+      "tabs.query",
+      () => [{ active: true, currentWindow: true }],
+      (list: any[]) => list[0],
+    ),
+    getAllInWindow: api("tabs.query", ([windowId]) => [
+      typeof windowId === "number" ? { windowId } : { currentWindow: true },
+    ]),
     sendMessage: bindNative("sendMessage"),
     connect: bindNative("connect"),
     executeScript: bindNative("executeScript"),
@@ -402,7 +426,11 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
 
   // --- chrome.commands ---------------------------------------------------------------------------
 
-  defineApi("commands", { getAll: api("commands.getAll"), onCommand: ev("commands.onCommand"), onChanged: ev("commands.onChanged") });
+  defineApi("commands", {
+    getAll: api("commands.getAll"),
+    onCommand: ev("commands.onCommand"),
+    onChanged: ev("commands.onChanged"),
+  });
 
   // --- chrome.contextMenus / chrome.menus ----------------------------------------------------------
 
@@ -439,7 +467,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
         }
         call("menus.create", { ...rest, id }).then(
           () => cb?.(),
-          (e) => (cb ? withLastError(e.message, () => cb()) : console.error(`Unchecked runtime.lastError: ${e.message}`)),
+          (e) =>
+            cb ? withLastError(e.message, () => cb()) : console.error(`Unchecked runtime.lastError: ${e.message}`),
         );
         return id;
       },
@@ -539,7 +568,9 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   if (has("nativeMessaging")) {
     define(c.runtime, "sendNativeMessage", api("native.send"));
     const ports = new Map<string, { onMessage: Ev; onDisconnect: Ev; port: any; open: boolean }>();
-    internal.set("native.message", ([id, message]) => ports.get(id)?.onMessage.dispatch([message, ports.get(id)!.port]));
+    internal.set("native.message", ([id, message]) =>
+      ports.get(id)?.onMessage.dispatch([message, ports.get(id)!.port]),
+    );
     internal.set("native.disconnect", ([id, error]) => {
       const p = ports.get(id);
       if (!p) return;
@@ -614,7 +645,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       for (const [key, value, test] of checks) if (typeof f[key] === "string" && !test(value, f[key])) return false;
       try {
         if (typeof f.urlMatches === "string" && !new RegExp(f.urlMatches).test(whole)) return false;
-        if (typeof f.originAndPathMatches === "string" && !new RegExp(f.originAndPathMatches).test(u.origin + path)) return false;
+        if (typeof f.originAndPathMatches === "string" && !new RegExp(f.originAndPathMatches).test(u.origin + path))
+          return false;
       } catch {
         return false;
       }
@@ -625,8 +657,19 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       }
       return true;
     };
-    const byUrl = (filter: any, args: any[]) => !Array.isArray(filter?.url) || filter.url.some((f: any) => urlMatches(f, args[0]?.url ?? ""));
-    const names = ["onBeforeNavigate", "onCommitted", "onDOMContentLoaded", "onCompleted", "onErrorOccurred", "onCreatedNavigationTarget", "onReferenceFragmentUpdated", "onHistoryStateUpdated", "onTabReplaced"];
+    const byUrl = (filter: any, args: any[]) =>
+      !Array.isArray(filter?.url) || filter.url.some((f: any) => urlMatches(f, args[0]?.url ?? ""));
+    const names = [
+      "onBeforeNavigate",
+      "onCommitted",
+      "onDOMContentLoaded",
+      "onCompleted",
+      "onErrorOccurred",
+      "onCreatedNavigationTarget",
+      "onReferenceFragmentUpdated",
+      "onHistoryStateUpdated",
+      "onTabReplaced",
+    ];
     const nav: any = { getFrame: api("nav.getFrame"), getAllFrames: api("nav.getAllFrames") };
     for (const n of names) nav[n] = ev(`webNavigation.${n}`, byUrl);
     defineApi("webNavigation", nav);
@@ -650,13 +693,23 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       const [, scheme, host, path = "/*"] = m as unknown as [string, string, string, string?];
       if (scheme === "*" ? !/^https?:$/.test(u.protocol) : u.protocol !== `${scheme.toLowerCase()}:`) return false;
       const h = host.toLowerCase().replace(/:\d+$/, "");
-      if (h !== "*" && !(h.startsWith("*.") ? u.hostname === h.slice(2) || u.hostname.endsWith(h.slice(1)) : u.hostname === h)) return false;
-      const re = new RegExp(`^${path.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
+      if (
+        h !== "*" &&
+        !(h.startsWith("*.") ? u.hostname === h.slice(2) || u.hostname.endsWith(h.slice(1)) : u.hostname === h)
+      )
+        return false;
+      const re = new RegExp(
+        `^${path
+          .split("*")
+          .map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+          .join(".*")}$`,
+      );
       return re.test(u.pathname + u.search);
     };
     const listeners: { fn: (...args: any[]) => any; filter: any; spec: string[] }[] = [];
     const wants = (filter: any, details: any) =>
-      (!Array.isArray(filter?.urls) || filter.urls.some((p: unknown) => typeof p === "string" && matches(p, details.url))) &&
+      (!Array.isArray(filter?.urls) ||
+        filter.urls.some((p: unknown) => typeof p === "string" && matches(p, details.url))) &&
       (!Array.isArray(filter?.types) || filter.types.includes(details.type)) &&
       (typeof filter?.tabId !== "number" || filter.tabId === details.tabId);
     // A listener's answer: through the callback (asyncBlocking), returned (blocking), or a promise.
@@ -728,7 +781,9 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       buttons: Array.isArray(o?.buttons) ? o.buttons.map((b: any) => ({ title: String(b?.title ?? "") })) : undefined,
     });
     defineApi("notifications", {
-      create: api("notifications.create", (args) => (typeof args[0] === "string" || args[0] == null ? [args[0] ?? "", options(args[1])] : ["", options(args[0])])),
+      create: api("notifications.create", (args) =>
+        typeof args[0] === "string" || args[0] == null ? [args[0] ?? "", options(args[1])] : ["", options(args[0])],
+      ),
       update: api("notifications.update", ([id, o]) => [id, options(o)]),
       clear: api("notifications.clear"),
       getAll: api("notifications.getAll"),
@@ -808,7 +863,16 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   }
 
   if (missing("bookmarks")) {
-    const tree = [{ id: "0", title: "", children: [{ id: "1", parentId: "0", index: 0, title: "Bookmarks bar", children: [] }, { id: "2", parentId: "0", index: 1, title: "Other bookmarks", children: [] }] }];
+    const tree = [
+      {
+        id: "0",
+        title: "",
+        children: [
+          { id: "1", parentId: "0", index: 0, title: "Bookmarks bar", children: [] },
+          { id: "2", parentId: "0", index: 1, title: "Other bookmarks", children: [] },
+        ],
+      },
+    ];
     defineApi("bookmarks", {
       MAX_WRITE_OPERATIONS_PER_HOUR: 1000000,
       MAX_SUSTAINED_WRITE_OPERATIONS_PER_MINUTE: 1000000,
@@ -823,7 +887,15 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       update: unavailable("bookmarks.update"),
       remove: unavailable("bookmarks.remove"),
       removeTree: unavailable("bookmarks.removeTree"),
-      ...quietEvents("onCreated", "onRemoved", "onChanged", "onMoved", "onChildrenReordered", "onImportBegan", "onImportEnded"),
+      ...quietEvents(
+        "onCreated",
+        "onRemoved",
+        "onChanged",
+        "onMoved",
+        "onChildrenReordered",
+        "onImportBegan",
+        "onImportEnded",
+      ),
     });
   }
   if (missing("history")) {
@@ -856,7 +928,17 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   if (missing("tabGroups")) {
     defineApi("tabGroups", {
       TAB_GROUP_ID_NONE: -1,
-      Color: { GREY: "grey", BLUE: "blue", RED: "red", YELLOW: "yellow", GREEN: "green", PINK: "pink", PURPLE: "purple", CYAN: "cyan", ORANGE: "orange" },
+      Color: {
+        GREY: "grey",
+        BLUE: "blue",
+        RED: "red",
+        YELLOW: "yellow",
+        GREEN: "green",
+        PINK: "pink",
+        PURPLE: "purple",
+        CYAN: "cyan",
+        ORANGE: "orange",
+      },
       get: unavailable("tabGroups.get"),
       query: resolved([]),
       update: unavailable("tabGroups.update"),
@@ -880,18 +962,41 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       getMinimumFontSize: size(0),
       setMinimumFontSize: resolved(undefined),
       clearMinimumFontSize: resolved(undefined),
-      ...quietEvents("onFontChanged", "onDefaultFontSizeChanged", "onDefaultFixedFontSizeChanged", "onMinimumFontSizeChanged"),
+      ...quietEvents(
+        "onFontChanged",
+        "onDefaultFontSizeChanged",
+        "onDefaultFixedFontSizeChanged",
+        "onMinimumFontSizeChanged",
+      ),
     });
   }
   if (missing("privacy")) {
     // Every setting reads as off and can't be changed (like one a policy controls).
-    const setting = (value: unknown) => ({ get: resolved({ value, levelOfControl: "not_controllable" }), set: resolved(undefined), clear: resolved(undefined), onChange: localEv() });
-    const group = (values: Record<string, unknown>) => new Proxy({} as Record<string, unknown>, { get: (t, k) => (typeof k === "string" ? (t[k] ??= setting(values[k] ?? false)) : undefined) });
+    const setting = (value: unknown) => ({
+      get: resolved({ value, levelOfControl: "not_controllable" }),
+      set: resolved(undefined),
+      clear: resolved(undefined),
+      onChange: localEv(),
+    });
+    const group = (values: Record<string, unknown>) =>
+      new Proxy({} as Record<string, unknown>, {
+        get: (t, k) => (typeof k === "string" ? (t[k] ??= setting(values[k] ?? false)) : undefined),
+      });
     defineApi("privacy", {
       network: group({ webRTCIPHandlingPolicy: "default" }),
       services: group({}),
-      websites: group({ thirdPartyCookiesAllowed: true, hyperlinkAuditingEnabled: true, referrersEnabled: true, protectedContentEnabled: true }),
-      IPHandlingPolicy: { DEFAULT: "default", DEFAULT_PUBLIC_AND_PRIVATE_INTERFACES: "default_public_and_private_interfaces", DEFAULT_PUBLIC_INTERFACE_ONLY: "default_public_interface_only", DISABLE_NON_PROXIED_UDP: "disable_non_proxied_udp" },
+      websites: group({
+        thirdPartyCookiesAllowed: true,
+        hyperlinkAuditingEnabled: true,
+        referrersEnabled: true,
+        protectedContentEnabled: true,
+      }),
+      IPHandlingPolicy: {
+        DEFAULT: "default",
+        DEFAULT_PUBLIC_AND_PRIVATE_INTERFACES: "default_public_and_private_interfaces",
+        DEFAULT_PUBLIC_INTERFACE_ONLY: "default_public_interface_only",
+        DISABLE_NON_PROXIED_UDP: "disable_non_proxied_udp",
+      },
     });
   }
   if (missing("identity")) {
@@ -931,15 +1036,25 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     if (has("system.cpu") && !system.cpu) defineOn(system, "cpu", { getInfo: api("system.cpu") });
     if (has("system.memory") && !system.memory) defineOn(system, "memory", { getInfo: api("system.memory") });
     if (has("system.display") && !system.display) {
-      defineOn(system, "display", { getInfo: api("system.display", () => []), getDisplayLayout: resolved([]), ...quietEvents("onDisplayChanged") });
+      defineOn(system, "display", {
+        getInfo: api("system.display", () => []),
+        getDisplayLayout: resolved([]),
+        ...quietEvents("onDisplayChanged"),
+      });
     }
     if (has("system.storage") && !system.storage) {
-      defineOn(system, "storage", { getInfo: resolved([]), ejectDevice: unavailable("system.storage.ejectDevice"), getAvailableCapacity: unavailable("system.storage.getAvailableCapacity"), ...quietEvents("onAttached", "onDetached") });
+      defineOn(system, "storage", {
+        getInfo: resolved([]),
+        ejectDevice: unavailable("system.storage.ejectDevice"),
+        getAvailableCapacity: unavailable("system.storage.getAvailableCapacity"),
+        ...quietEvents("onAttached", "onDetached"),
+      });
     }
   }
   if (missing("tabCapture")) {
     defineApi("tabCapture", {
-      capture: (_options: unknown, cb?: (stream: null) => void) => withLastError("tabCapture isn't available in Rune Browser", () => cb?.(null)),
+      capture: (_options: unknown, cb?: (stream: null) => void) =>
+        withLastError("tabCapture isn't available in Rune Browser", () => cb?.(null)),
       getMediaStreamId: unavailable("tabCapture.getMediaStreamId"),
       getCapturedTabs: resolved([]),
       ...quietEvents("onStatusChanged"),
@@ -957,7 +1072,13 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     });
   }
   if (missing("gcm")) {
-    defineApi("gcm", { MAX_MESSAGE_SIZE: 4096, register: unavailable("gcm.register"), unregister: resolved(undefined), send: unavailable("gcm.send"), ...quietEvents("onMessage", "onMessagesDeleted", "onSendError") });
+    defineApi("gcm", {
+      MAX_MESSAGE_SIZE: 4096,
+      register: unavailable("gcm.register"),
+      unregister: resolved(undefined),
+      send: unavailable("gcm.send"),
+      ...quietEvents("onMessage", "onMessagesDeleted", "onSendError"),
+    });
   }
   // Anything else it asks for that isn't there: functions fail, events never come.
   for (const name of permissions) {
@@ -967,7 +1088,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       new Proxy({} as Record<string, unknown>, {
         get: (t, k) => {
           if (typeof k !== "string" || k === "then") return undefined;
-          if (!(k in t)) t[k] = /^on[A-Z]/.test(k) ? localEv() : /^[A-Z_]+$/.test(k) ? undefined : unavailable(`${name}.${k}`);
+          if (!(k in t))
+            t[k] = /^on[A-Z]/.test(k) ? localEv() : /^[A-Z_]+$/.test(k) ? undefined : unavailable(`${name}.${k}`);
           return t[k];
         },
       }),
@@ -1001,7 +1123,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
   // their events don't come. Rune Browser's own side checks too (tabs' URLs,
   // native messaging…).
 
-  const blockedMessage = (permission: string) => `The '${permission}' permission is blocked for this extension in Rune Browser.`;
+  const blockedMessage = (permission: string) =>
+    `The '${permission}' permission is blocked for this extension in Rune Browser.`;
   const blockedOf = (perms: string[]) => (perms.every((p) => denied.has(p)) ? perms[0]! : null);
   const gated = new WeakSet<object>();
   const listenerWrappers = new WeakMap<(...args: any[]) => any, (...args: any[]) => any>();
@@ -1034,7 +1157,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
       return w;
     };
     defineOn(event, "addListener", (fn: (...args: any[]) => any, ...rest: any[]) => add(wrap(fn), ...rest));
-    if (remove) defineOn(event, "removeListener", (fn: (...args: any[]) => any) => remove(listenerWrappers.get(fn) ?? fn));
+    if (remove)
+      defineOn(event, "removeListener", (fn: (...args: any[]) => any) => remove(listenerWrappers.get(fn) ?? fn));
     if (hasOne) defineOn(event, "hasListener", (fn: (...args: any[]) => any) => hasOne(listenerWrappers.get(fn) ?? fn));
   };
 
@@ -1042,7 +1166,8 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
     if (!target || typeof target !== "object" || gated.has(target)) return;
     gated.add(target);
     const keys = new Set<string>();
-    for (let o = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o)) for (const k of Object.getOwnPropertyNames(o)) keys.add(k);
+    for (let o = target; o && o !== Object.prototype; o = Object.getPrototypeOf(o))
+      for (const k of Object.getOwnPropertyNames(o)) keys.add(k);
     for (const key of keys) {
       if (key === "constructor" || /^[A-Z]/.test(key)) continue;
       let value: any;
@@ -1101,7 +1226,11 @@ export function shim(bridge: ShimBridge, info: ShimInfo) {
 
   if (b && b !== c) {
     for (const [target, name, value] of defined) {
-      const key = target === c ? null : (apiNames.get(target) ?? ["runtime", "storage", "declarativeNetRequest", "extension", "webRequest"].find((k) => c[k] === target));
+      const key =
+        target === c
+          ? null
+          : (apiNames.get(target) ??
+            ["runtime", "storage", "declarativeNetRequest", "extension", "webRequest"].find((k) => c[k] === target));
       const other = key === null ? b : key ? b[key] : undefined;
       if (other && other !== target) defineOn(other, name, value);
     }

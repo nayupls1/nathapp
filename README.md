@@ -48,10 +48,10 @@ the same agent can hide, restyle or add things, and those changes stay.
 - **Nothing is lost.** Every change is a snapshot in History, with its diff,
   to undo or restore, including the app's data.
 
-| | |
-| --- | --- |
+|                                                                    |                                                                 |
+| ------------------------------------------------------------------ | --------------------------------------------------------------- |
 | ![An app with its agent and History](docs/screenshots/history.png) | ![Page changes on a website](docs/screenshots/page-changes.png) |
-| ![The mods gallery](docs/screenshots/mods-gallery.png) | |
+| ![The mods gallery](docs/screenshots/mods-gallery.png)             |                                                                 |
 
 ## Install
 
@@ -60,11 +60,11 @@ Get the latest release from the
 Rune Browser updates itself from there (Settings → About; a Beta channel gets
 pre-releases).
 
-| OS | Download | Notes |
-| --- | --- | --- |
-| **Linux** (x64) | `.AppImage` or `.deb` | Install [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) so apps run sandboxed (the deb recommends it). |
-| **Windows** (x64) | `-setup-x64.exe` | Not signed yet: on the SmartScreen warning, choose "More info" → "Run anyway". |
-| **macOS** (Apple Silicon) | `.dmg` | Supported but untested, and not signed yet: right-click → Open the first time. Updates are downloaded by hand. |
+| OS                        | Download              | Notes                                                                                                                   |
+| ------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Linux** (x64)           | `.AppImage` or `.deb` | Install [bubblewrap](https://github.com/containers/bubblewrap) (`bwrap`) so apps run sandboxed (the deb recommends it). |
+| **Windows** (x64)         | `-setup-x64.exe`      | Not signed yet: on the SmartScreen warning, choose "More info" → "Run anyway".                                          |
+| **macOS** (Apple Silicon) | `.dmg`                | Supported but untested, and not signed yet: right-click → Open the first time. Updates are downloaded by hand.          |
 
 Then install and sign in to at least one agent:
 

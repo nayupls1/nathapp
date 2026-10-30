@@ -2,7 +2,13 @@
 // which signs in with the user's own Claude login (subscription); API keys are
 // stripped from its environment so it never bills an API account.
 import { isAbsolute, relative, resolve } from "node:path";
-import { query, type CanUseTool, type Options, type SDKMessage, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type CanUseTool,
+  type Options,
+  type SDKMessage,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import { Effect } from "effect";
 import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
@@ -43,7 +49,9 @@ const inside = (root: string, path: string) => {
 const projectPolicy =
   (cwd: string): CanUseTool =>
   async (toolName, input) => {
-    const paths = ["file_path", "path", "notebook_path"].map((k) => input[k]).filter((v): v is string => typeof v === "string");
+    const paths = ["file_path", "path", "notebook_path"]
+      .map((k) => input[k])
+      .filter((v): v is string => typeof v === "string");
     if (paths.some((p) => !inside(cwd, p))) {
       return { behavior: "deny", message: `Stay inside the project folder (${cwd}).` };
     }
@@ -58,11 +66,20 @@ function promptWithFiles(input: TurnInput): string | AsyncIterable<SDKUserMessag
     const blocks: unknown[] = [];
     for (const file of files) {
       const data = Buffer.from(await Bun.file(file.path).arrayBuffer()).toString("base64");
-      if (file.mime === "application/pdf") blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data }, title: file.name });
+      if (file.mime === "application/pdf")
+        blocks.push({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data },
+          title: file.name,
+        });
       else blocks.push({ type: "image", source: { type: "base64", media_type: file.mime, data } });
     }
     blocks.push({ type: "text", text: input.prompt });
-    yield { type: "user", message: { role: "user", content: blocks }, parent_tool_use_id: null } as unknown as SDKUserMessage;
+    yield {
+      type: "user",
+      message: { role: "user", content: blocks },
+      parent_tool_use_id: null,
+    } as unknown as SDKUserMessage;
   })();
 }
 
@@ -87,7 +104,8 @@ export const ClaudeDriver: ProviderDriver = {
           defaultModel: null,
         };
       }
-      const version = (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim().split(" ")[0] ?? null;
+      const version =
+        (await runCommand(binary, ["--version"], { timeoutMs: 10_000 })).stdout.trim().split(" ")[0] ?? null;
       // A session that never receives a prompt: only used to ask for models and the account.
       const session = query({
         prompt: idlePrompt(),
@@ -101,8 +119,12 @@ export const ClaudeDriver: ProviderDriver = {
         },
       });
       try {
-        const [models, account] = await Promise.all([session.supportedModels(), session.accountInfo().catch(() => null)]);
-        const signedIn = !!account && (!!account.subscriptionType || !!account.tokenSource || account.apiProvider !== "firstParty");
+        const [models, account] = await Promise.all([
+          session.supportedModels(),
+          session.accountInfo().catch(() => null),
+        ]);
+        const signedIn =
+          !!account && (!!account.subscriptionType || !!account.tokenSource || account.apiProvider !== "firstParty");
         return {
           state: signedIn ? "ready" : "signed-out",
           version,
@@ -114,8 +136,17 @@ export const ClaudeDriver: ProviderDriver = {
             : "Sign in by running `claude` in a terminal and using /login.",
           models: models
             .filter((m) => m.value !== "default")
-            .map((m): ProviderModel => ({ id: m.value, name: m.displayName, description: m.description, efforts: m.supportedEffortLevels ?? [] })),
-          defaultModel: models.find((m) => m.value === "default")?.description?.match(/\b(opus|sonnet|haiku|fable)\b/i)?.[1]?.toLowerCase() ?? null,
+            .map((m): ProviderModel => ({
+              id: m.value,
+              name: m.displayName,
+              description: m.description,
+              efforts: m.supportedEffortLevels ?? [],
+            })),
+          defaultModel:
+            models
+              .find((m) => m.value === "default")
+              ?.description?.match(/\b(opus|sonnet|haiku|fable)\b/i)?.[1]
+              ?.toLowerCase() ?? null,
         };
       } finally {
         session.close();
@@ -147,7 +178,9 @@ export const ClaudeDriver: ProviderDriver = {
         resume: input.resume ?? undefined,
         // The website agent only gets Rune Browser's tools (pages, customizations), AI requests none.
         ...(workspace ? {} : { tools: [] }),
-        mcpServers: input.mcp ? { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } } : {},
+        mcpServers: input.mcp
+          ? { [input.mcp.name]: { type: "http", url: input.mcp.url, headers: input.mcp.headers } }
+          : {},
         strictMcpConfig: true, // no MCP servers from the user's own config
         settingSources: [], // ignore the user's CLAUDE.md, skills, settings
         ...(input.ephemeral ? { persistSession: false, maxTurns: 1 } : {}),
@@ -168,7 +201,8 @@ export const ClaudeDriver: ProviderDriver = {
           emit({ type: "session", id: msg.session_id });
         } else if (msg.type === "stream_event") {
           const ev = msg.event;
-          if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") emit({ type: "delta", text: ev.delta.text });
+          if (ev.type === "content_block_delta" && ev.delta.type === "text_delta")
+            emit({ type: "delta", text: ev.delta.text });
         } else if (msg.type === "assistant") {
           for (const block of msg.message.content) {
             if (block.type !== "tool_use") continue;

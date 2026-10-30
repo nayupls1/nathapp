@@ -12,9 +12,14 @@ import { Button } from "./ui";
 const PAGE = 50;
 
 const size = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  bytes < 1024
+    ? `${bytes} B`
+    : bytes < 1024 * 1024
+      ? `${(bytes / 1024).toFixed(1)} KB`
+      : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-const show = (value: unknown) => (value === null || value === undefined ? "NULL" : typeof value === "object" ? JSON.stringify(value) : String(value));
+const show = (value: unknown) =>
+  value === null || value === undefined ? "NULL" : typeof value === "object" ? JSON.stringify(value) : String(value);
 
 export function DataPanel(props: { appId: string; onClose: () => void }) {
   const [version, setVersion] = createSignal(0);
@@ -38,10 +43,11 @@ export function DataPanel(props: { appId: string; onClose: () => void }) {
 
   const [rows] = createResource(
     () => (table() ? ([props.appId, table()!, search(), offset(), version()] as const) : undefined),
-    ([id, name, text, from]) => api.appDataRows(id, name, { offset: from, limit: PAGE, search: text.trim() || undefined }).catch((err: Error) => {
-      setError(err.message);
-      return undefined;
-    }),
+    ([id, name, text, from]) =>
+      api.appDataRows(id, name, { offset: from, limit: PAGE, search: text.trim() || undefined }).catch((err: Error) => {
+        setError(err.message);
+        return undefined;
+      }),
   );
 
   const empty = () => !!overview() && !overview()!.tables.length && !overview()!.files.count;
@@ -96,16 +102,36 @@ export function DataPanel(props: { appId: string; onClose: () => void }) {
         <span {...stylex.attrs(styles.panelTitle)}>Data</span>
         <Show when={overview()}>
           <span {...stylex.attrs(styles.meta)}>
-            database {size(overview()!.databaseBytes)} · {overview()!.files.count} files ({size(overview()!.files.bytes)})
+            database {size(overview()!.databaseBytes)} · {overview()!.files.count} files (
+            {size(overview()!.files.bytes)})
           </span>
         </Show>
-        <button type="button" title="Refresh" onClick={() => setVersion((v) => v + 1)} {...stylex.attrs(styles.iconButton)}>
+        <button
+          type="button"
+          title="Refresh"
+          onClick={() => setVersion((v) => v + 1)}
+          {...stylex.attrs(styles.iconButton)}
+        >
           <Icon name="refresh-cw" size={14} />
         </button>
-        <button type="button" title="Export (.tar.gz)" disabled={busy()} onClick={() => void exportData()} {...stylex.attrs(styles.iconButton)} data-export-data>
+        <button
+          type="button"
+          title="Export (.tar.gz)"
+          disabled={busy()}
+          onClick={() => void exportData()}
+          {...stylex.attrs(styles.iconButton)}
+          data-export-data
+        >
           <Icon name="download" size={14} />
         </button>
-        <button type="button" title="Delete all data" disabled={busy()} onClick={() => void deleteData()} {...stylex.attrs(styles.iconButton)} data-delete-data>
+        <button
+          type="button"
+          title="Delete all data"
+          disabled={busy()}
+          onClick={() => void deleteData()}
+          {...stylex.attrs(styles.iconButton)}
+          data-delete-data
+        >
           <Icon name="trash" size={14} />
         </button>
         <button type="button" title="Close" onClick={props.onClose} {...stylex.attrs(styles.iconButton)}>
@@ -118,8 +144,9 @@ export function DataPanel(props: { appId: string; onClose: () => void }) {
         </Show>
         <Show when={empty()}>
           <p {...stylex.attrs(styles.note)} data-data-empty>
-            This app hasn't stored anything yet. Its database (<code>DATABASE_PATH</code>) and files (<code>RUNE_FILES_DIR</code>) are kept by
-            Rune Browser outside the project, so rebuilds and resets don't touch them.
+            This app hasn't stored anything yet. Its database (<code>DATABASE_PATH</code>) and files (
+            <code>RUNE_FILES_DIR</code>) are kept by Rune Browser outside the project, so rebuilds and resets don't
+            touch them.
           </p>
         </Show>
         <Show when={overview()?.tables.length}>
@@ -128,7 +155,12 @@ export function DataPanel(props: { appId: string; onClose: () => void }) {
               {(t) => {
                 const active = () => table() === t.name;
                 return (
-                  <button type="button" onClick={() => setTable(t.name)} {...stylex.attrs(styles.tab, active() && styles.tabOn)} data-data-table={t.name}>
+                  <button
+                    type="button"
+                    onClick={() => setTable(t.name)}
+                    {...stylex.attrs(styles.tab, active() && styles.tabOn)}
+                    data-data-table={t.name}
+                  >
                     {t.name}
                     <span {...stylex.attrs(styles.count)}>{t.rows}</span>
                   </button>
@@ -205,10 +237,34 @@ const styles = stylex.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  panelHeader: { display: "flex", alignItems: "center", gap: 6, height: 34, flexShrink: 0, paddingInline: space.md, color: colors.muted },
+  panelHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    flexShrink: 0,
+    paddingInline: space.md,
+    color: colors.muted,
+  },
   panelTitle: { fontSize: font.xs, fontWeight: 600 },
-  panelBody: { display: "flex", flexDirection: "column", gap: space.sm, minHeight: 0, overflowY: "auto", paddingInline: space.md, paddingBottom: space.md },
-  meta: { flex: 1, minWidth: 0, color: colors.muted, fontSize: font.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  panelBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.sm,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingInline: space.md,
+    paddingBottom: space.md,
+  },
+  meta: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.muted,
+    fontSize: font.xs,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   note: { margin: 0, color: colors.muted, fontSize: font.xs, lineHeight: 1.5 },
   error: { margin: 0, color: colors.danger, fontSize: font.xs },
   iconButton: {

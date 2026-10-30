@@ -145,7 +145,8 @@ export interface RuneBridge {
 
 export const WEB_PARTITION = "persist:web";
 /** Web tabs of each workspace get their own session (cookies, logins); the first workspace keeps the original one. */
-export const webPartition = (workspaceId: string) => (workspaceId === DEFAULT_WORKSPACE ? WEB_PARTITION : `persist:web-${workspaceId}`);
+export const webPartition = (workspaceId: string) =>
+  workspaceId === DEFAULT_WORKSPACE ? WEB_PARTITION : `persist:web-${workspaceId}`;
 export const WEB_PARTITION_PATTERN = /^persist:web(-[\w-]+)?$/;
 /** Each app's preview gets its own session: apps all live on 127.0.0.1, and cookies don't separate ports. */
 export const appPartition = (appId: string) => `persist:app-${appId}`;
@@ -218,7 +219,8 @@ export interface ProviderStatus {
  * provider's default.
  */
 export const defaultAppModel = (status: Pick<ProviderStatus, "models" | "defaultModel">): string | null =>
-  (status.models.find((m) => m.id === "haiku") ?? status.models.find((m) => /haiku/i.test(m.id)))?.id ?? status.defaultModel;
+  (status.models.find((m) => m.id === "haiku") ?? status.models.find((m) => /haiku/i.test(m.id)))?.id ??
+  status.defaultModel;
 
 export interface AgentChoice {
   provider: ProviderId;
@@ -271,7 +273,8 @@ export function normalizeSplits(splits: readonly TabSplit[], tabIds: readonly st
   for (const split of splits) {
     const panes: { id: string; size: number | undefined }[] = [];
     split.tabs.forEach((id, i) => {
-      if (panes.length < SPLIT_MAX_TABS && known.has(id) && !used.has(id) && !panes.some((p) => p.id === id)) panes.push({ id, size: split.sizes[i] });
+      if (panes.length < SPLIT_MAX_TABS && known.has(id) && !used.has(id) && !panes.some((p) => p.id === id))
+        panes.push({ id, size: split.sizes[i] });
     });
     if (panes.length < 2) continue;
     for (const p of panes) used.add(p.id);
@@ -314,12 +317,15 @@ export interface AppSummary {
 }
 
 /** A tab's own icon as an image: a base64 data URL. */
-export const isImageIcon = (icon: string | null | undefined): icon is string => !!icon && icon.startsWith("data:image/");
+export const isImageIcon = (icon: string | null | undefined): icon is string =>
+  !!icon && icon.startsWith("data:image/");
 /** Image icons are small (the UI scales uploads to 64px); this bounds what the API takes. */
 export const IMAGE_ICON_MAX = 150_000;
-export const IMAGE_ICON_PATTERN = /^data:image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/;
+export const IMAGE_ICON_PATTERN =
+  /^data:image\/(png|jpeg|gif|webp|svg\+xml|x-icon|vnd\.microsoft\.icon);base64,[A-Za-z0-9+/]+={0,2}$/;
 /** An emoji (or a few), shown as text. */
-export const isEmojiIcon = (icon: string) => icon.length <= 16 && /\p{Extended_Pictographic}/u.test(icon) && !/[\s<>]/.test(icon);
+export const isEmojiIcon = (icon: string) =>
+  icon.length <= 16 && /\p{Extended_Pictographic}/u.test(icon) && !/[\s<>]/.test(icon);
 
 export interface AppDetail extends AppSummary {
   messages: ChatMessage[];
@@ -516,7 +522,8 @@ export interface ContextSource {
 }
 
 /** What the agents' DevTools can do on a page (main/devtools.ts). */
-export type DevtoolsCommand = "console" | "metrics" | "trace" | "accessibility" | "styles" | "storage" | "coverage" | "emulate" | "screenshot";
+export type DevtoolsCommand =
+  "console" | "metrics" | "trace" | "accessibility" | "styles" | "storage" | "coverage" | "emulate" | "screenshot";
 
 /** A shell app commands can run in (Settings → Apps). path: null for Bun's built-in shell. */
 export interface ShellInfo {
@@ -589,7 +596,10 @@ export interface SharedTab {
  * Web pages and website agents' replies are untrusted: they only go to website
  * agents, never to an app builder (it has file and shell tools).
  */
-export function shareRefusal(recipient: Pick<AppSummary, "id" | "kind" | "workspaceId">, source: Pick<AppSummary, "id" | "kind" | "workspaceId" | "name"> | null | undefined) {
+export function shareRefusal(
+  recipient: Pick<AppSummary, "id" | "kind" | "workspaceId">,
+  source: Pick<AppSummary, "id" | "kind" | "workspaceId" | "name"> | null | undefined,
+) {
   if (!source) return "That tab doesn't exist anymore.";
   if (source.id === recipient.id) return "That's this tab itself.";
   if (source.workspaceId !== recipient.workspaceId) return `“${source.name}” is in another workspace.`;
@@ -709,7 +719,8 @@ export interface PageChange extends PageChangeSpec {
  * or on an event: "rune.started", "app.started:<appId>",
  * "app.crashed:<appId>", or one an app sends ("app:<appId>:<name>").
  */
-export type ScheduleTrigger = { type: "once"; at: string } | { type: "cron"; cron: string } | { type: "event"; event: string };
+export type ScheduleTrigger =
+  { type: "once"; at: string } | { type: "cron"; cron: string } | { type: "event"; event: string };
 
 /**
  * What a schedule does: use one of an app's tools, run a command in its
@@ -767,7 +778,8 @@ export interface ScheduleRun {
 export type SecretScope = "global" | `workspace:${string}` | (string & {});
 
 export const workspaceScope = (workspaceId: string) => `workspace:${workspaceId}` as const;
-export const workspaceOfScope = (scope: string) => (scope.startsWith("workspace:") ? scope.slice("workspace:".length) : null);
+export const workspaceOfScope = (scope: string) =>
+  scope.startsWith("workspace:") ? scope.slice("workspace:".length) : null;
 
 /** A secret without its value: values never leave the server once saved. */
 export interface SecretInfo {
@@ -796,7 +808,20 @@ export const SECRET_NAME_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/;
 /** Names Rune Browser sets itself (or that would break app processes). */
 export const isReservedSecretName = (name: string) =>
   /^(RUNE_|BUN_|NODE_|NPM_|LD_|DYLD_)/.test(name) ||
-  ["PORT", "HOST", "APP_URL", "DATABASE_PATH", "DATABASE_URL", "PATH", "HOME", "TMPDIR", "LANG", "NO_COLOR", "SHELL", "USER"].includes(name);
+  [
+    "PORT",
+    "HOST",
+    "APP_URL",
+    "DATABASE_PATH",
+    "DATABASE_URL",
+    "PATH",
+    "HOME",
+    "TMPDIR",
+    "LANG",
+    "NO_COLOR",
+    "SHELL",
+    "USER",
+  ].includes(name);
 
 // --- Network (web tabs' traffic) ---------------------------------------------------
 
@@ -914,7 +939,18 @@ export interface NetworkRule {
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
  * app.data: an app reads another app's data (resource: that app's id).
  */
-export type PermissionAction = "app.ai" | "app.secret" | "agent.site" | "agent.network" | "app.data" | "app.tool" | "agent.schedule" | "agent.tab" | "agent.browse" | "agent.confirm" | "agent.source";
+export type PermissionAction =
+  | "app.ai"
+  | "app.secret"
+  | "agent.site"
+  | "agent.network"
+  | "app.data"
+  | "app.tool"
+  | "agent.schedule"
+  | "agent.tab"
+  | "agent.browse"
+  | "agent.confirm"
+  | "agent.source";
 
 export interface PermissionGrant {
   id: number;

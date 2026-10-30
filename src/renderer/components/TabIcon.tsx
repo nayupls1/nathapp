@@ -14,14 +14,23 @@ import { toast } from "./Toast";
 export function TabIcon(props: { tab: Pick<AppSummary, "kind" | "icon" | "favicon">; size?: number }) {
   const size = () => props.size ?? 16;
   const fallback = () =>
-    props.tab.kind === "web" ? <Favicon url={props.tab.favicon} size={size()} /> : <Icon name="app-window" size={size()} {...stylex.attrs(styles.icon)} />;
+    props.tab.kind === "web" ? (
+      <Favicon url={props.tab.favicon} size={size()} />
+    ) : (
+      <Icon name="app-window" size={size()} {...stylex.attrs(styles.icon)} />
+    );
   return (
     <Show when={props.tab.icon} fallback={fallback()}>
       {(icon) => (
         <Show
           when={isImageIcon(icon())}
           fallback={
-            <Icon name={icon()} size={size()} {...stylex.attrs(styles.icon)} fallback={<span {...stylex.attrs(styles.icon, styles.text)}>{icon()}</span>} />
+            <Icon
+              name={icon()}
+              size={size()}
+              {...stylex.attrs(styles.icon)}
+              fallback={<span {...stylex.attrs(styles.icon, styles.text)}>{icon()}</span>}
+            />
           }
         >
           <img src={icon()} alt="" width={size()} height={size()} {...stylex.attrs(styles.image)} data-tab-icon-image />
@@ -34,19 +43,64 @@ export function TabIcon(props: { tab: Pick<AppSummary, "kind" | "icon" | "favico
 function Favicon(props: { url: string | null; size: number }) {
   const [broken, setBroken] = createSignal<string | null>(null);
   return (
-    <Show when={props.url && broken() !== props.url} fallback={<Icon name="globe" size={props.size} {...stylex.attrs(styles.icon)} />}>
-      <img src={props.url!} alt="" width={props.size} height={props.size} onError={() => setBroken(props.url)} {...stylex.attrs(styles.image)} />
+    <Show
+      when={props.url && broken() !== props.url}
+      fallback={<Icon name="globe" size={props.size} {...stylex.attrs(styles.icon)} />}
+    >
+      <img
+        src={props.url!}
+        alt=""
+        width={props.size}
+        height={props.size}
+        onError={() => setBroken(props.url)}
+        {...stylex.attrs(styles.image)}
+      />
     </Show>
   );
 }
 
 /** Shown before anything is typed. */
 const suggestions = [
-  "app-window", "layout-dashboard", "list-todo", "notebook-pen", "calendar", "wallet", "chart-line", "shopping-cart",
-  "book-open", "music", "image", "camera", "mail", "message-circle", "users", "briefcase",
-  "house", "heart", "star", "flame", "rocket", "sparkles", "lightbulb", "target",
-  "globe", "code", "terminal", "database", "bot", "gamepad-2", "dumbbell", "utensils",
-  "plane", "map", "graduation-cap", "palette", "leaf", "coffee", "film", "newspaper",
+  "app-window",
+  "layout-dashboard",
+  "list-todo",
+  "notebook-pen",
+  "calendar",
+  "wallet",
+  "chart-line",
+  "shopping-cart",
+  "book-open",
+  "music",
+  "image",
+  "camera",
+  "mail",
+  "message-circle",
+  "users",
+  "briefcase",
+  "house",
+  "heart",
+  "star",
+  "flame",
+  "rocket",
+  "sparkles",
+  "lightbulb",
+  "target",
+  "globe",
+  "code",
+  "terminal",
+  "database",
+  "bot",
+  "gamepad-2",
+  "dumbbell",
+  "utensils",
+  "plane",
+  "map",
+  "graduation-cap",
+  "palette",
+  "leaf",
+  "coffee",
+  "film",
+  "newspaper",
 ];
 const emojis = ["😀", "🚀", "✨", "🔥", "📚", "📝", "💰", "📈", "🛒", "🎵", "🎮", "🏠", "❤️", "⭐", "🌱", "☕"];
 
@@ -77,7 +131,12 @@ async function toIconImage(file: File): Promise<string> {
 
 /** Picks a tab's icon: a Lucide icon (searchable), an emoji, an uploaded image, or the default. */
 /** Picks a tab's own icon (Lucide, emoji or an uploaded image), or a workspace's (Lucide or emoji). */
-export function IconPicker(props: { tab?: AppSummary; workspace?: WorkspaceInfo; position: { x: number; y: number }; onClose: () => void }) {
+export function IconPicker(props: {
+  tab?: AppSummary;
+  workspace?: WorkspaceInfo;
+  position: { x: number; y: number };
+  onClose: () => void;
+}) {
   let root!: HTMLDivElement;
   let fileInput!: HTMLInputElement;
   const [query, setQuery] = createSignal("");
@@ -86,7 +145,9 @@ export function IconPicker(props: { tab?: AppSummary; workspace?: WorkspaceInfo;
 
   const typed = () => query().trim();
   const typedEmoji = () => (isEmojiIcon(typed()) ? typed() : null);
-  const results = createMemo(() => (typed() ? rankIcons(iconTags, typed(), 48) : suggestions).filter((name) => iconFor(name)));
+  const results = createMemo(() =>
+    (typed() ? rankIcons(iconTags, typed(), 48) : suggestions).filter((name) => iconFor(name)),
+  );
 
   const choose = async (icon: string | null) => {
     setBusy(true);
@@ -151,7 +212,20 @@ export function IconPicker(props: { tab?: AppSummary; workspace?: WorkspaceInfo;
       >
         <div {...stylex.attrs(styles.header)}>
           <span {...stylex.attrs(styles.preview)}>
-            <Show when={props.tab} fallback={<Icon name={currentIcon()} size={18} fallback={<span {...stylex.attrs(styles.text)}>{currentIcon() ?? props.workspace?.name.charAt(0).toUpperCase()}</span>} />}>
+            <Show
+              when={props.tab}
+              fallback={
+                <Icon
+                  name={currentIcon()}
+                  size={18}
+                  fallback={
+                    <span {...stylex.attrs(styles.text)}>
+                      {currentIcon() ?? props.workspace?.name.charAt(0).toUpperCase()}
+                    </span>
+                  }
+                />
+              }
+            >
               {(tab) => <TabIcon tab={tab()} size={18} />}
             </Show>
           </span>
@@ -217,15 +291,31 @@ export function IconPicker(props: { tab?: AppSummary; workspace?: WorkspaceInfo;
         </Show>
         <div {...stylex.attrs(styles.footer)}>
           <Show when={props.tab}>
-            <button type="button" disabled={busy()} onClick={() => fileInput.click()} {...stylex.attrs(styles.action)} data-icon-upload>
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={() => fileInput.click()}
+              {...stylex.attrs(styles.action)}
+              data-icon-upload
+            >
               <Icon name="upload" size={14} />
               Upload image…
             </button>
           </Show>
           <Show when={currentIcon()}>
-            <button type="button" disabled={busy()} onClick={() => void choose(null)} {...stylex.attrs(styles.action)} data-icon-reset>
+            <button
+              type="button"
+              disabled={busy()}
+              onClick={() => void choose(null)}
+              {...stylex.attrs(styles.action)}
+              data-icon-reset
+            >
               <Icon name="rotate-ccw" size={14} />
-              {props.workspace ? "Use its initial" : props.tab?.kind === "web" ? "Use the site's icon" : "Use the default"}
+              {props.workspace
+                ? "Use its initial"
+                : props.tab?.kind === "web"
+                  ? "Use the site's icon"
+                  : "Use the default"}
             </button>
           </Show>
         </div>

@@ -10,7 +10,7 @@ import { checkParams, dataTools } from "../src/server/workspace/AppTools";
 import { startServer } from "./lib/server";
 import { writesVariable } from "./lib/apps";
 
-const waitFor = async <T,>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
+const waitFor = async <T>(fn: () => T | undefined | Promise<T | undefined>, ms = 10_000): Promise<T> => {
   const deadline = Date.now() + ms;
   for (;;) {
     const value = await fn();
@@ -41,7 +41,10 @@ describe("derived tools", () => {
       ["delete-expense-items", false],
     ]);
     const add = tools.find((t) => t.op === "add")!;
-    expect(add.params).toEqual({ label: { type: "string", description: "TEXT", required: true }, amount: { type: "number", description: "REAL" } });
+    expect(add.params).toEqual({
+      label: { type: "string", description: "TEXT", required: true },
+      amount: { type: "number", description: "REAL" },
+    });
     expect(tools.find((t) => t.op === "update")!.params.id).toMatchObject({ type: "integer", required: true });
     expect(dataTools(table, "read").map((t) => t.op)).toEqual(["list", "get"]);
     expect(dataTools({ ...table, name: "_migrations" }, "all")).toEqual([]);
@@ -104,9 +107,19 @@ describe("tool registry", () => {
         dev: "bun action.ts",
         start: "bun action.ts",
         actions: [
-          { id: "total", title: "Monthly total", endpoint: "/api/total", params: { month: { type: "string", required: true, description: "YYYY-MM" } } },
+          {
+            id: "total",
+            title: "Monthly total",
+            endpoint: "/api/total",
+            params: { month: { type: "string", required: true, description: "YYYY-MM" } },
+          },
           // Replaces the derived delete-expenses.
-          { id: "delete-expenses", title: "Delete an expense", endpoint: "/api/delete", params: { id: { type: "integer", required: true } } },
+          {
+            id: "delete-expenses",
+            title: "Delete an expense",
+            endpoint: "/api/delete",
+            params: { id: { type: "integer", required: true } },
+          },
           { id: "report", title: "Report", path: "/report" },
         ],
       }),
@@ -143,10 +156,19 @@ describe("tool registry", () => {
 
   test("the user runs data tools: add, list, get, update", async () => {
     const added = await call(budget, "add-expenses", { label: "Books", amount: "31" });
-    expect(added).toMatchObject({ ok: true, message: "Added a row to expenses", data: { id: 3, label: "Books", amount: 31 } });
-    expect(await call(budget, "list-expenses", { search: "rai" })).toMatchObject({ ok: true, data: { total: 1, rows: [{ label: "Train" }] } });
+    expect(added).toMatchObject({
+      ok: true,
+      message: "Added a row to expenses",
+      data: { id: 3, label: "Books", amount: 31 },
+    });
+    expect(await call(budget, "list-expenses", { search: "rai" })).toMatchObject({
+      ok: true,
+      data: { total: 1, rows: [{ label: "Train" }] },
+    });
     expect(await call(budget, "get-expenses", { id: 1 })).toMatchObject({ data: { label: "Lunch" } });
-    expect(await call(budget, "update-expenses", { id: 1, amount: 13 })).toMatchObject({ data: { label: "Lunch", amount: 13 } });
+    expect(await call(budget, "update-expenses", { id: 1, amount: 13 })).toMatchObject({
+      data: { label: "Lunch", amount: 13 },
+    });
     expect(await call(budget, "get-expenses", { id: 99 })).toMatchObject({ ok: false, status: 404 });
     await expect(call(budget, "add-expenses", { amount: 1 })).rejects.toThrow("400 ");
     await expect(call(budget, "list-expenses", { colour: "red" })).rejects.toThrow("400 ");
@@ -156,12 +178,21 @@ describe("tool registry", () => {
 
   test("an action gets the params and who's calling; its JSON comes back", async () => {
     const result = await call(budget, "total", { month: "2026-10" });
-    expect(result).toEqual({ ok: true, status: 200, message: "Total for 2026-10", data: { message: "Total for 2026-10", total: 42, caller: "user" } });
-    expect(await call(budget, "delete-expenses", { id: 1 })).toMatchObject({ message: "Deleting is done by the app itself" });
+    expect(result).toEqual({
+      ok: true,
+      status: 200,
+      message: "Total for 2026-10",
+      data: { message: "Total for 2026-10", total: 42, caller: "user" },
+    });
+    expect(await call(budget, "delete-expenses", { id: 1 })).toMatchObject({
+      message: "Deleting is done by the app itself",
+    });
   });
 
   test("another app discovers the workspace's tools and uses them only after the user allows it", async () => {
-    const catalog = (await (await fetch(`${server.url}/app-api/v1/tools`, { headers: { Authorization: `Bearer ${otherToken}` } })).json()) as (AppToolsInfo & {
+    const catalog = (await (
+      await fetch(`${server.url}/app-api/v1/tools`, { headers: { Authorization: `Bearer ${otherToken}` } })
+    ).json()) as (AppToolsInfo & {
       self: boolean;
     })[];
     const entry = catalog.find((c) => c.appId === budget.id)!;
@@ -194,11 +225,12 @@ describe("tool registry", () => {
   test("dataTools in rune.json turns the derived ones down", async () => {
     const manifest = JSON.parse(readFileSync(join(projectOf(budget), "rune.json"), "utf8"));
     writeFileSync(join(projectOf(budget), "rune.json"), JSON.stringify({ ...manifest, dataTools: "read" }));
-    expect((await server.api<AppTool[]>(`/api/apps/${budget.id}/tools`)).filter((t) => t.source === "data").map((t) => t.id)).toEqual([
-      "list-expenses",
-      "get-expenses",
-    ]);
+    expect(
+      (await server.api<AppTool[]>(`/api/apps/${budget.id}/tools`)).filter((t) => t.source === "data").map((t) => t.id),
+    ).toEqual(["list-expenses", "get-expenses"]);
     writeFileSync(join(projectOf(budget), "rune.json"), JSON.stringify({ ...manifest, dataTools: "none" }));
-    expect((await server.api<AppTool[]>(`/api/apps/${budget.id}/tools`)).filter((t) => t.source === "data")).toEqual([]);
+    expect((await server.api<AppTool[]>(`/api/apps/${budget.id}/tools`)).filter((t) => t.source === "data")).toEqual(
+      [],
+    );
   });
 });

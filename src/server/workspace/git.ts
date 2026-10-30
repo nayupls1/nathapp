@@ -13,7 +13,10 @@ import { agentEnv } from "../providers/process";
  * without a scheme and GitHub's owner/repo. null when it isn't one; local
  * paths and file:// links are for "Import a folder".
  */
-export function parseGitSource(input: string, branch?: string): { url: string; branch: string | null; name: string } | null {
+export function parseGitSource(
+  input: string,
+  branch?: string,
+): { url: string; branch: string | null; name: string } | null {
   let text = input.trim();
   let ref = branch?.trim() || null;
   if (!text || /\s/.test(text)) return null;
@@ -52,9 +55,15 @@ export interface GitProgress {
 
 /** git's progress lines ("Receiving objects:  45% (450/1000), 1.20 MiB | 2.00 MiB/s") as a phase and a percentage. */
 export function parseGitProgress(line: string): GitProgress | null {
-  const match = /^(?:remote: )?([A-Z][\w ]+?):\s+(\d{1,3})%(?:\s+\(\d+\/\d+\))?(?:,\s*(.+))?$/.exec(line.trim().replace(/,? done\.?$/, ""));
+  const match = /^(?:remote: )?([A-Z][\w ]+?):\s+(\d{1,3})%(?:\s+\(\d+\/\d+\))?(?:,\s*(.+))?$/.exec(
+    line.trim().replace(/,? done\.?$/, ""),
+  );
   if (!match) return null;
-  const detail = match[3]?.split("|").map((part) => part.trim()).filter(Boolean).join(" · ");
+  const detail = match[3]
+    ?.split("|")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" · ");
   return { phase: detail ? `${match[1]} (${detail})` : match[1]!, percent: Math.min(100, Number(match[2])) };
 }
 
@@ -65,9 +74,11 @@ export function cloneError(output: string) {
   if (/could not read Username|Authentication failed|terminal prompts disabled/i.test(output)) {
     return `${text}. If it's private, sign in to Git on this computer first (for GitHub: gh auth login) or use an SSH link.`;
   }
-  if (/Permission denied \(publickey\)|Host key verification failed/i.test(output)) return `${text}. Your SSH key isn't set up for this host (or needs a passphrase: add it to ssh-agent).`;
+  if (/Permission denied \(publickey\)|Host key verification failed/i.test(output))
+    return `${text}. Your SSH key isn't set up for this host (or needs a passphrase: add it to ssh-agent).`;
   if (/Remote branch .* not found/i.test(output)) return text;
-  if (/not found|does not exist/i.test(text)) return `${text}. Check the link (private repositories need you to be signed in to Git).`;
+  if (/not found|does not exist/i.test(text))
+    return `${text}. Check the link (private repositories need you to be signed in to Git).`;
   return text;
 }
 
@@ -93,7 +104,13 @@ export interface GitResult {
  */
 export const runGit = (
   args: string[],
-  options: { cwd?: string; noHooks: string; onProgress?: (p: GitProgress) => void; cancelKey?: string; timeoutMs?: number },
+  options: {
+    cwd?: string;
+    noHooks: string;
+    onProgress?: (p: GitProgress) => void;
+    cancelKey?: string;
+    timeoutMs?: number;
+  },
 ) =>
   Effect.callback<GitResult>((resume) => {
     let proc: ReturnType<typeof Bun.spawn>;
@@ -114,7 +131,14 @@ export const runGit = (
         windowsHide: true,
       });
     } catch {
-      resume(Effect.succeed({ code: -1, err: "git isn't installed (or not on Rune Browser's PATH)", out: "", cancelled: false }));
+      resume(
+        Effect.succeed({
+          code: -1,
+          err: "git isn't installed (or not on Rune Browser's PATH)",
+          out: "",
+          cancelled: false,
+        }),
+      );
       return;
     }
     let cancelled = false;
@@ -146,7 +170,11 @@ export const runGit = (
       if (buffer.trim()) lines.push(buffer.trim());
     };
     void (async () => {
-      const [, out, code] = await Promise.all([readErr(), new Response(proc.stdout as ReadableStream<Uint8Array>).text(), proc.exited]);
+      const [, out, code] = await Promise.all([
+        readErr(),
+        new Response(proc.stdout as ReadableStream<Uint8Array>).text(),
+        proc.exited,
+      ]);
       clearTimeout(timer);
       if (options.cancelKey && running.get(options.cancelKey) === stop) running.delete(options.cancelKey);
       resume(Effect.succeed({ code, err: lines.slice(-20).join("\n"), out, cancelled }));
@@ -155,7 +183,14 @@ export const runGit = (
   });
 
 /** A shallow clone (with submodules) of `url` into `target`. */
-export const clone = (options: { url: string; branch: string | null; target: string; noHooks: string; onProgress?: (p: GitProgress) => void; cancelKey?: string }) =>
+export const clone = (options: {
+  url: string;
+  branch: string | null;
+  target: string;
+  noHooks: string;
+  onProgress?: (p: GitProgress) => void;
+  cancelKey?: string;
+}) =>
   runGit(
     [
       "clone",

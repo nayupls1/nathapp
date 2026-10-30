@@ -19,7 +19,9 @@ const clip = (body: string | null, max = MAX_BODY) =>
   body === null ? null : body.length > max ? `${body.slice(0, max)}… (${body.length - max} more characters)` : body;
 
 const Changes = {
-  url: Schema.optionalKey(Schema.String.annotate({ description: "Send it to another URL (e.g. other query parameters)" })),
+  url: Schema.optionalKey(
+    Schema.String.annotate({ description: "Send it to another URL (e.g. other query parameters)" }),
+  ),
   method: Schema.optionalKey(Schema.String),
   headers: Schema.optionalKey(
     Schema.Array(Schema.Struct({ name: Schema.String, value: Schema.NullOr(Schema.String) })).annotate({
@@ -29,7 +31,12 @@ const Changes = {
   body: Schema.optionalKey(Schema.NullOr(Schema.String)),
 };
 
-const toOverrides = (args: { url?: string; method?: string; headers?: readonly { name: string; value: string | null }[]; body?: string | null }): ReplayOverrides => ({
+const toOverrides = (args: {
+  url?: string;
+  method?: string;
+  headers?: readonly { name: string; value: string | null }[];
+  body?: string | null;
+}): ReplayOverrides => ({
   ...(args.url !== undefined ? { url: args.url } : {}),
   ...(args.method !== undefined ? { method: args.method } : {}),
   ...(args.headers ? { headers: Object.fromEntries(args.headers.map((h) => [h.name, h.value])) } : {}),
@@ -58,7 +65,8 @@ const describeResult = (r: ReplayResult) =>
 /** Reading the page's traffic (also for app builders, on their app's preview). */
 export const networkReadTools = Effect.fn(function* (env: ToolEnv) {
   const hub = yield* Hub;
-  const call = <T>(method: string, params: object = {}, timeoutMs?: number) => hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
+  const call = <T>(method: string, params: object = {}, timeoutMs?: number) =>
+    hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
   return [
     tool(
       "network_requests",
@@ -69,8 +77,14 @@ export const networkReadTools = Effect.fn(function* (env: ToolEnv) {
         limit: Schema.optionalKey(Schema.Finite),
       }),
       ({ query, all, limit }) =>
-        call<NetworkEntrySummary[]>("network.list", { filter: { query, kind: all ? "all" : "data", limit: Math.min(Math.max(limit ?? 60, 1), 200) } }).pipe(
-          Effect.map((list) => (list.length ? list.map(line).join("\n") : "No requests recorded yet (reload the page to capture its traffic).")),
+        call<NetworkEntrySummary[]>("network.list", {
+          filter: { query, kind: all ? "all" : "data", limit: Math.min(Math.max(limit ?? 60, 1), 200) },
+        }).pipe(
+          Effect.map((list) =>
+            list.length
+              ? list.map(line).join("\n")
+              : "No requests recorded yet (reload the page to capture its traffic).",
+          ),
         ),
     ),
 
@@ -92,7 +106,9 @@ export const networkReadTools = Effect.fn(function* (env: ToolEnv) {
                   "Response headers:",
                   headerLines(e.responseHeaders),
                   "",
-                  e.responseBody !== null ? `Response body:\n${clip(e.responseBody)}` : `No response body: ${e.bodyNote ?? "none"}`,
+                  e.responseBody !== null
+                    ? `Response body:\n${clip(e.responseBody)}`
+                    : `No response body: ${e.bodyNote ?? "none"}`,
                 ].join("\n")
               : text(`No request #${id} in the log (it keeps the most recent ones).`, true),
           ),
@@ -106,7 +122,8 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
   const network = yield* Network;
   const apps = yield* Apps;
   const permissions = yield* Permissions;
-  const call = <T>(method: string, params: object = {}, timeoutMs?: number) => hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
+  const call = <T>(method: string, params: object = {}, timeoutMs?: number) =>
+    hub.rpc<T>(method, { tabId: env.tabId, ...params }, timeoutMs);
   const workspaceId = apps.get(env.tabId).pipe(Effect.map((app) => app?.workspaceId ?? null));
 
   /** Sending requests with the user's session needs their OK, once per site (or remembered). */
@@ -125,7 +142,8 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
       });
       return { host, allowed };
     });
-  const refused = (host: string) => text(`The user didn't allow sending requests to ${host || "that address"}. Nothing was sent.`, true);
+  const refused = (host: string) =>
+    text(`The user didn't allow sending requests to ${host || "that address"}. Nothing was sent.`, true);
 
   return [
     ...(yield* networkReadTools(env)),
@@ -141,7 +159,11 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
           if (!entry) return text(`No request #${id} in the log.`, true);
           const { host, allowed } = yield* mayContact(changes.url ?? entry.url);
           if (!allowed) return refused(host);
-          const result = yield* call<ReplayResult>("network.replay", { id: entryId, overrides: toOverrides(changes) }, 45_000);
+          const result = yield* call<ReplayResult>(
+            "network.replay",
+            { id: entryId, overrides: toOverrides(changes) },
+            45_000,
+          );
           yield* env.log(`Sent ${changes.method ?? entry.method} ${host}`);
           return describeResult(result);
         }),
@@ -150,7 +172,10 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
     tool(
       "save_request",
       "Save a captured request so it can be sent again later without opening the site (send_saved_request, or the user from the Network panel). Its credentials are kept sealed; the session's cookies are used when it's sent.",
-      Schema.Struct({ id: Schema.String, name: Schema.String.annotate({ description: "What it fetches, e.g. 'Unread notifications'" }) }),
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String.annotate({ description: "What it fetches, e.g. 'Unread notifications'" }),
+      }),
       ({ id, name }) =>
         Effect.gen(function* () {
           const space = yield* workspaceId;
@@ -167,7 +192,9 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
       Effect.gen(function* () {
         const space = yield* workspaceId;
         const list = space ? yield* network.saved(space) : [];
-        return list.length ? list.map((r) => `${r.id} · ${r.name} · ${r.method} ${r.url}`).join("\n") : "No saved requests in this workspace.";
+        return list.length
+          ? list.map((r) => `${r.id} · ${r.name} · ${r.method} ${r.url}`).join("\n")
+          : "No saved requests in this workspace.";
       }),
     ),
 
@@ -178,7 +205,8 @@ export const networkTools = Effect.fn(function* (env: ToolEnv) {
       ({ id, ...changes }) =>
         Effect.gen(function* () {
           const saved = yield* network.draftOf(id);
-          if (!saved || saved.request.workspaceId !== (yield* workspaceId)) return text(`No saved request ${id} in this workspace.`, true);
+          if (!saved || saved.request.workspaceId !== (yield* workspaceId))
+            return text(`No saved request ${id} in this workspace.`, true);
           const { host, allowed } = yield* mayContact(changes.url ?? saved.request.url);
           if (!allowed) return refused(host);
           const result = yield* hub.rpc<ReplayResult>(

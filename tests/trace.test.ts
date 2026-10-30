@@ -7,7 +7,14 @@ import { analyzeTrace, describeTrace, type TraceEvent } from "../src/shared/trac
 const PID = 10;
 const TID = 1;
 const ms = (n: number) => n * 1000;
-const at = (name: string, ts: number, extra: Partial<TraceEvent> = {}): TraceEvent => ({ name, ph: "X", ts: ms(ts), pid: PID, tid: TID, ...extra });
+const at = (name: string, ts: number, extra: Partial<TraceEvent> = {}): TraceEvent => ({
+  name,
+  ph: "X",
+  ts: ms(ts),
+  pid: PID,
+  tid: TID,
+  ...extra,
+});
 
 const events: TraceEvent[] = [
   { name: "thread_name", ph: "M", ts: 0, pid: PID, tid: TID, args: { name: "CrRendererMain" } },
@@ -22,23 +29,50 @@ const events: TraceEvent[] = [
     tid: 1,
     args: { data: { frames: [{ processId: PID, url: "https://shop.test/", isOutermostMainFrame: true }] } },
   },
-  at("navigationStart", 1000, { ph: "R", args: { frame: "F", data: { documentLoaderURL: "https://shop.test/", isOutermostMainFrame: true } } }),
-  at("ResourceSendRequest", 1001, { ph: "I", args: { data: { requestId: "1", url: "https://shop.test/", resourceType: "Document" } } }),
-  at("ResourceReceiveResponse", 1120, { ph: "I", args: { data: { frame: "F", requestId: "1", statusCode: 200, mimeType: "text/html" } } }),
-  at("ResourceFinish", 1150, { ph: "I", args: { data: { requestId: "1", encodedDataLength: 20_000, finishTime: 1.15 } } }),
-  at("ResourceSendRequest", 1160, { ph: "I", args: { data: { requestId: "2", url: "https://shop.test/app.js?v=1", renderBlocking: "blocking" } } }),
-  at("ResourceFinish", 1900, { ph: "I", args: { data: { requestId: "2", encodedDataLength: 400_000, finishTime: 1.9 } } }),
-  at("ResourceSendRequest", 1200, { ph: "I", args: { data: { requestId: "3", url: "https://shop.test/missing.png" } } }),
+  at("navigationStart", 1000, {
+    ph: "R",
+    args: { frame: "F", data: { documentLoaderURL: "https://shop.test/", isOutermostMainFrame: true } },
+  }),
+  at("ResourceSendRequest", 1001, {
+    ph: "I",
+    args: { data: { requestId: "1", url: "https://shop.test/", resourceType: "Document" } },
+  }),
+  at("ResourceReceiveResponse", 1120, {
+    ph: "I",
+    args: { data: { frame: "F", requestId: "1", statusCode: 200, mimeType: "text/html" } },
+  }),
+  at("ResourceFinish", 1150, {
+    ph: "I",
+    args: { data: { requestId: "1", encodedDataLength: 20_000, finishTime: 1.15 } },
+  }),
+  at("ResourceSendRequest", 1160, {
+    ph: "I",
+    args: { data: { requestId: "2", url: "https://shop.test/app.js?v=1", renderBlocking: "blocking" } },
+  }),
+  at("ResourceFinish", 1900, {
+    ph: "I",
+    args: { data: { requestId: "2", encodedDataLength: 400_000, finishTime: 1.9 } },
+  }),
+  at("ResourceSendRequest", 1200, {
+    ph: "I",
+    args: { data: { requestId: "3", url: "https://shop.test/missing.png" } },
+  }),
   at("ResourceReceiveResponse", 1250, { ph: "I", args: { data: { requestId: "3", statusCode: 404 } } }),
   at("ResourceFinish", 1260, { ph: "I", args: { data: { requestId: "3", encodedDataLength: 100, finishTime: 1.26 } } }),
   at("firstContentfulPaint", 1400, { ph: "R", args: { data: { isOutermostMainFrame: true } } }),
-  at("largestContentfulPaint::Candidate", 2600, { ph: "R", args: { data: { isOutermostMainFrame: true, type: "image", size: 90_000 } } }),
+  at("largestContentfulPaint::Candidate", 2600, {
+    ph: "R",
+    args: { data: { isOutermostMainFrame: true, type: "image", size: 90_000 } },
+  }),
   at("MarkDOMContent", 1500, { ph: "R", args: { data: { isOutermostMainFrame: true } } }),
   at("MarkLoad", 2000, { ph: "R", args: { data: { isOutermostMainFrame: true } } }),
   // A 300 ms task: a click handler that forces a layout, then a script evaluation.
   at("RunTask", 2100, { dur: ms(300) }),
   at("EventDispatch", 2101, { dur: ms(200), args: { data: { type: "click" } } }),
-  at("FunctionCall", 2102, { dur: ms(198), args: { data: { functionName: "addToCart", url: "https://shop.test/app.js?v=1", lineNumber: 41 } } }),
+  at("FunctionCall", 2102, {
+    dur: ms(198),
+    args: { data: { functionName: "addToCart", url: "https://shop.test/app.js?v=1", lineNumber: 41 } },
+  }),
   at("Layout", 2200, { dur: ms(60) }),
   at("EvaluateScript", 2305, { dur: ms(90), args: { data: { url: "https://shop.test/analytics.js" } } }),
   // A short one, not a long task.
@@ -46,7 +80,10 @@ const events: TraceEvent[] = [
   at("Paint", 2501, { dur: ms(10) }),
   // Layout shifts: one after input (ignored), two in a burst.
   at("LayoutShift", 2700, { ph: "I", args: { data: { weighted_score_delta: 0.5, had_recent_input: true } } }),
-  at("LayoutShift", 2800, { ph: "I", args: { data: { weighted_score_delta: 0.12, impacted_nodes: [{ debug_name: "DIV.banner" }] } } }),
+  at("LayoutShift", 2800, {
+    ph: "I",
+    args: { data: { weighted_score_delta: 0.12, impacted_nodes: [{ debug_name: "DIV.banner" }] } },
+  }),
   at("LayoutShift", 3100, { ph: "I", args: { data: { weighted_score_delta: 0.08 } } }),
   // Sampled CPU profile: addToCart is hot.
   {

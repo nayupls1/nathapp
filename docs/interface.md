@@ -9,6 +9,7 @@ The window has no title bar, like Zen Browser. On Linux and Windows it's framele
 ## Sidebar
 
 The sidebar is the browser's chrome, like Zen Browser's: pages get the whole content area, without a toolbar (`components/TopBar.tsx`, each tab's part in `lib/tabChrome.ts`). The page sits inset from the window and the sidebars, with rounded corners; each pane of a split view is its own card. Fullscreen video still fills the screen.
+
 - **Top row:** close, the agent (Ctrl+J; a dot while it works), a web tab's extensions (the puzzle: one menu, pinned ones first, with their badges and popups), then back, forward and reload. It drags the window.
 - **Address:** the tab on screen's address (an app's localhost URL). A new web tab (Ctrl+T) opens blank with it focused and empty. Typing suggests the open tabs that match (every workspace; Enter switches to the first), the address and a web search; Ctrl+L focuses it. Paths and localhost addresses open in an app's preview; anything else in a new web tab. A web tab's page changes are behind the paintbrush in it.
 - **The tab's tools:** an app's state (editing, running…), restart, logs, secrets, history, data, tools and "open in your browser". The Network panel is in the command bar ("Network requests"); picking elements is in the agent's composer.
@@ -46,6 +47,7 @@ Apps declare their actions in `rune.json`:
 ## Split view
 
 Tabs of a workspace can be shown side by side or stacked, any kind together (apps, web tabs, extension pages), up to four at once.
+
 - **Making one:** drag a tab from the sidebar onto a side of the tab on screen (or onto an end of the split on screen), choose "Show beside …" in a tab's menu, or type "split" in the command bar.
 - **Using it:** clicking into a pane focuses its tab (the outlined one; shortcuts and the address bar go to it). Drag the line between panes to resize them, double-click it for equal sizes.
 - **In the sidebar** a split is one block with its tabs, which takes the place of its first tab. Its handle drags the whole split, its menu stacks or unstacks it, evens out the sizes or unsplits it. Dropping a tab next to one of its tabs adds it there, dropping one of its tabs elsewhere takes it out.

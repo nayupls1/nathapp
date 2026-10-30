@@ -5,7 +5,14 @@
 import * as stylex from "@stylexjs/stylex";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import { effortLabels, providerIds, type AgentChoice, type ProviderId, type ProviderModel, type ProviderStatus } from "../../shared/api";
+import {
+  effortLabels,
+  providerIds,
+  type AgentChoice,
+  type ProviderId,
+  type ProviderModel,
+  type ProviderStatus,
+} from "../../shared/api";
 import { providerById, providers, refreshProviders } from "../lib/store";
 import { colors, font, radius, space } from "../theme.stylex";
 import { ContextMenu, type MenuPosition } from "./ContextMenu";
@@ -30,7 +37,11 @@ export function choiceModel(choice: AgentChoice): ProviderModel | undefined {
   return provider?.models.find((m) => m.id === id);
 }
 
-export function AgentPicker(props: { choice: AgentChoice; onChange: (choice: AgentChoice) => void; compact?: boolean }) {
+export function AgentPicker(props: {
+  choice: AgentChoice;
+  onChange: (choice: AgentChoice) => void;
+  compact?: boolean;
+}) {
   const [open, setOpen] = createSignal(false);
   const [effortMenu, setEffortMenu] = createSignal<MenuPosition>();
   let trigger!: HTMLButtonElement;
@@ -74,7 +85,9 @@ export function AgentPicker(props: { choice: AgentChoice; onChange: (choice: Age
           {...stylex.attrs(styles.trigger)}
           data-effort-picker
         >
-          <span {...stylex.attrs(styles.triggerLabel)}>{props.choice.effort ? effortLabels[props.choice.effort] ?? props.choice.effort : "Auto"}</span>
+          <span {...stylex.attrs(styles.triggerLabel)}>
+            {props.choice.effort ? (effortLabels[props.choice.effort] ?? props.choice.effort) : "Auto"}
+          </span>
           <Icon name="chevron-down" size={12} />
         </button>
       </Show>
@@ -84,7 +97,11 @@ export function AgentPicker(props: { choice: AgentChoice; onChange: (choice: Age
             position={position()}
             onClose={() => setEffortMenu()}
             items={[
-              { label: "Auto", icon: props.choice.effort ? undefined : "check", onSelect: () => props.onChange({ ...props.choice, effort: null }) },
+              {
+                label: "Auto",
+                icon: props.choice.effort ? undefined : "check",
+                onSelect: () => props.onChange({ ...props.choice, effort: null }),
+              },
               ...efforts().map((level) => ({
                 label: effortLabels[level] ?? level,
                 icon: props.choice.effort === level ? "check" : undefined,
@@ -119,7 +136,8 @@ function Popover(props: {
     const list = status()?.models ?? [];
     return q ? list.filter((m) => `${m.name} ${m.id} ${m.group ?? ""}`.toLowerCase().includes(q)) : list;
   });
-  const selectedId = () => (props.choice.provider === browsing() ? (props.choice.model ?? status()?.defaultModel) : undefined);
+  const selectedId = () =>
+    props.choice.provider === browsing() ? (props.choice.model ?? status()?.defaultModel) : undefined;
 
   // Above the composer when there's room, else below the trigger.
   const rect = props.anchor.getBoundingClientRect();
@@ -186,7 +204,11 @@ function Popover(props: {
                     setHighlight(0);
                     search.focus();
                   }}
-                  {...stylex.attrs(styles.railButton, active() && styles.railButtonActive, off() && styles.railButtonOff)}
+                  {...stylex.attrs(
+                    styles.railButton,
+                    active() && styles.railButtonActive,
+                    off() && styles.railButtonOff,
+                  )}
                   data-provider={id}
                 >
                   <ProviderIcon provider={id} size={18} />
@@ -216,46 +238,59 @@ function Popover(props: {
             when={usable(status())}
             fallback={
               <div {...stylex.attrs(styles.notice)}>
-                <strong>{status()?.label ?? browsing()}: {stateText[status()?.state ?? "missing"]}</strong>
+                <strong>
+                  {status()?.label ?? browsing()}: {stateText[status()?.state ?? "missing"]}
+                </strong>
                 <span>{status()?.message ?? ""}</span>
-                <button type="button" onClick={() => void refreshProviders(browsing())} {...stylex.attrs(styles.noticeButton)}>
+                <button
+                  type="button"
+                  onClick={() => void refreshProviders(browsing())}
+                  {...stylex.attrs(styles.noticeButton)}
+                >
                   Check again
                 </button>
               </div>
             }
           >
             <div {...stylex.attrs(styles.list)}>
-              <For each={models()} fallback={<p {...stylex.attrs(styles.empty)}>{status()?.state === "checking" ? "Loading models…" : "No models"}</p>}>
+              <For
+                each={models()}
+                fallback={
+                  <p {...stylex.attrs(styles.empty)}>
+                    {status()?.state === "checking" ? "Loading models…" : "No models"}
+                  </p>
+                }
+              >
                 {(m, i) => {
                   const isHighlighted = () => highlight() === i();
                   return (
-                  <>
-                    <Show when={m.group && m.group !== models()[i() - 1]?.group}>
-                      <div {...stylex.attrs(styles.group)}>{m.group}</div>
-                    </Show>
-                    <button
-                      type="button"
-                      onClick={() => props.onPick(browsing(), m.id)}
-                      onMouseMove={() => setHighlight(i())}
-                      {...stylex.attrs(styles.model, isHighlighted() && styles.modelHighlight)}
-                      data-model={m.id}
-                    >
-                      <span {...stylex.attrs(styles.modelText)}>
-                        <span {...stylex.attrs(styles.modelName)}>
-                          {m.name}
-                          <Show when={m.id === status()?.defaultModel}>
-                            <span {...stylex.attrs(styles.badge)}>default</span>
+                    <>
+                      <Show when={m.group && m.group !== models()[i() - 1]?.group}>
+                        <div {...stylex.attrs(styles.group)}>{m.group}</div>
+                      </Show>
+                      <button
+                        type="button"
+                        onClick={() => props.onPick(browsing(), m.id)}
+                        onMouseMove={() => setHighlight(i())}
+                        {...stylex.attrs(styles.model, isHighlighted() && styles.modelHighlight)}
+                        data-model={m.id}
+                      >
+                        <span {...stylex.attrs(styles.modelText)}>
+                          <span {...stylex.attrs(styles.modelName)}>
+                            {m.name}
+                            <Show when={m.id === status()?.defaultModel}>
+                              <span {...stylex.attrs(styles.badge)}>default</span>
+                            </Show>
+                          </span>
+                          <Show when={m.description}>
+                            <span {...stylex.attrs(styles.modelDescription)}>{m.description}</span>
                           </Show>
                         </span>
-                        <Show when={m.description}>
-                          <span {...stylex.attrs(styles.modelDescription)}>{m.description}</span>
+                        <Show when={selectedId() === m.id}>
+                          <Icon name="check" size={14} {...stylex.attrs(styles.check)} />
                         </Show>
-                      </span>
-                      <Show when={selectedId() === m.id}>
-                        <Icon name="check" size={14} {...stylex.attrs(styles.check)} />
-                      </Show>
-                    </button>
-                  </>
+                      </button>
+                    </>
                   );
                 }}
               </For>
@@ -391,7 +426,13 @@ const styles = stylex.create({
   modelHighlight: { backgroundColor: colors.surfaceHover },
   modelText: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 },
   modelName: { display: "flex", alignItems: "center", gap: 6, fontSize: font.sm, fontWeight: 500 },
-  modelDescription: { color: colors.muted, fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  modelDescription: {
+    color: colors.muted,
+    fontSize: 11.5,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   badge: {
     paddingInline: 5,
     borderRadius: radius.full,

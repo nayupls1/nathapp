@@ -10,9 +10,34 @@
 // redacted, and saved requests carry their credentials sealed with a key only
 // this process uses.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { ipcMain, webContents, type BrowserWindow, type IpcMainInvokeEvent, type Session, type WebContents } from "electron";
-import type { NetworkFilter, NetworkRule, ReplayOverrides, ReplayResult, ReplayTarget, RequestDraft } from "../shared/api";
-import { BodyBudget, isSensitiveName, isStructured, redactBody, redactHeaders, redactUrl, REDACTED, TrafficLog, urlMatcher, type Captured } from "../shared/network";
+import {
+  ipcMain,
+  webContents,
+  type BrowserWindow,
+  type IpcMainInvokeEvent,
+  type Session,
+  type WebContents,
+} from "electron";
+import type {
+  NetworkFilter,
+  NetworkRule,
+  ReplayOverrides,
+  ReplayResult,
+  ReplayTarget,
+  RequestDraft,
+} from "../shared/api";
+import {
+  BodyBudget,
+  isSensitiveName,
+  isStructured,
+  redactBody,
+  redactHeaders,
+  redactUrl,
+  REDACTED,
+  TrafficLog,
+  urlMatcher,
+  type Captured,
+} from "../shared/network";
 import * as cdp from "./cdp";
 import { loadSecretsKey } from "./secretsKey";
 
@@ -23,7 +48,8 @@ const SKIPPED_SCHEMES = /^(data|blob|chrome-extension|devtools):/i;
  * Never sent along on a replay: the network stack sets them, or refuses them
  * (Sec-Fetch-*, Origin, Host). Cookies come from the session.
  */
-const HOP_HEADERS = /^(:|host$|origin$|sec-fetch-|content-length$|connection$|keep-alive$|transfer-encoding$|upgrade$|te$|trailer$|accept-encoding$|cookie$)/i;
+const HOP_HEADERS =
+  /^(:|host$|origin$|sec-fetch-|content-length$|connection$|keep-alive$|transfer-encoding$|upgrade$|te$|trailer$|accept-encoding$|cookie$)/i;
 
 interface CompiledRule {
   rule: NetworkRule;
@@ -51,7 +77,12 @@ export function setupNetwork(options: NetworkOptions) {
   // --- Rules ----------------------------------------------------------------------------
 
   const rulesFor = (workspaceId: string | undefined, url: string) =>
-    workspaceId === undefined ? [] : rules.filter((r) => r.rule.enabled && (r.rule.workspaceId === null || r.rule.workspaceId === workspaceId) && r.matches(url));
+    workspaceId === undefined
+      ? []
+      : rules.filter(
+          (r) =>
+            r.rule.enabled && (r.rule.workspaceId === null || r.rule.workspaceId === workspaceId) && r.matches(url),
+        );
 
   // --- Capture --------------------------------------------------------------------------
 
@@ -140,7 +171,11 @@ export function setupNetwork(options: NetworkOptions) {
           if (!entry) return;
           entry.status = p.response.status;
           entry.mimeType = p.response.mimeType ?? "";
-          entry.responseHeaders = { ...p.response.headers, ...early.get(p.requestId)?.response, ...entry.responseHeaders };
+          entry.responseHeaders = {
+            ...p.response.headers,
+            ...early.get(p.requestId)?.response,
+            ...entry.responseHeaders,
+          };
           break;
         }
         case "Network.responseReceivedExtraInfo": {
@@ -208,9 +243,11 @@ export function setupNetwork(options: NetworkOptions) {
     dbg.once("detach", stop);
     contents.once("destroyed", stop);
     // Chrome's own buffers for bodies stay small: they're only read right when a response finishes.
-    send("Network.enable", { maxTotalBufferSize: 8_000_000, maxResourceBufferSize: 2_000_000, maxPostDataSize: MAX_REQUEST_BODY }).catch((err) =>
-      console.warn("Can't record the traffic of a web tab:", err),
-    );
+    send("Network.enable", {
+      maxTotalBufferSize: 8_000_000,
+      maxResourceBufferSize: 2_000_000,
+      maxPostDataSize: MAX_REQUEST_BODY,
+    }).catch((err) => console.warn("Can't record the traffic of a web tab:", err));
   }
 
   function setRecording(enabled: boolean) {
@@ -293,7 +330,8 @@ export function setupNetwork(options: NetworkOptions) {
         body = redacted;
       }
     }
-    const hasSecrets = Object.keys(secret.headers).length > 0 || Object.keys(secret.params).length > 0 || secret.body !== null;
+    const hasSecrets =
+      Object.keys(secret.headers).length > 0 || Object.keys(secret.params).length > 0 || secret.body !== null;
     return { method: entry.method, url, headers, body, sealed: hasSecrets ? seal(secret) : null };
   }
 
@@ -303,7 +341,8 @@ export function setupNetwork(options: NetworkOptions) {
     let url = d.url;
     if (secret && Object.keys(secret.params).length) {
       const parsed = new URL(d.url);
-      for (const [name, value] of Object.entries(secret.params)) if (parsed.searchParams.has(name)) parsed.searchParams.set(name, value);
+      for (const [name, value] of Object.entries(secret.params))
+        if (parsed.searchParams.has(name)) parsed.searchParams.set(name, value);
       url = parsed.toString();
     }
     return { method: d.method, url, headers: { ...d.headers, ...secret?.headers }, body: secret?.body ?? d.body };
@@ -311,7 +350,12 @@ export function setupNetwork(options: NetworkOptions) {
 
   // --- Replay ------------------------------------------------------------------------------
 
-  async function replay(s: Session, request: { method: string; url: string; headers: Record<string, string>; body: string | null }, overrides: ReplayOverrides, reveal: boolean): Promise<ReplayResult> {
+  async function replay(
+    s: Session,
+    request: { method: string; url: string; headers: Record<string, string>; body: string | null },
+    overrides: ReplayOverrides,
+    reveal: boolean,
+  ): Promise<ReplayResult> {
     const url = overrides.url ?? request.url;
     if (!/^https?:\/\//i.test(url)) throw new Error("Only http(s) requests can be sent");
     const method = (overrides.method ?? request.method).toUpperCase();
@@ -375,7 +419,8 @@ export function setupNetwork(options: NetworkOptions) {
   /** A web tab of the window that asks. */
   const guest = (event: IpcMainInvokeEvent, id: unknown) => {
     const target = typeof id === "number" ? webContents.fromId(id) : undefined;
-    if (!fromWindow(event) || !target || target.getType() !== "webview" || target.hostWebContents !== event.sender) throw new Error("Unknown page");
+    if (!fromWindow(event) || !target || target.getType() !== "webview" || target.hostWebContents !== event.sender)
+      throw new Error("Unknown page");
     return target;
   };
   const logOf = (event: IpcMainInvokeEvent, id: unknown) => {
@@ -406,9 +451,15 @@ export function setupNetwork(options: NetworkOptions) {
       const { target: contents, log } = logOf(event, target.webContentsId);
       const entry = log?.get(target.id);
       if (!entry) throw new Error("That request is no longer in the log");
-      return replay(contents.session, { method: entry.method, url: entry.url, headers: entry.requestHeaders, body: entry.requestBody }, changes, reveal === true);
+      return replay(
+        contents.session,
+        { method: entry.method, url: entry.url, headers: entry.requestHeaders, body: entry.requestBody },
+        changes,
+        reveal === true,
+      );
     }
-    if (!fromWindow(event) || !target || typeof target.workspaceId !== "string" || !/^[\w-]+$/.test(target.workspaceId)) throw new Error("Unknown workspace");
+    if (!fromWindow(event) || !target || typeof target.workspaceId !== "string" || !/^[\w-]+$/.test(target.workspaceId))
+      throw new Error("Unknown workspace");
     return replay(options.webSession(target.workspaceId), open(target.draft), changes, reveal === true);
   });
   ipcMain.on("rune:network-rules", (event, list: unknown) => {
@@ -426,7 +477,8 @@ export function setupNetwork(options: NetworkOptions) {
 /** Sets headers case-insensitively; null removes one. */
 function setHeaders(headers: Record<string, string>, changes: Record<string, string | null>) {
   for (const [name, value] of Object.entries(changes)) {
-    for (const existing of Object.keys(headers)) if (existing.toLowerCase() === name.toLowerCase()) delete headers[existing];
+    for (const existing of Object.keys(headers))
+      if (existing.toLowerCase() === name.toLowerCase()) delete headers[existing];
     if (value !== null) headers[name] = value;
   }
 }

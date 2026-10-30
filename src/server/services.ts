@@ -42,7 +42,18 @@ export const core = (config: ServerConfigShape) =>
     Layer.provideMerge(Secrets.layer),
     Layer.provideMerge(Permissions.layer),
     Layer.provideMerge(Layer.mergeAll(Vault.layer, Audit.layer)),
-    Layer.provideMerge(Layer.mergeAll(Apps.layer, Workspaces.layer, Settings.layer, Sites.layer, PageChanges.layer, Network.layer, Hub.layer, AiTokens.tokensLayer)),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Apps.layer,
+        Workspaces.layer,
+        Settings.layer,
+        Sites.layer,
+        PageChanges.layer,
+        Network.layer,
+        Hub.layer,
+        AiTokens.tokensLayer,
+      ),
+    ),
     Layer.provideMerge(Db.layer),
     Layer.provideMerge(Layer.succeed(ServerConfig, config)),
   );

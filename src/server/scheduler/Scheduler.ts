@@ -24,7 +24,10 @@ import { Audit } from "../security/Audit";
 import { AppTools, type ToolCaller } from "../workspace/AppTools";
 import { Runtime } from "../workspace/Runtime";
 
-export class ScheduleError extends Data.TaggedError("ScheduleError")<{ readonly status: 400 | 404 | 409; readonly message: string }> {}
+export class ScheduleError extends Data.TaggedError("ScheduleError")<{
+  readonly status: 400 | 404 | 409;
+  readonly message: string;
+}> {}
 
 export interface ScheduleCreator {
   readonly by: "user" | "agent";
@@ -50,14 +53,25 @@ export interface SchedulerShape {
   readonly list: (filter?: { workspaceId?: string; appId?: string }) => Effect.Effect<Schedule[]>;
   readonly get: (id: string) => Effect.Effect<Schedule | null>;
   readonly create: (spec: ScheduleSpec, creator: ScheduleCreator) => Effect.Effect<Schedule, ScheduleError>;
-  readonly update: (id: string, fields: { spec?: ScheduleSpec; paused?: boolean }) => Effect.Effect<Schedule, ScheduleError>;
+  readonly update: (
+    id: string,
+    fields: { spec?: ScheduleSpec; paused?: boolean },
+  ) => Effect.Effect<Schedule, ScheduleError>;
   readonly remove: (id: string) => Effect.Effect<void>;
   /** Starts a run now (in the background) and returns it. */
   readonly runNow: (id: string) => Effect.Effect<ScheduleRun, ScheduleError>;
   /** Newest first. */
-  readonly runs: (filter: { scheduleId?: string; workspaceId?: string; before?: number; limit?: number }) => Effect.Effect<ScheduleRun[]>;
+  readonly runs: (filter: {
+    scheduleId?: string;
+    workspaceId?: string;
+    before?: number;
+    limit?: number;
+  }) => Effect.Effect<ScheduleRun[]>;
   /** The next runs of the time-based schedules, soonest first. */
-  readonly upcoming: (filter: { workspaceId?: string; limit?: number }) => Effect.Effect<{ scheduleId: string; name: string; at: string }[]>;
+  readonly upcoming: (filter: {
+    workspaceId?: string;
+    limit?: number;
+  }) => Effect.Effect<{ scheduleId: string; name: string; at: string }[]>;
   /** Something happened: runs the schedules waiting for it. */
   readonly emit: (event: string) => Effect.Effect<void>;
   /** The app was deleted: its schedules go too. */
@@ -111,7 +125,10 @@ const toRun = (r: RunRow): ScheduleRun => ({
 
 /** When a schedule runs next, after `from` (null: on events only, or a one-off that's due no more). */
 export function nextRun(spec: ScheduleSpec, from: Date, ran = false): string | null {
-  if (spec.trigger.type === "once") return ran || Date.parse(spec.trigger.at) < from.getTime() - 60_000 ? null : new Date(spec.trigger.at).toISOString();
+  if (spec.trigger.type === "once")
+    return ran || Date.parse(spec.trigger.at) < from.getTime() - 60_000
+      ? null
+      : new Date(spec.trigger.at).toISOString();
   if (spec.trigger.type === "cron") {
     const cron = parseCron(spec.trigger.cron);
     return typeof cron === "string" ? null : (nextCron(cron, from)?.toISOString() ?? null);
@@ -156,7 +173,8 @@ export const make = Effect.gen(function* () {
         out.push({
           ...spec,
           id: r.id,
-          workspaceId: app?.workspaceId ?? (spec.task.type === "prompt" && spec.task.newTab ? spec.task.newTab.workspaceId : ""),
+          workspaceId:
+            app?.workspaceId ?? (spec.task.type === "prompt" && spec.task.newTab ? spec.task.newTab.workspaceId : ""),
           paused: r.paused === 1,
           createdBy: r.created_by,
           nextRunAt: r.paused ? null : r.next_run_at,
@@ -169,7 +187,8 @@ export const make = Effect.gen(function* () {
       return out;
     });
 
-  const rowOf = (id: string) => sql<ScheduleRow>`SELECT * FROM schedules WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
+  const rowOf = (id: string) =>
+    sql<ScheduleRow>`SELECT * FROM schedules WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
   const get = (id: string) =>
     rowOf(id).pipe(
       Effect.flatMap((row) => (row ? toSchedules([row]) : Effect.succeed([]))),
@@ -183,16 +202,23 @@ export const make = Effect.gen(function* () {
       if (problem) return yield* new ScheduleError({ status: 400, message: problem });
       if (spec.task.type === "prompt") {
         // Any tab can be asked (app or web).
-        if (spec.task.appId && !(yield* apps.get(spec.task.appId))) return yield* new ScheduleError({ status: 404, message: "No such tab" });
-        if (spec.task.newTab && !(yield* workspaces.get(spec.task.newTab.workspaceId))) return yield* new ScheduleError({ status: 404, message: "No such workspace" });
+        if (spec.task.appId && !(yield* apps.get(spec.task.appId)))
+          return yield* new ScheduleError({ status: 404, message: "No such tab" });
+        if (spec.task.newTab && !(yield* workspaces.get(spec.task.newTab.workspaceId)))
+          return yield* new ScheduleError({ status: 404, message: "No such workspace" });
         return null;
       }
       const app = yield* apps.get(spec.task.appId);
       if (!app || app.kind !== "app") return yield* new ScheduleError({ status: 404, message: "No such app" });
       if (spec.task.type === "tool") {
         const tool = (yield* appTools.list(app.id)).find((t) => spec.task.type === "tool" && t.id === spec.task.tool);
-        if (!tool) return yield* new ScheduleError({ status: 404, message: `${app.name} has no tool "${spec.task.tool}"` });
-        if (tool.path) return yield* new ScheduleError({ status: 400, message: `"${tool.title}" opens a page; it can't run in the background` });
+        if (!tool)
+          return yield* new ScheduleError({ status: 404, message: `${app.name} has no tool "${spec.task.tool}"` });
+        if (tool.path)
+          return yield* new ScheduleError({
+            status: 400,
+            message: `"${tool.title}" opens a page; it can't run in the background`,
+          });
       }
       return app;
     });
@@ -202,7 +228,8 @@ export const make = Effect.gen(function* () {
   const perform = (row: ScheduleRow, spec: ScheduleSpec): Effect.Effect<Outcome> => {
     const task = spec.task;
     if (task.type === "prompt") {
-      if (!promptRunner) return Effect.succeed<Outcome>({ status: "error", message: "Agents aren't available", output: null });
+      if (!promptRunner)
+        return Effect.succeed<Outcome>({ status: "error", message: "Agents aren't available", output: null });
       // A new tab is opened once; the schedule then runs in it.
       const opened = (tabId: string) =>
         Effect.gen(function* () {
@@ -226,16 +253,18 @@ export const make = Effect.gen(function* () {
       );
     }
     const caller: ToolCaller =
-      row.created_by === "agent" && row.creator_tab ? { kind: "agent", tabId: row.creator_tab, label: `Schedule “${spec.name}”` } : { kind: "user" };
+      row.created_by === "agent" && row.creator_tab
+        ? { kind: "agent", tabId: row.creator_tab, label: `Schedule “${spec.name}”` }
+        : { kind: "user" };
     return appTools.call(caller, task.appId, task.tool, { params: task.params, input: task.input }).pipe(
-      Effect.map(
-        (result: ToolResult): Outcome => ({
-          status: result.ok ? "ok" : "error",
-          message: result.message || (result.ok ? "Done" : `Failed (${result.status})`),
-          output: result.data === undefined ? null : clip(JSON.stringify(result.data, null, 1)),
-        }),
+      Effect.map((result: ToolResult): Outcome => ({
+        status: result.ok ? "ok" : "error",
+        message: result.message || (result.ok ? "Done" : `Failed (${result.status})`),
+        output: result.data === undefined ? null : clip(JSON.stringify(result.data, null, 1)),
+      })),
+      Effect.catchTag("AppToolError", (e) =>
+        Effect.succeed<Outcome>({ status: "error", message: e.message, output: null }),
       ),
-      Effect.catchTag("AppToolError", (e) => Effect.succeed<Outcome>({ status: "error", message: e.message, output: null })),
     );
   };
 
@@ -254,7 +283,11 @@ export const make = Effect.gen(function* () {
       const spec = JSON.parse(row.spec) as ScheduleSpec;
       if (running.has(row.id)) {
         if (trigger === "event") return null;
-        const skipped = yield* insertRun(row, spec, trigger, { status: "skipped", message: "The previous run was still going", output: null });
+        const skipped = yield* insertRun(row, spec, trigger, {
+          status: "skipped",
+          message: "The previous run was still going",
+          output: null,
+        });
         yield* hub.publish({ type: "schedule-run", topic: topics.schedules, run: skipped, notify: false });
         return skipped;
       }
@@ -286,14 +319,27 @@ export const make = Effect.gen(function* () {
         }).pipe(Effect.orDie);
       // Started in the background: the caller (the clock, an event, "Run now") doesn't wait.
       yield* Effect.forkDetach(
-        slots.withPermits(1)(perform(row, spec)).pipe(
-          Effect.timeoutOrElse({
-            duration: spec.timeoutSec * 1000,
-            orElse: () => Effect.succeed<Outcome>({ status: "timeout", message: `Stopped after ${spec.timeoutSec} s`, output: null }),
-          }),
-          Effect.catchCause((cause) => Effect.succeed<Outcome>({ status: "error", message: Cause.pretty(cause).split("\n")[0]!.slice(0, 500), output: null })),
-          Effect.flatMap(finish),
-        ),
+        slots
+          .withPermits(1)(perform(row, spec))
+          .pipe(
+            Effect.timeoutOrElse({
+              duration: spec.timeoutSec * 1000,
+              orElse: () =>
+                Effect.succeed<Outcome>({
+                  status: "timeout",
+                  message: `Stopped after ${spec.timeoutSec} s`,
+                  output: null,
+                }),
+            }),
+            Effect.catchCause((cause) =>
+              Effect.succeed<Outcome>({
+                status: "error",
+                message: Cause.pretty(cause).split("\n")[0]!.slice(0, 500),
+                output: null,
+              }),
+            ),
+            Effect.flatMap(finish),
+          ),
       );
       return run;
     }).pipe(Effect.orDie);
@@ -301,14 +347,17 @@ export const make = Effect.gen(function* () {
   // The clock: due schedules run, and get their next time first so they don't run twice.
   const tick = Effect.gen(function* () {
     const now = new Date();
-    const due = yield* sql<ScheduleRow>`SELECT * FROM schedules WHERE paused = 0 AND next_run_at IS NOT NULL AND next_run_at <= ${now.toISOString()}`;
+    const due =
+      yield* sql<ScheduleRow>`SELECT * FROM schedules WHERE paused = 0 AND next_run_at IS NOT NULL AND next_run_at <= ${now.toISOString()}`;
     for (const row of due) {
       const spec = JSON.parse(row.spec) as ScheduleSpec;
       yield* sql`UPDATE schedules SET next_run_at = ${nextRun(spec, now, true)} WHERE id = ${row.id}`;
       yield* execute(row, "time");
     }
     if (due.length) yield* changed;
-  }).pipe(Effect.catchCause((cause) => Effect.sync(() => console.error("scheduler tick failed:", Cause.pretty(cause)))));
+  }).pipe(
+    Effect.catchCause((cause) => Effect.sync(() => console.error("scheduler tick failed:", Cause.pretty(cause)))),
+  );
   yield* Effect.forkScoped(Effect.forever(Effect.andThen(tick, Effect.sleep("1 second"))));
 
   const emit = (event: string) =>
@@ -345,7 +394,11 @@ export const make = Effect.gen(function* () {
       sql<ScheduleRow>`SELECT * FROM schedules ORDER BY created_at, id`.pipe(
         Effect.flatMap(toSchedules),
         Effect.map((list) =>
-          list.filter((s) => (!filter.workspaceId || s.workspaceId === filter.workspaceId) && (!filter.appId || s.task.appId === filter.appId)),
+          list.filter(
+            (s) =>
+              (!filter.workspaceId || s.workspaceId === filter.workspaceId) &&
+              (!filter.appId || s.task.appId === filter.appId),
+          ),
         ),
         Effect.orDie,
       ),
@@ -355,7 +408,8 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         yield* check(spec);
         const [{ n }] = (yield* sql<{ n: number }>`SELECT COUNT(*) AS n FROM schedules`) as [{ n: number }];
-        if (n >= MAX_SCHEDULES) return yield* new ScheduleError({ status: 409, message: `There are already ${MAX_SCHEDULES} schedules` });
+        if (n >= MAX_SCHEDULES)
+          return yield* new ScheduleError({ status: 409, message: `There are already ${MAX_SCHEDULES} schedules` });
         const id = crypto.randomUUID().slice(0, 8);
         yield* sql`INSERT INTO schedules (id, spec, created_by, creator_tab, next_run_at)
           VALUES (${id}, ${JSON.stringify(spec)}, ${creator.by}, ${creator.tabId ?? null}, ${nextRun(spec, new Date())})`;
@@ -401,7 +455,11 @@ export const make = Effect.gen(function* () {
           ORDER BY id DESC LIMIT ${Math.min(limit, 500) * (workspaceId ? 4 : 1)}`;
         let runs = rows.map(toRun);
         if (workspaceId) {
-          const inWorkspace = new Set((yield* toSchedules(yield* sql<ScheduleRow>`SELECT * FROM schedules`)).filter((s) => s.workspaceId === workspaceId).map((s) => s.id));
+          const inWorkspace = new Set(
+            (yield* toSchedules(yield* sql<ScheduleRow>`SELECT * FROM schedules`))
+              .filter((s) => s.workspaceId === workspaceId)
+              .map((s) => s.id),
+          );
           runs = runs.filter((r) => inWorkspace.has(r.scheduleId));
         }
         return runs.slice(0, Math.min(limit, 500));
@@ -409,9 +467,9 @@ export const make = Effect.gen(function* () {
 
     upcoming: ({ workspaceId, limit = 20 }) =>
       Effect.gen(function* () {
-        const schedules = (yield* toSchedules(yield* sql<ScheduleRow>`SELECT * FROM schedules WHERE paused = 0`)).filter(
-          (s) => !workspaceId || s.workspaceId === workspaceId,
-        );
+        const schedules = (yield* toSchedules(
+          yield* sql<ScheduleRow>`SELECT * FROM schedules WHERE paused = 0`,
+        )).filter((s) => !workspaceId || s.workspaceId === workspaceId);
         const out: { scheduleId: string; name: string; at: string }[] = [];
         for (const s of schedules) {
           if (!s.nextRunAt) continue;

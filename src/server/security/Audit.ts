@@ -8,7 +8,8 @@ import { topics } from "../../shared/hub";
 import { Hub } from "../Hub";
 
 const MAX_ENTRIES = 20_000;
-const clip = (s: string | null | undefined, max: number) => (s == null ? null : s.length > max ? `${s.slice(0, max - 1)}…` : s);
+const clip = (s: string | null | undefined, max: number) =>
+  s == null ? null : s.length > max ? `${s.slice(0, max - 1)}…` : s;
 
 /** The workspace defaults to the tab's. */
 export type AuditInput = Omit<AuditEntry, "id" | "at" | "outcome" | "tabId" | "workspaceId" | "target" | "detail"> &
@@ -59,7 +60,10 @@ export const make = Effect.gen(function* () {
   const hub = yield* Hub;
   let sincePrune = 0;
 
-  const prune = sql`DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ${MAX_ENTRIES}`.pipe(Effect.asVoid, Effect.orDie);
+  const prune = sql`DELETE FROM audit WHERE id <= (SELECT MAX(id) FROM audit) - ${MAX_ENTRIES}`.pipe(
+    Effect.asVoid,
+    Effect.orDie,
+  );
   yield* prune;
 
   return {
@@ -85,7 +89,10 @@ export const make = Effect.gen(function* () {
           AND ${workspaceId ? sql`(workspace_id = ${workspaceId} OR workspace_id IS NULL)` : sql`1 = 1`}
           AND ${actor ? sql`actor = ${actor}` : sql`1 = 1`}
           AND ${before ? sql`id < ${before}` : sql`1 = 1`}
-        ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 1000)}`.pipe(Effect.map((rows) => rows.map(toEntry)), Effect.orDie),
+        ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 1000)}`.pipe(
+        Effect.map((rows) => rows.map(toEntry)),
+        Effect.orDie,
+      ),
   } satisfies AuditShape;
 });
 

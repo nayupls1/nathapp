@@ -13,7 +13,7 @@ test("renders the supported subset", () => {
 });
 
 test("never lets markup or script links through", () => {
-  const html = markdownToHtml('<img src=x onerror=alert(1)> [x](javascript:alert(1)) **<script>**');
+  const html = markdownToHtml("<img src=x onerror=alert(1)> [x](javascript:alert(1)) **<script>**");
   expect(html).not.toContain("<img");
   expect(html).not.toContain("<script");
   expect(html).not.toContain('href="javascript');

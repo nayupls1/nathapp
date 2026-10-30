@@ -8,7 +8,15 @@ import type { DidFailLoadEvent, PageFaviconUpdatedEvent, PageTitleUpdatedEvent, 
 import { createEffect, createSignal, For, on, onCleanup, Show, untrack } from "solid-js";
 import { DEFAULT_WORKSPACE, webPartition, type ElementInfo, type PageContext } from "../../shared/api";
 import { isExtensionUrl } from "../../shared/extensions";
-import { hostOf, normalizeUrl, overrideScript, pageChangeHandlerScript, pageChangesCss, pageChangesScript, scopeMatches } from "../../shared/web";
+import {
+  hostOf,
+  normalizeUrl,
+  overrideScript,
+  pageChangeHandlerScript,
+  pageChangesCss,
+  pageChangesScript,
+  scopeMatches,
+} from "../../shared/web";
 import { fillScript, focusScript, keyCodeOf, scrollScript } from "../lib/browse";
 import { captureScript, restoreScript, takeSavedPage, type SavedPage } from "../lib/pagestate";
 import { cancelPickScript, pickScript, unmarkScript } from "../lib/picker";
@@ -17,7 +25,16 @@ import { settings } from "../lib/settings";
 import { sendWithShares } from "../lib/sharing";
 import { appById, isAgentCollapsed, setAgentCollapsed, states, stopAgent, updatePage } from "../lib/store";
 import { showExtensionSettings } from "../lib/extensions";
-import { cachedOverride, pageChanges, pagesChanged, registerPage, siteOverride, type ApplyResult, type BrowseAction, type PageInfo } from "../lib/webtabs";
+import {
+  cachedOverride,
+  pageChanges,
+  pagesChanged,
+  registerPage,
+  siteOverride,
+  type ApplyResult,
+  type BrowseAction,
+  type PageInfo,
+} from "../lib/webtabs";
 import { focusAddress, networkTab, registerChrome, setNetworkTab } from "../lib/tabChrome";
 import { colors, font, radius, space } from "../theme.stylex";
 import type { MenuPosition } from "./ContextMenu";
@@ -90,7 +107,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
     const target = isExtensionUrl(input.trim()) ? input.trim() : normalizeUrl(input, settings().web.searchEngine);
     if (!target) return false;
     setAddress(target);
-    if (!src()) setSrc(target); // creates the webview
+    if (!src())
+      setSrc(target); // creates the webview
     // Its first page is still on its way: loadURL would throw until it's ready.
     else if (!webview || !ready) pendingUrl = target;
     else webview.loadURL(target).catch(() => {}); // failures show up as did-fail-load
@@ -106,7 +124,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
     if (!editing) setAddress(url);
     updatePage(props.appId, { url });
     updateHistory();
-    if (!inPage) clearPicks(props.appId); // the picked elements are gone with the old page
+    if (!inPage)
+      clearPicks(props.appId); // the picked elements are gone with the old page
     // Single-page apps: another page, maybe other page changes.
     else void applyChanges();
   }
@@ -243,7 +262,13 @@ export function WebTab(props: { appId: string; active: boolean }) {
     });
   }
 
-  createEffect(on(() => settings().web.overrides, () => void applyOverride(), { defer: true }));
+  createEffect(
+    on(
+      () => settings().web.overrides,
+      () => void applyOverride(),
+      { defer: true },
+    ),
+  );
   createEffect(on(pageChanges, () => void applyChanges(), { defer: true }));
 
   // --- Element picker ----------------------------------------------------------------
@@ -278,7 +303,10 @@ export function WebTab(props: { appId: string; active: boolean }) {
   }
 
   function send(prompt: string) {
-    const page: PageContext | undefined = webview && ready ? { url: webview.getURL(), title: webview.getTitle(), selection: [...picksOf(props.appId)] } : undefined;
+    const page: PageContext | undefined =
+      webview && ready
+        ? { url: webview.getURL(), title: webview.getTitle(), selection: [...picksOf(props.appId)] }
+        : undefined;
     clearPicks(props.appId);
     if (webview && ready) void webview.executeJavaScript(unmarkScript()).catch(() => {});
     void sendWithShares(props.appId, prompt, page);
@@ -392,10 +420,21 @@ export function WebTab(props: { appId: string; active: boolean }) {
     unpick,
     webContentsId: () => requireReady().getWebContentsId(),
     // Nothing to wait for without an address.
-    whenLoaded: () => (src() ? Promise.race([firstLoad.then(() => loadApplied), new Promise<void>((r) => setTimeout(r, 15_000))]) : Promise.resolve()),
+    whenLoaded: () =>
+      src()
+        ? Promise.race([firstLoad.then(() => loadApplied), new Promise<void>((r) => setTimeout(r, 15_000))])
+        : Promise.resolve(),
     saveState: async () => {
       if (!webview || !ready) return null;
-      return ((await webview.executeJavaScript(captureScript).catch(() => null)) as SavedPage | null) ?? { url: currentUrl(), scrollX: 0, scrollY: 0, scrollers: [], fields: [] };
+      return (
+        ((await webview.executeJavaScript(captureScript).catch(() => null)) as SavedPage | null) ?? {
+          url: currentUrl(),
+          scrollX: 0,
+          scrollY: 0,
+          scrollers: [],
+          fields: [],
+        }
+      );
     },
     busy: () => {
       try {
@@ -414,10 +453,10 @@ export function WebTab(props: { appId: string; active: boolean }) {
     const samePage = (a: string, b: string) => a.split("#")[0] === b.split("#")[0];
     void firstLoad.then(async () => {
       await loadApplied;
-      if (webview && ready && samePage(webview.getURL(), restoring.url)) await webview.executeJavaScript(restoreScript(restoring)).catch(() => {});
+      if (webview && ready && samePage(webview.getURL(), restoring.url))
+        await webview.executeJavaScript(restoreScript(restoring)).catch(() => {});
     });
   }
-
 
   function attach(view: WebviewTag) {
     webview = view;
@@ -437,12 +476,15 @@ export function WebTab(props: { appId: string; active: boolean }) {
     });
     view.addEventListener("did-fail-load", (e: DidFailLoadEvent) => {
       // -3 is an aborted load (e.g. a new navigation replaced it).
-      if (e.isMainFrame && e.errorCode !== -3) setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
+      if (e.isMainFrame && e.errorCode !== -3)
+        setLoadError(`${e.errorDescription || "Failed to load"} (${e.validatedURL})`);
       loaded();
     });
     view.addEventListener("did-navigate", (e) => navigated(e.url, false));
     view.addEventListener("did-navigate-in-page", (e) => e.isMainFrame && navigated(e.url, true));
-    view.addEventListener("page-title-updated", (e: PageTitleUpdatedEvent) => updatePage(props.appId, { title: e.title }));
+    view.addEventListener("page-title-updated", (e: PageTitleUpdatedEvent) =>
+      updatePage(props.appId, { title: e.title }),
+    );
     view.addEventListener("page-favicon-updated", (e: PageFaviconUpdatedEvent) =>
       updatePage(props.appId, { favicon: e.favicons.find((f) => /^https?:/.test(f)) ?? null }),
     );
@@ -470,7 +512,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const customized = () => !!override() && (override()!.css.trim() !== "" || override()!.js.trim() !== "");
   const changesHere = () => changesFor(currentUrl());
   const changed = () => customized() || changesHere().length > 0;
-  const overrideActive = () => customizing() && ((customized() && override()!.enabled) || changesHere().some((c) => c.enabled));
+  const overrideActive = () =>
+    customizing() && ((customized() && override()!.enabled) || changesHere().some((c) => c.enabled));
 
   // What the sidebar's top bar shows for this tab (components/TopBar.tsx): the address with the page's changes, and the extensions.
   onCleanup(
@@ -490,7 +533,11 @@ export function WebTab(props: { appId: string; active: boolean }) {
         <Show when={changed()}>
           <button
             type="button"
-            title={overrideActive() ? "This page is changed: see and turn off the changes" : "The changes to this page are off"}
+            title={
+              overrideActive()
+                ? "This page is changed: see and turn off the changes"
+                : "The changes to this page are off"
+            }
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect();
               setMenu(menu() ? undefined : { x: r.left, y: r.bottom + 6 });
@@ -502,7 +549,14 @@ export function WebTab(props: { appId: string; active: boolean }) {
           </button>
         </Show>
       ),
-      extensions: () => <ExtensionsBar workspaceId={workspaceId} tabId={contentsId} active={props.active} onImport={openExtensionImport} />,
+      extensions: () => (
+        <ExtensionsBar
+          workspaceId={workspaceId}
+          tabId={contentsId}
+          active={props.active}
+          onImport={openExtensionImport}
+        />
+      ),
     }),
   );
 
@@ -510,7 +564,14 @@ export function WebTab(props: { appId: string; active: boolean }) {
     <div {...stylex.attrs(styles.split)} data-web-tab={props.appId}>
       <div {...stylex.attrs(styles.main)}>
         <div {...stylex.attrs(styles.viewport)}>
-          <Show when={src() && prepared()} fallback={<Show when={!src()}><StartPage onGo={go} /></Show>}>
+          <Show
+            when={src() && prepared()}
+            fallback={
+              <Show when={!src()}>
+                <StartPage onGo={go} />
+              </Show>
+            }
+          >
             <webview
               ref={attach}
               src={src()}
@@ -523,7 +584,9 @@ export function WebTab(props: { appId: string; active: boolean }) {
             <div {...stylex.attrs(styles.banner)}>Click an element to pick it · Esc to cancel</div>
           </Show>
           <Show when={marker()} keyed>
-            {(m) => <span {...stylex.attrs(styles.marker)} style={{ left: `${m.x}px`, top: `${m.y}px` }} data-agent-marker />}
+            {(m) => (
+              <span {...stylex.attrs(styles.marker)} style={{ left: `${m.x}px`, top: `${m.y}px` }} data-agent-marker />
+            )}
           </Show>
           <Show when={acting() && state()?.running}>
             <div {...stylex.attrs(styles.agentBanner)} data-agent-acting>
@@ -558,7 +621,14 @@ export function WebTab(props: { appId: string; active: boolean }) {
         </Show>
       </div>
       <Show when={menu()}>
-        {(position) => <PageChangesPopover url={currentUrl()} errors={changeErrors()} position={position()} onClose={() => setMenu()} />}
+        {(position) => (
+          <PageChangesPopover
+            url={currentUrl()}
+            errors={changeErrors()}
+            position={position()}
+            onClose={() => setMenu()}
+          />
+        )}
       </Show>
     </div>
   );
@@ -622,7 +692,10 @@ const styles = stylex.create({
     opacity: { default: 1, ":disabled": 0.4 },
     cursor: { default: "pointer", ":disabled": "default" },
   },
-  iconButtonOn: { backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft }, color: { default: colors.accent, ":hover": colors.accent } },
+  iconButtonOn: {
+    backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft },
+    color: { default: colors.accent, ":hover": colors.accent },
+  },
   addressBar: {
     flex: 1,
     minWidth: 0,

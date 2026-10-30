@@ -62,7 +62,8 @@ export const presets: Preset[] = [
   {
     id: "vanilla",
     name: "Vanilla",
-    description: "Plain HTML, CSS and TypeScript (no framework) with a Bun server, a SQLite database and realtime updates.",
+    description:
+      "Plain HTML, CSS and TypeScript (no framework) with a Bun server, a SQLite database and realtime updates.",
     stack: "HTML/CSS/TS · Bun API · SQLite · realtime",
     manifest: { preset: "vanilla", ...scripts },
     files: {
@@ -85,11 +86,17 @@ export const presets: Preset[] = [
   },
 ];
 
-export const presetInfo = (p: Preset): PresetInfo => ({ id: p.id, name: p.name, description: p.description, stack: p.stack });
+export const presetInfo = (p: Preset): PresetInfo => ({
+  id: p.id,
+  name: p.name,
+  description: p.description,
+  stack: p.stack,
+});
 
 export const findPreset = (id: string) => presets.find((p) => p.id === id);
 
-const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const escapeHtml = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export const slugify = (name: string) =>
   name

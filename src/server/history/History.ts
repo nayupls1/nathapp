@@ -44,7 +44,10 @@ import { AppData, DATA_PREFIX } from "../workspace/AppData";
 import { Runtime } from "../workspace/Runtime";
 import { Workspace } from "../workspace/Workspace";
 
-export class HistoryError extends Data.TaggedError("HistoryError")<{ readonly status: 400 | 404 | 409; readonly message: string }> {}
+export class HistoryError extends Data.TaggedError("HistoryError")<{
+  readonly status: 400 | 404 | 409;
+  readonly message: string;
+}> {}
 
 /** path → content hash */
 type Tree = Record<string, string>;
@@ -93,7 +96,19 @@ const MAX_FILES = 20_000;
 /** Bigger files are listed without a line diff. */
 const MAX_DIFF_BYTES = 512 * 1024;
 /** Never part of an app's snapshot: dependencies, builds, caches, version control. */
-const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", ".turbo", ".cache", ".svelte-kit", "coverage", ".output", ".vercel"]);
+const SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".svelte-kit",
+  "coverage",
+  ".output",
+  ".vercel",
+]);
 const SKIP_FILES = /(-wal|-shm|-journal)$|\.log$|^\.DS_Store$/;
 const SQLITE_NAME = /\.(sqlite3?|db)$/i;
 const SQLITE_HEADER = "SQLite format 3\0";
@@ -121,7 +136,9 @@ function readDatabase(file: string): { bytes: Uint8Array; tables: Record<string,
     db = new Database(file);
     db.run("PRAGMA busy_timeout = 2000");
     const tables: Record<string, number> = {};
-    for (const { name } of db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all()) {
+    for (const { name } of db
+      .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+      .all()) {
       tables[name] = db.query<{ n: number }, []>(`SELECT COUNT(*) AS n FROM ${quote(name)}`).get()!.n;
     }
     return { bytes: db.serialize(), tables };
@@ -132,7 +149,10 @@ function readDatabase(file: string): { bytes: Uint8Array; tables: Record<string,
   }
 }
 
-const tableChanges = (before: Record<string, number> | undefined, after: Record<string, number> | undefined): TableChanges => {
+const tableChanges = (
+  before: Record<string, number> | undefined,
+  after: Record<string, number> | undefined,
+): TableChanges => {
   const changes: TableChanges = {};
   for (const table of new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})])) {
     const a = before?.[table] ?? null;
@@ -150,7 +170,8 @@ function compare(previous: { tree: Tree; data: DataStats } | null, current: Capt
   const modified = Object.keys(after).filter((p) => p in before && before[p] !== after[p]);
   const data: Record<string, TableChanges> = {};
   for (const path of [...added, ...removed, ...modified]) {
-    if (path in current.data || (previous && path in previous.data)) data[path] = tableChanges(previous?.data[path], current.data[path]);
+    if (path in current.data || (previous && path in previous.data))
+      data[path] = tableChanges(previous?.data[path], current.data[path]);
   }
   return { added: added.sort(), modified: modified.sort(), removed: removed.sort(), data, first: !previous };
 }
@@ -159,7 +180,12 @@ export interface HistoryShape {
   /** Takes a snapshot if anything changed since the last one (null if nothing did, or there's nothing to snapshot yet). */
   readonly record: (target: HistoryTarget, by: By) => Effect.Effect<HistoryEntry | null>;
   /** Newest first. A workspace filter includes the targets that belong to none (sites, settings). */
-  readonly list: (filter: { target?: string; workspaceId?: string; before?: number; limit?: number }) => Effect.Effect<HistoryEntry[]>;
+  readonly list: (filter: {
+    target?: string;
+    workspaceId?: string;
+    before?: number;
+    limit?: number;
+  }) => Effect.Effect<HistoryEntry[]>;
   readonly entry: (id: number) => Effect.Effect<HistoryEntry, HistoryError>;
   /** The entry with its files and their line diffs. */
   readonly detail: (id: number) => Effect.Effect<HistoryDetail, HistoryError>;
@@ -180,7 +206,10 @@ export interface HistoryShape {
    * the site customizations and every app (of the workspace, if given) that had
    * a snapshot by then, each as one restore (undoable). Returns what changed.
    */
-  readonly restoreAll: (at: number, options: { data: boolean; workspaceId?: string }) => Effect.Effect<{ restored: HistoryTarget[] }, HistoryError>;
+  readonly restoreAll: (
+    at: number,
+    options: { data: boolean; workspaceId?: string },
+  ) => Effect.Effect<{ restored: HistoryTarget[] }, HistoryError>;
   /** Deletes a target's history (its app was deleted). */
   readonly forget: (target: HistoryTarget) => Effect.Effect<void>;
 }
@@ -221,7 +250,8 @@ export const make = Effect.gen(function* () {
       return hash;
     });
 
-  const get = (hash: string) => Effect.promise(async () => Bun.gunzipSync(new Uint8Array(await readFile(objectPath(hash)))));
+  const get = (hash: string) =>
+    Effect.promise(async () => Bun.gunzipSync(new Uint8Array(await readFile(objectPath(hash)))));
 
   /** Deletes contents no snapshot refers to (older than an hour, so ones being saved right now stay). */
   const collectGarbage = Effect.gen(function* () {
@@ -245,7 +275,9 @@ export const make = Effect.gen(function* () {
 
   /** Where a snapshot path of an app is on disk: its project, or its managed data for "@data/…". */
   const appPath = (appId: string, path: string) =>
-    path.startsWith(DATA_PREFIX) ? join(appData.dir(appId), path.slice(DATA_PREFIX.length)) : join(workspace.dir(appId), path);
+    path.startsWith(DATA_PREFIX)
+      ? join(appData.dir(appId), path.slice(DATA_PREFIX.length))
+      : join(workspace.dir(appId), path);
 
   /** An app's files and data; null if it has no project folder yet. */
   const captureApp = (appId: string) =>
@@ -262,7 +294,8 @@ export const make = Effect.gen(function* () {
             const path = rel ? `${rel}/${entry.name}` : entry.name;
             if (entry.isDirectory()) {
               // Rune Browser's state folder (dependency stamp, home) isn't the app's.
-              if (path !== ".rune" && !(skipDirs && SKIP_DIRS.has(entry.name))) await walk(join(dir, entry.name), path, skipDirs);
+              if (path !== ".rune" && !(skipDirs && SKIP_DIRS.has(entry.name)))
+                await walk(join(dir, entry.name), path, skipDirs);
             } else if (entry.isFile() && !SKIP_FILES.test(entry.name) && files.length < MAX_FILES) files.push(path);
           }
         };
@@ -275,9 +308,19 @@ export const make = Effect.gen(function* () {
       const { tree: previous, data: previousData } = last ? stored(last) : { tree: {} as Tree, data: {} as DataStats };
       for (const path of files) {
         const file = appPath(appId, path);
-        const size = yield* Effect.promise(() => stat(file).then((s) => s.size, () => -1));
+        const size = yield* Effect.promise(() =>
+          stat(file).then(
+            (s) => s.size,
+            () => -1,
+          ),
+        );
         if (size < 0 || size > MAX_FILE_BYTES) continue;
-        const head = yield* Effect.promise(() => Bun.file(file).slice(0, 16).text().catch(() => ""));
+        const head = yield* Effect.promise(() =>
+          Bun.file(file)
+            .slice(0, 16)
+            .text()
+            .catch(() => ""),
+        );
         if (SQLITE_NAME.test(path) && head === SQLITE_HEADER) {
           const db = readDatabase(file);
           if (db) {
@@ -289,7 +332,12 @@ export const make = Effect.gen(function* () {
           }
           continue;
         }
-        const bytes = yield* Effect.promise(() => readFile(file).then((b) => new Uint8Array(b), () => null));
+        const bytes = yield* Effect.promise(() =>
+          readFile(file).then(
+            (b) => new Uint8Array(b),
+            () => null,
+          ),
+        );
         if (bytes) tree[path] = yield* put(bytes);
       }
       return { tree, data } satisfies Captured;
@@ -315,7 +363,8 @@ export const make = Effect.gen(function* () {
 
   const captureSettings = Effect.gen(function* () {
     const files: Record<string, Uint8Array> = { "settings.json": json(yield* settings.get()) };
-    for (const w of yield* workspaces.list()) files[`workspaces/${w.id}.json`] = json({ name: w.name, icon: w.icon, settings: w.settings });
+    for (const w of yield* workspaces.list())
+      files[`workspaces/${w.id}.json`] = json({ name: w.name, icon: w.icon, settings: w.settings });
     return yield* captureFiles(files);
   });
 
@@ -327,7 +376,8 @@ export const make = Effect.gen(function* () {
 
   // --- Applying a tree ----------------------------------------------------------------
 
-  const read = (tree: Tree, path: string) => (tree[path] ? get(tree[path]).pipe(Effect.map((b) => decoder.decode(b))) : Effect.succeed(null));
+  const read = (tree: Tree, path: string) =>
+    tree[path] ? get(tree[path]).pipe(Effect.map((b) => decoder.decode(b))) : Effect.succeed(null);
 
   const applyApp = (appId: string, desired: Tree, current: Tree) =>
     Effect.gen(function* () {
@@ -352,7 +402,8 @@ export const make = Effect.gen(function* () {
           const file = appPath(appId, path);
           await mkdir(dirname(file), { recursive: true });
           // A database replaced as a whole: its journal belongs to the old one.
-          if (SQLITE_NAME.test(path)) for (const suffix of ["-wal", "-shm", "-journal"]) await rm(file + suffix, { force: true });
+          if (SQLITE_NAME.test(path))
+            for (const suffix of ["-wal", "-shm", "-journal"]) await rm(file + suffix, { force: true });
           await writeFile(file, bytes);
         });
       }
@@ -421,7 +472,11 @@ export const make = Effect.gen(function* () {
         const saved = yield* read(desired, `workspaces/${w.id}.json`);
         if (!saved) continue;
         const value = JSON.parse(saved) as { name: string; icon: string | null; settings: unknown };
-        const updated = yield* workspaces.update(w.id, { name: value.name, icon: value.icon, settings: decodeWorkspaceSettings(value.settings) });
+        const updated = yield* workspaces.update(w.id, {
+          name: value.name,
+          icon: value.icon,
+          settings: decodeWorkspaceSettings(value.settings),
+        });
         if (updated) yield* hub.publish({ type: "workspace", topic: topics.workspaces, workspace: updated });
       }
     });
@@ -439,7 +494,11 @@ export const make = Effect.gen(function* () {
       Effect.map((rows) => rows[0] ?? null),
       Effect.orDie,
     );
-  const byId = (id: number) => sql<SnapshotRow>`SELECT * FROM snapshots WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null), Effect.orDie);
+  const byId = (id: number) =>
+    sql<SnapshotRow>`SELECT * FROM snapshots WHERE id = ${id}`.pipe(
+      Effect.map((rows) => rows[0] ?? null),
+      Effect.orDie,
+    );
   const parentOf = (row: SnapshotRow) =>
     sql<SnapshotRow>`SELECT * FROM snapshots WHERE target = ${row.target} AND id < ${row.id} ORDER BY id DESC LIMIT 1`.pipe(
       Effect.map((rows) => rows[0] ?? null),
@@ -466,7 +525,8 @@ export const make = Effect.gen(function* () {
   };
   const stored = (r: SnapshotRow) => ({ tree: JSON.parse(r.tree) as Tree, data: JSON.parse(r.data) as DataStats });
 
-  const publish = (row: SnapshotRow | null) => (row ? hub.publish({ type: "snapshot", topic: topics.history, entry: toEntry(row) }) : Effect.void);
+  const publish = (row: SnapshotRow | null) =>
+    row ? hub.publish({ type: "snapshot", topic: topics.history, entry: toEntry(row) }) : Effect.void;
   const changed = (target: string) => hub.publish({ type: "history-changed", topic: topics.history, target });
 
   const insert = (target: HistoryTarget, captured: Captured, by: By) =>
@@ -477,7 +537,13 @@ export const make = Effect.gen(function* () {
       if (last ? sameTree(stored(last).tree, captured.tree) : empty) return null;
       const summary = by.summary.slice(0, 500);
 
-      if (last && by.coalesceMs && last.actor === by.actor && last.summary === summary && Date.parse(last.at) > Date.now() - by.coalesceMs) {
+      if (
+        last &&
+        by.coalesceMs &&
+        last.actor === by.actor &&
+        last.summary === summary &&
+        Date.parse(last.at) > Date.now() - by.coalesceMs
+      ) {
         const parent = yield* parentOf(last);
         if (parent && sameTree(stored(parent).tree, captured.tree)) {
           // Changed back to how it was: nothing left to remember.
@@ -535,18 +601,22 @@ export const make = Effect.gen(function* () {
       if (appId && !existsSync(workspace.dir(appId))) return yield* fail(404, "The app no longer exists");
     });
 
-  const isDatabase = (path: string, ...stats: DataStats[]) => stats.some((s) => path in s) || (SQLITE_NAME.test(path) && path.startsWith(DATA_PREFIX));
+  const isDatabase = (path: string, ...stats: DataStats[]) =>
+    stats.some((s) => path in s) || (SQLITE_NAME.test(path) && path.startsWith(DATA_PREFIX));
   /** The app's data (kept as it is unless restoring "with its data"): its managed folder and any database in the project. */
   const isData = (path: string, ...stats: DataStats[]) => path.startsWith(DATA_PREFIX) || isDatabase(path, ...stats);
 
   // Where undoing the first change of settings or sites goes back to (also catches changes made while Rune Browser wasn't running).
   for (const target of ["settings", "sites"] as const) {
-    yield* record(target, { actor: "rune", actorLabel: "Rune Browser", summary: "As it was when Rune Browser started" }).pipe(Effect.ignoreCause);
+    yield* record(target, {
+      actor: "rune",
+      actorLabel: "Rune Browser",
+      summary: "As it was when Rune Browser started",
+    }).pipe(Effect.ignoreCause);
   }
 
   // Clean up after deleted snapshots, a while after startup.
   yield* Effect.forkDetach(Effect.sleep("1 minute").pipe(Effect.andThen(collectGarbage), Effect.ignoreCause));
-
 
   const restore = (id: number, options: { data: boolean }) =>
     Effect.gen(function* () {
@@ -556,13 +626,18 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           const current = yield* capture(row.target);
           if (!current) return yield* fail(404, "Nothing to restore into");
-          yield* insert(row.target, current, { actor: "rune", actorLabel: "Rune Browser", summary: "Before restoring an earlier version" });
+          yield* insert(row.target, current, {
+            actor: "rune",
+            actorLabel: "Rune Browser",
+            summary: "Before restoring an earlier version",
+          });
           const target = stored(row);
           const desired: Tree = { ...target.tree };
           if (!options.data) {
             // Databases stay as they are now.
             for (const path of Object.keys(desired)) if (isData(path, target.data, current.data)) delete desired[path];
-            for (const path of Object.keys(current.tree)) if (isData(path, target.data, current.data)) desired[path] = current.tree[path]!;
+            for (const path of Object.keys(current.tree))
+              if (isData(path, target.data, current.data)) desired[path] = current.tree[path]!;
           }
           yield* apply(row.target, desired, current.tree);
           const after = yield* capture(row.target);
@@ -591,7 +666,10 @@ export const make = Effect.gen(function* () {
         WHERE ${target ? sql`target = ${target}` : sql`1 = 1`}
           AND ${workspaceId ? sql`(workspace_id = ${workspaceId} OR workspace_id IS NULL)` : sql`1 = 1`}
           AND ${before ? sql`id < ${before}` : sql`1 = 1`}
-        ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 500)}`.pipe(Effect.map((rows) => rows.map(toEntry)), Effect.orDie),
+        ORDER BY id DESC LIMIT ${Math.min(Math.max(limit, 1), 500)}`.pipe(
+        Effect.map((rows) => rows.map(toEntry)),
+        Effect.orDie,
+      ),
 
     entry: (id) => Effect.map(requireRow(id), toEntry),
 
@@ -634,7 +712,8 @@ export const make = Effect.gen(function* () {
           if (old.length > MAX_DIFF_BYTES || now.length > MAX_DIFF_BYTES) files.push({ path, status, kind: "large" });
           else if (isBinary(old) || isBinary(now)) files.push({ path, status, kind: "binary" });
           else {
-            const lines = (bytes: Uint8Array) => (bytes.length ? decoder.decode(bytes).replace(/\n$/, "").split("\n") : []);
+            const lines = (bytes: Uint8Array) =>
+              bytes.length ? decoder.decode(bytes).replace(/\n$/, "").split("\n") : [];
             const diff = diffLines(lines(old), lines(now));
             if (!diff) files.push({ path, status, kind: "large" });
             else {
@@ -658,17 +737,25 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const point = yield* requireRow(at);
         const targets: HistoryTarget[] = ["settings", "sites"];
-        const appRows = yield* sql<{ id: string }>`SELECT id FROM apps WHERE kind = 'app' ${options.workspaceId ? sql`AND workspace_id = ${options.workspaceId}` : sql``} ORDER BY position`.pipe(Effect.orDie);
+        const appRows = yield* sql<{
+          id: string;
+        }>`SELECT id FROM apps WHERE kind = 'app' ${options.workspaceId ? sql`AND workspace_id = ${options.workspaceId}` : sql``} ORDER BY position`.pipe(
+          Effect.orDie,
+        );
         for (const app of appRows) targets.push(`app:${app.id}`);
         const restored: HistoryTarget[] = [];
         for (const target of targets) {
           // Its last snapshot by then; nothing before means it didn't exist yet, and it stays.
-          const then = (yield* sql<SnapshotRow>`SELECT * FROM snapshots WHERE target = ${target} AND id <= ${point.id} ORDER BY id DESC LIMIT 1`.pipe(Effect.orDie))[0];
+          const then =
+            (yield* sql<SnapshotRow>`SELECT * FROM snapshots WHERE target = ${target} AND id <= ${point.id} ORDER BY id DESC LIMIT 1`.pipe(
+              Effect.orDie,
+            ))[0];
           if (!then) continue;
           const current = yield* capture(target);
           if (!current) continue;
           const before = stored(then);
-          const differs = (path: string) => before.tree[path] !== current.tree[path] && (options.data || !isData(path, before.data, current.data));
+          const differs = (path: string) =>
+            before.tree[path] !== current.tree[path] && (options.data || !isData(path, before.data, current.data));
           if (![...new Set([...Object.keys(before.tree), ...Object.keys(current.tree)])].some(differs)) continue;
           yield* restore(then.id, { data: options.data });
           restored.push(target);
@@ -708,17 +795,26 @@ export const make = Effect.gen(function* () {
               else delete desired[path];
             }
             if (conflicts.length) {
-              const list = conflicts.slice(0, 5).join(", ") + (conflicts.length > 5 ? ` and ${conflicts.length - 5} more` : "");
+              const list =
+                conflicts.slice(0, 5).join(", ") + (conflicts.length > 5 ? ` and ${conflicts.length - 5} more` : "");
               return yield* fail(409, `Changed again since then: ${list}. Restore an earlier version instead.`);
             }
             if (sameTree(desired, current.tree)) {
-              if (keptData.length) return "Only the data changed, and it has changed again since, so nothing was undone.";
-              return skippedData ? "Only the data changed in this step; undo it with its data to take that back." : "Nothing left to undo.";
+              if (keptData.length)
+                return "Only the data changed, and it has changed again since, so nothing was undone.";
+              return skippedData
+                ? "Only the data changed in this step; undo it with its data to take that back."
+                : "Nothing left to undo.";
             }
-            yield* insert(row.target, current, { actor: "rune", actorLabel: "Rune Browser", summary: "Before undoing a change" });
+            yield* insert(row.target, current, {
+              actor: "rune",
+              actorLabel: "Rune Browser",
+              summary: "Before undoing a change",
+            });
             yield* apply(row.target, desired, current.tree);
             const now = yield* capture(row.target);
-            if (now) yield* insert(row.target, now, { actor: "user", actorLabel: "You", summary: `Undid: ${row.summary}` });
+            if (now)
+              yield* insert(row.target, now, { actor: "user", actorLabel: "You", summary: `Undid: ${row.summary}` });
             return keptData.length ? "The app's data has changed since, so it was kept as it is." : null;
           }),
         );

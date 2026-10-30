@@ -57,7 +57,9 @@ export interface WorkspaceShape {
 export class Workspace extends Context.Service<Workspace, WorkspaceShape>()("rune/Workspace") {}
 
 /** Where an imported app comes from. */
-export type ImportSource = { readonly kind: "git"; readonly url: string; readonly branch?: string } | { readonly kind: "folder"; readonly path: string };
+export type ImportSource =
+  | { readonly kind: "git"; readonly url: string; readonly branch?: string }
+  | { readonly kind: "folder"; readonly path: string };
 
 /** How cloning or copying is going (shown in the new app tab). */
 export type ImportProgress = GitProgress;
@@ -72,7 +74,11 @@ export const cancelImport = (appId: string) => cancelGit(appId);
  * Astro, Angular) are told the port.
  */
 export function inferManifest(packageJson: unknown): Manifest | null {
-  const pkg = packageJson as { scripts?: Record<string, unknown>; dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown> } | null;
+  const pkg = packageJson as {
+    scripts?: Record<string, unknown>;
+    dependencies?: Record<string, unknown>;
+    devDependencies?: Record<string, unknown>;
+  } | null;
   const scripts = pkg?.scripts;
   if (!scripts || typeof scripts !== "object") return null;
   const script = (name: string) => (typeof scripts[name] === "string" ? (scripts[name] as string) : null);
@@ -87,7 +93,8 @@ export function inferManifest(packageJson: unknown): Manifest | null {
   const run = (name: string) => `bun run ${name}${portArgs(script(name))}`;
   const dev = script("dev") !== null ? run("dev") : run("start");
   /** `vite`, `vite dev`, `astro dev`: a dev server, not a way to serve the build. */
-  const devServer = (command: string | null) => !!command && /\b(vite|astro)\b/.test(command) && !/\b(preview|build)\b/.test(command);
+  const devServer = (command: string | null) =>
+    !!command && /\b(vite|astro)\b/.test(command) && !/\b(preview|build)\b/.test(command);
   const start =
     script("start") !== null && !devServer(script("start"))
       ? run("start")
@@ -102,7 +109,10 @@ export function inferManifest(packageJson: unknown): Manifest | null {
 const decodeManifest = Schema.decodeUnknownSync(ManifestSchema);
 
 const ACTION_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
-const route = (value: unknown) => (typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && value.length <= 500 ? value : undefined);
+const route = (value: unknown) =>
+  typeof value === "string" && value.startsWith("/") && !value.startsWith("//") && value.length <= 500
+    ? value
+    : undefined;
 
 /** The command bar actions in rune.json. Invalid ones are left out rather than failing the whole manifest. */
 export function parseActions(value: unknown): AppAction[] {
@@ -111,7 +121,8 @@ export function parseActions(value: unknown): AppAction[] {
   for (const item of value.slice(0, 30)) {
     if (!item || typeof item !== "object") continue;
     const { id, title, description, path, endpoint, input, params } = item as Record<string, unknown>;
-    if (typeof id !== "string" || !ACTION_ID.test(id) || typeof title !== "string" || !title.trim() || actions.has(id)) continue;
+    if (typeof id !== "string" || !ACTION_ID.test(id) || typeof title !== "string" || !title.trim() || actions.has(id))
+      continue;
     const opens = route(path);
     const calls = route(endpoint);
     // Exactly one of the two.
@@ -119,7 +130,9 @@ export function parseActions(value: unknown): AppAction[] {
     actions.set(id, {
       id,
       title: title.trim().slice(0, 80),
-      ...(typeof description === "string" && description.trim() ? { description: description.trim().slice(0, 200) } : {}),
+      ...(typeof description === "string" && description.trim()
+        ? { description: description.trim().slice(0, 200) }
+        : {}),
       ...(opens ? { path: opens } : { endpoint: calls }),
       ...(typeof input === "string" && input.trim() ? { input: input.trim().slice(0, 80) } : {}),
       ...(calls && Object.keys(parseParams(params)).length ? { params: parseParams(params) } : {}),
@@ -141,14 +154,17 @@ export function parseParams(value: unknown): Record<string, ToolParam> {
     if (!PARAM_TYPES.has(type as ToolParam["type"])) continue;
     out[name] = {
       type: type as ToolParam["type"],
-      ...(typeof description === "string" && description.trim() ? { description: description.trim().slice(0, 200) } : {}),
+      ...(typeof description === "string" && description.trim()
+        ? { description: description.trim().slice(0, 200) }
+        : {}),
       ...(required === true ? { required: true } : {}),
     };
   }
   return out;
 }
 
-const parseDataTools = (value: unknown): Manifest["dataTools"] => (value === "read" || value === "none" || value === "all" ? value : undefined);
+const parseDataTools = (value: unknown): Manifest["dataTools"] =>
+  value === "read" || value === "none" || value === "all" ? value : undefined;
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -169,13 +185,18 @@ export const make = Effect.gen(function* () {
       try {
         const actions = parseActions((json as { actions?: unknown } | null)?.actions);
         const dataTools = parseDataTools((json as { dataTools?: unknown } | null)?.dataTools);
-        return { ...(decodeManifest(json) as Manifest), ...(actions.length ? { actions } : {}), ...(dataTools ? { dataTools } : {}) };
+        return {
+          ...(decodeManifest(json) as Manifest),
+          ...(actions.length ? { actions } : {}),
+          ...(dataTools ? { dataTools } : {}),
+        };
       } catch (err) {
         return yield* new WorkspaceError({ message: `${MANIFEST} is invalid: ${(err as Error).message}` });
       }
     });
 
-  const ensureDir = (appId: string) => Effect.promise(() => mkdir(dir(appId), { recursive: true }).then(() => dir(appId)));
+  const ensureDir = (appId: string) =>
+    Effect.promise(() => mkdir(dir(appId), { recursive: true }).then(() => dir(appId)));
 
   return {
     dir,
@@ -192,14 +213,21 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const preset = findPreset(presetId);
         if (!preset) {
-          return yield* new WorkspaceError({ message: `Unknown preset "${presetId}". Presets: ${presets.map((p) => p.id).join(", ")}` });
+          return yield* new WorkspaceError({
+            message: `Unknown preset "${presetId}". Presets: ${presets.map((p) => p.id).join(", ")}`,
+          });
         }
         const existing = yield* manifest(appId).pipe(Effect.orElseSucceed(() => ({}) as Manifest));
-        if (existing) return yield* new WorkspaceError({ message: `The project is already set up (it has a ${MANIFEST}). Change its files instead.` });
+        if (existing)
+          return yield* new WorkspaceError({
+            message: `The project is already set up (it has a ${MANIFEST}). Change its files instead.`,
+          });
         const root = yield* ensureDir(appId);
         const theme = (yield* settings.get()).theme;
         const files: Record<string, string> = {
-          ...Object.fromEntries(Object.entries(preset.files).map(([path, content]) => [path, render(content, { name })])),
+          ...Object.fromEntries(
+            Object.entries(preset.files).map(([path, content]) => [path, render(content, { name })]),
+          ),
           [MANIFEST]: `${JSON.stringify(preset.manifest, null, 2)}\n`,
         };
         if (preset.files["src/styles.css"]) files["src/tokens.css"] = tokensCss(theme);
@@ -222,7 +250,10 @@ export const make = Effect.gen(function* () {
     importFrom: (appId, source, onProgress = () => {}) =>
       Effect.gen(function* () {
         const target = dir(appId);
-        if (existsSync(join(target, MANIFEST)) || (existsSync(target) && readdirSync(target).some((f) => f !== ".rune"))) {
+        if (
+          existsSync(join(target, MANIFEST)) ||
+          (existsSync(target) && readdirSync(target).some((f) => f !== ".rune"))
+        ) {
           return yield* new WorkspaceError({ message: "The app already has a project." });
         }
         let name: string;
@@ -230,37 +261,59 @@ export const make = Effect.gen(function* () {
           const git = parseGitSource(source.url, source.branch);
           if (!git) {
             return yield* new WorkspaceError({
-              message: "That isn't a link to a repository. Clone from an https link (like https://github.com/owner/repo), an SSH link or owner/repo.",
+              message:
+                "That isn't a link to a repository. Clone from an https link (like https://github.com/owner/repo), an SSH link or owner/repo.",
             });
           }
-          if (!Bun.which("git")) return yield* new WorkspaceError({ message: "Git isn't installed (or not on Rune Browser's PATH)." });
+          if (!Bun.which("git"))
+            return yield* new WorkspaceError({ message: "Git isn't installed (or not on Rune Browser's PATH)." });
           name = git.name;
           onProgress({ phase: `Cloning ${git.url}${git.branch ? ` (${git.branch})` : ""}`, percent: null });
           yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
           yield* Effect.promise(() => mkdir(dirname(target), { recursive: true }));
-          const result = yield* clone({ url: git.url, branch: git.branch, target, noHooks: join(config.cacheDir, "no-git-hooks"), onProgress, cancelKey: appId });
+          const result = yield* clone({
+            url: git.url,
+            branch: git.branch,
+            target,
+            noHooks: join(config.cacheDir, "no-git-hooks"),
+            onProgress,
+            cancelKey: appId,
+          });
           if (result.code !== 0) {
             yield* Effect.promise(() => rm(target, { recursive: true, force: true }));
             if (result.cancelled) return yield* new WorkspaceError({ message: "Cloning was cancelled." });
-            return yield* new WorkspaceError({ message: `Cloning failed: ${cloneError(result.err) || `git exited with ${result.code}`}` });
+            return yield* new WorkspaceError({
+              message: `Cloning failed: ${cloneError(result.err) || `git exited with ${result.code}`}`,
+            });
           }
         } else {
           const from = resolve(source.path);
           const info = yield* Effect.promise(() => stat(from).catch(() => null));
           if (!info?.isDirectory()) return yield* new WorkspaceError({ message: `${source.path} isn't a folder.` });
-          if (from === config.dataDir || from.startsWith(config.dataDir + sep) || config.dataDir.startsWith(from + sep)) {
+          if (
+            from === config.dataDir ||
+            from.startsWith(config.dataDir + sep) ||
+            config.dataDir.startsWith(from + sep)
+          ) {
             return yield* new WorkspaceError({ message: "That folder is Rune Browser's own data." });
           }
           name = basename(from);
           onProgress({ phase: `Copying ${from}`, percent: null });
           // Not its dependencies, builds or Rune Browser state: they're made again here.
           const skip = new Set(["node_modules", ".rune"]);
-          yield* Effect.promise(() => cp(from, target, { recursive: true, filter: (src) => !skip.has(basename(src)) || src === from }));
+          yield* Effect.promise(() =>
+            cp(from, target, { recursive: true, filter: (src) => !skip.has(basename(src)) || src === from }),
+          );
         }
         if (!existsSync(join(target, MANIFEST))) {
-          const pkg = yield* Effect.promise(() => readFile(join(target, "package.json"), "utf8").then(JSON.parse).catch(() => null));
+          const pkg = yield* Effect.promise(() =>
+            readFile(join(target, "package.json"), "utf8")
+              .then(JSON.parse)
+              .catch(() => null),
+          );
           const inferred = inferManifest(pkg);
-          if (inferred) yield* Effect.promise(() => writeFile(join(target, MANIFEST), `${JSON.stringify(inferred, null, 2)}\n`));
+          if (inferred)
+            yield* Effect.promise(() => writeFile(join(target, MANIFEST), `${JSON.stringify(inferred, null, 2)}\n`));
         }
         const project = yield* manifest(appId).pipe(Effect.orElseSucceed(() => null));
         return { project: project ? { dir: target, manifest: project } : null, name };

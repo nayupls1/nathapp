@@ -34,7 +34,17 @@ export const make = Effect.gen(function* () {
   const statuses = new Map<ProviderId, ProviderStatus>(
     providerIds.map((id) => [
       id,
-      { id, label: drivers[id].label, enabled: true, state: "checking", version: null, binary: null, message: null, models: [], defaultModel: null },
+      {
+        id,
+        label: drivers[id].label,
+        enabled: true,
+        state: "checking",
+        version: null,
+        binary: null,
+        message: null,
+        models: [],
+        defaultModel: null,
+      },
     ]),
   );
   const inFlight = new Map<ProviderId, Promise<void>>();
@@ -72,7 +82,8 @@ export const make = Effect.gen(function* () {
 
   return {
     list: Effect.sync(snapshot),
-    refresh: (id) => Effect.forEach(id ? [id] : providerIds, probeOnce, { concurrency: "unbounded" }).pipe(Effect.map(snapshot)),
+    refresh: (id) =>
+      Effect.forEach(id ? [id] : providerIds, probeOnce, { concurrency: "unbounded" }).pipe(Effect.map(snapshot)),
     driver: (id) => drivers[id],
   } satisfies ProvidersShape;
 });

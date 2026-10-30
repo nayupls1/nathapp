@@ -20,7 +20,13 @@ export async function startServer(options: { dataDir?: string } = {}) {
   const url = `http://127.0.0.1:${port}`;
   const token = crypto.randomUUID();
   const proc = Bun.spawn([process.execPath, "src/server/index.ts"], {
-    env: { ...process.env, PORT: String(port), RUNE_DATA_DIR: dataDir, RUNE_ALLOWED_ORIGIN: "app://rune", RUNE_TOKEN: token },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      RUNE_DATA_DIR: dataDir,
+      RUNE_ALLOWED_ORIGIN: "app://rune",
+      RUNE_TOKEN: token,
+    },
     stdout: "ignore",
     stderr: "inherit",
   });

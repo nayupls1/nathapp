@@ -2,14 +2,33 @@
 // server), browser shortcuts and site customization updates can reach them.
 import { createStore } from "solid-js/store";
 import { createEffect, createRoot, createSignal } from "solid-js";
-import type { DevtoolsCommand, NetworkFilter, PageChange, ReplayOverrides, RequestDraft, SiteOverride, WebShortcut } from "../../shared/api";
+import type {
+  DevtoolsCommand,
+  NetworkFilter,
+  PageChange,
+  ReplayOverrides,
+  RequestDraft,
+  SiteOverride,
+  WebShortcut,
+} from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { hostOf } from "../../shared/web";
 import { api } from "./api";
 import { handleRpc, onConnected, watchTopic } from "./realtime";
 import { openCommandBar } from "./commands";
 import { settings, settingsLoaded } from "./settings";
-import { appById, closeTab, isTab, newWebTab, openTab, reopenClosedTab, selectedId, showWorkspace, toggleAgent, workspaces } from "./store";
+import {
+  appById,
+  closeTab,
+  isTab,
+  newWebTab,
+  openTab,
+  reopenClosedTab,
+  selectedId,
+  showWorkspace,
+  toggleAgent,
+  workspaces,
+} from "./store";
 import { focusAddress } from "./tabChrome";
 import { targetScript, waitForScript, type Locator } from "./browse";
 import { readPageScript, type SavedPage } from "./pagestate";
@@ -149,7 +168,13 @@ handleRpc("page.target", async (params) => (await browsing(params.tabId)).eval(t
 handleRpc("page.act", async (params) => (await browsing(params.tabId)).act(params as unknown as BrowseAction));
 handleRpc("page.settle", async ({ tabId }) => (await browsing(tabId)).settle());
 handleRpc("page.waitFor", async ({ tabId, text, selector, timeoutMs }) =>
-  (await browsing(tabId)).eval(waitForScript((text as string | null) ?? null, (selector as string | null) ?? null, Math.min(Number(timeoutMs) || 10_000, 60_000))),
+  (await browsing(tabId)).eval(
+    waitForScript(
+      (text as string | null) ?? null,
+      (selector as string | null) ?? null,
+      Math.min(Number(timeoutMs) || 10_000, 60_000),
+    ),
+  ),
 );
 // read_tab (shared tab context): what another tab's page shows, as text.
 handleRpc("page.read", async ({ tabId }) => (await page(tabId)).eval(readPageScript));
@@ -168,20 +193,27 @@ handleRpc("page.applyOverride", async ({ tabId }) => {
 
 const network = window.rune.web.network;
 // DevTools for the agents (main/devtools.ts), on web tabs and app previews.
-handleRpc("devtools", async ({ tabId, command, params }) => window.rune.web.devtools((await page(tabId)).webContentsId(), command as DevtoolsCommand, params ?? {}));
-handleRpc("network.list", async ({ tabId, filter }) => network.list((await page(tabId)).webContentsId(), (filter ?? {}) as NetworkFilter));
+handleRpc("devtools", async ({ tabId, command, params }) =>
+  window.rune.web.devtools((await page(tabId)).webContentsId(), command as DevtoolsCommand, params ?? {}),
+);
+handleRpc("network.list", async ({ tabId, filter }) =>
+  network.list((await page(tabId)).webContentsId(), (filter ?? {}) as NetworkFilter),
+);
 handleRpc("network.get", async ({ tabId, id }) => network.get((await page(tabId)).webContentsId(), String(id), false));
 handleRpc("network.draft", async ({ tabId, id }) => network.draft((await page(tabId)).webContentsId(), String(id)));
 handleRpc("network.replay", async ({ tabId, id, workspaceId, draft, overrides }) =>
   network.replay(
-    typeof workspaceId === "string" ? { workspaceId, draft: draft as RequestDraft } : { webContentsId: (await page(tabId)).webContentsId(), id: String(id) },
+    typeof workspaceId === "string"
+      ? { workspaceId, draft: draft as RequestDraft }
+      : { webContentsId: (await page(tabId)).webContentsId(), id: String(id) },
     (overrides ?? {}) as ReplayOverrides,
     false,
   ),
 );
 
 // Rules live on the server; the main process applies them.
-const syncRules = () => api.networkRules().then(network.setRules, (err) => console.error("Loading network rules failed:", err));
+const syncRules = () =>
+  api.networkRules().then(network.setRules, (err) => console.error("Loading network rules failed:", err));
 watchTopic(topics.network, (msg) => {
   if (msg.type === "network-changed" && msg.what === "rules") void syncRules();
 });

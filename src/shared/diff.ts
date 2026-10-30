@@ -34,7 +34,8 @@ function myers(a: string[], b: string[]): DiffLine[] | null {
   const n = a.length;
   const m = b.length;
   if (n + m > MAX_LINES) return null;
-  if (!n || !m) return [...a.map((text): DiffLine => ({ type: "-", text })), ...b.map((text): DiffLine => ({ type: "+", text }))];
+  if (!n || !m)
+    return [...a.map((text): DiffLine => ({ type: "-", text })), ...b.map((text): DiffLine => ({ type: "+", text }))];
   // v[k] = furthest x on diagonal k. trace[d] keeps v for k in [-d, d] at the start of round d.
   const max = Math.min(n + m, MAX_EDITS);
   const offset = max + 1;
@@ -64,7 +65,7 @@ function backtrack(trace: Int32Array[], a: string[], b: string[]): DiffLine[] {
     const prevK = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1;
     const prevX = at(prevK);
     const prevY = prevX - prevK;
-    while (x > prevX && y > prevY) out.push({ type: " ", text: a[--x]! }), y--;
+    while (x > prevX && y > prevY) (out.push({ type: " ", text: a[--x]! }), y--);
     if (x === prevX) out.push({ type: "+", text: b[--y]! });
     else out.push({ type: "-", text: a[--x]! });
   }

@@ -19,6 +19,7 @@ export const addPick = (tabId: string, element: ElementInfo) =>
     }),
   );
 
-export const removePick = (tabId: string, selector: string) => setPicks(tabId, (list) => (list ?? []).filter((p) => p.selector !== selector));
+export const removePick = (tabId: string, selector: string) =>
+  setPicks(tabId, (list) => (list ?? []).filter((p) => p.selector !== selector));
 
 export const clearPicks = (tabId: string) => setPicks(tabId, []);

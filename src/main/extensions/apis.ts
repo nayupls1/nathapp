@@ -32,9 +32,26 @@ import {
   type ExtensionTabRequest,
   type Manifest,
 } from "../../shared/extensions";
-import { dispatch, keepAlive, type ActionState, type Context, type Contexts, type ExtensionState, type MenuItem } from "./host";
+import {
+  dispatch,
+  keepAlive,
+  type ActionState,
+  type Context,
+  type Contexts,
+  type ExtensionState,
+  type MenuItem,
+} from "./host";
 import { connectNative, sendNativeMessage, type NativePort } from "./native";
-import { extensionFile, extensionsDir, imageDataUrl, readJson, readManifest, writeJson, type InstalledExtension, type Registry } from "./registry";
+import {
+  extensionFile,
+  extensionsDir,
+  imageDataUrl,
+  readJson,
+  readManifest,
+  writeJson,
+  type InstalledExtension,
+  type Registry,
+} from "./registry";
 
 export interface ApiEnv {
   contexts: Contexts;
@@ -70,7 +87,11 @@ const err = (message: string) => new Error(message);
 /** A pattern like "https://*.example.com/*" as a URL it covers, to check it against other patterns. */
 function sampleUrl(pattern: string) {
   if (pattern === "<all_urls>") return "https://example.com/";
-  return pattern.replace(/^\*:/, "https:").replace("://*.", "://").replace("://*/", "://example.com/").replace(/\*/g, "");
+  return pattern
+    .replace(/^\*:/, "https:")
+    .replace("://*.", "://")
+    .replace("://*/", "://example.com/")
+    .replace(/\*/g, "");
 }
 
 // --- storage.sync: one file per extension, shared by every workspace -------------------------
@@ -110,7 +131,8 @@ export function createApis(env: ApiEnv) {
   const nativePorts = new Map<string, NativePort>();
   const notifications = new Map<string, Notification>();
 
-  const manifestOf = (s: Session, id: string): Manifest => (s.extensions.getExtension(id)?.manifest as Manifest | undefined) ?? {};
+  const manifestOf = (s: Session, id: string): Manifest =>
+    (s.extensions.getExtension(id)?.manifest as Manifest | undefined) ?? {};
   const entryOf = (id: string): InstalledExtension | undefined => env.registry.get(id);
 
   // --- Permissions ----------------------------------------------------------------------------
@@ -131,7 +153,8 @@ export function createApis(env: ApiEnv) {
       origins: [...new Set([...r.origins, ...g.origins])],
     };
   };
-  const hasPermission = (s: Session, id: string, permission: string) => allPermissions(s, id).permissions.includes(permission);
+  const hasPermission = (s: Session, id: string, permission: string) =>
+    allPermissions(s, id).permissions.includes(permission);
   const hostAccess = (s: Session, id: string, url: string) => matchesAny(allPermissions(s, id).origins, url);
 
   /** The page of its side panel (the one it set, or the manifest's), or null. */
@@ -141,11 +164,15 @@ export function createApis(env: ApiEnv) {
     return typeof path === "string" && path ? `chrome-extension://${id}/${path.replace(/^\/+/, "")}` : null;
   }
 
-  const covers = (origins: string[], pattern: string) => origins.includes(pattern) || matchesAny(origins, sampleUrl(pattern));
+  const covers = (origins: string[], pattern: string) =>
+    origins.includes(pattern) || matchesAny(origins, sampleUrl(pattern));
 
   function contains(s: Session, id: string, p: { permissions?: string[]; origins?: string[] }) {
     const all = allPermissions(s, id);
-    return (p.permissions ?? []).every((x) => all.permissions.includes(x)) && (p.origins ?? []).every((o) => covers(all.origins, o));
+    return (
+      (p.permissions ?? []).every((x) => all.permissions.includes(x)) &&
+      (p.origins ?? []).every((o) => covers(all.origins, o))
+    );
   }
 
   // --- Tabs -------------------------------------------------------------------------------------
@@ -155,7 +182,14 @@ export function createApis(env: ApiEnv) {
   function tabContents(s: Session, tabId: unknown): WebContents {
     const workspaceId = env.workspaceOf(s);
     const contents = typeof tabId === "number" ? webContents.fromId(tabId) : undefined;
-    if (!workspaceId || !contents || contents.isDestroyed() || contents.session !== s || !env.tabs(workspaceId).includes(contents.id)) throw err(`No tab with id: ${tabId}.`);
+    if (
+      !workspaceId ||
+      !contents ||
+      contents.isDestroyed() ||
+      contents.session !== s ||
+      !env.tabs(workspaceId).includes(contents.id)
+    )
+      throw err(`No tab with id: ${tabId}.`);
     return contents;
   }
 
@@ -168,7 +202,12 @@ export function createApis(env: ApiEnv) {
 
   const canSee = (s: Session, id: string, contents: WebContents) => {
     const url = contents.getURL();
-    return hasPermission(s, id, "tabs") || hostAccess(s, id, url) || env.hasActiveTab(s, id, contents.id) || url.startsWith(`chrome-extension://${id}/`);
+    return (
+      hasPermission(s, id, "tabs") ||
+      hostAccess(s, id, url) ||
+      env.hasActiveTab(s, id, contents.id) ||
+      url.startsWith(`chrome-extension://${id}/`)
+    );
   };
 
   function tabObject(s: Session, id: string, contents: WebContents) {
@@ -215,7 +254,14 @@ export function createApis(env: ApiEnv) {
       .filter((c): c is WebContents => !!c && !c.isDestroyed() && c.session === s);
   };
 
-  const glob = (pattern: string) => new RegExp(`^${pattern.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`, "i");
+  const glob = (pattern: string) =>
+    new RegExp(
+      `^${pattern
+        .split("*")
+        .map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+        .join(".*")}$`,
+      "i",
+    );
 
   function query(s: Session, id: string, q: Record<string, unknown>) {
     let list = tabsIn(s).map((c) => tabObject(s, id, c));
@@ -244,10 +290,12 @@ export function createApis(env: ApiEnv) {
 
   /** A URL an extension may open: the web, or its own pages (relative to its root). */
   function openableUrl(id: string, url: unknown) {
-    if (url === undefined || url === null || url === "" || url === "chrome://newtab/" || url === "chrome://newtab") return "";
+    if (url === undefined || url === null || url === "" || url === "chrome://newtab/" || url === "chrome://newtab")
+      return "";
     if (typeof url !== "string") throw err("Invalid url");
     const resolved = new URL(url, `chrome-extension://${id}/`).href;
-    if (/^https?:/i.test(resolved) || resolved === "about:blank" || resolved.startsWith(`chrome-extension://${id}/`)) return resolved;
+    if (/^https?:/i.test(resolved) || resolved === "about:blank" || resolved.startsWith(`chrome-extension://${id}/`))
+      return resolved;
     throw err(`Cannot navigate to ${url}`);
   }
 
@@ -282,7 +330,13 @@ export function createApis(env: ApiEnv) {
       height: b?.height ?? 0,
       incognito: false,
       type: "normal",
-      state: win?.isFullScreen() ? "fullscreen" : win?.isMaximized() ? "maximized" : win?.isMinimized() ? "minimized" : "normal",
+      state: win?.isFullScreen()
+        ? "fullscreen"
+        : win?.isMaximized()
+          ? "maximized"
+          : win?.isMinimized()
+            ? "minimized"
+            : "normal",
       alwaysOnTop: false,
       ...(populate ? { tabs: tabsIn(s).map((c) => tabObject(s, id, c)) } : {}),
     };
@@ -329,7 +383,18 @@ export function createApis(env: ApiEnv) {
 
   // --- Context menus ----------------------------------------------------------------------------
 
-  const MENU_KEYS: (keyof MenuItem)[] = ["id", "parentId", "title", "type", "checked", "enabled", "visible", "contexts", "documentUrlPatterns", "targetUrlPatterns"];
+  const MENU_KEYS: (keyof MenuItem)[] = [
+    "id",
+    "parentId",
+    "title",
+    "type",
+    "checked",
+    "enabled",
+    "visible",
+    "contexts",
+    "documentUrlPatterns",
+    "targetUrlPatterns",
+  ];
   const cleanMenu = (props: Record<string, unknown>) => {
     const item: Record<string, unknown> = {};
     for (const k of MENU_KEYS) if (props[k] !== undefined) item[k] = props[k];
@@ -390,12 +455,23 @@ export function createApis(env: ApiEnv) {
       const c = ctx.contents;
       if (!c || !ctx.frame || ctx.frame.parent) return undefined;
       const workspaceId = env.workspaceOf(ctx.session);
-      return workspaceId && env.tabs(workspaceId).includes(c.id) ? tabObject(ctx.session, ctx.extensionId, c) : undefined;
+      return workspaceId && env.tabs(workspaceId).includes(c.id)
+        ? tabObject(ctx.session, ctx.extensionId, c)
+        : undefined;
     },
     "tabs.query": (ctx, q: Record<string, unknown>) => query(ctx.session, ctx.extensionId, q ?? {}),
     "tabs.create": (ctx, props: { url?: string; active?: boolean; selected?: boolean }) =>
-      openTab(ctx.session, ctx.extensionId, openableUrl(ctx.extensionId, props?.url), props?.active ?? props?.selected ?? true),
-    "tabs.update": async (ctx, tabId: number | null, props: { url?: string; active?: boolean; highlighted?: boolean; selected?: boolean; muted?: boolean }) => {
+      openTab(
+        ctx.session,
+        ctx.extensionId,
+        openableUrl(ctx.extensionId, props?.url),
+        props?.active ?? props?.selected ?? true,
+      ),
+    "tabs.update": async (
+      ctx,
+      tabId: number | null,
+      props: { url?: string; active?: boolean; highlighted?: boolean; selected?: boolean; muted?: boolean },
+    ) => {
       const contents = tabId === null ? activeContents(ctx.session) : tabContents(ctx.session, tabId);
       if (!contents) throw err("No active tab");
       if (props.url !== undefined) {
@@ -410,7 +486,8 @@ export function createApis(env: ApiEnv) {
     },
     "tabs.remove": async (ctx, ids: number[]) => {
       for (const tabId of ids) tabContents(ctx.session, tabId);
-      for (const tabId of ids) await env.requestTab({ action: "close", workspaceId: env.workspaceOf(ctx.session) ?? "", tabId });
+      for (const tabId of ids)
+        await env.requestTab({ action: "close", workspaceId: env.workspaceOf(ctx.session) ?? "", tabId });
     },
     "tabs.reload": (ctx, tabId: number | null, props: { bypassCache?: boolean }) => {
       const contents = tabId === null ? activeContents(ctx.session) : tabContents(ctx.session, tabId);
@@ -418,7 +495,8 @@ export function createApis(env: ApiEnv) {
       if (props?.bypassCache) contents.reloadIgnoringCache();
       else contents.reload();
     },
-    "tabs.duplicate": (ctx, tabId: number) => openTab(ctx.session, ctx.extensionId, tabContents(ctx.session, tabId).getURL(), true),
+    "tabs.duplicate": (ctx, tabId: number) =>
+      openTab(ctx.session, ctx.extensionId, tabContents(ctx.session, tabId).getURL(), true),
     "tabs.highlight": async (ctx, info: { tabs: number | number[] }) => {
       const first = Array.isArray(info.tabs) ? info.tabs[0] : info.tabs;
       const contents = tabsIn(ctx.session)[typeof first === "number" ? first : -1];
@@ -441,7 +519,10 @@ export function createApis(env: ApiEnv) {
     "tabs.captureVisibleTab": async (ctx, options: { format?: string; quality?: number }) => {
       const contents = activeContents(ctx.session);
       if (!contents) throw err("No active tab");
-      if (!env.hasActiveTab(ctx.session, ctx.extensionId, contents.id) && !hostAccess(ctx.session, ctx.extensionId, contents.getURL())) {
+      if (
+        !env.hasActiveTab(ctx.session, ctx.extensionId, contents.id) &&
+        !hostAccess(ctx.session, ctx.extensionId, contents.getURL())
+      ) {
         throw err("Either the '<all_urls>' or 'activeTab' permission is required.");
       }
       const image = await contents.capturePage();
@@ -450,11 +531,15 @@ export function createApis(env: ApiEnv) {
     },
 
     // chrome.windows
-    "windows.get": (ctx, _id: number, opts: { populate?: boolean }) => windowObject(ctx.session, ctx.extensionId, opts?.populate === true),
-    "windows.getAll": (ctx, opts: { populate?: boolean }) => [windowObject(ctx.session, ctx.extensionId, opts?.populate === true)],
+    "windows.get": (ctx, _id: number, opts: { populate?: boolean }) =>
+      windowObject(ctx.session, ctx.extensionId, opts?.populate === true),
+    "windows.getAll": (ctx, opts: { populate?: boolean }) => [
+      windowObject(ctx.session, ctx.extensionId, opts?.populate === true),
+    ],
     "windows.create": async (ctx, data: { url?: string | string[]; focused?: boolean; tabId?: number }) => {
       const urls = data?.url === undefined ? [""] : Array.isArray(data.url) ? data.url : [data.url];
-      for (const [i, url] of urls.entries()) await openTab(ctx.session, ctx.extensionId, openableUrl(ctx.extensionId, url), i === 0);
+      for (const [i, url] of urls.entries())
+        await openTab(ctx.session, ctx.extensionId, openableUrl(ctx.extensionId, url), i === 0);
       return windowObject(ctx.session, ctx.extensionId, true);
     },
 
@@ -467,7 +552,8 @@ export function createApis(env: ApiEnv) {
       if (!state) throw err("Unknown extension");
       const item = cleanMenu(props) as MenuItem;
       if (state.menus.some((m) => m.id === item.id)) throw err(`Cannot create item with duplicate id ${item.id}`);
-      if (item.parentId !== undefined && !state.menus.some((m) => m.id === item.parentId)) throw err(`Cannot find menu item with id ${item.parentId}`);
+      if (item.parentId !== undefined && !state.menus.some((m) => m.id === item.parentId))
+        throw err(`Cannot find menu item with id ${item.parentId}`);
       state.menus.push(item);
       state.save();
     },
@@ -483,7 +569,7 @@ export function createApis(env: ApiEnv) {
       const state = env.state(ctx.session, ctx.extensionId);
       if (!state || !state.menus.some((m) => m.id === id)) throw err(`Cannot find menu item with id ${id}`);
       const gone = new Set<string | number>([id]);
-      for (let changed = true; changed; ) {
+      for (let changed = true; changed;) {
         changed = false;
         for (const m of state.menus) {
           if (m.parentId !== undefined && gone.has(m.parentId) && !gone.has(m.id)) {
@@ -503,7 +589,8 @@ export function createApis(env: ApiEnv) {
     },
 
     // chrome.permissions
-    "permissions.contains": (ctx, p: { permissions?: string[]; origins?: string[] }) => contains(ctx.session, ctx.extensionId, p),
+    "permissions.contains": (ctx, p: { permissions?: string[]; origins?: string[] }) =>
+      contains(ctx.session, ctx.extensionId, p),
     "permissions.getAll": (ctx) => allPermissions(ctx.session, ctx.extensionId),
     "permissions.request": async (ctx, p: { permissions?: string[]; origins?: string[] }) => {
       const s = ctx.session;
@@ -511,7 +598,9 @@ export function createApis(env: ApiEnv) {
       if (contains(s, id, p)) return true;
       const m = manifestOf(s, id);
       const optional = (m.optional_permissions ?? []).filter((x): x is string => typeof x === "string");
-      const optionalHosts = [...(m.optional_host_permissions ?? []), ...optional].filter((x): x is string => typeof x === "string" && (x === "<all_urls>" || x.includes("://")));
+      const optionalHosts = [...(m.optional_host_permissions ?? []), ...optional].filter(
+        (x): x is string => typeof x === "string" && (x === "<all_urls>" || x.includes("://")),
+      );
       const all = allPermissions(s, id);
       const permissions = (p.permissions ?? []).filter((x) => !all.permissions.includes(x));
       const origins = (p.origins ?? []).filter((o) => !covers(all.origins, o));
@@ -521,23 +610,38 @@ export function createApis(env: ApiEnv) {
       if (!(await env.requestPermission(s, id, permissions, origins))) return false;
       const g = granted(id);
       env.registry.update(id, {
-        granted: { permissions: [...new Set([...g.permissions, ...permissions])], origins: [...new Set([...g.origins, ...origins])] },
+        granted: {
+          permissions: [...new Set([...g.permissions, ...permissions])],
+          origins: [...new Set([...g.origins, ...origins])],
+        },
         denied: denied(id).filter((x) => !permissions.includes(x)),
       });
-      for (const session of env.sessions()) void dispatch(env.contexts, env.state(session, id), session, id, "permissions.onAdded", [{ permissions, origins }]);
+      for (const session of env.sessions())
+        void dispatch(env.contexts, env.state(session, id), session, id, "permissions.onAdded", [
+          { permissions, origins },
+        ]);
       return true;
     },
     "permissions.remove": (ctx, p: { permissions?: string[]; origins?: string[] }) => {
       const id = ctx.extensionId;
       const r = required(ctx.session, id);
-      if ((p.permissions ?? []).some((x) => r.permissions.includes(x)) || (p.origins ?? []).some((o) => r.origins.includes(o))) {
+      if (
+        (p.permissions ?? []).some((x) => r.permissions.includes(x)) ||
+        (p.origins ?? []).some((o) => r.origins.includes(o))
+      ) {
         throw err("You cannot remove required permissions.");
       }
       const g = granted(id);
       env.registry.update(id, {
-        granted: { permissions: g.permissions.filter((x) => !(p.permissions ?? []).includes(x)), origins: g.origins.filter((o) => !(p.origins ?? []).includes(o)) },
+        granted: {
+          permissions: g.permissions.filter((x) => !(p.permissions ?? []).includes(x)),
+          origins: g.origins.filter((o) => !(p.origins ?? []).includes(o)),
+        },
       });
-      for (const session of env.sessions()) void dispatch(env.contexts, env.state(session, id), session, id, "permissions.onRemoved", [{ permissions: p.permissions ?? [], origins: p.origins ?? [] }]);
+      for (const session of env.sessions())
+        void dispatch(env.contexts, env.state(session, id), session, id, "permissions.onRemoved", [
+          { permissions: p.permissions ?? [], origins: p.origins ?? [] },
+        ]);
       return true;
     },
 
@@ -547,8 +651,12 @@ export function createApis(env: ApiEnv) {
       const copy = (v: unknown) => (v === undefined ? undefined : structuredClone(v));
       if (keys === null) return structuredClone(data);
       if (typeof keys === "string") return keys in data ? { [keys]: copy(data[keys]) } : {};
-      if (Array.isArray(keys)) return Object.fromEntries(keys.filter((k) => typeof k === "string" && k in data).map((k) => [k, copy(data[k])]));
-      if (keys && typeof keys === "object") return Object.fromEntries(Object.entries(keys).map(([k, d]) => [k, k in data ? copy(data[k]) : d]));
+      if (Array.isArray(keys))
+        return Object.fromEntries(
+          keys.filter((k) => typeof k === "string" && k in data).map((k) => [k, copy(data[k])]),
+        );
+      if (keys && typeof keys === "object")
+        return Object.fromEntries(Object.entries(keys).map(([k, d]) => [k, k in data ? copy(data[k]) : d]));
       return {};
     },
     "sync.keys": (ctx) => Object.keys(sync.data(ctx.extensionId)),
@@ -556,9 +664,11 @@ export function createApis(env: ApiEnv) {
       const id = ctx.extensionId;
       const data = sync.data(id);
       const next = { ...data, ...items };
-      for (const [k, v] of Object.entries(items)) if (itemSize(k, v) > SYNC_ITEM_QUOTA) throw err("QUOTA_BYTES_PER_ITEM quota exceeded");
+      for (const [k, v] of Object.entries(items))
+        if (itemSize(k, v) > SYNC_ITEM_QUOTA) throw err("QUOTA_BYTES_PER_ITEM quota exceeded");
       if (Object.keys(next).length > SYNC_MAX_ITEMS) throw err("MAX_ITEMS quota exceeded");
-      if (Object.entries(next).reduce((n, [k, v]) => n + itemSize(k, v), 0) > SYNC_QUOTA) throw err("QUOTA_BYTES quota exceeded");
+      if (Object.entries(next).reduce((n, [k, v]) => n + itemSize(k, v), 0) > SYNC_QUOTA)
+        throw err("QUOTA_BYTES quota exceeded");
       const changes: Record<string, { oldValue?: unknown; newValue?: unknown }> = {};
       for (const [k, v] of Object.entries(items)) {
         if (JSON.stringify(data[k]) === JSON.stringify(v)) continue;
@@ -590,7 +700,14 @@ export function createApis(env: ApiEnv) {
     },
     "sync.bytes": (ctx, keys: unknown) => {
       const data = sync.data(ctx.extensionId);
-      const names = keys === null ? Object.keys(data) : typeof keys === "string" ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys ?? {});
+      const names =
+        keys === null
+          ? Object.keys(data)
+          : typeof keys === "string"
+            ? [keys]
+            : Array.isArray(keys)
+              ? keys
+              : Object.keys(keys ?? {});
       return names.filter((k) => k in data).reduce((n, k) => n + itemSize(k, data[k]), 0);
     },
 
@@ -600,15 +717,20 @@ export function createApis(env: ApiEnv) {
       const frame = frameOf(contents, d.frameId);
       return frame ? frameDetails(frame) : null;
     },
-    "nav.getAllFrames": (ctx, d: { tabId: number }) => tabContents(ctx.session, d?.tabId).mainFrame.framesInSubtree.map(frameDetails),
+    "nav.getAllFrames": (ctx, d: { tabId: number }) =>
+      tabContents(ctx.session, d?.tabId).mainFrame.framesInSubtree.map(frameDetails),
 
     // chrome.cookies
     "cookies.get": async (ctx, d: { url: string; name: string }) => {
-      if (!hostAccess(ctx.session, ctx.extensionId, d.url)) throw err(`No host permissions for cookies at url: "${d.url}".`);
+      if (!hostAccess(ctx.session, ctx.extensionId, d.url))
+        throw err(`No host permissions for cookies at url: "${d.url}".`);
       const list = await ctx.session.cookies.get({ url: d.url, name: d.name });
       return list[0] ? cookieObject(list[0]) : null;
     },
-    "cookies.getAll": async (ctx, d: { url?: string; name?: string; domain?: string; path?: string; secure?: boolean; session?: boolean }) => {
+    "cookies.getAll": async (
+      ctx,
+      d: { url?: string; name?: string; domain?: string; path?: string; secure?: boolean; session?: boolean },
+    ) => {
       const filter: Electron.CookiesGetFilter = {};
       if (d.url) filter.url = d.url;
       if (d.name) filter.name = d.name;
@@ -620,13 +742,15 @@ export function createApis(env: ApiEnv) {
       return list.filter((c) => hostAccess(ctx.session, ctx.extensionId, cookieUrl(c))).map(cookieObject);
     },
     "cookies.set": async (ctx, d: Electron.CookiesSetDetails) => {
-      if (!hostAccess(ctx.session, ctx.extensionId, d.url)) throw err(`No host permissions for cookies at url: "${d.url}".`);
+      if (!hostAccess(ctx.session, ctx.extensionId, d.url))
+        throw err(`No host permissions for cookies at url: "${d.url}".`);
       await ctx.session.cookies.set(d);
       const list = await ctx.session.cookies.get({ url: d.url, name: d.name ?? "" });
       return list[0] ? cookieObject(list[0]) : null;
     },
     "cookies.remove": async (ctx, d: { url: string; name: string }) => {
-      if (!hostAccess(ctx.session, ctx.extensionId, d.url)) throw err(`No host permissions for cookies at url: "${d.url}".`);
+      if (!hostAccess(ctx.session, ctx.extensionId, d.url))
+        throw err(`No host permissions for cookies at url: "${d.url}".`);
       await ctx.session.cookies.remove(d.url, d.name);
       return { url: d.url, name: d.name, storeId: "0" };
     },
@@ -651,7 +775,11 @@ export function createApis(env: ApiEnv) {
       return true;
     },
     "notifications.getAll": (ctx) =>
-      Object.fromEntries([...notifications.keys()].filter((k) => k.startsWith(`${ctx.extensionId}:`)).map((k) => [k.slice(ctx.extensionId.length + 1), true])),
+      Object.fromEntries(
+        [...notifications.keys()]
+          .filter((k) => k.startsWith(`${ctx.extensionId}:`))
+          .map((k) => [k.slice(ctx.extensionId.length + 1), true]),
+      ),
 
     // chrome.runtime
     "runtime.openOptionsPage": async (ctx) => {
@@ -669,13 +797,21 @@ export function createApis(env: ApiEnv) {
       if (typeof requestId === "string") authReplies.get(`${ctx.extensionId}|${requestId}`)?.(response);
     },
     "native.send": (ctx, application: string, message: unknown) => {
-      if (!hasPermission(ctx.session, ctx.extensionId, "nativeMessaging")) throw err("Access to native messaging requires the 'nativeMessaging' permission.");
+      if (!hasPermission(ctx.session, ctx.extensionId, "nativeMessaging"))
+        throw err("Access to native messaging requires the 'nativeMessaging' permission.");
       return sendNativeMessage(String(application), ctx.extensionId, message);
     },
     "native.connect": (ctx, portId: string, application: string) => {
       const key = `${ctx.key}|${portId}`;
       if (!hasPermission(ctx.session, ctx.extensionId, "nativeMessaging")) {
-        setTimeout(() => ctx.send("native.disconnect", [portId, "Access to native messaging requires the 'nativeMessaging' permission."]), 0);
+        setTimeout(
+          () =>
+            ctx.send("native.disconnect", [
+              portId,
+              "Access to native messaging requires the 'nativeMessaging' permission.",
+            ]),
+          0,
+        );
         return;
       }
       const port = connectNative(
@@ -703,7 +839,8 @@ export function createApis(env: ApiEnv) {
     // The rest
     "idle.queryState": (_ctx, seconds: number) => powerMonitor.getSystemIdleState(Math.max(15, Number(seconds) || 60)),
     "downloads.download": (ctx, options: { url?: unknown }) => {
-      if (!hasPermission(ctx.session, ctx.extensionId, "downloads")) throw err("Access to downloads requires the 'downloads' permission.");
+      if (!hasPermission(ctx.session, ctx.extensionId, "downloads"))
+        throw err("Access to downloads requires the 'downloads' permission.");
       const url = typeof options?.url === "string" ? options.url : "";
       if (!/^(https?|data|blob):/i.test(url)) throw err("Invalid URL.");
       ctx.session.downloadURL(url);
@@ -723,7 +860,14 @@ export function createApis(env: ApiEnv) {
         archName: arch(),
         modelName: list[0]?.model ?? "",
         features: [],
-        processors: list.map((c) => ({ usage: { user: c.times.user, kernel: c.times.sys, idle: c.times.idle, total: c.times.user + c.times.sys + c.times.idle + c.times.irq + c.times.nice } })),
+        processors: list.map((c) => ({
+          usage: {
+            user: c.times.user,
+            kernel: c.times.sys,
+            idle: c.times.idle,
+            total: c.times.user + c.times.sys + c.times.idle + c.times.irq + c.times.nice,
+          },
+        })),
         temperatures: [],
       };
     },
@@ -773,7 +917,11 @@ export function createApis(env: ApiEnv) {
       if (!ctx.session.extensions.getExtension(id)) throw err(`Failed to find extension with id ${id}.`);
       return managementInfo(ctx.session, id);
     },
-    "management.getAll": (ctx) => ctx.session.extensions.getAllExtensions().filter((e) => env.registry.get(e.id)).map((e) => managementInfo(ctx.session, e.id)),
+    "management.getAll": (ctx) =>
+      ctx.session.extensions
+        .getAllExtensions()
+        .filter((e) => env.registry.get(e.id))
+        .map((e) => managementInfo(ctx.session, e.id)),
     "dnr.shouldReset": async (ctx) => {
       // Rulesets can only be changed once the extension finished loading.
       await env.whenLoaded(ctx.session, ctx.extensionId);
@@ -793,7 +941,8 @@ export function createApis(env: ApiEnv) {
 
   function syncChanged(id: string, changes: Record<string, unknown>) {
     if (!Object.keys(changes).length) return;
-    for (const s of env.sessions()) void dispatch(env.contexts, env.state(s, id), s, id, "storage.sync.onChanged", [changes]);
+    for (const s of env.sessions())
+      void dispatch(env.contexts, env.state(s, id), s, id, "storage.sync.onChanged", [changes]);
   }
 
   function managementInfo(s: Session, id: string) {
@@ -822,7 +971,10 @@ export function createApis(env: ApiEnv) {
       optionsUrl: options ? `chrome-extension://${id}/${options.replace(/^\/+/, "")}` : "",
       permissions: permissionsOf(m),
       hostPermissions: hostPermissionsOf(m),
-      icons: Object.entries(m.icons ?? {}).map(([size, path]) => ({ size: Number(size), url: `chrome-extension://${id}/${String(path).replace(/^\/+/, "")}` })),
+      icons: Object.entries(m.icons ?? {}).map(([size, path]) => ({
+        size: Number(size),
+        url: `chrome-extension://${id}/${String(path).replace(/^\/+/, "")}`,
+      })),
       updateUrl: m.update_url,
     };
   }
@@ -911,7 +1063,8 @@ export function createApis(env: ApiEnv) {
   function* listeners(s: Session, event: string) {
     const ids = new Set<string>();
     for (const ctx of env.contexts.inSession(s)) if (ctx.events.has(event)) ids.add(ctx.extensionId);
-    for (const ext of s.extensions.getAllExtensions()) if (env.state(s, ext.id)?.backgroundEvents.has(event)) ids.add(ext.id);
+    for (const ext of s.extensions.getAllExtensions())
+      if (env.state(s, ext.id)?.backgroundEvents.has(event)) ids.add(ext.id);
     for (const id of ids) yield id;
   }
 
@@ -923,7 +1076,8 @@ export function createApis(env: ApiEnv) {
   };
 
   const frameIdOf = (frame: WebFrameMain | null | undefined) => (!frame || !frame.parent ? 0 : frame.frameTreeNodeId);
-  const frameOf = (contents: WebContents, frameId: number) => (frameId === 0 ? contents.mainFrame : contents.mainFrame.framesInSubtree.find((f) => f.frameTreeNodeId === frameId));
+  const frameOf = (contents: WebContents, frameId: number) =>
+    frameId === 0 ? contents.mainFrame : contents.mainFrame.framesInSubtree.find((f) => f.frameTreeNodeId === frameId);
   const frameDetails = (frame: WebFrameMain) => ({
     frameId: frameIdOf(frame),
     parentFrameId: frame.parent ? frameIdOf(frame.parent) : -1,
@@ -945,7 +1099,9 @@ export function createApis(env: ApiEnv) {
         return [tabId, change, tabObject(s, id, contents)];
       });
     const nav = (event: string, details: (id: string) => Record<string, unknown>) =>
-      emit(s, `webNavigation.${event}`, (id) => (hasPermission(s, id, "webNavigation") ? [{ tabId, timeStamp: Date.now(), ...details(id) }] : null));
+      emit(s, `webNavigation.${event}`, (id) =>
+        hasPermission(s, id, "webNavigation") ? [{ tabId, timeStamp: Date.now(), ...details(id) }] : null,
+      );
     const frameFrom = (processId: number, routingId: number) => webFrameMain.fromId(processId, routingId) ?? null;
     const lastUrl = new Map<number, string>();
 
@@ -973,19 +1129,38 @@ export function createApis(env: ApiEnv) {
       const before = lastUrl.get(frameId);
       lastUrl.set(frameId, url);
       const fragmentOnly = before !== undefined && before.split("#")[0] === url.split("#")[0];
-      nav(fragmentOnly ? "onReferenceFragmentUpdated" : "onHistoryStateUpdated", () => ({ frameId, url, processId, transitionType: "link", transitionQualifiers: [] }));
+      nav(fragmentOnly ? "onReferenceFragmentUpdated" : "onHistoryStateUpdated", () => ({
+        frameId,
+        url,
+        processId,
+        transitionType: "link",
+        transitionQualifiers: [],
+      }));
     });
     contents.on("did-start-navigation", (details) => {
       if (details.isSameDocument) return;
       const frameId = frameIdOf(details.frame);
-      nav("onBeforeNavigate", () => ({ frameId, parentFrameId: details.frame?.parent ? frameIdOf(details.frame.parent) : -1, url: details.url, processId: -1, frameType: details.isMainFrame ? "outermost_frame" : "sub_frame", documentLifecycle: "active" }));
+      nav("onBeforeNavigate", () => ({
+        frameId,
+        parentFrameId: details.frame?.parent ? frameIdOf(details.frame.parent) : -1,
+        url: details.url,
+        processId: -1,
+        frameType: details.isMainFrame ? "outermost_frame" : "sub_frame",
+        documentLifecycle: "active",
+      }));
     });
     contents.on("did-frame-navigate", (_e, url, _code, _text, _main, processId, routingId) => {
       const frameId = frameIdOf(frameFrom(processId, routingId));
       lastUrl.set(frameId, url);
       nav("onCommitted", () => ({ frameId, url, processId, transitionType: "link", transitionQualifiers: [] }));
     });
-    contents.on("dom-ready", () => nav("onDOMContentLoaded", () => ({ frameId: 0, url: contents.getURL(), processId: contents.mainFrame.processId })));
+    contents.on("dom-ready", () =>
+      nav("onDOMContentLoaded", () => ({
+        frameId: 0,
+        url: contents.getURL(),
+        processId: contents.mainFrame.processId,
+      })),
+    );
     contents.on("did-frame-finish-load", (_e, isMainFrame, processId, routingId) => {
       const frame = frameFrom(processId, routingId);
       const frameId = frameIdOf(frame);
@@ -1001,7 +1176,11 @@ export function createApis(env: ApiEnv) {
   }
 
   /** The tabs list changed: created, removed and activated events. */
-  function tabsChanged(s: Session, before: { tabs: number[]; active: number | null }, after: { tabs: number[]; active: number | null }) {
+  function tabsChanged(
+    s: Session,
+    before: { tabs: number[]; active: number | null },
+    after: { tabs: number[]; active: number | null },
+  ) {
     const win = windowId();
     for (const tabId of after.tabs.filter((t) => !before.tabs.includes(t))) {
       const contents = webContents.fromId(tabId);
@@ -1021,17 +1200,31 @@ export function createApis(env: ApiEnv) {
 
   /** Cookie changes for the extensions allowed to see them. */
   function watchCookies(s: Session) {
-    const causes: Record<string, string> = { "expired-overwrite": "expired_overwrite", inserted: "explicit", "inserted-no-change-overwrite": "overwrite", "inserted-no-value-change-overwrite": "overwrite" };
+    const causes: Record<string, string> = {
+      "expired-overwrite": "expired_overwrite",
+      inserted: "explicit",
+      "inserted-no-change-overwrite": "overwrite",
+      "inserted-no-value-change-overwrite": "overwrite",
+    };
     s.cookies.on("changed", (_e, cookie, cause, removed) => {
       const url = cookieUrl(cookie);
-      emit(s, "cookies.onChanged", (id) => (hasPermission(s, id, "cookies") && hostAccess(s, id, url) ? [{ removed, cookie: cookieObject(cookie), cause: causes[cause] ?? cause }] : null));
+      emit(s, "cookies.onChanged", (id) =>
+        hasPermission(s, id, "cookies") && hostAccess(s, id, url)
+          ? [{ removed, cookie: cookieObject(cookie), cause: causes[cause] ?? cause }]
+          : null,
+      );
     });
   }
 
   // --- Context menu items in web tabs ----------------------------------------------------------------
 
   /** The extensions' items for a context menu in a web tab (or on its toolbar button: "action"). */
-  function menuItems(s: Session, contents: WebContents | null, params: Partial<ContextMenuParams> & { pageURL?: string }, only?: string): MenuItemConstructorOptions[] {
+  function menuItems(
+    s: Session,
+    contents: WebContents | null,
+    params: Partial<ContextMenuParams> & { pageURL?: string },
+    only?: string,
+  ): MenuItemConstructorOptions[] {
     const out: MenuItemConstructorOptions[] = [];
     const contexts = new Set<string>(["all"]);
     if (only) contexts.add("action").add("browser_action").add("page_action");
@@ -1074,11 +1267,14 @@ export function createApis(env: ApiEnv) {
           ...(params.srcURL ? { srcUrl: params.srcURL } : {}),
           ...(params.mediaType && params.mediaType !== "none" ? { mediaType: params.mediaType } : {}),
           ...(params.selectionText ? { selectionText: params.selectionText } : {}),
-          ...(m.type === "checkbox" || m.type === "radio" ? { wasChecked: !!m.checked, checked: checked ?? !m.checked } : {}),
+          ...(m.type === "checkbox" || m.type === "radio"
+            ? { wasChecked: !!m.checked, checked: checked ?? !m.checked }
+            : {}),
         };
         if (m.type === "checkbox") m.checked = !m.checked;
         if (m.type === "radio") {
-          for (const other of state.menus) if (other.type === "radio" && other.parentId === m.parentId) other.checked = other.id === m.id;
+          for (const other of state.menus)
+            if (other.type === "radio" && other.parentId === m.parentId) other.checked = other.id === m.id;
         }
         if (m.type === "checkbox" || m.type === "radio") state.save();
         env.grantActiveTab(s, ext.id, tabId ?? null);
@@ -1091,7 +1287,9 @@ export function createApis(env: ApiEnv) {
           .map((m): MenuItemConstructorOptions => {
             if (m.type === "separator") return { type: "separator" };
             const children = build(m.id);
-            const label = (m.title ?? "").replace(/%s/g, (params.selectionText ?? "").slice(0, 100)).replace(/&/g, "&&");
+            const label = (m.title ?? "")
+              .replace(/%s/g, (params.selectionText ?? "").slice(0, 100))
+              .replace(/&/g, "&&");
             if (children.length) return { label, enabled: m.enabled !== false, submenu: children };
             return {
               label,
@@ -1112,7 +1310,11 @@ export function createApis(env: ApiEnv) {
         }
         const dir = ext.path;
         const icon = imageDataUrl(dir, iconPath((ext.manifest as Manifest).icons, 16));
-        out.push({ label: name.replace(/&/g, "&&"), submenu: items, ...(icon ? { icon: nativeImage.createFromDataURL(icon).resize({ width: 16, height: 16 }) } : {}) });
+        out.push({
+          label: name.replace(/&/g, "&&"),
+          submenu: items,
+          ...(icon ? { icon: nativeImage.createFromDataURL(icon).resize({ width: 16, height: 16 }) } : {}),
+        });
       }
     }
     return out;
@@ -1130,7 +1332,12 @@ export function createApis(env: ApiEnv) {
   let authIds = 0;
 
   /** Credentials from an extension, "cancel" when one cancelled the sign-in, or null when none answered. */
-  async function authRequired(s: Session, contents: WebContents, url: string, info: { isProxy: boolean; scheme: string; host: string; port: number; realm: string }) {
+  async function authRequired(
+    s: Session,
+    contents: WebContents,
+    url: string,
+    info: { isProxy: boolean; scheme: string; host: string; port: number; realm: string },
+  ) {
     const key = `${contents.id}|${url}|${info.realm}`;
     const previous = authRequests.get(key);
     const retry = previous && Date.now() - previous.at < 60_000 ? previous : null;
@@ -1164,7 +1371,9 @@ export function createApis(env: ApiEnv) {
       if (id === BUILTIN_EXTENSION_ID || !hasPermission(s, id, "webRequest")) continue;
       if (!hasPermission(s, id, "webRequestAuthProvider") && !hasPermission(s, id, "webRequestBlocking")) continue;
       if (!info.isProxy && !hostAccess(s, id, url)) continue;
-      const listens = env.contexts.of(s, id).some((c) => c.events.has(AUTH_EVENT)) || !!env.state(s, id)?.backgroundEvents.has(AUTH_EVENT);
+      const listens =
+        env.contexts.of(s, id).some((c) => c.events.has(AUTH_EVENT)) ||
+        !!env.state(s, id)?.backgroundEvents.has(AUTH_EVENT);
       if (!listens) continue;
       const answer = await askForAuth(s, id, details);
       if (answer) return answer;
@@ -1184,9 +1393,13 @@ export function createApis(env: ApiEnv) {
         resolve(value);
       };
       const onReply = (response: unknown) => {
-        const r = (response ?? {}) as { cancel?: unknown; authCredentials?: { username?: unknown; password?: unknown } };
+        const r = (response ?? {}) as {
+          cancel?: unknown;
+          authCredentials?: { username?: unknown; password?: unknown };
+        };
         const c = r.authCredentials;
-        if (c && typeof c.username === "string" && typeof c.password === "string") return finish({ username: c.username, password: c.password });
+        if (c && typeof c.username === "string" && typeof c.password === "string")
+          return finish({ username: c.username, password: c.password });
         if (r.cancel === true) return finish("cancel");
         replied++;
         if (sent !== null && replied >= sent) finish(null);
@@ -1201,10 +1414,22 @@ export function createApis(env: ApiEnv) {
     });
   }
 
-  return { handle, authRequired, tabObject, trackGuest, tabsChanged, watchCookies, menuItems, hasPermission, sidePanelUrl, forgetSync: (id: string) => sync.forget(id) };
+  return {
+    handle,
+    authRequired,
+    tabObject,
+    trackGuest,
+    tabsChanged,
+    watchCookies,
+    menuItems,
+    hasPermission,
+    sidePanelUrl,
+    forgetSync: (id: string) => sync.forget(id),
+  };
 }
 
-const cookieUrl = (c: Electron.Cookie) => `${c.secure ? "https" : "http"}://${(c.domain ?? "").replace(/^\./, "")}${c.path ?? "/"}`;
+const cookieUrl = (c: Electron.Cookie) =>
+  `${c.secure ? "https" : "http"}://${(c.domain ?? "").replace(/^\./, "")}${c.path ?? "/"}`;
 
 function cookieObject(c: Electron.Cookie) {
   return {
@@ -1221,4 +1446,3 @@ function cookieObject(c: Electron.Cookie) {
     storeId: "0",
   };
 }
-

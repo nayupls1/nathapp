@@ -16,7 +16,10 @@ import type { DataColumn, DataOverview, DataRows, DataTable } from "../../shared
 import { ServerConfig } from "../Config";
 import { removeDir } from "./removeDir";
 
-export class AppDataError extends Data.TaggedError("AppDataError")<{ readonly status: 400 | 404; readonly message: string }> {}
+export class AppDataError extends Data.TaggedError("AppDataError")<{
+  readonly status: 400 | 404;
+  readonly message: string;
+}> {}
 
 /** Where an app's data shows up in its snapshots. */
 export const DATA_PREFIX = "@data/";
@@ -64,11 +67,24 @@ export interface AppDataShape {
   /** The tables with what's needed to read and write their rows. */
   readonly schema: (appId: string) => Effect.Effect<TableSchema[]>;
   /** One row by its key (the primary key's columns, or rowid). */
-  readonly getRow: (appId: string, table: string, key: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, AppDataError>;
+  readonly getRow: (
+    appId: string,
+    table: string,
+    key: Record<string, unknown>,
+  ) => Effect.Effect<Record<string, unknown>, AppDataError>;
   /** Adds a row and returns it. */
-  readonly insertRow: (appId: string, table: string, values: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, AppDataError>;
+  readonly insertRow: (
+    appId: string,
+    table: string,
+    values: Record<string, unknown>,
+  ) => Effect.Effect<Record<string, unknown>, AppDataError>;
   /** Changes the given columns of a row and returns it. */
-  readonly updateRow: (appId: string, table: string, key: Record<string, unknown>, values: Record<string, unknown>) => Effect.Effect<Record<string, unknown>, AppDataError>;
+  readonly updateRow: (
+    appId: string,
+    table: string,
+    key: Record<string, unknown>,
+    values: Record<string, unknown>,
+  ) => Effect.Effect<Record<string, unknown>, AppDataError>;
   readonly deleteRow: (appId: string, table: string, key: Record<string, unknown>) => Effect.Effect<void, AppDataError>;
   /** A .tar.gz: the database, its tables as JSON and the app's files. */
   readonly exportArchive: (appId: string) => Effect.Effect<Uint8Array>;
@@ -103,7 +119,9 @@ function openReadOnly(file: string): Database | null {
 
 function tablesOf(db: Database): DataTable[] {
   const names = db
-    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .query<{ name: string }, []>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
     .all()
     .map((r) => r.name);
   return names.map((name) => ({
@@ -122,12 +140,16 @@ function columnsOf(db: Database, table: string): DataColumn[] {
 
 function schemaOf(db: Database): TableSchema[] {
   const names = db
-    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    .query<{ name: string }, []>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )
     .all()
     .map((r) => r.name);
   return names.map((name) => {
     const info = db
-      .query<{ name: string; type: string; pk: number; notnull: number; dflt_value: string | null }, []>(`PRAGMA table_info(${quoteName(name)})`)
+      .query<{ name: string; type: string; pk: number; notnull: number; dflt_value: string | null }, []>(
+        `PRAGMA table_info(${quoteName(name)})`,
+      )
       .all();
     const pk = info.filter((c) => c.pk > 0).sort((a, b) => a.pk - b.pk);
     // An INTEGER PRIMARY KEY is the rowid: SQLite picks one when it's left out.
@@ -159,7 +181,8 @@ async function walkFiles(dir: string): Promise<{ path: string; size: number }[]>
     for (const entry of await readdir(abs, { withFileTypes: true }).catch(() => [])) {
       const path = rel ? `${rel}/${entry.name}` : entry.name;
       if (entry.isDirectory()) await walk(join(abs, entry.name), path);
-      else if (entry.isFile()) out.push({ path, size: (await stat(join(abs, entry.name)).catch(() => ({ size: 0 }))).size });
+      else if (entry.isFile())
+        out.push({ path, size: (await stat(join(abs, entry.name)).catch(() => ({ size: 0 }))).size });
     }
   };
   await walk(dir, "");
@@ -168,7 +191,9 @@ async function walkFiles(dir: string): Promise<{ path: string; size: number }[]>
 
 /** Reads rows with optional search, equality filters and order; names are checked against the table's columns. */
 export function queryRows(db: Database, table: string, query: RowQuery): DataRows | string {
-  const tables = db.query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all();
+  const tables = db
+    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    .all();
   if (!tables.some((t) => t.name === table)) return `No table "${table}"`;
   const columns = columnsOf(db, table);
   const known = new Set(columns.map((c) => c.name));
@@ -194,13 +219,19 @@ export function queryRows(db: Database, table: string, query: RowQuery): DataRow
   }
   if (query.orderBy && !known.has(query.orderBy)) return `No column "${query.orderBy}" in ${table}`;
   const where = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
-  const order = query.orderBy ? ` ORDER BY ${quoteName(query.orderBy)}${query.desc ? " DESC" : ""}` : query.desc ? " ORDER BY rowid DESC" : "";
+  const order = query.orderBy
+    ? ` ORDER BY ${quoteName(query.orderBy)}${query.desc ? " DESC" : ""}`
+    : query.desc
+      ? " ORDER BY rowid DESC"
+      : "";
   const limit = Math.min(Math.max(Math.floor(query.limit ?? 100), 1), MAX_PAGE);
   const offset = Math.max(Math.floor(query.offset ?? 0), 0);
   const from = `FROM ${quoteName(table)}${where}`;
   const total = db.query<{ n: number }, (string | number | null)[]>(`SELECT COUNT(*) AS n ${from}`).get(...params)!.n;
   const rows = db
-    .query<Record<string, unknown>, (string | number | null)[]>(`SELECT ${star} ${from}${order} LIMIT ${limit} OFFSET ${offset}`)
+    .query<Record<string, unknown>, (string | number | null)[]>(
+      `SELECT ${star} ${from}${order} LIMIT ${limit} OFFSET ${offset}`,
+    )
     .all(...params)
     .map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, cell(v)])));
   return { table, columns, rows, total, offset, limit };
@@ -233,7 +264,8 @@ export const make = Effect.gen(function* () {
             db.close();
           }
         },
-        catch: (err) => (err instanceof AppDataError ? err : new AppDataError({ status: 400, message: (err as Error).message })),
+        catch: (err) =>
+          err instanceof AppDataError ? err : new AppDataError({ status: 400, message: (err as Error).message }),
       });
     });
 
@@ -254,17 +286,28 @@ export const make = Effect.gen(function* () {
   const cellsFor = (schema: TableSchema, values: Record<string, unknown>) => {
     const known = new Set(schema.columns.map((c) => c.name));
     const unknown = Object.keys(values).filter((k) => !known.has(k));
-    if (unknown.length) throw new AppDataError({ status: 400, message: `No column ${unknown.map((k) => `"${k}"`).join(", ")} in ${schema.name}` });
+    if (unknown.length)
+      throw new AppDataError({
+        status: 400,
+        message: `No column ${unknown.map((k) => `"${k}"`).join(", ")} in ${schema.name}`,
+      });
     return Object.entries(values).map(([k, v]) => [k, toCell(v)] as const);
   };
 
-  const rowOut = (row: Record<string, unknown> | null) => (row ? Object.fromEntries(Object.entries(row).map(([k, v]) => [k, cell(v)])) : null);
+  const rowOut = (row: Record<string, unknown> | null) =>
+    row ? Object.fromEntries(Object.entries(row).map(([k, v]) => [k, cell(v)])) : null;
 
   /** The row's columns, with its rowid when that's what identifies it. */
   const star = (schema: TableSchema) => (schema.key[0] === "rowid" ? "rowid, *" : "*");
 
   const selectRow = (db: Database, schema: TableSchema, where: string, params: CellValue[]) =>
-    rowOut(db.query<Record<string, unknown>, CellValue[]>(`SELECT ${star(schema)} FROM ${quoteName(schema.name)} WHERE ${where}`).get(...params));
+    rowOut(
+      db
+        .query<Record<string, unknown>, CellValue[]>(
+          `SELECT ${star(schema)} FROM ${quoteName(schema.name)} WHERE ${where}`,
+        )
+        .get(...params),
+    );
 
   return {
     ensure,
@@ -297,7 +340,8 @@ export const make = Effect.gen(function* () {
         if (!schema) throw new AppDataError({ status: 404, message: `No table "${table}"` });
         const cells = cellsFor(schema, values);
         const missing = schema.columns.filter((c) => c.required && !cells.some(([k, v]) => k === c.name && v !== null));
-        if (missing.length) throw new AppDataError({ status: 400, message: `Missing ${missing.map((c) => c.name).join(", ")}` });
+        if (missing.length)
+          throw new AppDataError({ status: 400, message: `Missing ${missing.map((c) => c.name).join(", ")}` });
         const sql = cells.length
           ? `INSERT INTO ${quoteName(table)} (${cells.map(([k]) => quoteName(k)).join(", ")}) VALUES (${cells.map(() => "?").join(", ")}) RETURNING ${star(schema)}`
           : `INSERT INTO ${quoteName(table)} DEFAULT VALUES RETURNING ${star(schema)}`;
@@ -311,7 +355,9 @@ export const make = Effect.gen(function* () {
         if (!cells.length) throw new AppDataError({ status: 400, message: "Nothing to change" });
         const sets = cells.map(([k]) => `${quoteName(k)} = ?`).join(", ");
         const row = db
-          .query<Record<string, unknown>, CellValue[]>(`UPDATE ${quoteName(table)} SET ${sets} WHERE ${where} RETURNING ${star(schema)}`)
+          .query<Record<string, unknown>, CellValue[]>(
+            `UPDATE ${quoteName(table)} SET ${sets} WHERE ${where} RETURNING ${star(schema)}`,
+          )
           .get(...cells.map(([, v]) => v), ...params);
         if (!row) throw new AppDataError({ status: 404, message: `No such row in ${table}` });
         return rowOut(row)!;
@@ -320,7 +366,9 @@ export const make = Effect.gen(function* () {
     deleteRow: (appId, table, key) =>
       writing(appId, (db) => {
         const { where, params } = locate(db, table, key);
-        const { changes } = db.query<unknown, CellValue[]>(`DELETE FROM ${quoteName(table)} WHERE ${where}`).run(...params);
+        const { changes } = db
+          .query<unknown, CellValue[]>(`DELETE FROM ${quoteName(table)} WHERE ${where}`)
+          .run(...params);
         if (!changes) throw new AppDataError({ status: 404, message: `No such row in ${table}` });
       }),
 
@@ -341,7 +389,11 @@ export const make = Effect.gen(function* () {
         const files = yield* Effect.promise(() => walkFiles(filesOf(appId)));
         const databaseBytes = yield* Effect.promise(async () => {
           let total = 0;
-          for (const suffix of ["", "-wal"]) total += await stat(database + suffix).then((s) => s.size, () => 0);
+          for (const suffix of ["", "-wal"])
+            total += await stat(database + suffix).then(
+              (s) => s.size,
+              () => 0,
+            );
           return total;
         });
         return {
@@ -365,7 +417,8 @@ export const make = Effect.gen(function* () {
         } finally {
           db.close();
         }
-        if (typeof result === "string") return yield* new AppDataError({ status: result.startsWith("No ") ? 404 : 400, message: result });
+        if (typeof result === "string")
+          return yield* new AppDataError({ status: result.startsWith("No ") ? 404 : 400, message: result });
         return result;
       }),
 
@@ -391,7 +444,12 @@ export const make = Effect.gen(function* () {
           db?.close();
         }
         for (const file of yield* Effect.promise(() => walkFiles(filesOf(appId)))) {
-          const bytes = yield* Effect.promise(() => readFile(join(filesOf(appId), file.path)).then((b) => new Uint8Array(b), () => null));
+          const bytes = yield* Effect.promise(() =>
+            readFile(join(filesOf(appId), file.path)).then(
+              (b) => new Uint8Array(b),
+              () => null,
+            ),
+          );
           if (bytes) entries[`files/${file.path}`] = bytes;
         }
         if (!Object.keys(entries).length) entries["README.txt"] = "This app has no data yet.\n";

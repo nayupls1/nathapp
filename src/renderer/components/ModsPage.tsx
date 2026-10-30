@@ -8,7 +8,18 @@ import { Portal } from "solid-js/web";
 import type { ExtensionInfo } from "../../shared/extensions";
 import type { Mod } from "../../shared/mods";
 import { api } from "../lib/api";
-import { closeModReview, copyShareCode, installedMods, installReviewed, pendingModReview, removeMod, reviewMod, saveModFile, setModEnabled, sourceOf } from "../lib/mods";
+import {
+  closeModReview,
+  copyShareCode,
+  installedMods,
+  installReviewed,
+  pendingModReview,
+  removeMod,
+  reviewMod,
+  saveModFile,
+  setModEnabled,
+  sourceOf,
+} from "../lib/mods";
 import { settings, updateSettings } from "../lib/settings";
 import { pageChanges } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
@@ -38,17 +49,32 @@ export function ModsPage() {
           Mods
         </h1>
         <p {...stylex.attrs(styles.muted)}>
-          Customizations of websites and of Rune Browser, packaged to share: page changes, a theme, extensions. You see what a mod changes before installing it, and turning it off or
-          removing it takes all of that back.
+          Customizations of websites and of Rune Browser, packaged to share: page changes, a theme, extensions. You see
+          what a mod changes before installing it, and turning it off or removing it takes all of that back.
         </p>
       </header>
       <InstallBox />
       <div role="tablist" {...stylex.attrs(styles.tabs)}>
-        <For each={[["installed", "Installed"], ["gallery", "Gallery"], ["create", "Make a mod"]] as const}>
+        <For
+          each={
+            [
+              ["installed", "Installed"],
+              ["gallery", "Gallery"],
+              ["create", "Make a mod"],
+            ] as const
+          }
+        >
           {([id, label]) => {
             const on = () => tab() === id;
             return (
-              <button type="button" role="tab" aria-selected={on()} onClick={() => setTab(id)} {...stylex.attrs(styles.tab, on() && styles.tabOn)} data-mods-tab={id}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={on()}
+                onClick={() => setTab(id)}
+                {...stylex.attrs(styles.tab, on() && styles.tabOn)}
+                data-mods-tab={id}
+              >
                 {label}
                 <Show when={id === "installed" && installedMods().length}>
                   <span {...stylex.attrs(styles.count)}>{installedMods().length}</span>
@@ -102,7 +128,12 @@ function InstallBox() {
           {...stylex.attrs(styles.input)}
           data-mod-input
         />
-        <Button variant="primary" disabled={busy() || !text().trim()} onClick={() => void review(() => reviewMod(sourceOf(text())))} data-mod-review>
+        <Button
+          variant="primary"
+          disabled={busy() || !text().trim()}
+          onClick={() => void review(() => reviewMod(sourceOf(text())))}
+          data-mod-review
+        >
           {busy() ? "Reading…" : "Review"}
         </Button>
         <Button disabled={busy()} onClick={() => file.click()}>
@@ -137,17 +168,29 @@ function Installed() {
   };
   return (
     <div {...stylex.attrs(styles.list)}>
-      <For each={installedMods()} fallback={<p {...stylex.attrs(styles.empty)}>No mods yet. Try one from the gallery, or install one someone shared with you.</p>}>
+      <For
+        each={installedMods()}
+        fallback={
+          <p {...stylex.attrs(styles.empty)}>
+            No mods yet. Try one from the gallery, or install one someone shared with you.
+          </p>
+        }
+      >
         {(m) => (
           <div {...stylex.attrs(styles.item)} data-mod={m.mod.id} data-enabled={m.enabled ? "yes" : "no"}>
-            <Icon name={m.mod.theme && !m.mod.pageChanges.length ? "palette" : "puzzle"} size={18} {...stylex.attrs(styles.itemIcon)} />
+            <Icon
+              name={m.mod.theme && !m.mod.pageChanges.length ? "palette" : "puzzle"}
+              size={18}
+              {...stylex.attrs(styles.itemIcon)}
+            />
             <div {...stylex.attrs(styles.itemText)}>
               <span {...stylex.attrs(styles.itemTitle)}>
                 {m.mod.name}
                 <span {...stylex.attrs(styles.badge)}>v{m.mod.modVersion}</span>
               </span>
               <span {...stylex.attrs(styles.meta)}>
-                by {m.mod.author} · {summary(m.mod)} · from {m.source === "you" ? "you" : m.source.startsWith("http") ? new URL(m.source).host : m.source}
+                by {m.mod.author} · {summary(m.mod)} · from{" "}
+                {m.source === "you" ? "you" : m.source.startsWith("http") ? new URL(m.source).host : m.source}
               </span>
               <Show when={m.mod.description}>
                 <span {...stylex.attrs(styles.meta)}>{m.mod.description}</span>
@@ -156,22 +199,44 @@ function Installed() {
             <button
               type="button"
               title="Copy its share code"
-              onClick={() => void act(async () => (await copyShareCode(m.mod), toast({ message: `Copied the share code of ${m.mod.name}`, kind: "success" })))}
+              onClick={() =>
+                void act(
+                  async () => (
+                    await copyShareCode(m.mod),
+                    toast({ message: `Copied the share code of ${m.mod.name}`, kind: "success" })
+                  ),
+                )
+              }
               {...stylex.attrs(styles.iconButton)}
               data-mod-share
             >
               <Icon name="share-2" size={15} />
             </button>
-            <button type="button" title="Save as a file" onClick={() => saveModFile(m.mod)} {...stylex.attrs(styles.iconButton)}>
+            <button
+              type="button"
+              title="Save as a file"
+              onClick={() => saveModFile(m.mod)}
+              {...stylex.attrs(styles.iconButton)}
+            >
               <Icon name="download" size={15} />
             </button>
-            <Toggle checked={m.enabled} label={m.enabled ? "Turn off" : "Turn on"} onChange={(on) => void act(() => setModEnabled(m.mod.id, on))} />
+            <Toggle
+              checked={m.enabled}
+              label={m.enabled ? "Turn off" : "Turn on"}
+              onChange={(on) => void act(() => setModEnabled(m.mod.id, on))}
+            />
             <button
               type="button"
               title="Remove"
               onClick={() =>
                 void act(async () => {
-                  if (await confirmDialog(`Remove ${m.mod.name}? Everything it changed goes back.`, { confirmLabel: "Remove", danger: true })) await removeMod(m.mod.id);
+                  if (
+                    await confirmDialog(`Remove ${m.mod.name}? Everything it changed goes back.`, {
+                      confirmLabel: "Remove",
+                      danger: true,
+                    })
+                  )
+                    await removeMod(m.mod.id);
                 })
               }
               {...stylex.attrs(styles.iconButton)}
@@ -201,7 +266,8 @@ function Gallery() {
   const installedIds = () => new Set(installedMods().map((m) => `${m.mod.id}@${m.mod.modVersion}`));
   const addGallery = () => {
     const value = url().trim();
-    if (!/^https:\/\//i.test(value)) return toast({ message: "A gallery is an https link to a JSON file that lists mods.", kind: "error" });
+    if (!/^https:\/\//i.test(value))
+      return toast({ message: "A gallery is an https link to a JSON file that lists mods.", kind: "error" });
     updateSettings((s) => ({ ...s, mods: { galleries: [...new Set([...s.mods.galleries, value])] } }));
     setUrl("");
     setTimeout(() => void refetch(), 500);
@@ -218,9 +284,22 @@ function Gallery() {
               </span>
               <p {...stylex.attrs(styles.galleryText)}>{entry.mod.description}</p>
               <div {...stylex.attrs(styles.row)}>
-                <span {...stylex.attrs(styles.meta, styles.grow)}>{entry.gallery === "Rune Browser" ? "From Rune Browser" : new URL(entry.gallery).host}</span>
-                <Show when={!installedIds().has(`${entry.mod.id}@${entry.mod.modVersion}`)} fallback={<span {...stylex.attrs(styles.meta)}>Installed</span>}>
-                  <Button onClick={() => void reviewMod({ mod: entry.mod }, entry.gallery === "Rune Browser" ? "gallery" : entry.gallery).catch((err) => toast({ message: errorText(err), kind: "error" }))} data-gallery-install>
+                <span {...stylex.attrs(styles.meta, styles.grow)}>
+                  {entry.gallery === "Rune Browser" ? "From Rune Browser" : new URL(entry.gallery).host}
+                </span>
+                <Show
+                  when={!installedIds().has(`${entry.mod.id}@${entry.mod.modVersion}`)}
+                  fallback={<span {...stylex.attrs(styles.meta)}>Installed</span>}
+                >
+                  <Button
+                    onClick={() =>
+                      void reviewMod(
+                        { mod: entry.mod },
+                        entry.gallery === "Rune Browser" ? "gallery" : entry.gallery,
+                      ).catch((err) => toast({ message: errorText(err), kind: "error" }))
+                    }
+                    data-gallery-install
+                  >
                     Install…
                   </Button>
                 </Show>
@@ -235,7 +314,8 @@ function Gallery() {
       <section {...stylex.attrs(styles.card)}>
         <h2 {...stylex.attrs(styles.sectionTitle)}>Galleries</h2>
         <p {...stylex.attrs(styles.muted)}>
-          Mods made by others, from galleries you add: an https link to a JSON file that lists mods (<code>{'{ "mods": [ … ] }'}</code>). Rune Browser's examples are always here.
+          Mods made by others, from galleries you add: an https link to a JSON file that lists mods (
+          <code>{'{ "mods": [ … ] }'}</code>). Rune Browser's examples are always here.
         </p>
         <For each={settings().mods.galleries}>
           {(g) => (
@@ -256,7 +336,12 @@ function Gallery() {
           )}
         </For>
         <div {...stylex.attrs(styles.row)}>
-          <input value={url()} placeholder="https://example.com/mods.json" onInput={(e) => setUrl(e.currentTarget.value)} {...stylex.attrs(styles.input)} />
+          <input
+            value={url()}
+            placeholder="https://example.com/mods.json"
+            onInput={(e) => setUrl(e.currentTarget.value)}
+            {...stylex.attrs(styles.input)}
+          />
           <Button onClick={addGallery} disabled={!url().trim()}>
             Add gallery
           </Button>
@@ -295,7 +380,9 @@ function Create(props: { onCreated: () => void }) {
         author: author().trim(),
         pageChangeIds: chosen(),
         theme: theme(),
-        extensions: (available() ?? []).filter((e) => extensions().includes(e.id)).map((e) => ({ id: e.id, name: e.name })),
+        extensions: (available() ?? [])
+          .filter((e) => extensions().includes(e.id))
+          .map((e) => ({ id: e.id, name: e.name })),
       });
       setMade({ mod, code: await copyShareCode(mod) });
     } catch (err) {
@@ -310,16 +397,45 @@ function Create(props: { onCreated: () => void }) {
         fallback={
           <>
             <div {...stylex.attrs(styles.fields)}>
-              <input value={name()} placeholder="Name, e.g. Calm news sites" onInput={(e) => setName(e.currentTarget.value)} {...stylex.attrs(styles.input)} data-mod-name />
-              <input value={author()} placeholder="Your name (shown as its author)" onInput={(e) => setAuthor(e.currentTarget.value)} {...stylex.attrs(styles.input)} />
-              <textarea value={description()} placeholder="What it does" rows={2} onInput={(e) => setDescription(e.currentTarget.value)} {...stylex.attrs(styles.input, styles.textarea)} />
+              <input
+                value={name()}
+                placeholder="Name, e.g. Calm news sites"
+                onInput={(e) => setName(e.currentTarget.value)}
+                {...stylex.attrs(styles.input)}
+                data-mod-name
+              />
+              <input
+                value={author()}
+                placeholder="Your name (shown as its author)"
+                onInput={(e) => setAuthor(e.currentTarget.value)}
+                {...stylex.attrs(styles.input)}
+              />
+              <textarea
+                value={description()}
+                placeholder="What it does"
+                rows={2}
+                onInput={(e) => setDescription(e.currentTarget.value)}
+                {...stylex.attrs(styles.input, styles.textarea)}
+              />
             </div>
             <h3 {...stylex.attrs(styles.subTitle)}>Page changes</h3>
             <div {...stylex.attrs(styles.choices)}>
-              <For each={own()} fallback={<p {...stylex.attrs(styles.muted)}>You have no page changes of your own yet (the website agent makes them).</p>}>
+              <For
+                each={own()}
+                fallback={
+                  <p {...stylex.attrs(styles.muted)}>
+                    You have no page changes of your own yet (the website agent makes them).
+                  </p>
+                }
+              >
                 {(c) => (
                   <label {...stylex.attrs(styles.choice)}>
-                    <input type="checkbox" checked={chosen().includes(c.id)} onChange={() => setChosen(toggle(chosen(), c.id))} data-mod-change={c.id} />
+                    <input
+                      type="checkbox"
+                      checked={chosen().includes(c.id)}
+                      onChange={() => setChosen(toggle(chosen(), c.id))}
+                      data-mod-change={c.id}
+                    />
                     <span {...stylex.attrs(styles.grow)}>{c.title}</span>
                     <span {...stylex.attrs(styles.meta)}>{c.scope.value}</span>
                   </label>
@@ -328,7 +444,12 @@ function Create(props: { onCreated: () => void }) {
             </div>
             <h3 {...stylex.attrs(styles.subTitle)}>Rune Browser</h3>
             <label {...stylex.attrs(styles.choice)}>
-              <input type="checkbox" checked={theme()} onChange={(e) => setTheme(e.currentTarget.checked)} data-mod-theme />
+              <input
+                type="checkbox"
+                checked={theme()}
+                onChange={(e) => setTheme(e.currentTarget.checked)}
+                data-mod-theme
+              />
               <span>Your theme (colors, corners, font)</span>
             </label>
             <Show when={available()?.length}>
@@ -337,19 +458,31 @@ function Create(props: { onCreated: () => void }) {
                 <For each={available()}>
                   {(e) => (
                     <label {...stylex.attrs(styles.choice)}>
-                      <input type="checkbox" checked={extensions().includes(e.id)} onChange={() => setExtensions(toggle(extensions(), e.id))} />
+                      <input
+                        type="checkbox"
+                        checked={extensions().includes(e.id)}
+                        onChange={() => setExtensions(toggle(extensions(), e.id))}
+                      />
                       <span>{e.name}</span>
                     </label>
                   )}
                 </For>
               </div>
-              <p {...stylex.attrs(styles.muted)}>Extensions are shared by their Chrome Web Store id: installing the mod installs them from there (not their settings).</p>
+              <p {...stylex.attrs(styles.muted)}>
+                Extensions are shared by their Chrome Web Store id: installing the mod installs them from there (not
+                their settings).
+              </p>
             </Show>
             <Show when={error()}>
               <p {...stylex.attrs(styles.error)}>{error()}</p>
             </Show>
             <div {...stylex.attrs(styles.row)}>
-              <Button variant="primary" disabled={!name().trim() || (!chosen().length && !theme() && !extensions().length)} onClick={() => void create()} data-mod-make>
+              <Button
+                variant="primary"
+                disabled={!name().trim() || (!chosen().length && !theme() && !extensions().length)}
+                onClick={() => void create()}
+                data-mod-make
+              >
                 Make the mod
               </Button>
             </div>
@@ -359,12 +492,28 @@ function Create(props: { onCreated: () => void }) {
         {(result) => (
           <div {...stylex.attrs(styles.fields)} data-mod-made={result().mod.id}>
             <p {...stylex.attrs(styles.itemTitle)}>
-              <Icon name="circle-check" size={16} {...stylex.attrs(styles.accent)} /> {result().mod.name} is ready to share
+              <Icon name="circle-check" size={16} {...stylex.attrs(styles.accent)} /> {result().mod.name} is ready to
+              share
             </p>
-            <p {...stylex.attrs(styles.muted)}>Its share code is copied. Anyone with Rune Browser can paste it into Install a mod (or Ctrl+K) and review it before installing.</p>
-            <textarea readOnly value={result().code} rows={3} {...stylex.attrs(styles.input, styles.textarea, styles.code)} data-mod-code />
+            <p {...stylex.attrs(styles.muted)}>
+              Its share code is copied. Anyone with Rune Browser can paste it into Install a mod (or Ctrl+K) and review
+              it before installing.
+            </p>
+            <textarea
+              readOnly
+              value={result().code}
+              rows={3}
+              {...stylex.attrs(styles.input, styles.textarea, styles.code)}
+              data-mod-code
+            />
             <div {...stylex.attrs(styles.row)}>
-              <Button onClick={() => void copyShareCode(result().mod).then(() => toast({ message: "Copied", kind: "success" }))}>Copy again</Button>
+              <Button
+                onClick={() =>
+                  void copyShareCode(result().mod).then(() => toast({ message: "Copied", kind: "success" }))
+                }
+              >
+                Copy again
+              </Button>
               <Button onClick={() => saveModFile(result().mod)}>Save as a file</Button>
               <Button
                 onClick={() => {
@@ -385,7 +534,15 @@ function Create(props: { onCreated: () => void }) {
 
 function Toggle(props: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
   return (
-    <button type="button" role="switch" aria-checked={props.checked} title={props.label} onClick={() => props.onChange(!props.checked)} {...stylex.attrs(styles.toggle, props.checked && styles.toggleOn)} data-mod-toggle>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.checked}
+      title={props.label}
+      onClick={() => props.onChange(!props.checked)}
+      {...stylex.attrs(styles.toggle, props.checked && styles.toggleOn)}
+      data-mod-toggle
+    >
       <span {...stylex.attrs(styles.knob, props.checked && styles.knobOn)} />
     </button>
   );
@@ -410,7 +567,12 @@ function ReviewDialog(props: { review: NonNullable<ReturnType<typeof pendingModR
     setError();
     try {
       const failed = await installReviewed();
-      toast({ message: failed.length ? `Installed ${mod().name}, but not all its extensions: ${failed.join("; ")}` : `Installed ${mod().name}`, kind: failed.length ? "error" : "success" });
+      toast({
+        message: failed.length
+          ? `Installed ${mod().name}, but not all its extensions: ${failed.join("; ")}`
+          : `Installed ${mod().name}`,
+        kind: failed.length ? "error" : "success",
+      });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -421,7 +583,13 @@ function ReviewDialog(props: { review: NonNullable<ReturnType<typeof pendingModR
   return (
     <Portal>
       <div {...stylex.attrs(styles.backdrop)} onKeyDown={(e) => e.key === "Escape" && closeModReview()}>
-        <div role="dialog" aria-modal="true" aria-labelledby="mod-review-title" {...stylex.attrs(styles.dialog)} data-mod-review-dialog={mod().id}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mod-review-title"
+          {...stylex.attrs(styles.dialog)}
+          data-mod-review-dialog={mod().id}
+        >
           <div>
             <span {...stylex.attrs(styles.meta)}>
               by {mod().author} · v{mod().modVersion}
@@ -440,7 +608,14 @@ function ReviewDialog(props: { review: NonNullable<ReturnType<typeof pendingModR
                 const danger = () => p.level === "danger";
                 const warning = () => p.level === "warning";
                 return (
-                  <p {...stylex.attrs(styles.permission, danger() && styles.permissionDanger, warning() && styles.permissionWarning)} data-mod-permission={p.level}>
+                  <p
+                    {...stylex.attrs(
+                      styles.permission,
+                      danger() && styles.permissionDanger,
+                      warning() && styles.permissionWarning,
+                    )}
+                    data-mod-permission={p.level}
+                  >
                     <Icon name={levelIcon[p.level]} size={15} {...stylex.attrs(styles.permissionIcon)} />
                     <span>{p.text}</span>
                   </p>
@@ -450,7 +625,9 @@ function ReviewDialog(props: { review: NonNullable<ReturnType<typeof pendingModR
           </div>
           <Show when={props.review.review.changes.length}>
             <details {...stylex.attrs(styles.details)}>
-              <summary {...stylex.attrs(styles.summary)}>What it changes ({props.review.review.changes.length})</summary>
+              <summary {...stylex.attrs(styles.summary)}>
+                What it changes ({props.review.review.changes.length})
+              </summary>
               <For each={props.review.review.changes}>
                 {(c) => (
                   <div {...stylex.attrs(styles.change)}>
@@ -484,9 +661,25 @@ function ReviewDialog(props: { review: NonNullable<ReturnType<typeof pendingModR
 }
 
 const styles = stylex.create({
-  page: { maxWidth: 860, marginInline: "auto", paddingBlock: space.xxl, paddingInline: space.xl, display: "flex", flexDirection: "column", gap: space.lg },
+  page: {
+    maxWidth: 860,
+    marginInline: "auto",
+    paddingBlock: space.xxl,
+    paddingInline: space.xl,
+    display: "flex",
+    flexDirection: "column",
+    gap: space.lg,
+  },
   header: { display: "flex", flexDirection: "column", gap: space.xs },
-  title: { display: "flex", alignItems: "center", gap: space.sm, margin: 0, fontSize: font.xxl, fontWeight: 650, letterSpacing: "-0.02em" },
+  title: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    margin: 0,
+    fontSize: font.xxl,
+    fontWeight: 650,
+    letterSpacing: "-0.02em",
+  },
   accent: { color: colors.accent },
   muted: { margin: 0, color: colors.muted, fontSize: font.sm, lineHeight: 1.5 },
   error: { margin: 0, color: colors.danger, fontSize: font.sm },
@@ -568,7 +761,14 @@ const styles = stylex.create({
   itemText: { display: "flex", flexDirection: "column", gap: 2, flex: 1, minWidth: 0 },
   itemTitle: { display: "flex", alignItems: "center", gap: 6, margin: 0, fontSize: font.sm, fontWeight: 500 },
   meta: { color: colors.muted, fontSize: font.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  badge: { paddingInline: 6, borderRadius: radius.full, backgroundColor: colors.surfaceHover, color: colors.muted, fontSize: 11, fontWeight: 600 },
+  badge: {
+    paddingInline: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceHover,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: 600,
+  },
   iconButton: {
     display: "grid",
     placeItems: "center",

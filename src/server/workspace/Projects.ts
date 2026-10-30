@@ -31,7 +31,11 @@ export interface ProjectsShape {
    * Sets up an app's project from a preset (by the user or the agent), names
    * the app, records the first snapshot and starts it for editing.
    */
-  readonly create: (appId: string, preset: string, options: { name?: string; by: Omit<By, "summary"> }) => Effect.Effect<ProjectInfo, WorkspaceError>;
+  readonly create: (
+    appId: string,
+    preset: string,
+    options: { name?: string; by: Omit<By, "summary"> },
+  ) => Effect.Effect<ProjectInfo, WorkspaceError>;
   /**
    * Brings in an existing project (cloned from Git or copied from a folder) as
    * the app's project: named after it, first snapshot, started for editing. If
@@ -78,7 +82,8 @@ export const make = Effect.gen(function* () {
   // A built app opens finished, with the agent sidebar closed (editing is one click or Ctrl+J away).
   yield* apps.finishEditing();
 
-  const publish = (summary: AppSummary | null) => (summary ? hub.publish({ type: "app", topic: topics.apps, app: summary }) : Effect.void);
+  const publish = (summary: AppSummary | null) =>
+    summary ? hub.publish({ type: "app", topic: topics.apps, app: summary }) : Effect.void;
 
   const pruneSplits = (workspaceId: string) =>
     Effect.gen(function* () {
@@ -109,12 +114,24 @@ export const make = Effect.gen(function* () {
 
     importApp: (appId, source) =>
       Effect.gen(function* () {
-        const progress = (p: ImportProgress) => hub.publishUnsafe({ type: "import-progress", topic: topics.app(appId), appId, phase: p.phase, percent: p.percent });
+        const progress = (p: ImportProgress) =>
+          hub.publishUnsafe({
+            type: "import-progress",
+            topic: topics.app(appId),
+            appId,
+            phase: p.phase,
+            percent: p.percent,
+          });
         const { project, name } = yield* workspace.importFrom(appId, source, progress);
         const from = source.kind === "git" ? source.url : source.path;
         const app = yield* apps.get(appId);
-        if (app && app.name === "New app" && name) yield* publish(yield* apps.setInfo(appId, { name: name.slice(0, 80) }));
-        yield* history.record(appTarget(appId), { actor: "user", actorLabel: "You", summary: `Imported from ${from.slice(0, 200)}` });
+        if (app && app.name === "New app" && name)
+          yield* publish(yield* apps.setInfo(appId, { name: name.slice(0, 80) }));
+        yield* history.record(appTarget(appId), {
+          actor: "user",
+          actorLabel: "You",
+          summary: `Imported from ${from.slice(0, 200)}`,
+        });
         if (project) yield* runtime.setMode(appId, "dev");
         const note = project
           ? `Imported from ${from}. Rune Browser runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
@@ -132,7 +149,11 @@ export const make = Effect.gen(function* () {
           yield* workspace.duplicate(appId, copy.id);
           const original = yield* apps.get(appId);
           if (yield* workspace.info(copy.id)) {
-            yield* history.record(appTarget(copy.id), { actor: "user", actorLabel: "You", summary: `Copied from ${original?.name ?? "another app"}` });
+            yield* history.record(appTarget(copy.id), {
+              actor: "user",
+              actorLabel: "You",
+              summary: `Copied from ${original?.name ?? "another app"}`,
+            });
           }
         }
         yield* publish(copy);

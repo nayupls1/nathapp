@@ -28,7 +28,9 @@ const equal = (n: number) => Array.from({ length: n }, () => 1 / n);
 /** The split without that tab (normalizeSplits drops it when one tab is left). */
 const without = (split: TabSplit, tabId: string): TabSplit => {
   const i = split.tabs.indexOf(tabId);
-  return i === -1 ? split : { ...split, tabs: split.tabs.filter((_, j) => j !== i), sizes: split.sizes.filter((_, j) => j !== i) };
+  return i === -1
+    ? split
+    : { ...split, tabs: split.tabs.filter((_, j) => j !== i), sizes: split.sizes.filter((_, j) => j !== i) };
 };
 
 async function save(workspaceId: string, splits: TabSplit[]) {
@@ -40,7 +42,10 @@ async function save(workspaceId: string, splits: TabSplit[]) {
   try {
     await api.setSplits(workspaceId, clean);
   } catch (err) {
-    toast({ message: `Saving the split view failed: ${err instanceof Error ? err.message : String(err)}`, kind: "error" });
+    toast({
+      message: `Saving the split view failed: ${err instanceof Error ? err.message : String(err)}`,
+      kind: "error",
+    });
   }
 }
 
@@ -97,13 +102,20 @@ export function placeInSplit(splitId: string, tabId: string, index: number) {
 export function removeFromSplit(tabId: string) {
   const tab = appById(tabId);
   if (!tab || !splitOf(tabId)) return;
-  void save(tab.workspaceId, splitsIn(tab.workspaceId).map((s) => without(s, tabId)));
+  void save(
+    tab.workspaceId,
+    splitsIn(tab.workspaceId).map((s) => without(s, tabId)),
+  );
 }
 
 /** Ends a split: its tabs go back to being shown one at a time. */
 export function unsplit(splitId: string) {
   const workspace = workspaceOfSplit(splitId);
-  if (workspace) void save(workspace.id, workspace.splits.filter((s) => s.id !== splitId));
+  if (workspace)
+    void save(
+      workspace.id,
+      workspace.splits.filter((s) => s.id !== splitId),
+    );
 }
 
 /** Side by side ⇄ stacked. */

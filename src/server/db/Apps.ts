@@ -77,28 +77,44 @@ interface ChatRow {
   count: number;
 }
 
-const toChat = (r: ChatRow): ChatSummary => ({ id: r.id, title: r.title, messages: r.count, createdAt: r.created_at, updatedAt: r.updated_at });
+const toChat = (r: ChatRow): ChatSummary => ({
+  id: r.id,
+  title: r.title,
+  messages: r.count,
+  createdAt: r.created_at,
+  updatedAt: r.updated_at,
+});
 
-const toMessage = (r: MessageRow): ChatMessage => ({ id: r.id, role: r.role, content: r.content, createdAt: r.created_at });
+const toMessage = (r: MessageRow): ChatMessage => ({
+  id: r.id,
+  role: r.role,
+  content: r.content,
+  createdAt: r.created_at,
+});
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
 
-  const row = (id: string) => sql<AppRow>`SELECT * FROM apps WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
+  const row = (id: string) =>
+    sql<AppRow>`SELECT * FROM apps WHERE id = ${id}`.pipe(Effect.map((rows) => rows[0] ?? null));
   const touch = (id: string) => sql`UPDATE apps SET updated_at = ${sql.literal(now)} WHERE id = ${id}`;
   const summary = (id: string) => row(id).pipe(Effect.map((r) => (r ? toSummary(r) : null)));
   /** After the last tab of a workspace. */
-  const lastPosition = (workspaceId: string) => sql`(SELECT COALESCE(MAX(position), 0) + 1 FROM apps WHERE workspace_id = ${workspaceId})`;
+  const lastPosition = (workspaceId: string) =>
+    sql`(SELECT COALESCE(MAX(position), 0) + 1 FROM apps WHERE workspace_id = ${workspaceId})`;
 
   /** Moves the current chat's messages into a new earlier chat, and forgets the provider session (it goes with them). */
   const archive = (appId: string) =>
     Effect.gen(function* () {
-      const current = yield* sql<MessageRow>`SELECT * FROM messages WHERE app_id = ${appId} AND chat_id IS NULL ORDER BY id`;
+      const current =
+        yield* sql<MessageRow>`SELECT * FROM messages WHERE app_id = ${appId} AND chat_id IS NULL ORDER BY id`;
       if (!current.length) return null;
       const app = (yield* row(appId))!;
       const first = current.find((m) => m.role === "user") ?? current[0]!;
       const title = first.content.replace(/\s+/g, " ").trim().slice(0, 80) || "Chat";
-      const [chat] = yield* sql<{ id: number }>`INSERT INTO chats (app_id, title, session_id, session_provider, created_at, updated_at)
+      const [chat] = yield* sql<{
+        id: number;
+      }>`INSERT INTO chats (app_id, title, session_id, session_provider, created_at, updated_at)
         VALUES (${appId}, ${title}, ${app.session_id}, ${app.session_provider}, ${current[0]!.created_at}, ${current.at(-1)!.created_at}) RETURNING id`;
       yield* sql`UPDATE messages SET chat_id = ${chat!.id} WHERE app_id = ${appId} AND chat_id IS NULL`;
       yield* sql`UPDATE apps SET session_id = NULL, session_provider = NULL, updated_at = ${sql.literal(now)} WHERE id = ${appId}`;
@@ -107,12 +123,19 @@ export const make = Effect.gen(function* () {
 
   const repo = {
     /** The open tabs. */
-    list: () => sql<AppRow>`SELECT * FROM apps WHERE closed_at IS NULL ORDER BY position, created_at, rowid`.pipe(Effect.map((rows) => rows.map(toSummary))),
+    list: () =>
+      sql<AppRow>`SELECT * FROM apps WHERE closed_at IS NULL ORDER BY position, created_at, rowid`.pipe(
+        Effect.map((rows) => rows.map(toSummary)),
+      ),
 
     /** Closed app tabs, kept to be opened again: the most recently closed first. */
-    closed: () => sql<AppRow>`SELECT * FROM apps WHERE closed_at IS NOT NULL ORDER BY closed_at DESC`.pipe(Effect.map((rows) => rows.map(toSummary))),
+    closed: () =>
+      sql<AppRow>`SELECT * FROM apps WHERE closed_at IS NOT NULL ORDER BY closed_at DESC`.pipe(
+        Effect.map((rows) => rows.map(toSummary)),
+      ),
 
-    close: (id: string) => sql`UPDATE apps SET closed_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
+    close: (id: string) =>
+      sql`UPDATE apps SET closed_at = ${sql.literal(now)} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
 
     /** Opens a closed app again, last in a workspace. */
     reopen: (id: string, workspaceId: string) =>
@@ -174,7 +197,9 @@ export const make = Effect.gen(function* () {
       sql`UPDATE apps SET pinned = ${pinned ? 1 : 0} WHERE id = ${id}`.pipe(Effect.andThen(summary(id))),
 
     setAgent: (id: string, agent: AgentChoice) =>
-      sql`UPDATE apps SET provider = ${agent.provider}, model = ${agent.model}, effort = ${agent.effort} WHERE id = ${id}`.pipe(Effect.asVoid),
+      sql`UPDATE apps SET provider = ${agent.provider}, model = ${agent.model}, effort = ${agent.effort} WHERE id = ${id}`.pipe(
+        Effect.asVoid,
+      ),
 
     setSession: (id: string, session: { provider: ProviderId; id: string } | null) =>
       sql`UPDATE apps SET session_id = ${session?.id ?? null}, session_provider = ${session?.provider ?? null} WHERE id = ${id}`.pipe(
@@ -183,22 +208,32 @@ export const make = Effect.gen(function* () {
 
     /** Moves a tab to another workspace. */
     move: (id: string, workspaceId: string) =>
-      sql.withTransaction(
-        Effect.all([
-          sql`UPDATE apps SET workspace_id = ${workspaceId}, position = ${lastPosition(workspaceId)}, updated_at = ${sql.literal(now)} WHERE id = ${id}`,
-          // Its history goes along.
-          sql`UPDATE snapshots SET workspace_id = ${workspaceId} WHERE tab_id = ${id}`,
-        ]),
-      ).pipe(Effect.andThen(summary(id))),
+      sql
+        .withTransaction(
+          Effect.all([
+            sql`UPDATE apps SET workspace_id = ${workspaceId}, position = ${lastPosition(workspaceId)}, updated_at = ${sql.literal(now)} WHERE id = ${id}`,
+            // Its history goes along.
+            sql`UPDATE snapshots SET workspace_id = ${workspaceId} WHERE tab_id = ${id}`,
+          ]),
+        )
+        .pipe(Effect.andThen(summary(id))),
 
     /** Puts a workspace's tabs in this order (ids of other workspaces are ignored). */
     reorder: (workspaceId: string, ids: readonly string[]) =>
-      sql.withTransaction(
-        Effect.forEach(ids, (id, i) => sql`UPDATE apps SET position = ${i} WHERE id = ${id} AND workspace_id = ${workspaceId}`, { discard: true }),
-      ).pipe(
-        Effect.andThen(sql<AppRow>`SELECT * FROM apps WHERE workspace_id = ${workspaceId} ORDER BY position, created_at, rowid`),
-        Effect.map((rows) => rows.map(toSummary)),
-      ),
+      sql
+        .withTransaction(
+          Effect.forEach(
+            ids,
+            (id, i) => sql`UPDATE apps SET position = ${i} WHERE id = ${id} AND workspace_id = ${workspaceId}`,
+            { discard: true },
+          ),
+        )
+        .pipe(
+          Effect.andThen(
+            sql<AppRow>`SELECT * FROM apps WHERE workspace_id = ${workspaceId} ORDER BY position, created_at, rowid`,
+          ),
+          Effect.map((rows) => rows.map(toSummary)),
+        ),
 
     setMode: (id: string, mode: AppMode) => sql`UPDATE apps SET mode = ${mode} WHERE id = ${id}`.pipe(Effect.asVoid),
 
@@ -222,7 +257,9 @@ export const make = Effect.gen(function* () {
 
     /** The current chat. */
     messages: (appId: string) =>
-      sql<MessageRow>`SELECT * FROM messages WHERE app_id = ${appId} AND chat_id IS NULL ORDER BY id`.pipe(Effect.map((rows) => rows.map(toMessage))),
+      sql<MessageRow>`SELECT * FROM messages WHERE app_id = ${appId} AND chat_id IS NULL ORDER BY id`.pipe(
+        Effect.map((rows) => rows.map(toMessage)),
+      ),
 
     /** Earlier chats, newest first. */
     chats: (appId: string) =>
@@ -242,7 +279,8 @@ export const make = Effect.gen(function* () {
     openChat: (appId: string, chatId: number) =>
       sql.withTransaction(
         Effect.gen(function* () {
-          const chat = (yield* sql<ChatRow>`SELECT *, 0 AS count FROM chats WHERE id = ${chatId} AND app_id = ${appId}`)[0];
+          const chat =
+            (yield* sql<ChatRow>`SELECT *, 0 AS count FROM chats WHERE id = ${chatId} AND app_id = ${appId}`)[0];
           if (!chat) return false;
           yield* archive(appId);
           yield* sql`UPDATE messages SET chat_id = NULL WHERE chat_id = ${chatId}`;
@@ -270,12 +308,14 @@ export const make = Effect.gen(function* () {
 
     /** Deletes the current chat and forgets the agent session, so the next message starts fresh (earlier chats stay). */
     clearMessages: (appId: string) =>
-      sql.withTransaction(
-        Effect.all([
-          sql`DELETE FROM messages WHERE app_id = ${appId} AND chat_id IS NULL`,
-          sql`UPDATE apps SET session_id = NULL, session_provider = NULL, updated_at = ${sql.literal(now)} WHERE id = ${appId}`,
-        ]),
-      ).pipe(Effect.asVoid),
+      sql
+        .withTransaction(
+          Effect.all([
+            sql`DELETE FROM messages WHERE app_id = ${appId} AND chat_id IS NULL`,
+            sql`UPDATE apps SET session_id = NULL, session_provider = NULL, updated_at = ${sql.literal(now)} WHERE id = ${appId}`,
+          ]),
+        )
+        .pipe(Effect.asVoid),
   };
   return repo;
 });

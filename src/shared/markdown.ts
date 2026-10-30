@@ -12,7 +12,10 @@ function inline(text: string): string {
     .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
     .replace(/~~([^~]+)~~/g, "<del>$1</del>")
-    .replace(/\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    .replace(
+      /\[([^\]]+)\]\(((?:https?:\/\/|mailto:)[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+    );
   return out.replace(/\u0000(\d+)\u0000/g, (_, i: string) => `<code>${codes[Number(i)]}</code>`);
 }
 
@@ -80,7 +83,8 @@ export function markdownToHtml(source: string): string {
     }
 
     const para: string[] = [];
-    while (i < lines.length && lines[i]!.trim() && !/^(#{1,4}\s|```|>|\s*([-*+]|\d+[.)])\s)/.test(lines[i]!)) para.push(lines[i++]!);
+    while (i < lines.length && lines[i]!.trim() && !/^(#{1,4}\s|```|>|\s*([-*+]|\d+[.)])\s)/.test(lines[i]!))
+      para.push(lines[i++]!);
     html.push(`<p>${para.map(inline).join("<br>")}</p>`);
   }
   return html.join("\n");

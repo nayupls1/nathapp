@@ -5,7 +5,19 @@
 // idle (lib/unload.ts); the sidebar shows the current workspace's.
 import { createSignal } from "solid-js";
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
-import type { AgentChoice, AppMode, AppSummary, ChatMessage, PageContext, ProjectInfo, ProviderStatus, RuntimeStatus, SharedTab, TabSplit, WorkspaceInfo } from "../../shared/api";
+import type {
+  AgentChoice,
+  AppMode,
+  AppSummary,
+  ChatMessage,
+  PageContext,
+  ProjectInfo,
+  ProviderStatus,
+  RuntimeStatus,
+  SharedTab,
+  TabSplit,
+  WorkspaceInfo,
+} from "../../shared/api";
 import type { WorkspaceSettings } from "../../shared/settings";
 import { topics } from "../../shared/hub";
 import { api } from "./api";
@@ -37,7 +49,9 @@ const settingsViews = [SETTINGS_VIEW, ACTIVITY_VIEW, HISTORY_VIEW, SCHEDULES_VIE
 export const isSettingsView = (id: string | null) => !!id && settingsViews.includes(id);
 
 /** The category Settings shows (SettingsPage.tsx: settingsSections). */
-const [settingsSection, setSettingsSection] = createSignal(sessionStorage.getItem("rune.settings-section") ?? "appearance");
+const [settingsSection, setSettingsSection] = createSignal(
+  sessionStorage.getItem("rune.settings-section") ?? "appearance",
+);
 export { settingsSection };
 /** Opens Settings, at a category if given (the one last shown otherwise). */
 export function openSettings(section?: string) {
@@ -112,11 +126,13 @@ const followsMode = (id: string) => appById(id)?.kind === "app" && !!states[id]?
 /** The app's mode, including a switch on its way. */
 export const appMode = (id: string): AppMode => pendingModes[id] ?? states[id]?.runtime?.mode ?? "dev";
 
-export const isAgentCollapsed = (id: string) => (followsMode(id) ? appMode(id) === "live" : !(openChoice()[id] ?? openByDefault(id)));
+export const isAgentCollapsed = (id: string) =>
+  followsMode(id) ? appMode(id) === "live" : !(openChoice()[id] ?? openByDefault(id));
 
 /** Editing (dev server, agent open) or done (built and started, agent hidden). */
 export async function setAppMode(id: string, mode: AppMode) {
-  if (appMode(id) === mode && states[id]?.runtime?.state !== "stopped" && states[id]?.runtime?.state !== "crashed") return;
+  if (appMode(id) === mode && states[id]?.runtime?.state !== "stopped" && states[id]?.runtime?.state !== "crashed")
+    return;
   setPendingModes(id, mode);
   try {
     setRuntime(id, await api.setMode(id, mode));
@@ -126,7 +142,8 @@ export async function setAppMode(id: string, mode: AppMode) {
 }
 
 export function setAgentCollapsed(id: string, value: boolean) {
-  if (followsMode(id)) return void setAppMode(id, value ? "live" : "dev").catch((err) => console.error("Switching the mode failed:", err));
+  if (followsMode(id))
+    return void setAppMode(id, value ? "live" : "dev").catch((err) => console.error("Switching the mode failed:", err));
   const next = { ...openChoice() };
   if (!value === openByDefault(id)) delete next[id];
   else next[id] = !value;
@@ -204,7 +221,13 @@ watchTopic(topics.apps, (msg) => {
   if (msg.type === "app") upsertApp(msg.app);
   else if (msg.type === "app-deleted") forgetApp(msg.appId);
 });
-onConnected(() => void api.listApps().then((list) => setApps(reconcile(list)), () => {}));
+onConnected(
+  () =>
+    void api.listApps().then(
+      (list) => setApps(reconcile(list)),
+      () => {},
+    ),
+);
 
 const addMessage = (id: string, message: ChatMessage) =>
   setStates(
@@ -420,7 +443,10 @@ export async function closeTab(id: string) {
 /** The web tab closed last, opened again. */
 export async function reopenClosedTab() {
   const last = recentlyClosed.pop();
-  if (last) await newWebTab(last.url, { workspaceId: workspaces.some((w) => w.id === last.workspaceId) ? last.workspaceId : currentWorkspace()?.id });
+  if (last)
+    await newWebTab(last.url, {
+      workspaceId: workspaces.some((w) => w.id === last.workspaceId) ? last.workspaceId : currentWorkspace()?.id,
+    });
 }
 
 /** Opens an app from the library (closed app tabs) in the current workspace. */
@@ -546,11 +572,20 @@ export function editWorkspaceSettings(id: string, update: (current: WorkspaceSet
 watchTopic(topics.workspaces, (msg) => {
   if (msg.type === "workspace") {
     const local = workspaceById(msg.workspace.id);
-    upsertWorkspace(workspaceSaves.has(msg.workspace.id) && local ? { ...msg.workspace, settings: unwrap(local.settings) } : msg.workspace);
-  }
-  else if (msg.type === "workspace-deleted") forgetWorkspace(msg.workspaceId);
+    upsertWorkspace(
+      workspaceSaves.has(msg.workspace.id) && local
+        ? { ...msg.workspace, settings: unwrap(local.settings) }
+        : msg.workspace,
+    );
+  } else if (msg.type === "workspace-deleted") forgetWorkspace(msg.workspaceId);
 });
-onConnected(() => void api.workspaces().then((list) => setWorkspaces(reconcile(list)), () => {}));
+onConnected(
+  () =>
+    void api.workspaces().then(
+      (list) => setWorkspaces(reconcile(list)),
+      () => {},
+    ),
+);
 
 export async function createWorkspace(name: string) {
   const workspace = await api.createWorkspace(name);
@@ -558,14 +593,22 @@ export async function createWorkspace(name: string) {
   await showWorkspace(workspace.id);
 }
 
-export async function updateWorkspace(id: string, fields: { name?: string; icon?: string | null; settings?: WorkspaceSettings }) {
+export async function updateWorkspace(
+  id: string,
+  fields: { name?: string; icon?: string | null; settings?: WorkspaceSettings },
+) {
   upsertWorkspace(await api.updateWorkspace(id, fields));
 }
 
 /** Puts the workspaces in this order: shown right away, then saved. */
 export async function reorderWorkspaces(ids: string[]) {
   const sorted = [...workspaces].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-  setWorkspaces(reconcile(sorted.map((w) => unwrap(w)), { key: "id" }));
+  setWorkspaces(
+    reconcile(
+      sorted.map((w) => unwrap(w)),
+      { key: "id" },
+    ),
+  );
   try {
     setWorkspaces(reconcile(await api.reorderWorkspaces(ids), { key: "id" }));
   } catch (err) {
@@ -578,7 +621,9 @@ export async function reorderWorkspaces(ids: string[]) {
 export async function deleteWorkspace(id: string) {
   await api.deleteWorkspace(id);
   forgetWorkspace(id);
-  await window.rune.web.clearWorkspace(id).catch((err) => console.error("Clearing the workspace's web data failed:", err));
+  await window.rune.web
+    .clearWorkspace(id)
+    .catch((err) => console.error("Clearing the workspace's web data failed:", err));
 }
 
 // --- Agent -------------------------------------------------------------------------------
@@ -589,7 +634,13 @@ export async function sendPrompt(id: string, prompt: string, page?: PageContext,
   // Files pasted or dropped into the composer go with it.
   const files = attachmentsOf(id).map((a) => a.id);
   try {
-    await api.chat(id, { prompt, agent: states[id]!.agent, page, ...(shared?.length ? { shared } : {}), ...(files.length ? { attachments: files } : {}) });
+    await api.chat(id, {
+      prompt,
+      agent: states[id]!.agent,
+      page,
+      ...(shared?.length ? { shared } : {}),
+      ...(files.length ? { attachments: files } : {}),
+    });
     if (files.length) clearAttachments(id);
     return true;
   } catch (err) {

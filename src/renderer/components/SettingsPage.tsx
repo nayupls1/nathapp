@@ -3,8 +3,26 @@
 // extensions, secrets and permissions) and Rune Browser's pages (History,
 // Schedules, Mods, Activity), with the chosen one beside it.
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, createResource, createSignal, For, Match, on, onCleanup, Show, Switch, type JSX } from "solid-js";
-import { defaultAppModel, providerIds, workspaceScope, type PermissionGrant, type ProviderId, type ProviderStatus } from "../../shared/api";
+import {
+  createEffect,
+  createResource,
+  createSignal,
+  For,
+  Match,
+  on,
+  onCleanup,
+  Show,
+  Switch,
+  type JSX,
+} from "solid-js";
+import {
+  defaultAppModel,
+  providerIds,
+  workspaceScope,
+  type PermissionGrant,
+  type ProviderId,
+  type ProviderStatus,
+} from "../../shared/api";
 import { searchEngines, type GlobalTheme, type Settings } from "../../shared/settings";
 import { api } from "../lib/api";
 import { topics } from "../../shared/hub";
@@ -55,12 +73,22 @@ import { Button, Select } from "./ui";
  * Rune Browser's pages (History, Schedules, Mods, Activity) are categories too.
  */
 export function SettingsShell(props: { view: string }) {
-  const current = () => settingsSections.find((s) => (s.view ? s.view === props.view : props.view === SETTINGS_VIEW && s.id === settingsSection())) ?? settingsSections[0]!;
+  const current = () =>
+    settingsSections.find((s) =>
+      s.view ? s.view === props.view : props.view === SETTINGS_VIEW && s.id === settingsSection(),
+    ) ?? settingsSections[0]!;
   const isCurrent = (id: string) => current().id === id;
-  const open = (section: (typeof settingsSections)[number]) => void (section.view ? selectApp(section.view) : openSettings(section.id));
+  const open = (section: (typeof settingsSections)[number]) =>
+    void (section.view ? selectApp(section.view) : openSettings(section.id));
   let main!: HTMLDivElement;
   // A new category starts at its top.
-  createEffect(on(() => current().id, () => main?.scrollTo({ top: 0 }), { defer: true }));
+  createEffect(
+    on(
+      () => current().id,
+      () => main?.scrollTo({ top: 0 }),
+      { defer: true },
+    ),
+  );
   const group = (name: string) => settingsSections.filter((s) => s.group === name);
   const Item = (p: { section: (typeof settingsSections)[number] }) => (
     <button
@@ -112,7 +140,8 @@ export function SettingsShell(props: { view: string }) {
 const set = <K extends keyof Settings>(key: K, value: Partial<Settings[K]>) =>
   updateSettings((s) => ({ ...s, [key]: typeof value === "object" ? { ...(s[key] as object), ...value } : value }));
 const setTheme = (value: Partial<GlobalTheme>) => set("theme", value);
-const setAi = (value: Partial<Settings["apps"]["ai"]>) => updateSettings((s) => ({ ...s, apps: { ...s.apps, ai: { ...s.apps.ai, ...value } } }));
+const setAi = (value: Partial<Settings["apps"]["ai"]>) =>
+  updateSettings((s) => ({ ...s, apps: { ...s.apps, ai: { ...s.apps.ai, ...value } } }));
 
 /** One category of settings. */
 export function SettingsPage(props: { section: string }) {
@@ -165,188 +194,210 @@ export function SettingsPage(props: { section: string }) {
 function AppearanceSection() {
   const theme = () => settings().theme;
   return (
-        <Section title="Theme" icon="palette" anchor="appearance">
-          <Row label="Theme presets" description="A starting point; tweak the colors below." wide>
-            <div {...stylex.attrs(styles.presets)}>
-              <For each={themePresets}>
-                {(preset) => (
-                  <PresetButton
-                    name={preset.name}
-                    theme={{ mode: theme().mode, ...preset.theme }}
-                    onClick={() => updateSettings((s) => ({ ...s, theme: { mode: s.theme.mode, ...preset.theme } }))}
-                  />
-                )}
-              </For>
-            </div>
-          </Row>
-          <Row label="Mode">
-            <Segmented
-              value={theme().mode}
-              options={[
-                ["system", "System"],
-                ["light", "Light"],
-                ["dark", "Dark"],
-              ]}
-              onChange={(mode) => setTheme({ mode })}
-            />
-          </Row>
-          <Row label="Accent color">
-            <ColorField value={theme().accent} onChange={(accent) => setTheme({ accent })} />
-          </Row>
-          <Row label="Background">
-            <ColorField value={theme().background} onChange={(background) => setTheme({ background })} />
-          </Row>
-          <Row label="Surfaces" description="Cards, inputs, panels.">
-            <ColorField value={theme().surface} onChange={(surface) => setTheme({ surface })} />
-          </Row>
-          <Row label="Text">
-            <ColorField value={theme().text} onChange={(text) => setTheme({ text })} />
-          </Row>
-          <Row label="Corners">
-            <Segmented
-              value={theme().radius ?? "md"}
-              options={[
-                ["none", "Square"],
-                ["sm", "Subtle"],
-                ["md", "Rounded"],
-                ["lg", "Round"],
-              ]}
-              onChange={(radius) => setTheme({ radius })}
-            />
-          </Row>
-          <Row label="Font">
-            <Segmented
-              value={theme().font ?? "sans"}
-              options={[
-                ["sans", "Sans"],
-                ["serif", "Serif"],
-                ["mono", "Mono"],
-                ["rounded", "Rounded"],
-              ]}
-              onChange={(font) => setTheme({ font })}
-            />
-          </Row>
-          <p {...stylex.attrs(styles.muted, styles.note)}>New apps start with this look as their design tokens (src/tokens.css); the agent can change an app's tokens when you ask for a different style.</p>
-        </Section>
+    <Section title="Theme" icon="palette" anchor="appearance">
+      <Row label="Theme presets" description="A starting point; tweak the colors below." wide>
+        <div {...stylex.attrs(styles.presets)}>
+          <For each={themePresets}>
+            {(preset) => (
+              <PresetButton
+                name={preset.name}
+                theme={{ mode: theme().mode, ...preset.theme }}
+                onClick={() => updateSettings((s) => ({ ...s, theme: { mode: s.theme.mode, ...preset.theme } }))}
+              />
+            )}
+          </For>
+        </div>
+      </Row>
+      <Row label="Mode">
+        <Segmented
+          value={theme().mode}
+          options={[
+            ["system", "System"],
+            ["light", "Light"],
+            ["dark", "Dark"],
+          ]}
+          onChange={(mode) => setTheme({ mode })}
+        />
+      </Row>
+      <Row label="Accent color">
+        <ColorField value={theme().accent} onChange={(accent) => setTheme({ accent })} />
+      </Row>
+      <Row label="Background">
+        <ColorField value={theme().background} onChange={(background) => setTheme({ background })} />
+      </Row>
+      <Row label="Surfaces" description="Cards, inputs, panels.">
+        <ColorField value={theme().surface} onChange={(surface) => setTheme({ surface })} />
+      </Row>
+      <Row label="Text">
+        <ColorField value={theme().text} onChange={(text) => setTheme({ text })} />
+      </Row>
+      <Row label="Corners">
+        <Segmented
+          value={theme().radius ?? "md"}
+          options={[
+            ["none", "Square"],
+            ["sm", "Subtle"],
+            ["md", "Rounded"],
+            ["lg", "Round"],
+          ]}
+          onChange={(radius) => setTheme({ radius })}
+        />
+      </Row>
+      <Row label="Font">
+        <Segmented
+          value={theme().font ?? "sans"}
+          options={[
+            ["sans", "Sans"],
+            ["serif", "Serif"],
+            ["mono", "Mono"],
+            ["rounded", "Rounded"],
+          ]}
+          onChange={(font) => setTheme({ font })}
+        />
+      </Row>
+      <p {...stylex.attrs(styles.muted, styles.note)}>
+        New apps start with this look as their design tokens (src/tokens.css); the agent can change an app's tokens when
+        you ask for a different style.
+      </p>
+    </Section>
   );
 }
 
 function ProvidersSection() {
   return (
-        <Section title="Coding agents" icon="plug" anchor="providers">
-          <p {...stylex.attrs(styles.muted, styles.note)}>
-            The coding agents Rune Browser can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with their CLIs.
-          </p>
-          <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
-        </Section>
+    <Section title="Coding agents" icon="plug" anchor="providers">
+      <p {...stylex.attrs(styles.muted, styles.note)}>
+        The coding agents Rune Browser can use. They run on your own logins (Claude Code, Codex, OpenCode); sign in with
+        their CLIs.
+      </p>
+      <For each={[...providerIds]}>{(id) => <ProviderRow id={id} />}</For>
+    </Section>
   );
 }
 
 function AgentSection() {
   return (
-        <Section title="Defaults" icon="bot" anchor="agent">
-          <Row label="Default agent" description="For new tabs. Each tab remembers its own choice.">
-            <div {...stylex.attrs(styles.pickerBox)} data-default-agent>
-              <AgentPicker
-                choice={{ provider: settings().agent.provider, model: settings().agent.model, effort: settings().agent.effort }}
-                onChange={(choice) => set("agent", choice)}
-              />
-            </div>
-          </Row>
-          <Row
-            label="Instructions for building apps"
-            description="Added to the app builder's prompt in every tab, e.g. your language, currency, style preferences."
-            wide
-          >
-            <TextArea
-              value={settings().agent.instructions}
-              placeholder={"e.g. Answer in German. Amounts are in EUR. Prefer dark themes with a green accent."}
-              onInput={(instructions) => set("agent", { instructions })}
-              name="instructions"
-            />
-          </Row>
-          <Row label="Instructions for customizing websites" description="Added to the website agent's prompt." wide>
-            <TextArea
-              value={settings().agent.webInstructions}
-              placeholder={"e.g. Keep changes minimal. Never hide ads by removing content the page needs."}
-              onInput={(webInstructions) => set("agent", { webInstructions })}
-              name="webInstructions"
-            />
-          </Row>
-          <Row
-            label="Permissions"
-            description="Ask for everything: agents ask before customizing or using sites, reading other tabs, using other apps or scheduling. Full access: they don't ask (still logged in Activity)."
-          >
-            <div data-permission-mode>
-              <Segmented
-                value={settings().agent.permissions}
-                options={[
-                  ["ask", "Ask for everything"],
-                  ["full", "Full access"],
-                ]}
-                onChange={(mode) => void setFullAccess(mode === "full")}
-              />
-            </div>
-          </Row>
-          <Row label="Show tool activity" description='Lines like "Edited src/App.tsx" or "Ran bun add zod" in the chat.'>
-            <Toggle checked={settings().agent.showToolMessages} onChange={(showToolMessages) => set("agent", { showToolMessages })} />
-          </Row>
-        </Section>
+    <Section title="Defaults" icon="bot" anchor="agent">
+      <Row label="Default agent" description="For new tabs. Each tab remembers its own choice.">
+        <div {...stylex.attrs(styles.pickerBox)} data-default-agent>
+          <AgentPicker
+            choice={{
+              provider: settings().agent.provider,
+              model: settings().agent.model,
+              effort: settings().agent.effort,
+            }}
+            onChange={(choice) => set("agent", choice)}
+          />
+        </div>
+      </Row>
+      <Row
+        label="Instructions for building apps"
+        description="Added to the app builder's prompt in every tab, e.g. your language, currency, style preferences."
+        wide
+      >
+        <TextArea
+          value={settings().agent.instructions}
+          placeholder={"e.g. Answer in German. Amounts are in EUR. Prefer dark themes with a green accent."}
+          onInput={(instructions) => set("agent", { instructions })}
+          name="instructions"
+        />
+      </Row>
+      <Row label="Instructions for customizing websites" description="Added to the website agent's prompt." wide>
+        <TextArea
+          value={settings().agent.webInstructions}
+          placeholder={"e.g. Keep changes minimal. Never hide ads by removing content the page needs."}
+          onInput={(webInstructions) => set("agent", { webInstructions })}
+          name="webInstructions"
+        />
+      </Row>
+      <Row
+        label="Permissions"
+        description="Ask for everything: agents ask before customizing or using sites, reading other tabs, using other apps or scheduling. Full access: they don't ask (still logged in Activity)."
+      >
+        <div data-permission-mode>
+          <Segmented
+            value={settings().agent.permissions}
+            options={[
+              ["ask", "Ask for everything"],
+              ["full", "Full access"],
+            ]}
+            onChange={(mode) => void setFullAccess(mode === "full")}
+          />
+        </div>
+      </Row>
+      <Row label="Show tool activity" description='Lines like "Edited src/App.tsx" or "Ran bun add zod" in the chat.'>
+        <Toggle
+          checked={settings().agent.showToolMessages}
+          onChange={(showToolMessages) => set("agent", { showToolMessages })}
+        />
+      </Row>
+    </Section>
   );
 }
 
 function WebSection() {
   return (
     <>
-          <Section title="Browsing" icon="globe" anchor="web">
-            <Row label="Search engine" description="Used when the address bar input isn't a URL.">
-              <Select
-                value={settings().web.searchEngine}
-                onChange={(e) => set("web", { searchEngine: e.currentTarget.value as Settings["web"]["searchEngine"] })}
-                xstyle={styles.select}
-              >
-                <For each={Object.entries(searchEngines)}>{([key, engine]) => <option value={key}>{engine.label}</option>}</For>
-              </Select>
-            </Row>
-            <Row label="Site customizations and page changes" description="Apply the changes the agent made to websites (hidden, restyled or added elements, CSS and JavaScript).">
-              <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
-            </Row>
-            <SiteRows />
-            <Row label="Page changes" description="Each change to pages, sites or patterns of sites, with its own switch." wide>
-              <PageChangeRows />
-            </Row>
-          </Section>
+      <Section title="Browsing" icon="globe" anchor="web">
+        <Row label="Search engine" description="Used when the address bar input isn't a URL.">
+          <Select
+            value={settings().web.searchEngine}
+            onChange={(e) => set("web", { searchEngine: e.currentTarget.value as Settings["web"]["searchEngine"] })}
+            xstyle={styles.select}
+          >
+            <For each={Object.entries(searchEngines)}>
+              {([key, engine]) => <option value={key}>{engine.label}</option>}
+            </For>
+          </Select>
+        </Row>
+        <Row
+          label="Site customizations and page changes"
+          description="Apply the changes the agent made to websites (hidden, restyled or added elements, CSS and JavaScript)."
+        >
+          <Toggle checked={settings().web.overrides} onChange={(overrides) => set("web", { overrides })} />
+        </Row>
+        <SiteRows />
+        <Row
+          label="Page changes"
+          description="Each change to pages, sites or patterns of sites, with its own switch."
+          wide
+        >
+          <PageChangeRows />
+        </Row>
+      </Section>
 
-          <Section title="Tabs" icon="layers" anchor="tabs">
-            <Row
-              label="Unload idle tabs"
-              description="Tabs you haven't looked at for a while close their page to save memory, and come back where you left them (scroll position, what you typed). Pinned tabs (Keep loaded), tabs playing sound and tabs whose agent is working stay loaded."
-            >
-              <Select
-                value={String(settings().tabs.unloadAfterMinutes)}
-                onChange={(e) => set("tabs", { unloadAfterMinutes: Number(e.currentTarget.value) })}
-                xstyle={styles.select}
-                data-unload-after
-              >
-                <For each={unloadChoices(settings().tabs.unloadAfterMinutes)}>{([minutes, label]) => <option value={minutes}>{label}</option>}</For>
-              </Select>
-            </Row>
-          </Section>
+      <Section title="Tabs" icon="layers" anchor="tabs">
+        <Row
+          label="Unload idle tabs"
+          description="Tabs you haven't looked at for a while close their page to save memory, and come back where you left them (scroll position, what you typed). Pinned tabs (Keep loaded), tabs playing sound and tabs whose agent is working stay loaded."
+        >
+          <Select
+            value={String(settings().tabs.unloadAfterMinutes)}
+            onChange={(e) => set("tabs", { unloadAfterMinutes: Number(e.currentTarget.value) })}
+            xstyle={styles.select}
+            data-unload-after
+          >
+            <For each={unloadChoices(settings().tabs.unloadAfterMinutes)}>
+              {([minutes, label]) => <option value={minutes}>{label}</option>}
+            </For>
+          </Select>
+        </Row>
+      </Section>
     </>
   );
 }
 
 function NetworkSection() {
   return (
-        <Section title="Network" icon="network" anchor="network">
-          <Row
-            label="Record web tabs' traffic"
-            description="Keep each web tab's recent requests (in memory, bounded) for the Network panel and the website agent, which only ever sees them with credentials hidden."
-          >
-            <Toggle checked={settings().web.recordNetwork} onChange={(recordNetwork) => set("web", { recordNetwork })} />
-          </Row>
-          <NetworkRules />
-        </Section>
+    <Section title="Network" icon="network" anchor="network">
+      <Row
+        label="Record web tabs' traffic"
+        description="Keep each web tab's recent requests (in memory, bounded) for the Network panel and the website agent, which only ever sees them with credentials hidden."
+      >
+        <Toggle checked={settings().web.recordNetwork} onChange={(recordNetwork) => set("web", { recordNetwork })} />
+      </Row>
+      <NetworkRules />
+    </Section>
   );
 }
 
@@ -357,66 +408,76 @@ function AppsSection() {
   };
   return (
     <>
-          <Section title="Running apps" icon="box" anchor="apps">
-            <SandboxRows />
-            <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
-              <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
-            </Row>
-            <Row label="Publish when the agent is done" description="Build the app and switch to the finished version after every agent turn (this hides the agent; opening it goes back to editing).">
-              <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
-            </Row>
-          </Section>
+      <Section title="Running apps" icon="box" anchor="apps">
+        <SandboxRows />
+        <Row label="Start apps when opened" description="Run an app's server as soon as you open its tab.">
+          <Toggle checked={settings().apps.autoStart} onChange={(autoStart) => set("apps", { autoStart })} />
+        </Row>
+        <Row
+          label="Publish when the agent is done"
+          description="Build the app and switch to the finished version after every agent turn (this hides the agent; opening it goes back to editing)."
+        >
+          <Toggle checked={settings().apps.autoPublish} onChange={(autoPublish) => set("apps", { autoPublish })} />
+        </Row>
+      </Section>
 
-          <Section title="AI in apps" icon="sparkles">
-            <p {...stylex.attrs(styles.muted, styles.note)}>
-              Apps can use AI (summaries, suggestions, chat) through Rune Browser, on your own subscription: no API keys in your apps. Only an
-              app's server can ask, with a key that's its own; the model gets no tools, so it can't touch your files. Every request
-              shows up in the app's logs.
-            </p>
-            <Row label="Let apps use AI">
-              <Toggle checked={settings().apps.ai.enabled} onChange={(enabled) => setAi({ enabled })} />
-            </Row>
-            <Row label="Model" description="Who answers apps' requests. By default a fast model, to spare your plan's limits.">
-              <div {...stylex.attrs(styles.pickerBox)} data-app-ai-agent>
-                <AgentPicker
-                  choice={{ provider: settings().apps.ai.provider, model: settings().apps.ai.model ?? aiDefaultModel(), effort: settings().apps.ai.effort }}
-                  onChange={(choice) => setAi({ provider: choice.provider, model: choice.model, effort: choice.effort })}
-                />
-              </div>
-            </Row>
-            <Row label="Daily limit" description="Requests per app and day.">
-              <input
-                type="number"
-                min="1"
-                max="100000"
-                value={settings().apps.ai.dailyLimit}
-                onChange={(e) => {
-                  const n = Math.round(Number(e.currentTarget.value));
-                  if (n >= 1 && n <= 100_000) setAi({ dailyLimit: n });
-                  else e.currentTarget.value = String(settings().apps.ai.dailyLimit);
-                }}
-                {...stylex.attrs(styles.textInput, styles.numberInput)}
-                data-ai-limit
-              />
-            </Row>
-          </Section>
+      <Section title="AI in apps" icon="sparkles">
+        <p {...stylex.attrs(styles.muted, styles.note)}>
+          Apps can use AI (summaries, suggestions, chat) through Rune Browser, on your own subscription: no API keys in
+          your apps. Only an app's server can ask, with a key that's its own; the model gets no tools, so it can't touch
+          your files. Every request shows up in the app's logs.
+        </p>
+        <Row label="Let apps use AI">
+          <Toggle checked={settings().apps.ai.enabled} onChange={(enabled) => setAi({ enabled })} />
+        </Row>
+        <Row
+          label="Model"
+          description="Who answers apps' requests. By default a fast model, to spare your plan's limits."
+        >
+          <div {...stylex.attrs(styles.pickerBox)} data-app-ai-agent>
+            <AgentPicker
+              choice={{
+                provider: settings().apps.ai.provider,
+                model: settings().apps.ai.model ?? aiDefaultModel(),
+                effort: settings().apps.ai.effort,
+              }}
+              onChange={(choice) => setAi({ provider: choice.provider, model: choice.model, effort: choice.effort })}
+            />
+          </div>
+        </Row>
+        <Row label="Daily limit" description="Requests per app and day.">
+          <input
+            type="number"
+            min="1"
+            max="100000"
+            value={settings().apps.ai.dailyLimit}
+            onChange={(e) => {
+              const n = Math.round(Number(e.currentTarget.value));
+              if (n >= 1 && n <= 100_000) setAi({ dailyLimit: n });
+              else e.currentTarget.value = String(settings().apps.ai.dailyLimit);
+            }}
+            {...stylex.attrs(styles.textInput, styles.numberInput)}
+            data-ai-limit
+          />
+        </Row>
+      </Section>
     </>
   );
 }
 
 function SecretsSection() {
   return (
-        <Section title="Global secrets" icon="key-round" anchor="secrets">
-          <GlobalSecrets />
-        </Section>
+    <Section title="Global secrets" icon="key-round" anchor="secrets">
+      <GlobalSecrets />
+    </Section>
   );
 }
 
 function PermissionsSection() {
   return (
-        <Section title="Remembered decisions" icon="shield-check" anchor="permissions">
-          <PermissionRows />
-        </Section>
+    <Section title="Remembered decisions" icon="shield-check" anchor="permissions">
+      <PermissionRows />
+    </Section>
   );
 }
 
@@ -424,17 +485,17 @@ function AboutSection() {
   const [health] = createResource(() => api.health());
   return (
     <>
-        <UpdatesSection />
-        <Section title="Rune Browser" icon="info" anchor="about">
-          <dl {...stylex.attrs(styles.about)}>
-            <dt>Data folder</dt>
-            <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
-            <dt>Versions</dt>
-            <dd {...stylex.attrs(styles.dd, styles.mono)}>
-              Electron {window.rune.versions.electron} · Chrome {window.rune.versions.chrome} · Bun {health()?.bun ?? "…"}
-            </dd>
-          </dl>
-        </Section>
+      <UpdatesSection />
+      <Section title="Rune Browser" icon="info" anchor="about">
+        <dl {...stylex.attrs(styles.about)}>
+          <dt>Data folder</dt>
+          <dd {...stylex.attrs(styles.dd, styles.mono)}>{health()?.dataDir ?? "…"}</dd>
+          <dt>Versions</dt>
+          <dd {...stylex.attrs(styles.dd, styles.mono)}>
+            Electron {window.rune.versions.electron} · Chrome {window.rune.versions.chrome} · Bun {health()?.bun ?? "…"}
+          </dd>
+        </dl>
+      </Section>
     </>
   );
 }
@@ -472,31 +533,33 @@ function UpdatesSection() {
   const canCheck = () => state() === "idle" || state() === "error";
 
   return (
-        <Section title="Updates" icon="refresh-cw" anchor="updates">
-          <Row label={`Rune Browser ${info()?.version ?? ""}`} description={description()}>
-            <span data-update-state={state()}>
-              <Switch>
-                <Match when={state() === "ready"}>
-                  <Button onClick={installUpdate}>Restart to update</Button>
-                </Match>
-                <Match when={available()}>{(s) => <Button onClick={() => window.rune.web.openExternal(s().url)}>Download</Button>}</Match>
-                <Match when={canCheck()}>
-                  <Button onClick={() => void checkForUpdates()}>Check for updates</Button>
-                </Match>
-              </Switch>
-            </span>
-          </Row>
-          <Row label="Channel" description="Beta also gets pre-releases: new features earlier, and sometimes rough edges.">
-            <Segmented
-              value={info()?.channel ?? "stable"}
-              options={[
-                ["stable", "Stable"],
-                ["beta", "Beta"],
-              ]}
-              onChange={(channel) => void setUpdateChannel(channel)}
-            />
-          </Row>
-        </Section>
+    <Section title="Updates" icon="refresh-cw" anchor="updates">
+      <Row label={`Rune Browser ${info()?.version ?? ""}`} description={description()}>
+        <span data-update-state={state()}>
+          <Switch>
+            <Match when={state() === "ready"}>
+              <Button onClick={installUpdate}>Restart to update</Button>
+            </Match>
+            <Match when={available()}>
+              {(s) => <Button onClick={() => window.rune.web.openExternal(s().url)}>Download</Button>}
+            </Match>
+            <Match when={canCheck()}>
+              <Button onClick={() => void checkForUpdates()}>Check for updates</Button>
+            </Match>
+          </Switch>
+        </span>
+      </Row>
+      <Row label="Channel" description="Beta also gets pre-releases: new features earlier, and sometimes rough edges.">
+        <Segmented
+          value={info()?.channel ?? "stable"}
+          options={[
+            ["stable", "Stable"],
+            ["beta", "Beta"],
+          ]}
+          onChange={(channel) => void setUpdateChannel(channel)}
+        />
+      </Row>
+    </Section>
   );
 }
 
@@ -515,11 +578,18 @@ function ProviderRow(props: { id: ProviderId }) {
   const config = () => settings().providers[props.id];
   const [checking, setChecking] = createSignal(false);
   const setConfig = (value: Partial<Settings["providers"][ProviderId]>) =>
-    updateSettings((s) => ({ ...s, providers: { ...s.providers, [props.id]: { ...s.providers[props.id], ...value } } }));
+    updateSettings((s) => ({
+      ...s,
+      providers: { ...s.providers, [props.id]: { ...s.providers[props.id], ...value } },
+    }));
   const isReady = () => status()?.state === "ready";
   const isBad = () => ["missing", "signed-out", "error"].includes(status()?.state ?? "");
   const details = () =>
-    [status()?.version && `v${status()!.version}`, status()?.models.length && `${status()!.models.length} models`, status()?.message]
+    [
+      status()?.version && `v${status()!.version}`,
+      status()?.models.length && `${status()!.models.length} models`,
+      status()?.message,
+    ]
       .filter(Boolean)
       .join(" · ");
 
@@ -532,7 +602,10 @@ function ProviderRow(props: { id: ProviderId }) {
         <div {...stylex.attrs(styles.rowText)}>
           <span {...stylex.attrs(styles.rowLabel)}>
             {status()?.label ?? props.id}
-            <span {...stylex.attrs(styles.pill, isReady() && styles.pillReady, isBad() && styles.pillBad)} data-provider-state={status()?.state}>
+            <span
+              {...stylex.attrs(styles.pill, isReady() && styles.pillReady, isBad() && styles.pillBad)}
+              data-provider-state={status()?.state}
+            >
               {stateLabels[status()?.state ?? "checking"]}
             </span>
           </span>
@@ -570,14 +643,16 @@ function WorkspaceSection() {
   return (
     <Show when={currentWorkspace()} keyed>
       {(workspace) => {
-        const edit = (patch: Partial<typeof workspace.settings>) => editWorkspaceSettings(workspace.id, (s) => ({ ...s, ...patch }));
+        const edit = (patch: Partial<typeof workspace.settings>) =>
+          editWorkspaceSettings(workspace.id, (s) => ({ ...s, ...patch }));
         const current = () => workspaces.find((w) => w.id === workspace.id) ?? workspace;
         const agent = () => current().settings.agent;
         return (
           <Section title={`Workspace: ${current().name}`} icon="layers" anchor="workspace">
             <p {...stylex.attrs(styles.muted, styles.note)}>
-              Workspaces keep projects apart: each has its own tabs, agent defaults and instructions, secrets for its apps, and
-              its own web logins (cookies). Switch between them with the icons at the bottom of the sidebar (or Ctrl+Alt+1…9).
+              Workspaces keep projects apart: each has its own tabs, agent defaults and instructions, secrets for its
+              apps, and its own web logins (cookies). Switch between them with the icons at the bottom of the sidebar
+              (or Ctrl+Alt+1…9).
             </p>
             <Row label="Name">
               <input
@@ -601,11 +676,23 @@ function WorkspaceSection() {
               <Toggle
                 checked={!!agent()}
                 onChange={(on) =>
-                  edit({ agent: on ? { provider: settings().agent.provider, model: settings().agent.model, effort: settings().agent.effort } : null })
+                  edit({
+                    agent: on
+                      ? {
+                          provider: settings().agent.provider,
+                          model: settings().agent.model,
+                          effort: settings().agent.effort,
+                        }
+                      : null,
+                  })
                 }
               />
             </Row>
-            <Row label="Instructions for building apps" description="Added after the global instructions in this workspace's tabs." wide>
+            <Row
+              label="Instructions for building apps"
+              description="Added after the global instructions in this workspace's tabs."
+              wide
+            >
               <TextArea
                 value={current().settings.instructions}
                 placeholder={"e.g. This is for my client Acme: use their colors (#0a5) and English."}
@@ -622,16 +709,22 @@ function WorkspaceSection() {
               />
             </Row>
             <WorkspaceSecrets workspaceId={workspace.id} />
-            <Row label="Delete workspace" description="Deletes its tabs with their apps, data and chats, its secrets, and its web logins.">
+            <Row
+              label="Delete workspace"
+              description="Deletes its tabs with their apps, data and chats, its secrets, and its web logins."
+            >
               <button
                 type="button"
                 disabled={workspaces.length < 2}
                 title={workspaces.length < 2 ? "The last workspace can't be deleted" : undefined}
                 onClick={async () => {
-                  const ok = await confirmDialog(`Delete the workspace “${current().name}” with all its tabs, apps and their data?`, {
-                    confirmLabel: "Delete workspace",
-                    danger: true,
-                  });
+                  const ok = await confirmDialog(
+                    `Delete the workspace “${current().name}” with all its tabs, apps and their data?`,
+                    {
+                      confirmLabel: "Delete workspace",
+                      danger: true,
+                    },
+                  );
                   if (ok) await deleteWorkspace(workspace.id);
                 }}
                 {...stylex.attrs(styles.linkButton, styles.dangerButton)}
@@ -650,13 +743,24 @@ function WorkspaceSection() {
 /** Secrets every app in the workspace gets. */
 function WorkspaceSecrets(props: { workspaceId: string }) {
   const scope = () => workspaceScope(props.workspaceId);
-  const [overview] = createResource(() => [scope(), securityVersion()] as const, ([s]) => api.secrets(s));
+  const [overview] = createResource(
+    () => [scope(), securityVersion()] as const,
+    ([s]) => api.secrets(s),
+  );
   const [adding, setAdding] = createSignal(false);
   return (
     <>
-      <Row label="Secrets for its apps" description="Every app in this workspace gets these as environment variables. An app's own secret of the same name wins.">
+      <Row
+        label="Secrets for its apps"
+        description="Every app in this workspace gets these as environment variables. An app's own secret of the same name wins."
+      >
         <Show when={!adding()}>
-          <button type="button" onClick={() => setAdding(true)} {...stylex.attrs(styles.linkButton)} data-add-workspace-secret>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            {...stylex.attrs(styles.linkButton)}
+            data-add-workspace-secret
+          >
             + Add
           </button>
         </Show>
@@ -697,8 +801,9 @@ function GlobalSecrets() {
   return (
     <>
       <p {...stylex.attrs(styles.muted, styles.note)}>
-        Secrets are environment variables for apps (API keys, passwords). Add an app's own secrets with the key button in its tab;
-        global ones here can be shared with apps you allow. {protection()} Values can't be viewed after saving.
+        Secrets are environment variables for apps (API keys, passwords). Add an app's own secrets with the key button
+        in its tab; global ones here can be shared with apps you allow. {protection()} Values can't be viewed after
+        saving.
       </p>
       <For each={overview()?.secrets}>
         {(secret) => (
@@ -711,15 +816,21 @@ function GlobalSecrets() {
         <Show
           when={adding()}
           fallback={
-            <button type="button" onClick={() => setAdding(true)} {...stylex.attrs(styles.linkButton)} data-add-global-secret>
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              {...stylex.attrs(styles.linkButton)}
+              data-add-global-secret
+            >
               + Add a global secret
             </button>
           }
         >
           <div {...stylex.attrs(styles.warning)} role="alert" data-global-secret-warning>
-            <strong>Global secrets are riskier.</strong> Every app you allow to use one gets it, and so does any code those apps run:
-            their dependencies, or a bug the agent wrote. A leak from one app exposes it for all of them. Prefer a secret per app
-            (the key button in the app's tab) unless several apps really need the same one.
+            <strong>Global secrets are riskier.</strong> Every app you allow to use one gets it, and so does any code
+            those apps run: their dependencies, or a bug the agent wrote. A leak from one app exposes it for all of
+            them. Prefer a secret per app (the key button in the app's tab) unless several apps really need the same
+            one.
           </div>
           <SecretForm
             saveLabel="Add global secret"
@@ -752,9 +863,9 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
                 ? `Read the tab ${appById(g.resource)?.name ?? "(deleted)"}`
                 : g.action === "agent.browse"
                   ? `Use ${g.resource} for you (click, type, fill in forms)`
-                : g.action === "agent.source"
-                  ? `Change the code in ${g.resource}`
-              : `Customize ${g.resource}`;
+                  : g.action === "agent.source"
+                    ? `Change the code in ${g.resource}`
+                    : `Customize ${g.resource}`;
 
 /** "<app id>/<tool id>" as "Use add-expense in Budget". */
 const toolLabel = (resource: string) => {
@@ -766,11 +877,26 @@ const toolLabel = (resource: string) => {
 function PermissionRows() {
   const [grants] = createResource(securityVersion, () => api.permissions());
   return (
-    <Show when={grants()?.length} fallback={<p {...stylex.attrs(styles.muted, styles.note)}>Nothing remembered yet. When an app or agent asks for something and you choose “Remember”, it shows up here.</p>}>
+    <Show
+      when={grants()?.length}
+      fallback={
+        <p {...stylex.attrs(styles.muted, styles.note)}>
+          Nothing remembered yet. When an app or agent asks for something and you choose “Remember”, it shows up here.
+        </p>
+      }
+    >
       <For each={grants()}>
         {(grant) => (
-          <Row label={`${grant.subjectName}: ${permissionLabel(grant)}`} description={`${grant.decision === "allow" ? "Allowed" : "Denied"} · ${new Date(grant.createdAt).toLocaleDateString()}`}>
-            <button type="button" onClick={() => void api.revokePermission(grant.id)} {...stylex.attrs(styles.linkButton)} data-revoke-permission>
+          <Row
+            label={`${grant.subjectName}: ${permissionLabel(grant)}`}
+            description={`${grant.decision === "allow" ? "Allowed" : "Denied"} · ${new Date(grant.createdAt).toLocaleDateString()}`}
+          >
+            <button
+              type="button"
+              onClick={() => void api.revokePermission(grant.id)}
+              {...stylex.attrs(styles.linkButton)}
+              data-revoke-permission
+            >
               Revoke
             </button>
           </Row>
@@ -814,7 +940,8 @@ function NetworkRules() {
   const [requestHeaders, setRequestHeaders] = createSignal("");
   const [responseHeaders, setResponseHeaders] = createSignal("");
   const [error, setError] = createSignal<string>();
-  const workspaceName = (id: string | null) => (id ? (workspaces.find((w) => w.id === id)?.name ?? "a deleted workspace") : "every workspace");
+  const workspaceName = (id: string | null) =>
+    id ? (workspaces.find((w) => w.id === id)?.name ?? "a deleted workspace") : "every workspace";
   const modifying = () => action() === "modify";
 
   const add = async (e: SubmitEvent) => {
@@ -902,7 +1029,8 @@ function NetworkRules() {
           </div>
         </Show>
         <p {...stylex.attrs(styles.muted)}>
-          {error() ?? "A pattern with * matches the whole URL; without one, any URL containing it. Blocked requests show a shield in the Network panel."}
+          {error() ??
+            "A pattern with * matches the whole URL; without one, any URL containing it. Blocked requests show a shield in the Network panel."}
         </p>
       </form>
     </>
@@ -923,7 +1051,10 @@ function ExtensionsSection() {
   const [busy, setBusy] = createSignal(false);
   const [message, setMessage] = createSignal<string>();
   const report = (r: InstallResult | null) => {
-    if (r) setMessage([...r.installed.map((i) => `Added ${i.name}.`), ...r.failed.map((f) => `${f.name}: ${f.error}`)].join(" "));
+    if (r)
+      setMessage(
+        [...r.installed.map((i) => `Added ${i.name}.`), ...r.failed.map((f) => `${f.name}: ${f.error}`)].join(" "),
+      );
   };
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -954,7 +1085,9 @@ function ExtensionsSection() {
   };
   const shown = () => {
     const q = query().trim().toLowerCase();
-    return extensionList().filter((x) => !q || x.name.toLowerCase().includes(q) || x.description.toLowerCase().includes(q) || x.id.includes(q));
+    return extensionList().filter(
+      (x) => !q || x.name.toLowerCase().includes(q) || x.description.toLowerCase().includes(q) || x.id.includes(q),
+    );
   };
   const selected = () => extensionList().find((x) => x.id === details());
 
@@ -967,7 +1100,14 @@ function ExtensionsSection() {
             <div {...stylex.attrs(styles.extToolbar)}>
               <div {...stylex.attrs(styles.extSearch)}>
                 <Icon name="search" size={15} {...stylex.attrs(styles.extSearchIcon)} />
-                <input value={query()} onInput={(e) => setQuery(e.currentTarget.value)} placeholder="Search extensions" spellcheck={false} {...stylex.attrs(styles.extSearchInput)} data-extension-search />
+                <input
+                  value={query()}
+                  onInput={(e) => setQuery(e.currentTarget.value)}
+                  placeholder="Search extensions"
+                  spellcheck={false}
+                  {...stylex.attrs(styles.extSearchInput)}
+                  data-extension-search
+                />
               </div>
               <label {...stylex.attrs(styles.extDeveloper)}>
                 Developer mode
@@ -992,7 +1132,11 @@ function ExtensionsSection() {
                 </Button>
               </form>
               <Show when={developer()}>
-                <Button disabled={busy()} onClick={() => void run(async () => report(await ext.loadUnpacked()))} data-extension-unpacked>
+                <Button
+                  disabled={busy()}
+                  onClick={() => void run(async () => report(await ext.loadUnpacked()))}
+                  data-extension-unpacked
+                >
                   <Icon name="folder-open" size={14} />
                   Load unpacked
                 </Button>
@@ -1003,15 +1147,30 @@ function ExtensionsSection() {
               </Show>
             </div>
             <p {...stylex.attrs(styles.muted)} data-extension-message>
-              {busy() ? "Working…" : (message() ?? "Extensions run in the web tabs of every workspace; each workspace keeps its own extension data, like a browser profile.")}
+              {busy()
+                ? "Working…"
+                : (message() ??
+                  "Extensions run in the web tabs of every workspace; each workspace keeps its own extension data, like a browser profile.")}
             </p>
             <div {...stylex.attrs(styles.extGrid)}>
-              <For each={shown()} fallback={<p {...stylex.attrs(styles.muted)}>{query() ? "No extensions match." : "No extensions yet: import them from your browser or add one from the Chrome Web Store."}</p>}>
+              <For
+                each={shown()}
+                fallback={
+                  <p {...stylex.attrs(styles.muted)}>
+                    {query()
+                      ? "No extensions match."
+                      : "No extensions yet: import them from your browser or add one from the Chrome Web Store."}
+                  </p>
+                }
+              >
                 {(info) => <ExtensionCard info={info} developer={developer()} onDetails={() => setDetails(info.id)} />}
               </For>
             </div>
             <div {...stylex.attrs(styles.rows)}>
-              <Row label="Update automatically" description="Check for new versions of store extensions every few hours.">
+              <Row
+                label="Update automatically"
+                description="Check for new versions of store extensions every few hours."
+              >
                 <Toggle checked={autoUpdate()} onChange={(on) => void ext.setAutoUpdate(on)} />
               </Row>
             </div>
@@ -1032,7 +1191,13 @@ const extensionSource = (info: ExtensionInfo) => {
 };
 
 const removeExtension = async (info: ExtensionInfo) => {
-  if (await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, { confirmLabel: "Remove", danger: true })) await window.rune.extensions.remove(info.id);
+  if (
+    await confirmDialog(`Remove ${info.name}? Its data in every workspace goes with it.`, {
+      confirmLabel: "Remove",
+      danger: true,
+    })
+  )
+    await window.rune.extensions.remove(info.id);
 };
 
 /** One extension: icon, name, version, description; Details, Remove and its switch. */
@@ -1059,7 +1224,13 @@ function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetai
             <span {...stylex.attrs(styles.extBad)}>{info().error}</span>
           </Show>
           <Show when={info().unsupported.length}>
-            <button type="button" onClick={props.onDetails} title="What's different, in its details" {...stylex.attrs(styles.extLimited)} data-extension-limited>
+            <button
+              type="button"
+              onClick={props.onDetails}
+              title="What's different, in its details"
+              {...stylex.attrs(styles.extLimited)}
+              data-extension-limited
+            >
               Limited in Rune Browser: {info().unsupported.join(", ")}
             </button>
           </Show>
@@ -1069,11 +1240,22 @@ function ExtensionCard(props: { info: ExtensionInfo; developer: boolean; onDetai
         <button type="button" onClick={props.onDetails} {...stylex.attrs(styles.extFootButton)} data-extension-details>
           Details
         </button>
-        <button type="button" onClick={() => void removeExtension(info())} {...stylex.attrs(styles.extFootButton)} data-extension-remove>
+        <button
+          type="button"
+          onClick={() => void removeExtension(info())}
+          {...stylex.attrs(styles.extFootButton)}
+          data-extension-remove
+        >
           Remove
         </button>
         <Show when={info().optionsUrl && info().enabled}>
-          <button type="button" title="Its options page, in a web tab" onClick={() => void newWebTab(info().optionsUrl!)} {...stylex.attrs(styles.extFootButton)} data-extension-options>
+          <button
+            type="button"
+            title="Its options page, in a web tab"
+            onClick={() => void newWebTab(info().optionsUrl!)}
+            {...stylex.attrs(styles.extFootButton)}
+            data-extension-options
+          >
             Options
           </button>
         </Show>
@@ -1111,7 +1293,16 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
         <Row label="ID">
           <span {...stylex.attrs(styles.mono)}>{info().id}</span>
         </Row>
-        <Row label="Source" description={info().source.kind === "unpacked" ? info().path : info().updates ? "Updated from the Chrome Web Store" : undefined}>
+        <Row
+          label="Source"
+          description={
+            info().source.kind === "unpacked"
+              ? info().path
+              : info().updates
+                ? "Updated from the Chrome Web Store"
+                : undefined
+          }
+        >
           <span>{extensionSource(info())}</span>
         </Row>
         <Row
@@ -1146,10 +1337,18 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
             </div>
           </Show>
         </Row>
-        <Row label="Site access" description={info().siteAccess.length ? "Where it can read and change pages." : "It doesn't read or change pages."} wide={info().siteAccess.length > 0}>
+        <Row
+          label="Site access"
+          description={
+            info().siteAccess.length ? "Where it can read and change pages." : "It doesn't read or change pages."
+          }
+          wide={info().siteAccess.length > 0}
+        >
           <Show when={info().siteAccess.length}>
             <div {...stylex.attrs(styles.extChips)}>
-              <For each={info().siteAccess}>{(p) => <span {...stylex.attrs(styles.extChip, styles.mono)}>{p}</span>}</For>
+              <For each={info().siteAccess}>
+                {(p) => <span {...stylex.attrs(styles.extChip, styles.mono)}>{p}</span>}
+              </For>
             </div>
           </Show>
         </Row>
@@ -1168,7 +1367,10 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
           </Row>
         </Show>
         <Show when={info().nativeMessaging}>
-          <Row label="Programs on this computer" description="It talks to programs installed for it (native messaging)." />
+          <Row
+            label="Programs on this computer"
+            description="It talks to programs installed for it (native messaging)."
+          />
         </Show>
         <Show when={info().hasAction}>
           <Row label="Pin" description="Keeps it at the top of the extensions menu, in a web tab's top row.">
@@ -1177,7 +1379,13 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
         </Show>
         <Show when={info().optionsUrl}>
           <Row label="Extension options">
-            <button type="button" disabled={!info().enabled} onClick={() => void newWebTab(info().optionsUrl!)} {...stylex.attrs(styles.linkButton)} data-extension-options>
+            <button
+              type="button"
+              disabled={!info().enabled}
+              onClick={() => void newWebTab(info().optionsUrl!)}
+              {...stylex.attrs(styles.linkButton)}
+              data-extension-options
+            >
               Open
             </button>
           </Row>
@@ -1186,7 +1394,15 @@ function ExtensionDetails(props: { info: ExtensionInfo; onBack: () => void }) {
           <Row label="Error" description={info().error!} />
         </Show>
         <Row label="Remove extension" description="Its data in every workspace goes with it.">
-          <button type="button" onClick={() => void removeExtension(info()).then(() => !extensionList().some((x) => x.id === info().id) && props.onBack())} {...stylex.attrs(styles.linkButton, styles.dangerButton)}>
+          <button
+            type="button"
+            onClick={() =>
+              void removeExtension(info()).then(
+                () => !extensionList().some((x) => x.id === info().id) && props.onBack(),
+              )
+            }
+            {...stylex.attrs(styles.linkButton, styles.dangerButton)}
+          >
             Remove…
           </button>
         </Row>
@@ -1210,7 +1426,12 @@ function SiteRows() {
               type="button"
               title="Remove customizations"
               onClick={async () => {
-                if (await confirmDialog(`Remove all customizations of ${site.host}?`, { confirmLabel: "Remove", danger: true })) {
+                if (
+                  await confirmDialog(`Remove all customizations of ${site.host}?`, {
+                    confirmLabel: "Remove",
+                    danger: true,
+                  })
+                ) {
                   await api.deleteSite(site.host);
                 }
               }}
@@ -1228,9 +1449,13 @@ function SiteRows() {
 /** How app processes run: the sandbox, the shell, and what the sandbox shows of the system. */
 function SandboxRows() {
   const apps = () => settings().apps;
-  const setApps = (value: Partial<Settings["apps"]>) => updateSettings((s) => ({ ...s, apps: { ...s.apps, ...value } }));
+  const setApps = (value: Partial<Settings["apps"]>) =>
+    updateSettings((s) => ({ ...s, apps: { ...s.apps, ...value } }));
   // Asked again when the settings change: they decide the shell and what the sandbox shows.
-  const [info] = createResource(() => JSON.stringify([apps().sandbox, apps().shell, apps().sandboxToolchains, apps().sandboxReadOnly]), () => api.sandbox());
+  const [info] = createResource(
+    () => JSON.stringify([apps().sandbox, apps().shell, apps().sandboxToolchains, apps().sandboxReadOnly]),
+    () => api.sandbox(),
+  );
   const isCustom = () => !["auto", ...(info()?.shells.map((s) => s.id) ?? [])].includes(apps().shell);
   const [custom, setCustom] = createSignal(false);
   const shellValue = () => (custom() || isCustom() ? "custom" : apps().shell);
@@ -1250,7 +1475,8 @@ function SandboxRows() {
   };
   const addFolder = async () => {
     const folder = await window.rune.pickFolder("A folder apps may read");
-    if (folder && !apps().sandboxReadOnly.includes(folder)) setApps({ sandboxReadOnly: [...apps().sandboxReadOnly, folder] });
+    if (folder && !apps().sandboxReadOnly.includes(folder))
+      setApps({ sandboxReadOnly: [...apps().sandboxReadOnly, folder] });
   };
 
   return (
@@ -1304,8 +1530,12 @@ function SandboxRows() {
       </Row>
       <Show when={info()?.shell.id === "bun" || info()?.shell.path}>
         <p {...stylex.attrs(styles.muted, styles.note)}>
-          Commands run with <span {...stylex.attrs(styles.mono)}>{info()?.shell.id === "bun" ? "bun exec" : info()?.shell.path}</span>
-          {shellValue() === "custom" && info()?.shell.id !== "custom" ? " (that program wasn't found, so the automatic shell is used)" : ""}.
+          Commands run with{" "}
+          <span {...stylex.attrs(styles.mono)}>{info()?.shell.id === "bun" ? "bun exec" : info()?.shell.path}</span>
+          {shellValue() === "custom" && info()?.shell.id !== "custom"
+            ? " (that program wasn't found, so the automatic shell is used)"
+            : ""}
+          .
         </p>
       </Show>
       <Show when={isLinux()}>
@@ -1315,7 +1545,11 @@ function SandboxRows() {
         >
           <Toggle checked={apps().sandboxToolchains} onChange={(sandboxToolchains) => setApps({ sandboxToolchains })} />
         </Row>
-        <Row label="More folders apps can read" description="Read-only, in every app's sandbox. Rune Browser's own data stays hidden even if it's inside one." wide>
+        <Row
+          label="More folders apps can read"
+          description="Read-only, in every app's sandbox. Rune Browser's own data stays hidden even if it's inside one."
+          wide
+        >
           <div {...stylex.attrs(styles.folderList)} data-sandbox-folders>
             <For each={apps().sandboxReadOnly}>
               {(folder) => (
@@ -1339,7 +1573,11 @@ function SandboxRows() {
           </div>
         </Row>
         <Show when={sandboxed()}>
-          <Row label="What apps see" description="Besides the system (/usr, /etc, /opt) and their own project and data." wide>
+          <Row
+            label="What apps see"
+            description="Besides the system (/usr, /etc, /opt) and their own project and data."
+            wide
+          >
             <details {...stylex.attrs(styles.details)} data-sandbox-view>
               <summary>
                 {info()?.readOnly.length ?? 0} folders from your home, {info()?.path.length ?? 0} folders on PATH
@@ -1349,7 +1587,9 @@ function SandboxRows() {
                 {(dir) => <span {...stylex.attrs(styles.mono, styles.folderPath)}>{dir}</span>}
               </For>
               <span {...stylex.attrs(styles.rowLabel)}>PATH</span>
-              <For each={info()?.path}>{(dir) => <span {...stylex.attrs(styles.mono, styles.folderPath)}>{dir}</span>}</For>
+              <For each={info()?.path}>
+                {(dir) => <span {...stylex.attrs(styles.mono, styles.folderPath)}>{dir}</span>}
+              </For>
             </details>
           </Row>
         </Show>
@@ -1470,10 +1710,21 @@ function PresetButton(props: { name: string; theme: GlobalTheme; onClick: () => 
   const vars = () => {
     const mode = resolveMode(props.theme, systemDark());
     const v = themeVars(props.theme, mode);
-    return { bg: v[varOf(colors.bg)]!, surface: v[varOf(colors.surface)]!, accent: v[varOf(colors.accent)]!, text: v[varOf(colors.text)]! };
+    return {
+      bg: v[varOf(colors.bg)]!,
+      surface: v[varOf(colors.surface)]!,
+      accent: v[varOf(colors.accent)]!,
+      text: v[varOf(colors.text)]!,
+    };
   };
   return (
-    <button type="button" onClick={props.onClick} title={props.name} {...stylex.attrs(styles.preset)} data-preset={props.name}>
+    <button
+      type="button"
+      onClick={props.onClick}
+      title={props.name}
+      {...stylex.attrs(styles.preset)}
+      data-preset={props.name}
+    >
       <span {...stylex.attrs(styles.presetPreview)} style={{ "background-color": vars().bg }}>
         <span {...stylex.attrs(styles.presetCard)} style={{ "background-color": vars().surface }}>
           <span {...stylex.attrs(styles.presetDot)} style={{ "background-color": vars().accent }} />
@@ -1556,8 +1807,21 @@ const styles = stylex.create({
   folderList: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: space.xs, width: "100%" },
   folderRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.sm, width: "100%" },
   folderPath: { overflowWrap: "anywhere", color: colors.text },
-  details: { display: "flex", flexDirection: "column", gap: 4, fontSize: font.sm, color: colors.muted, cursor: "default" },
-  secretRow: { paddingBlock: space.xs, paddingInline: space.lg, borderTopWidth: 1, borderTopStyle: "solid", borderTopColor: colors.border },
+  details: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    fontSize: font.sm,
+    color: colors.muted,
+    cursor: "default",
+  },
+  secretRow: {
+    paddingBlock: space.xs,
+    paddingInline: space.lg,
+    borderTopWidth: 1,
+    borderTopStyle: "solid",
+    borderTopColor: colors.border,
+  },
   warning: {
     marginBlock: space.sm,
     padding: space.md,
@@ -1676,8 +1940,23 @@ const styles = stylex.create({
     backgroundColor: colors.surface,
   },
   extSearchIcon: { color: colors.muted, flexShrink: 0 },
-  extSearchInput: { flex: 1, minWidth: 0, borderWidth: 0, outline: "none", backgroundColor: "transparent", color: colors.text, fontSize: font.sm },
-  extDeveloper: { display: "flex", alignItems: "center", gap: space.sm, color: colors.muted, fontSize: font.sm, cursor: "pointer" },
+  extSearchInput: {
+    flex: 1,
+    minWidth: 0,
+    borderWidth: 0,
+    outline: "none",
+    backgroundColor: "transparent",
+    color: colors.text,
+    fontSize: font.sm,
+  },
+  extDeveloper: {
+    display: "flex",
+    alignItems: "center",
+    gap: space.sm,
+    color: colors.muted,
+    fontSize: font.sm,
+    cursor: "pointer",
+  },
   extActions: { display: "flex", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
   extStore: { display: "flex", alignItems: "center", gap: space.xs, flex: "1 1 280px" },
   extStoreInput: { flex: 1, width: "auto", minWidth: 0 },
@@ -1739,7 +2018,13 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   extChips: { display: "flex", flexWrap: "wrap", gap: 6 },
-  extChip: { paddingBlock: 2, paddingInline: 8, borderRadius: radius.full, backgroundColor: colors.surfaceHover, fontSize: font.xs },
+  extChip: {
+    paddingBlock: 2,
+    paddingInline: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.surfaceHover,
+    fontSize: font.xs,
+  },
   extPermissions: { display: "flex", flexDirection: "column", gap: space.sm, width: "100%" },
   extPermission: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md },
   extPermissionText: { display: "flex", flexDirection: "column", gap: 2, minWidth: 0 },
@@ -1758,7 +2043,13 @@ const styles = stylex.create({
     textDecoration: { default: "none", ":hover": "underline" },
   },
   extShortcuts: { display: "flex", flexDirection: "column", gap: 6, width: "100%" },
-  extShortcut: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: space.md, fontSize: font.sm },
+  extShortcut: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: space.md,
+    fontSize: font.sm,
+  },
   extIcon: { flexShrink: 0, marginTop: 2, objectFit: "contain" },
   extBad: { color: colors.danger, fontSize: font.xs, overflowWrap: "anywhere" },
   plainButton: { color: { default: colors.muted, ":hover": colors.text } },
@@ -1786,7 +2077,13 @@ const styles = stylex.create({
     outline: "none",
     fontSize: font.sm,
   },
-  ruleForm: { display: "flex", flexDirection: "column", gap: space.sm, paddingBlock: space.md, paddingInline: space.lg },
+  ruleForm: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.sm,
+    paddingBlock: space.md,
+    paddingInline: space.lg,
+  },
   ruleLine: { display: "flex", alignItems: "center", gap: space.sm, flexWrap: "wrap" },
   ruleInput: { flex: "1 1 260px", fontFamily: font.mono },
   ruleSelect: { width: 180 },
@@ -1878,7 +2175,12 @@ const styles = stylex.create({
     opacity: { default: 1, ":disabled": 0.5 },
   },
   dangerButton: { color: colors.danger },
-  presets: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: space.sm, width: "100%" },
+  presets: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))",
+    gap: space.sm,
+    width: "100%",
+  },
   preset: {
     display: "flex",
     flexDirection: "column",
@@ -1893,7 +2195,15 @@ const styles = stylex.create({
     color: colors.text,
   },
   presetPreview: { display: "flex", alignItems: "flex-end", height: 44, padding: 6, borderRadius: radius.sm },
-  presetCard: { display: "flex", alignItems: "center", gap: 4, width: "100%", height: 18, paddingInline: 4, borderRadius: 4 },
+  presetCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    width: "100%",
+    height: 18,
+    paddingInline: 4,
+    borderRadius: 4,
+  },
   presetDot: { width: 8, height: 8, borderRadius: radius.full, flexShrink: 0 },
   presetLine: { height: 3, flex: 1, borderRadius: 2, opacity: 0.6 },
   presetName: { fontSize: font.xs },

@@ -10,6 +10,7 @@ beyond its sandbox.
 ## Workspaces
 
 Workspaces keep projects and contexts apart, like Zen Browser's: each is a collection of tabs, shown as icons at the bottom of the tab sidebar. Click one to switch (or Ctrl+Alt+1…9, also from inside web pages), "+" makes a new one (and asks for its name), dragging an icon reorders them (`PUT /api/workspaces/order`), dropping a tab on one moves the tab there, and an icon's menu renames it, changes its icon, moves it or deletes it. The current workspace's icon is the highlighted one (its name is in the tooltip). Each has:
+
 - its own tabs. Tabs can be moved between workspaces (tab menu → Move to);
 - its own default agent and instructions, added after the global ones (Settings → Workspace);
 - secrets every app in it gets (an app's own secret of the same name wins);
@@ -47,6 +48,7 @@ with it. An agent turn always edits, so it reopens the panel. Dependencies are i
 lockfile change.
 
 **Bring your own.** A new app tab can also start from a project you have (`POST /api/apps/:id/import`):
+
 - **Cloned from Git:** an https link, `owner/repo` (GitHub), a page showing a branch (`…/tree/<branch>`), an SSH link (`git@github.com:owner/repo.git`), with an optional branch. It's a shallow clone with submodules. The tab shows git's progress (receiving objects, resolving deltas) and can cancel it (`DELETE /api/apps/:id/import`).
 - **Private repositories** work with your own Git setup: credential helpers (`gh auth login`, Git Credential Manager) and SSH keys in ssh-agent. Git never prompts (there's no terminal to answer in), and no hooks run. Errors say what's missing.
 - **Copied from a folder** (without `node_modules`).
@@ -58,6 +60,7 @@ lockfile change.
 agent's `run_command`) sees the system read-only, its own project and data folder
 read-write, a private `/tmp`, and its own PID/IPC namespaces. Your files and other apps are
 invisible, and the environment is cleared. Settings → Apps can turn it off.
+
 - **Developer tools:** the system (`/usr`, `/etc`, `/opt`, `/nix`) is there read-only, so git, curl, Python, compilers and the like work. Git has an identity of its own ("Rune Browser", in the app's `.rune/home/.gitconfig`), not yours.
 - **Your toolchains:** what version managers installed in your home folder (mise, asdf, nvm, Volta, rustup, pyenv, Bun, Deno, Go…) is shown read-only and kept on PATH; their shims, which need your config, aren't. Settings → Apps can turn this off and add more read-only folders. Nothing else of your home is visible: no `~/.ssh`, `~/.gitconfig` or credentials, and Rune Browser's own data stays hidden even inside a folder you add.
 - **Shell:** commands run in the shell chosen in Settings → Apps (`workspace/shells.ts`): `/bin/sh` by default, Bun's cross-platform shell (`bun exec`) on Windows, or bash, zsh, fish, PowerShell, cmd, Git Bash or any program that takes `-c`.
@@ -83,7 +86,7 @@ GET $RUNE_API_URL/data/<app id>             → its tables (name, row count, col
 GET $RUNE_API_URL/data/<app id>/<table>?offset=&limit=&search=&order=&desc=1&where.<column>=
 ```
 
-  Like the AI API, it only answers the app's server (no `Origin` header). Every read of another app's data is in Activity. Apps in other workspaces aren't listed and can't ask.
+Like the AI API, it only answers the app's server (no `Origin` header). Every read of another app's data is in Activity. Apps in other workspaces aren't listed and can't ask.
 
 ## Agents
 
@@ -97,6 +100,7 @@ page tools (`get_page`, `inspect`, `run_js`, `screenshot`, `navigate`, `reload`)
 that work on the preview or the web page, and DevTools (below). File editing is the provider's own.
 
 **DevTools.** Both agents get most of Chrome DevTools on their tab's page, the app's preview or the website (`agent/devtoolsTools.ts`; the work happens in Electron's main process over the DevTools protocol, `main/devtools.ts`), so they can test pages and find causes on their own:
+
 - `console_logs`: console messages, uncaught errors with their stack, and the browser's own messages (failed requests, CSP, deprecations). App previews are captured from the start; websites once an agent asks, since pages can notice it.
 - `network_requests` / `network_request`: app previews' traffic too, for app builders.
 - `page_metrics` and `performance_trace`: web vitals, load timing, DOM and heap size; a trace (of a reload, or of an interaction the agent runs in the page) analyzed like the Performance panel (`shared/trace.ts`): long tasks and what ran in them, main-thread time by kind, the hottest functions with file:line, forced reflows, layout shifts, slow, large, render-blocking and failed requests. The trace is saved in `<data>/traces/` (the last 20) for Chrome DevTools' Performance panel, and the chat says where.
@@ -108,6 +112,7 @@ that work on the preview or the web page, and DevTools (below). File editing is 
 **Images and files.** Paste a screenshot into the composer, drop files on it or pick them with the paperclip (`lib/attachments.ts`, `agent/Attachments.ts`, `/api/apps/:id/attachments`). They're kept per tab in `<data>/attachments/` and shown in the chat. Images (scaled to at most 2000 px) reach every provider as images the model sees, PDFs too for Claude; text files go into the prompt; anything else is given by its path. Up to 10 files of 20 MB per message. Only images are served inline; other files only download.
 
 **Code for the agent.** A tab can have code attached for its agent (the folder button next to the composer; `workspace/Sources.ts`, `/api/apps/:id/sources`): folders of yours, used in place, and Git repositories (the same links as cloning an app, with your own Git credentials), cloned into `<data>/sources/` and pulled again from their chip. Both agents get `list_sources`, `list_source_files`, `read_source_file`, `search_source` and `source_git` (status, log, diff, show, blame) to find where a problem they saw in a page or a trace comes from, and `edit_source_file` / `write_source_file` to fix it:
+
 - **Every change asks first,** with its diff in the dialog (permission `agent.source`, rememberable per folder). Changes to your folders aren't in Rune Browser's History: undo them with your own Git. Changes to a cloned repository stay in Rune Browser's clone; nothing is pushed.
 - **Never read or written:** paths outside the source (symlinks too), files that hold credentials (`.env`, keys, `.npmrc`, `credentials.json`…; `.env.example` is fine) and `.git`'s internals. Dependencies and builds are left out of listings and searches. Rune Browser's own data, a whole disk or your home folder can't be attached.
 - Removing a source deletes Rune Browser's clone, never your folder. Every call is in Activity.
@@ -118,6 +123,7 @@ Auth is always the provider's own login: no API keys (Rune Browser strips
 ## Shared tab context
 
 Agents can use what's in other tabs of the workspace, when the user shares it:
+
 - **Mentions:** typing `@` in a composer lists the workspace's other tabs; picking one shares it with the next message (a chip above the text, removable).
 - **Hand-off:** "Send to…" under an agent's reply passes it to another tab's agent: that tab opens with the reply attached to its next message.
 - **Agents asking:** `list_tabs` names the other tabs; `read_tab` reads one after the user allows it (permission `agent.tab`, per tab, rememberable).
@@ -153,10 +159,12 @@ GET  $RUNE_AI_URL/models        → enabled, model, models, today's usage
 ## Tool registry
 
 Actions are part of a registry of what apps can do, for you, agents and other apps (`workspace/AppTools.ts`). An app's tools are:
+
 - its **actions** (above). `"params": { "month": { "type": "string", "required": true } }` gives agents and apps typed arguments; they arrive as `{ input, params }`, with `X-Rune-Caller: user | agent | app:<id>`, and the whole JSON reply comes back;
 - the **basic tools from its data**: `list-`, `get-`, `add-`, `update-` and `delete-<table>` for each table (not those starting with `_`). `"dataTools": "read"` keeps only list and get, `"none"` turns them off, and an action with the same id replaces one.
 
 Every call goes through Rune Browser, the hub between apps:
+
 - **You**: the Tools panel (wrench button in an app tab) lists them with a form to run each; actions are also in the command bar.
 - **Agents**: `list_app_tools` and `use_app_tool`.
 - **Apps**: `GET $RUNE_API_URL/tools` lists the workspace's apps and their tools; `POST $RUNE_API_URL/tools/<app>/<tool>` with `{ params?, input? }` runs one. Server-only, like the data API.
@@ -167,6 +175,7 @@ Data tools write the app's database directly: the app sees the change on its nex
 ## Schedules
 
 Schedules run apps' tools and commands in the background, without a tab open, and prompts for a tab's agent (`scheduler/Scheduler.ts`). The Schedules page (in Settings) shows the workspace's schedules, what's running, what's coming up and the past runs with their results and output. Each schedule can be paused, edited, run now or deleted.
+
 - **What:** one of an app's tools from the registry, with params; the call goes through the registry's permissions and audit log, as the user (or as the agent that made it). Or a command in the app's sandbox, without its secrets, like `run_command`.
 - **Prompts:** or a prompt for an agent (made by you, not by agents). It runs in a tab of the workspace, or in a new app or web tab opened on its first run, which the schedule then keeps. Each run starts a new chat in that tab (the current chat goes to its earlier chats) and sends the prompt as if you had, so the run can be read and continued there; its tools ask for permissions as usual. A run fails if the tab's agent is busy, and the agent is stopped at the time limit. The run's result is the agent's last reply, or its error.
 - **When:**
@@ -201,6 +210,7 @@ Apps get secrets (API keys, passwords) as environment variables. A secret belong
 ## Permissions and activity
 
 Anything an app or agent does beyond its own sandbox needs your OK:
+
 - an app using AI;
 - an app using a global secret;
 - an app reading another app's data;
@@ -215,6 +225,7 @@ Rune Browser asks in a dialog; you can remember the answer. Unanswered requests 
 **Full access** (Settings → Agent → Permissions, after a warning) lets agents do all of this without asking: what the website agent does on sites (customizing, acting with your logins, confirming purchases and messages, sending requests), reading other tabs, using other apps' tools and data, scheduling. Apps' own requests (AI, global secrets, other apps' data from their servers) still ask. While it's on, the agent sidebar shows a red "Full access" badge (click it to go back to asking) and working agents a red dot in the tab list. Every request allowed this way is in Activity (`permission.auto`), and History can still undo what an agent changed in apps and customizations (not what it did on websites).
 
 The **Activity** page (in Settings) is the audit log: who, what, which tab and when. It records:
+
 - every agent turn and tool call (arguments summarized, long text only as a size);
 - AI requests;
 - secret changes and injections;
@@ -228,6 +239,7 @@ Agents' processes don't get Rune Browser's own environment variables (`RUNE_*`).
 ## History
 
 Every change is saved as a snapshot you can look at and take back (Settings → History; the clock button in an app tab). A snapshot covers one of:
+
 - an **app**: its project files (without `node_modules`, builds, `.git`) and its data (see App data). SQLite databases are copied consistently even while the app runs, and the timeline shows how their tables' row counts changed;
 - the **site customizations** and **page changes** the website agent (or you) made;
 - Rune Browser's **settings**, including each workspace's.
@@ -235,6 +247,7 @@ Every change is saved as a snapshot you can look at and take back (Settings → 
 Snapshots are taken before and after every agent turn (so what you or the app changed in between is kept apart from what the agent did), when an app starts from a template, and when you change settings or site customizations (changes made in a row are folded together). "Save a snapshot" takes one by hand.
 
 Each entry shows who made the change (which agent, you, Rune Browser) and its files with line diffs. Two ways back:
+
 - **Undo this change** reverts only that step. It refuses if those files were changed again since.
 - **Restore this version** puts everything back the way it was then.
 
@@ -249,6 +262,7 @@ Contents are stored once (content-addressed, gzipped) under `<data dir>/history/
 ## Mods
 
 Customizations packaged to share with others (Settings → Mods). A mod is one JSON document (`shared/mods.ts`, format `rune-mod`, version 1):
+
 - **What's in it:** page changes (how sites look and work), Rune Browser's theme, and Chrome Web Store extensions (by id: they're installed from the store, not their settings).
 - **Making one:** "Make a mod" picks your own page changes, your theme and your store extensions, and gives a share code (`RUNE-MOD:` and the compressed JSON), copied right away, or a file.
 - **Installing:** paste a share code or an https link into "Install a mod" (or the command bar), or open a file. A review comes first: what it changes, where it runs its own JavaScript (scripts, buttons, HTML with handlers: flagged as able to read everything there, with your logins), which extensions it installs, whether it changes the theme. A mod with the same id updates the installed one.

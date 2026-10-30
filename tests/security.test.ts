@@ -7,7 +7,14 @@ import { Effect } from "effect";
 import { claudeEnv } from "../src/server/providers/Claude";
 import { agentEnv } from "../src/server/providers/process";
 import { makeVault } from "../src/server/security/Vault";
-import type { AppSummary, AuditEntry, PermissionGrant, PermissionRequest, SecretInfo, SecretsOverview } from "../src/shared/api";
+import type {
+  AppSummary,
+  AuditEntry,
+  PermissionGrant,
+  PermissionRequest,
+  SecretInfo,
+  SecretsOverview,
+} from "../src/shared/api";
 import type { Settings } from "../src/shared/settings";
 import { startServer } from "./lib/server";
 import { devScript, writesVariable } from "./lib/apps";
@@ -102,7 +109,10 @@ describe("secrets, permissions and the audit log", () => {
   afterAll(() => server.stop());
 
   test("a secret is stored encrypted and never returned", async () => {
-    const saved = await server.api<SecretInfo>("/api/secrets", { method: "PUT", json: { scope: app.id, name: "MY_KEY", value: VALUE } });
+    const saved = await server.api<SecretInfo>("/api/secrets", {
+      method: "PUT",
+      json: { scope: app.id, name: "MY_KEY", value: VALUE },
+    });
     expect(saved).toMatchObject({ scope: app.id, name: "MY_KEY" });
     expect(JSON.stringify(saved)).not.toContain(VALUE);
     const overview = await server.api<SecretsOverview>(`/api/secrets?scope=${app.id}`);
@@ -116,9 +126,15 @@ describe("secrets, permissions and the audit log", () => {
   });
 
   test("bad names are refused", async () => {
-    await expect(server.api("/api/secrets", { method: "PUT", json: { scope: app.id, name: "my key", value: "x" } })).rejects.toThrow("400");
-    await expect(server.api("/api/secrets", { method: "PUT", json: { scope: app.id, name: "PORT", value: "x" } })).rejects.toThrow("400");
-    await expect(server.api("/api/secrets", { method: "PUT", json: { scope: "nope", name: "OK_NAME", value: "x" } })).rejects.toThrow("404");
+    await expect(
+      server.api("/api/secrets", { method: "PUT", json: { scope: app.id, name: "my key", value: "x" } }),
+    ).rejects.toThrow("400");
+    await expect(
+      server.api("/api/secrets", { method: "PUT", json: { scope: app.id, name: "PORT", value: "x" } }),
+    ).rejects.toThrow("400");
+    await expect(
+      server.api("/api/secrets", { method: "PUT", json: { scope: "nope", name: "OK_NAME", value: "x" } }),
+    ).rejects.toThrow("404");
   });
 
   test("the app's process gets it in its environment, masked in its logs, not in any process arguments", async () => {
@@ -135,11 +151,17 @@ describe("secrets, permissions and the audit log", () => {
   });
 
   test("a global secret needs the user's permission per app", async () => {
-    await server.api("/api/secrets", { method: "PUT", json: { scope: "global", name: "SHARED_KEY", value: GLOBAL_VALUE } });
+    await server.api("/api/secrets", {
+      method: "PUT",
+      json: { scope: "global", name: "SHARED_KEY", value: GLOBAL_VALUE },
+    });
     expect(seen("restart", "SHARED_KEY")).toBe("unset");
     // Allowing it restarts the app with it.
     report("allowed");
-    await server.api("/api/permissions", { method: "PUT", json: { subject: app.id, action: "app.secret", resource: "SHARED_KEY", decision: "allow" } });
+    await server.api("/api/permissions", {
+      method: "PUT",
+      json: { subject: app.id, action: "app.secret", resource: "SHARED_KEY", decision: "allow" },
+    });
     expect(await waitFor(() => seen("allowed", "SHARED_KEY"))).toBe(GLOBAL_VALUE);
     // Revoking it takes it away again.
     const grant = (await server.api<PermissionGrant[]>("/api/permissions")).find((g) => g.resource === "SHARED_KEY")!;
@@ -151,7 +173,10 @@ describe("secrets, permissions and the audit log", () => {
 
   test("an app asking for AI waits for the user; the answer can be remembered and revoked", async () => {
     const settings = await server.api<Settings>("/api/settings");
-    await server.api("/api/settings", { method: "PUT", json: { ...settings, apps: { ...settings.apps, ai: { ...settings.apps.ai, enabled: true } } } });
+    await server.api("/api/settings", {
+      method: "PUT",
+      json: { ...settings, apps: { ...settings.apps, ai: { ...settings.apps.ai, enabled: true } } },
+    });
     // The app's AI token (its dev process could read it; here we take it from the environment it saw).
     const env = join(dir, "token.txt");
     writesVariable(dir, "RUNE_AI_TOKEN", "token.txt");
@@ -167,7 +192,10 @@ describe("secrets, permissions and the audit log", () => {
     const first = ask();
     const request = await waitFor(async () => (await server.api<PermissionRequest[]>("/api/permissions/pending"))[0]);
     expect(request).toMatchObject({ subject: app.id, action: "app.ai", subjectName: app.name });
-    await server.api(`/api/permissions/pending/${request.id}`, { method: "POST", json: { allow: false, remember: true } });
+    await server.api(`/api/permissions/pending/${request.id}`, {
+      method: "POST",
+      json: { allow: false, remember: true },
+    });
     expect((await first).status).toBe(403);
     // Remembered: no new question.
     expect((await ask()).status).toBe(403);
@@ -178,14 +206,25 @@ describe("secrets, permissions and the audit log", () => {
     await server.api(`/api/permissions/${grant.id}`, { method: "DELETE" });
     const again = ask();
     const next = await waitFor(async () => (await server.api<PermissionRequest[]>("/api/permissions/pending"))[0]);
-    await server.api(`/api/permissions/pending/${next.id}`, { method: "POST", json: { allow: false, remember: false } });
+    await server.api(`/api/permissions/pending/${next.id}`, {
+      method: "POST",
+      json: { allow: false, remember: false },
+    });
     expect((await again).status).toBe(403);
   });
 
   test("everything is in the audit log, without secret values", async () => {
     const entries = await server.api<AuditEntry[]>(`/api/audit?tab=${app.id}`);
     const actions = entries.map((e) => e.action);
-    for (const action of ["secret.create", "secret.inject", "permission.allow", "permission.revoke", "permission.deny", "ai.request", "runtime.restart"]) {
+    for (const action of [
+      "secret.create",
+      "secret.inject",
+      "permission.allow",
+      "permission.revoke",
+      "permission.deny",
+      "ai.request",
+      "runtime.restart",
+    ]) {
       expect(actions).toContain(action);
     }
     expect(entries.find((e) => e.action === "secret.inject")!.target).toContain("MY_KEY");

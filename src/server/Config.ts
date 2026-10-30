@@ -65,4 +65,8 @@ export function readConfig(
   };
 }
 
-export const layer = (env?: Record<string, string | undefined>) => Layer.effect(ServerConfig, Effect.sync(() => readConfig(env)));
+export const layer = (env?: Record<string, string | undefined>) =>
+  Layer.effect(
+    ServerConfig,
+    Effect.sync(() => readConfig(env)),
+  );

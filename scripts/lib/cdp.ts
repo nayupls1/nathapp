@@ -39,7 +39,9 @@ export class Page {
           webSocketDebuggerUrl: string;
         }[];
         // Extensions' offscreen documents are pages too: the app's own comes first.
-        const pages = targets.filter((t) => t.type === "page" && !t.url.startsWith("devtools://") && !t.url.startsWith("chrome-extension://"));
+        const pages = targets.filter(
+          (t) => t.type === "page" && !t.url.startsWith("devtools://") && !t.url.startsWith("chrome-extension://"),
+        );
         const target = pages.find((t) => t.url.startsWith("app://")) ?? pages[0];
         if (target) {
           const ws = new WebSocket(target.webSocketDebuggerUrl);
@@ -82,7 +84,11 @@ export class Page {
   async evalIn<T = unknown>(urlPart: string, expression: string): Promise<T> {
     const child = [...this.children.values()].find((c) => c.url.includes(urlPart));
     if (!child) throw new Error(`no child frame matching ${urlPart}`);
-    const res = await this.send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, child.sessionId);
+    const res = await this.send(
+      "Runtime.evaluate",
+      { expression, awaitPromise: true, returnByValue: true },
+      child.sessionId,
+    );
     if (res.exceptionDetails) throw new Error(res.exceptionDetails.exception?.description ?? res.exceptionDetails.text);
     return res.result.value as T;
   }

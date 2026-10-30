@@ -21,7 +21,18 @@ const JWT = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl
 
 describe("redaction", () => {
   test("knows credential names, not lookalikes", () => {
-    for (const name of ["Authorization", "Cookie", "x-csrf-token", "X-API-Key", "accessToken", "refresh_token", "password", "client_secret", "sessionId", "sig"]) {
+    for (const name of [
+      "Authorization",
+      "Cookie",
+      "x-csrf-token",
+      "X-API-Key",
+      "accessToken",
+      "refresh_token",
+      "password",
+      "client_secret",
+      "sessionId",
+      "sig",
+    ]) {
       expect(isSensitiveName(name)).toBe(true);
     }
     for (const name of ["author", "content-type", "accept", "user-agent", "title", "key", "monkey", "visits_count"]) {
@@ -32,7 +43,9 @@ describe("redaction", () => {
   });
 
   test("headers, URLs and bodies", () => {
-    expect(redactHeaders({ Authorization: "Bearer abc", Accept: "application/json", "X-Debug": `token ${JWT}` })).toEqual({
+    expect(
+      redactHeaders({ Authorization: "Bearer abc", Accept: "application/json", "X-Debug": `token ${JWT}` }),
+    ).toEqual({
       Authorization: REDACTED,
       Accept: "application/json",
       "X-Debug": `token ${REDACTED}`,
@@ -43,13 +56,26 @@ describe("redaction", () => {
     expect(redactUrl("https://user:pw@example.com/")).toBe("https://user:redacted@example.com/");
     expect(redactUrl("https://example.com/plain?a=1")).toBe("https://example.com/plain?a=1");
 
-    expect(JSON.parse(redactBody(JSON.stringify({ user: { name: "Ada", password: "hunter2", key: "item-1" }, accessToken: "t", items: [{ sessionToken: 5 }], note: JWT })))).toEqual({
+    expect(
+      JSON.parse(
+        redactBody(
+          JSON.stringify({
+            user: { name: "Ada", password: "hunter2", key: "item-1" },
+            accessToken: "t",
+            items: [{ sessionToken: 5 }],
+            note: JWT,
+          }),
+        ),
+      ),
+    ).toEqual({
       user: { name: "Ada", password: REDACTED, key: "item-1" },
       accessToken: REDACTED,
       items: [{ sessionToken: REDACTED }],
       note: REDACTED,
     });
-    expect(redactBody("username=ada&password=hunter2&remember=1", "application/x-www-form-urlencoded")).toBe(`username=ada&password=${REDACTED}&remember=1`);
+    expect(redactBody("username=ada&password=hunter2&remember=1", "application/x-www-form-urlencoded")).toBe(
+      `username=ada&password=${REDACTED}&remember=1`,
+    );
     expect(redactBody(`Authorization: Bearer abcdefghijkl\nplain`)).toBe(`Authorization: Bearer ${REDACTED}\nplain`);
     expect(redactBody("<p>nothing secret</p>", "text/html")).toBe("<p>nothing secret</p>");
   });
@@ -145,18 +171,49 @@ describe("network rules and saved requests (server)", () => {
       method: "POST",
       json: { workspaceId: null, pattern: " *://*.ads.example/* ", action: "block" },
     });
-    expect(rule).toMatchObject({ pattern: "*://*.ads.example/*", action: "block", enabled: true, workspaceId: null, requestHeaders: {} });
+    expect(rule).toMatchObject({
+      pattern: "*://*.ads.example/*",
+      action: "block",
+      enabled: true,
+      workspaceId: null,
+      requestHeaders: {},
+    });
     const modify = await server.api<NetworkRule>("/api/network/rules", {
       method: "POST",
-      json: { workspaceId: "default", pattern: "example.com", action: "modify", requestHeaders: { DNT: "1", Referer: null } },
+      json: {
+        workspaceId: "default",
+        pattern: "example.com",
+        action: "modify",
+        requestHeaders: { DNT: "1", Referer: null },
+      },
     });
     expect(modify.requestHeaders).toEqual({ DNT: "1", Referer: null });
-    await expect(server.api("/api/network/rules", { method: "POST", json: { workspaceId: null, pattern: "x", action: "modify", requestHeaders: { "Bad Name": "1" } } })).rejects.toThrow("400");
-    await expect(server.api("/api/network/rules", { method: "POST", json: { workspaceId: null, pattern: "x", action: "modify", requestHeaders: { X: "a\r\nb" } } })).rejects.toThrow("400");
-    await expect(server.api("/api/network/rules", { method: "POST", json: { workspaceId: "nope", pattern: "x", action: "block" } })).rejects.toThrow("404");
-    await expect(server.api("/api/network/rules", { method: "POST", json: { workspaceId: null, pattern: "  ", action: "block" } })).rejects.toThrow("400");
+    await expect(
+      server.api("/api/network/rules", {
+        method: "POST",
+        json: { workspaceId: null, pattern: "x", action: "modify", requestHeaders: { "Bad Name": "1" } },
+      }),
+    ).rejects.toThrow("400");
+    await expect(
+      server.api("/api/network/rules", {
+        method: "POST",
+        json: { workspaceId: null, pattern: "x", action: "modify", requestHeaders: { X: "a\r\nb" } },
+      }),
+    ).rejects.toThrow("400");
+    await expect(
+      server.api("/api/network/rules", {
+        method: "POST",
+        json: { workspaceId: "nope", pattern: "x", action: "block" },
+      }),
+    ).rejects.toThrow("404");
+    await expect(
+      server.api("/api/network/rules", { method: "POST", json: { workspaceId: null, pattern: "  ", action: "block" } }),
+    ).rejects.toThrow("400");
 
-    const off = await server.api<NetworkRule>(`/api/network/rules/${rule.id}`, { method: "PATCH", json: { enabled: false } });
+    const off = await server.api<NetworkRule>(`/api/network/rules/${rule.id}`, {
+      method: "PATCH",
+      json: { enabled: false },
+    });
     expect(off).toMatchObject({ enabled: false, pattern: "*://*.ads.example/*" });
     await server.api(`/api/network/rules/${rule.id}`, { method: "DELETE" });
     expect((await server.api<NetworkRule[]>("/api/network/rules")).map((r) => r.id)).toEqual([modify.id]);
@@ -168,7 +225,13 @@ describe("network rules and saved requests (server)", () => {
       json: {
         workspaceId: "default",
         name: "Unread",
-        draft: { method: "get", url: "https://example.com/api/unread?key=[redacted]", headers: { Accept: "application/json" }, body: null, sealed: "c2VhbGVk" },
+        draft: {
+          method: "get",
+          url: "https://example.com/api/unread?key=[redacted]",
+          headers: { Accept: "application/json" },
+          body: null,
+          sealed: "c2VhbGVk",
+        },
       },
     });
     expect(saved).toMatchObject({ method: "GET", hasCredentials: true, workspaceId: "default" });
@@ -176,18 +239,34 @@ describe("network rules and saved requests (server)", () => {
     expect(list.map((r) => r.name)).toEqual(["Unread"]);
     expect(JSON.stringify(list)).not.toContain("c2VhbGVk");
     await expect(
-      server.api("/api/network/requests", { method: "POST", json: { workspaceId: "default", name: "x", draft: { method: "GET", url: "file:///etc/passwd", headers: {}, body: null, sealed: null } } }),
+      server.api("/api/network/requests", {
+        method: "POST",
+        json: {
+          workspaceId: "default",
+          name: "x",
+          draft: { method: "GET", url: "file:///etc/passwd", headers: {}, body: null, sealed: null },
+        },
+      }),
     ).rejects.toThrow("400");
     // Sending goes through the Rune Browser window, which isn't there in this test.
-    await expect(server.api(`/api/network/requests/${saved.id}/send`, { method: "POST", json: {} })).rejects.toThrow("502");
+    await expect(server.api(`/api/network/requests/${saved.id}/send`, { method: "POST", json: {} })).rejects.toThrow(
+      "502",
+    );
   });
 
   test("a deleted workspace takes its rules and saved requests along", async () => {
     const space = await server.api<WorkspaceInfo>("/api/workspaces", { method: "POST", json: { name: "Temp" } });
-    await server.api("/api/network/rules", { method: "POST", json: { workspaceId: space.id, pattern: "x", action: "block" } });
+    await server.api("/api/network/rules", {
+      method: "POST",
+      json: { workspaceId: space.id, pattern: "x", action: "block" },
+    });
     await server.api("/api/network/requests", {
       method: "POST",
-      json: { workspaceId: space.id, name: "Temp", draft: { method: "GET", url: "https://example.com/", headers: {}, body: null, sealed: null } },
+      json: {
+        workspaceId: space.id,
+        name: "Temp",
+        draft: { method: "GET", url: "https://example.com/", headers: {}, body: null, sealed: null },
+      },
     });
     await server.api(`/api/workspaces/${space.id}`, { method: "DELETE" });
     expect((await server.api<NetworkRule[]>("/api/network/rules")).some((r) => r.workspaceId === space.id)).toBe(false);
@@ -195,7 +274,10 @@ describe("network rules and saved requests (server)", () => {
   });
 
   test("the website agent's permission to send requests is labeled", async () => {
-    await server.api("/api/permissions", { method: "PUT", json: { subject: "website-agent", action: "agent.network", resource: "example.com", decision: "allow" } });
+    await server.api("/api/permissions", {
+      method: "PUT",
+      json: { subject: "website-agent", action: "agent.network", resource: "example.com", decision: "allow" },
+    });
     const grant = (await server.api<PermissionGrant[]>("/api/permissions")).find((g) => g.action === "agent.network");
     expect(grant).toMatchObject({ resource: "example.com", decision: "allow" });
   });

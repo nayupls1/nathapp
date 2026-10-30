@@ -38,7 +38,8 @@ export const tool = <S extends Schema.Top>(
 });
 
 const errorText = (err: unknown): string =>
-  err instanceof Error || (typeof err === "object" && err !== null && typeof (err as { message?: unknown }).message === "string")
+  err instanceof Error ||
+  (typeof err === "object" && err !== null && typeof (err as { message?: unknown }).message === "string")
     ? (err as { message: string }).message
     : String(err);
 
@@ -76,7 +77,11 @@ export const make = (baseUrl: string) =>
     const sessions = new Map<string, Map<string, Tool>>();
 
     const respond = (id: Rpc["id"], result: unknown) => ({ jsonrpc: "2.0", id: id ?? null, result });
-    const failure = (id: Rpc["id"], code: number, message: string) => ({ jsonrpc: "2.0", id: id ?? null, error: { code, message } });
+    const failure = (id: Rpc["id"], code: number, message: string) => ({
+      jsonrpc: "2.0",
+      id: id ?? null,
+      error: { code, message },
+    });
 
     const call = (tools: Map<string, Tool>, msg: Rpc): Effect.Effect<unknown | null> => {
       if (!msg.method) return Effect.succeed(failure(msg.id, -32600, "Invalid request"));
@@ -96,7 +101,11 @@ export const make = (baseUrl: string) =>
         case "tools/list":
           return Effect.succeed(
             respond(msg.id, {
-              tools: [...tools.values()].map((t) => ({ name: t.name, description: t.description, inputSchema: jsonSchema(t.input) })),
+              tools: [...tools.values()].map((t) => ({
+                name: t.name,
+                description: t.description,
+                inputSchema: jsonSchema(t.input),
+              })),
             }),
           );
         case "tools/call": {
@@ -109,7 +118,9 @@ export const make = (baseUrl: string) =>
             return Effect.succeed(respond(msg.id, text(`Invalid arguments: ${errorText(err)}`, true)));
           }
           return t.run(args).pipe(
-            Effect.catchCause((cause) => Effect.succeed(text(`The tool failed: ${errorText(Cause.squash(cause))}`, true))),
+            Effect.catchCause((cause) =>
+              Effect.succeed(text(`The tool failed: ${errorText(Cause.squash(cause))}`, true)),
+            ),
             Effect.map((result) => respond(msg.id, result)),
           );
         }

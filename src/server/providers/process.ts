@@ -21,7 +21,11 @@ export async function runCommand(
     stderr: "pipe",
   });
   const timer = setTimeout(() => proc.kill(), options.timeoutMs ?? 15_000);
-  const [stdout, stderr, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   clearTimeout(timer);
   return { code, stdout, stderr };
 }

@@ -22,7 +22,12 @@ const nameProblem = (name: string) =>
         : null;
 
 /** Name and value; the value field never shows a saved value. */
-export function SecretForm(props: { name?: string; saveLabel?: string; onSave: (name: string, value: string) => Promise<unknown>; onCancel?: () => void }) {
+export function SecretForm(props: {
+  name?: string;
+  saveLabel?: string;
+  onSave: (name: string, value: string) => Promise<unknown>;
+  onCancel?: () => void;
+}) {
   const [name, setName] = createSignal(props.name ?? "");
   const [value, setValue] = createSignal("");
   const [error, setError] = createSignal<string>();
@@ -86,7 +91,8 @@ export function SecretForm(props: { name?: string; saveLabel?: string; onSave: (
   );
 }
 
-const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "never");
+const when = (iso: string | null) =>
+  iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "never";
 
 /** One saved secret: its name and dates, with replace and delete. */
 export function SecretRow(props: { secret: SecretInfo; scopeLabel: string }) {
@@ -99,14 +105,24 @@ export function SecretRow(props: { secret: SecretInfo; scopeLabel: string }) {
         <span {...stylex.attrs(styles.meta)}>
           updated {when(props.secret.updatedAt)} · used {when(props.secret.lastUsedAt)}
         </span>
-        <button type="button" title="Replace the value" onClick={() => setReplacing((r) => !r)} {...stylex.attrs(styles.iconButton)}>
+        <button
+          type="button"
+          title="Replace the value"
+          onClick={() => setReplacing((r) => !r)}
+          {...stylex.attrs(styles.iconButton)}
+        >
           <Icon name="pencil" size={14} />
         </button>
         <button
           type="button"
           title="Delete"
           onClick={async () => {
-            if (await confirmDialog(`Delete the secret ${props.secret.name} (${props.scopeLabel})? Apps using it restart without it.`, { confirmLabel: "Delete", danger: true })) {
+            if (
+              await confirmDialog(
+                `Delete the secret ${props.secret.name} (${props.scopeLabel})? Apps using it restart without it.`,
+                { confirmLabel: "Delete", danger: true },
+              )
+            ) {
               await api.deleteSecret(props.secret.id);
             }
           }}
@@ -134,17 +150,27 @@ export function SecretRow(props: { secret: SecretInfo; scopeLabel: string }) {
 /** The app tab's secrets: its own, its workspace's, and which global ones it may use. */
 export function SecretsPanel(props: { appId: string; onClose: () => void }) {
   const workspace = () => workspaceById(appById(props.appId)?.workspaceId ?? null);
-  const [own] = createResource(() => [props.appId, securityVersion()] as const, ([id]) => api.secrets(id));
+  const [own] = createResource(
+    () => [props.appId, securityVersion()] as const,
+    ([id]) => api.secrets(id),
+  );
   const [shared] = createResource(
     () => (workspace() ? ([workspace()!.id, securityVersion()] as const) : undefined),
     ([id]) => api.secrets(workspaceScope(id)),
   );
   const [globals] = createResource(securityVersion, () => api.secrets("global"));
   const [grants] = createResource(securityVersion, () => api.permissions());
-  const grantFor = (name: string) => grants()?.find((g) => g.subject === props.appId && g.action === "app.secret" && g.resource === name);
+  const grantFor = (name: string) =>
+    grants()?.find((g) => g.subject === props.appId && g.action === "app.secret" && g.resource === name);
   // The app's own choice wins; else the one for its whole workspace.
   const workspaceGrant = (name: string) =>
-    grants()?.find((g) => workspace() && g.subject === workspaceScope(workspace()!.id) && g.action === "app.secret" && g.resource === name);
+    grants()?.find(
+      (g) =>
+        workspace() &&
+        g.subject === workspaceScope(workspace()!.id) &&
+        g.action === "app.secret" &&
+        g.resource === name,
+    );
   const allowed = (name: string) => (grantFor(name) ?? workspaceGrant(name))?.decision === "allow";
   const viaWorkspace = (name: string) => !grantFor(name) && !!workspaceGrant(name);
 
@@ -165,17 +191,24 @@ export function SecretsPanel(props: { appId: string; onClose: () => void }) {
       </div>
       <div {...stylex.attrs(styles.panelBody)}>
         <p {...stylex.attrs(styles.note)}>
-          The app's server gets these as environment variables (<code>process.env.NAME</code>). Values can't be viewed after
-          saving, agents never see them, and they're masked in the logs.
-          <Show when={own()?.protection === "file"}> They're encrypted with a key protected by file permissions (no OS keychain found).</Show>
+          The app's server gets these as environment variables (<code>process.env.NAME</code>). Values can't be viewed
+          after saving, agents never see them, and they're masked in the logs.
+          <Show when={own()?.protection === "file"}>
+            {" "}
+            They're encrypted with a key protected by file permissions (no OS keychain found).
+          </Show>
         </p>
         <Show when={own()?.protection === "locked"}>
-          <p {...stylex.attrs(styles.error)}>Secrets are locked: Rune Browser couldn't unlock its key from the OS keychain.</p>
+          <p {...stylex.attrs(styles.error)}>
+            Secrets are locked: Rune Browser couldn't unlock its key from the OS keychain.
+          </p>
         </Show>
         <For each={own()?.secrets}>{(secret) => <SecretRow secret={secret} scopeLabel="this app" />}</For>
         <SecretForm onSave={(name, value) => api.saveSecret(props.appId, name, value)} saveLabel="Add" />
         <Show when={shared()?.secrets.length}>
-          <span {...stylex.attrs(styles.subhead)}>Shared by the workspace {workspace()?.name} (managed in Settings)</span>
+          <span {...stylex.attrs(styles.subhead)}>
+            Shared by the workspace {workspace()?.name} (managed in Settings)
+          </span>
           <For each={shared()!.secrets}>
             {(secret) => (
               <div {...stylex.attrs(styles.globalRow)} data-workspace-secret={secret.name}>
@@ -190,10 +223,17 @@ export function SecretsPanel(props: { appId: string; onClose: () => void }) {
           <For each={globals()!.secrets}>
             {(secret) => (
               <label {...stylex.attrs(styles.globalRow)} data-global-secret={secret.name}>
-                <input type="checkbox" checked={allowed(secret.name)} disabled={viaWorkspace(secret.name)} onChange={() => void toggle(secret.name)} />
+                <input
+                  type="checkbox"
+                  checked={allowed(secret.name)}
+                  disabled={viaWorkspace(secret.name)}
+                  onChange={() => void toggle(secret.name)}
+                />
                 <code {...stylex.attrs(styles.name)}>{secret.name}</code>
                 <Show when={viaWorkspace(secret.name)}>
-                  <span {...stylex.attrs(styles.meta)}>{allowed(secret.name) ? "allowed" : "denied"} for the whole workspace</span>
+                  <span {...stylex.attrs(styles.meta)}>
+                    {allowed(secret.name) ? "allowed" : "denied"} for the whole workspace
+                  </span>
                 </Show>
               </label>
             )}
@@ -213,12 +253,21 @@ export function SecretRequestCard(props: { appId: string; content: string }) {
       return { name: "?", description: "" };
     }
   };
-  const [own] = createResource(() => [props.appId, securityVersion()] as const, ([id]) => api.secrets(id));
+  const [own] = createResource(
+    () => [props.appId, securityVersion()] as const,
+    ([id]) => api.secrets(id),
+  );
   const [globals] = createResource(securityVersion, () => api.secrets("global"));
   const [grants] = createResource(securityVersion, () => api.permissions());
   const has = () =>
     own()?.secrets.some((s) => s.name === request().name) ||
-    grants()?.some((g) => g.subject === props.appId && g.action === "app.secret" && g.resource === request().name && g.decision === "allow");
+    grants()?.some(
+      (g) =>
+        g.subject === props.appId &&
+        g.action === "app.secret" &&
+        g.resource === request().name &&
+        g.decision === "allow",
+    );
   const globalExists = () => globals()?.secrets.some((s) => s.name === request().name);
 
   return (
@@ -240,7 +289,11 @@ export function SecretRequestCard(props: { appId: string; content: string }) {
           </span>
         }
       >
-        <SecretForm name={request().name} saveLabel="Add secret" onSave={(name, value) => api.saveSecret(props.appId, name, value)} />
+        <SecretForm
+          name={request().name}
+          saveLabel="Add secret"
+          onSave={(name, value) => api.saveSecret(props.appId, name, value)}
+        />
         <Show when={globalExists()}>
           <Button onClick={() => void api.setPermission(props.appId, "app.secret", request().name, "allow")}>
             Use the global {request().name}
@@ -274,7 +327,15 @@ const styles = stylex.create({
   rowHead: { display: "flex", alignItems: "center", gap: space.sm, minWidth: 0, fontSize: font.sm },
   rowIcon: { color: colors.accent, flexShrink: 0 },
   name: { fontFamily: font.mono, fontSize: font.xs, fontWeight: 600 },
-  meta: { flex: 1, minWidth: 0, color: colors.muted, fontSize: font.xs, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  meta: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.muted,
+    fontSize: font.xs,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
   iconButton: {
     display: "grid",
     placeItems: "center",
@@ -298,11 +359,33 @@ const styles = stylex.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  panelHeader: { display: "flex", alignItems: "center", gap: 6, height: 34, flexShrink: 0, paddingInline: space.md, color: colors.muted },
+  panelHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    flexShrink: 0,
+    paddingInline: space.md,
+    color: colors.muted,
+  },
   panelTitle: { flex: 1, fontSize: font.xs, fontWeight: 600 },
-  panelBody: { display: "flex", flexDirection: "column", gap: space.sm, overflowY: "auto", paddingInline: space.md, paddingBottom: space.md },
+  panelBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: space.sm,
+    overflowY: "auto",
+    paddingInline: space.md,
+    paddingBottom: space.md,
+  },
   note: { margin: 0, color: colors.muted, fontSize: font.xs, lineHeight: 1.5 },
-  subhead: { marginTop: space.sm, color: colors.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" },
+  subhead: {
+    marginTop: space.sm,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
   globalRow: { display: "flex", alignItems: "center", gap: space.sm, cursor: "pointer" },
   card: {
     display: "flex",

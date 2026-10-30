@@ -46,7 +46,9 @@ function Bar() {
     closeCommandBar();
     void Promise.resolve()
       .then(() => command.run(value))
-      .catch((err) => toast({ title: command.title, message: err instanceof Error ? err.message : String(err), kind: "error" }));
+      .catch((err) =>
+        toast({ title: command.title, message: err instanceof Error ? err.message : String(err), kind: "error" }),
+      );
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -130,7 +132,14 @@ function Bar() {
                     >
                       <Show
                         when={command.favicon}
-                        fallback={<Icon name={command.icon} size={16} {...stylex.attrs(styles.icon)} fallback={<span {...stylex.attrs(styles.icon)}>{command.icon}</span>} />}
+                        fallback={
+                          <Icon
+                            name={command.icon}
+                            size={16}
+                            {...stylex.attrs(styles.icon)}
+                            fallback={<span {...stylex.attrs(styles.icon)}>{command.icon}</span>}
+                          />
+                        }
                       >
                         {(src) => <img src={src()} alt="" width={16} height={16} {...stylex.attrs(styles.icon)} />}
                       </Show>
@@ -236,7 +245,15 @@ const styles = stylex.create({
   icon: { flexShrink: 0, color: colors.muted, objectFit: "contain" },
   text: { display: "flex", alignItems: "baseline", gap: space.sm, flex: 1, minWidth: 0, overflow: "hidden" },
   title: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1, minWidth: 0 },
-  subtitle: { color: colors.muted, fontSize: font.sm, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 2, minWidth: 0 },
+  subtitle: {
+    color: colors.muted,
+    fontSize: font.sm,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    flexShrink: 2,
+    minWidth: 0,
+  },
   group: { flexShrink: 0, color: colors.muted, fontSize: font.xs },
   empty: { paddingBlock: space.lg, textAlign: "center", color: colors.muted },
   hint: {

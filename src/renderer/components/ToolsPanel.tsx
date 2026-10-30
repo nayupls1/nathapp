@@ -23,7 +23,12 @@ export function ToolsPanel(props: { appId: string; onClose: () => void }) {
       <div {...stylex.attrs(styles.panelHeader)}>
         <Icon name="wrench" size={14} />
         <span {...stylex.attrs(styles.panelTitle)}>Tools</span>
-        <button type="button" title="Refresh" onClick={() => setVersion((v) => v + 1)} {...stylex.attrs(styles.iconButton)}>
+        <button
+          type="button"
+          title="Refresh"
+          onClick={() => setVersion((v) => v + 1)}
+          {...stylex.attrs(styles.iconButton)}
+        >
           <Icon name="refresh-cw" size={14} />
         </button>
         <button type="button" title="Close" onClick={props.onClose} {...stylex.attrs(styles.iconButton)}>
@@ -32,8 +37,8 @@ export function ToolsPanel(props: { appId: string; onClose: () => void }) {
       </div>
       <div {...stylex.attrs(styles.panelBody)}>
         <p {...stylex.attrs(styles.note)}>
-          What this app can do, for you, agents and other apps in this workspace (they need your OK). Actions come from its <code>rune.json</code>; the
-          rest Rune Browser derives from its data.
+          What this app can do, for you, agents and other apps in this workspace (they need your OK). Actions come from
+          its <code>rune.json</code>; the rest Rune Browser derives from its data.
         </p>
         <Show when={tools() && !tools()!.length}>
           <p {...stylex.attrs(styles.note)} data-tools-empty>
@@ -81,7 +86,12 @@ function ToolRow(props: { appId: string; tool: AppTool }) {
     }
     setRunning(true);
     try {
-      setResult(await api.callTool(props.appId, props.tool.id, { params: out, ...(props.tool.input ? { input: input() } : {}) }));
+      setResult(
+        await api.callTool(props.appId, props.tool.id, {
+          params: out,
+          ...(props.tool.input ? { input: input() } : {}),
+        }),
+      );
     } catch (err) {
       setResult({ ok: false, status: 0, message: err instanceof Error ? err.message : String(err) });
     } finally {
@@ -121,7 +131,11 @@ function ToolRow(props: { appId: string; tool: AppTool }) {
                     />
                   }
                 >
-                  <input type="checkbox" checked={values()[name] === "true"} onChange={(e) => set(name, e.currentTarget.checked ? "true" : "")} />
+                  <input
+                    type="checkbox"
+                    checked={values()[name] === "true"}
+                    onChange={(e) => set(name, e.currentTarget.checked ? "true" : "")}
+                  />
                 </Show>
               </label>
             )}
@@ -129,7 +143,12 @@ function ToolRow(props: { appId: string; tool: AppTool }) {
           <Show when={props.tool.input}>
             <label {...stylex.attrs(styles.field)}>
               <span {...stylex.attrs(styles.fieldName)}>input</span>
-              <input value={input()} placeholder={props.tool.input} onInput={(e) => setInput(e.currentTarget.value)} {...stylex.attrs(styles.input)} />
+              <input
+                value={input()}
+                placeholder={props.tool.input}
+                onInput={(e) => setInput(e.currentTarget.value)}
+                {...stylex.attrs(styles.input)}
+              />
             </label>
           </Show>
           <div>
@@ -162,11 +181,34 @@ const styles = stylex.create({
     borderTopColor: colors.border,
     backgroundColor: colors.surface,
   },
-  panelHeader: { display: "flex", alignItems: "center", gap: 6, height: 34, flexShrink: 0, paddingInline: space.md, color: colors.muted },
+  panelHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    height: 34,
+    flexShrink: 0,
+    paddingInline: space.md,
+    color: colors.muted,
+  },
   panelTitle: { flex: 1, fontSize: font.xs, fontWeight: 600 },
-  panelBody: { display: "flex", flexDirection: "column", gap: 4, minHeight: 0, overflowY: "auto", paddingInline: space.md, paddingBottom: space.md },
+  panelBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingInline: space.md,
+    paddingBottom: space.md,
+  },
   note: { margin: 0, color: colors.muted, fontSize: font.xs, lineHeight: 1.5 },
-  subhead: { marginTop: space.sm, color: colors.muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" },
+  subhead: {
+    marginTop: space.sm,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.04em",
+  },
   iconButton: {
     display: "grid",
     placeItems: "center",
@@ -196,7 +238,14 @@ const styles = stylex.create({
     cursor: "pointer",
   },
   toolId: { flexShrink: 0, color: colors.text, fontFamily: font.mono, fontSize: font.xs, fontWeight: 600 },
-  toolTitle: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: font.xs },
+  toolTitle: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    fontSize: font.xs,
+  },
   badge: {
     flexShrink: 0,
     paddingInline: 6,

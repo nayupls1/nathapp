@@ -21,9 +21,11 @@ interface Candidate {
   find: string[];
 }
 
-const programFiles = [process.env.ProgramFiles, process.env["ProgramFiles(x86)"], process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Programs")].filter(
-  (dir): dir is string => !!dir,
-);
+const programFiles = [
+  process.env.ProgramFiles,
+  process.env["ProgramFiles(x86)"],
+  process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, "Programs"),
+].filter((dir): dir is string => !!dir);
 
 const candidates: Candidate[] = windows
   ? [
@@ -81,12 +83,16 @@ export function resolveShell(setting: string): { id: string; path: string | null
   if (known) return { id: known.id, path: known.path };
   if (/[\\/]/.test(choice) && existsSync(choice)) return { id: "custom", path: choice };
   const fallback = autoShell();
-  return fallback === "bun" ? { id: "bun", path: null } : { id: fallback, path: detectShells().find((s) => s.id === fallback)?.path ?? "/bin/sh" };
+  return fallback === "bun"
+    ? { id: "bun", path: null }
+    : { id: fallback, path: detectShells().find((s) => s.id === fallback)?.path ?? "/bin/sh" };
 }
 
 /** How a shell takes a command line, by its file name. */
 function flavor(path: string): "posix" | "powershell" | "cmd" {
-  const name = basename(path).toLowerCase().replace(/\.exe$/, "");
+  const name = basename(path)
+    .toLowerCase()
+    .replace(/\.exe$/, "");
   if (name === "pwsh" || name === "powershell") return "powershell";
   if (name === "cmd") return "cmd";
   return "posix"; // sh, bash, zsh, fish, nu, …: all take -c
@@ -96,7 +102,11 @@ function flavor(path: string): "posix" | "powershell" | "cmd" {
  * The argv that runs `command` in the chosen shell. `bun` is how to run Bun's
  * shell (`bun exec`), with the environment it needs.
  */
-export function shellCommand(shell: { id: string; path: string | null }, command: string, bun: { path: string }): ShellCommand {
+export function shellCommand(
+  shell: { id: string; path: string | null },
+  command: string,
+  bun: { path: string },
+): ShellCommand {
   if (shell.id === "bun" || !shell.path) return { argv: [bun.path, "exec", command] };
   switch (flavor(shell.path)) {
     case "powershell":

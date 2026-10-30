@@ -21,8 +21,13 @@ const config = readConfig({ RUNE_DATA_DIR: dataDir, PORT: "1" });
 
 const layer = core(config);
 const runtime = ManagedRuntime.make(layer);
-const run = <A, E>(effect: Effect.Effect<A, E, Runtime.Runtime | Workspace.Workspace | Sandbox.Sandbox | Apps.Apps | SettingsDb.Settings>) =>
-  runtime.runPromise(effect);
+const run = <A, E>(
+  effect: Effect.Effect<
+    A,
+    E,
+    Runtime.Runtime | Workspace.Workspace | Sandbox.Sandbox | Apps.Apps | SettingsDb.Settings
+  >,
+) => runtime.runPromise(effect);
 
 afterAll(async () => {
   await runtime.dispose();
@@ -68,7 +73,9 @@ describe.if(hasBwrap)("sandbox", () => {
     expect(readFileSync(join(dir, "note.txt"), "utf8")).toBe("hi\n");
 
     // Only the bun binary is bound from outside; the user's files aren't there.
-    const outside = await exec(`cat ${JSON.stringify(join(process.cwd(), "package.json"))} 2>&1; ls -A ${JSON.stringify(homedir())}`);
+    const outside = await exec(
+      `cat ${JSON.stringify(join(process.cwd(), "package.json"))} 2>&1; ls -A ${JSON.stringify(homedir())}`,
+    );
     expect(outside.output).toContain("No such file");
     expect(outside.output).not.toContain("devDependencies");
     const otherApp = await exec(`ls ${JSON.stringify(config.appsDir)} 2>&1`);
@@ -83,16 +90,30 @@ describe.if(hasBwrap)("sandbox", () => {
     const app = await createApp();
     await run(Effect.flatMap(Workspace.Workspace, (w) => w.ensureDir(app.id)));
     const exec = (command: string) => run(Effect.flatMap(Runtime.Runtime, (r) => r.exec(app.id, command, 20_000)));
-    const git = await exec("git init -q && echo x > a && git add a && git commit -qm first && git log --format='%an %s'");
+    const git = await exec(
+      "git init -q && echo x > a && git add a && git commit -qm first && git log --format='%an %s'",
+    );
     expect(git.output).toBe("Rune Browser first");
     expect(git.code).toBe(0);
     // Credentials and personal files in your home stay hidden.
     const home = homedir();
-    expect((await exec(`ls ${JSON.stringify(join(home, ".ssh"))} ${JSON.stringify(join(home, ".gitconfig"))} 2>&1 | grep -c 'No such file'`)).output).toBe("2");
+    expect(
+      (
+        await exec(
+          `ls ${JSON.stringify(join(home, ".ssh"))} ${JSON.stringify(join(home, ".gitconfig"))} 2>&1 | grep -c 'No such file'`,
+        )
+      ).output,
+    ).toBe("2");
     const info = await run(Effect.flatMap(Sandbox.Sandbox, (s) => s.info));
     for (const dir of info.readOnly) {
       expect(dir.startsWith(home)).toBe(true);
-      expect((await exec(`test -d ${JSON.stringify(dir)} && echo yes; touch ${JSON.stringify(join(dir, "x"))} 2>&1 | grep -c 'Read-only'`)).output).toBe("yes\n1");
+      expect(
+        (
+          await exec(
+            `test -d ${JSON.stringify(dir)} && echo yes; touch ${JSON.stringify(join(dir, "x"))} 2>&1 | grep -c 'Read-only'`,
+          )
+        ).output,
+      ).toBe("yes\n1");
     }
   });
 
@@ -100,7 +121,12 @@ describe.if(hasBwrap)("sandbox", () => {
     const app = await createApp();
     await run(Effect.flatMap(Workspace.Workspace, (w) => w.ensureDir(app.id)));
     const exec = (command: string) => run(Effect.flatMap(Runtime.Runtime, (r) => r.exec(app.id, command, 20_000)));
-    const useShell = (shell: string) => run(Effect.flatMap(SettingsDb.Settings, (s) => Effect.flatMap(s.get(), (current) => s.save({ ...current, apps: { ...current.apps, shell } }))));
+    const useShell = (shell: string) =>
+      run(
+        Effect.flatMap(SettingsDb.Settings, (s) =>
+          Effect.flatMap(s.get(), (current) => s.save({ ...current, apps: { ...current.apps, shell } })),
+        ),
+      );
     try {
       await useShell("bun");
       // Bun's shell: cross-platform builtins and $VARIABLES, no /bin/sh needed.
@@ -147,6 +173,11 @@ describe("runtime", () => {
     await run(Effect.flatMap(Runtime.Runtime, (r) => r.stop(app.id)));
     const stopped = await run(Effect.flatMap(Runtime.Runtime, (r) => r.status(app.id)));
     expect(stopped.state).toBe("stopped");
-    expect(await fetch(live.url!).then(() => "up", () => "down")).toBe("down");
+    expect(
+      await fetch(live.url!).then(
+        () => "up",
+        () => "down",
+      ),
+    ).toBe("down");
   }, 180_000);
 });

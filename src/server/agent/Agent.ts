@@ -3,7 +3,14 @@
 // (topic app:<id>). A turn runs in the background; stopping interrupts it.
 import { delimiter } from "node:path";
 import { Context, Data, Effect, Fiber, FiberMap, Layer, Option, Stream } from "effect";
-import { appTarget, type AgentChoice, type ChatEvent, type ChatMessage, type PageContext, type ProviderId } from "../../shared/api";
+import {
+  appTarget,
+  type AgentChoice,
+  type ChatEvent,
+  type ChatMessage,
+  type PageContext,
+  type ProviderId,
+} from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { ServerConfig } from "../Config";
 import { Apps, type AppRecord } from "../db/Apps";
@@ -48,7 +55,10 @@ export function summarizeArgs(args: unknown): string | null {
   return parts.length ? parts.join(", ") : null;
 }
 
-export class AgentError extends Data.TaggedError("AgentError")<{ readonly status: 404 | 409 | 400; readonly message: string }> {}
+export class AgentError extends Data.TaggedError("AgentError")<{
+  readonly status: 404 | 409 | 400;
+  readonly message: string;
+}> {}
 
 export interface TurnRequest {
   readonly prompt: string;
@@ -87,9 +97,27 @@ export const make = Effect.gen(function* () {
   const scheduler = yield* Scheduler;
   const running = yield* FiberMap.make<string>();
   // Tools need the services; captured once.
-  const context = yield* Effect.context<Hub | Apps | Workspace | Runtime | Projects | Sites | Permissions | Secrets | Network | AppData | AppTools | PageChanges | Scheduler | Sources | Audit | History>();
+  const context = yield* Effect.context<
+    | Hub
+    | Apps
+    | Workspace
+    | Runtime
+    | Projects
+    | Sites
+    | Permissions
+    | Secrets
+    | Network
+    | AppData
+    | AppTools
+    | PageChanges
+    | Scheduler
+    | Sources
+    | Audit
+    | History
+  >();
 
-  const emit = (appId: string, event: ChatEvent) => hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
+  const emit = (appId: string, event: ChatEvent) =>
+    hub.publish({ type: "chat", topic: topics.app(appId), appId, event });
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
     apps.addMessage(appId, role, content).pipe(Effect.tap((m) => emit(appId, { type: "message", message: m })));
 
@@ -112,7 +140,11 @@ export const make = Effect.gen(function* () {
   });
 
   /** The request's choice, else the tab's last one, else the defaults (the workspace's or Settings'). */
-  const resolveChoice = (request: Partial<AgentChoice> | undefined, app: AppRecord, defaults: AgentChoice): AgentChoice => {
+  const resolveChoice = (
+    request: Partial<AgentChoice> | undefined,
+    app: AppRecord,
+    defaults: AgentChoice,
+  ): AgentChoice => {
     const provider: ProviderId = request?.provider ?? app.agent?.provider ?? defaults.provider;
     const previous = app.agent?.provider === provider ? app.agent : provider === defaults.provider ? defaults : null;
     return {
@@ -122,13 +154,19 @@ export const make = Effect.gen(function* () {
     };
   };
 
-  const turn = (app: AppRecord, choice: AgentChoice, request: TurnRequest, shared: { text: string; summaries: unknown[] }) =>
+  const turn = (
+    app: AppRecord,
+    choice: AgentChoice,
+    request: TurnRequest,
+    shared: { text: string; summaries: unknown[] },
+  ) =>
     Effect.gen(function* () {
       const appId = app.id;
       const s = yield* settings.get();
       const space = (yield* workspaces.ofApp(appId))?.settings;
       // The workspace's instructions come after the global ones.
-      const combine = (global: string, local: string | undefined) => [global.trim(), local?.trim()].filter(Boolean).join("\n\n");
+      const combine = (global: string, local: string | undefined) =>
+        [global.trim(), local?.trim()].filter(Boolean).join("\n\n");
       yield* emit(appId, { type: "started" });
       const files: AttachedFile[] = [];
       for (const id of request.attachments ?? []) {
@@ -141,7 +179,14 @@ export const make = Effect.gen(function* () {
       if (shared.summaries.length) {
         yield* message(appId, "context", JSON.stringify({ shared: shared.summaries }));
         for (const s of shared.summaries as { tabId: string; name: string; what: string }[]) {
-          yield* audit.record({ actor: "user", actorLabel: "You", tabId: appId, action: "tab.share", target: s.name, detail: `${s.what} of tab ${s.tabId}` });
+          yield* audit.record({
+            actor: "user",
+            actorLabel: "You",
+            tabId: appId,
+            action: "tab.share",
+            target: s.name,
+            detail: `${s.what} of tab ${s.tabId}`,
+          });
         }
       }
       yield* message(appId, "user", request.prompt);
@@ -183,9 +228,19 @@ export const make = Effect.gen(function* () {
       // Snapshots around the turn: what changed before it (the user, the app's data), and what the agent changed.
       const target = web ? "sites" : appTarget(appId);
       const prompt = request.prompt.trim();
-      yield* history.record(target, { actor: "rune", actorLabel: "Automatic snapshot", summary: `Before “${prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt}”` });
+      yield* history.record(target, {
+        actor: "rune",
+        actorLabel: "Automatic snapshot",
+        summary: `Before “${prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt}”`,
+      });
       const snapshotAfter = history.record(target, { actor: "agent", actorLabel, summary: prompt });
-      yield* audit.record({ actor: "agent", actorLabel, tabId: appId, action: "agent.turn", detail: `${request.prompt.length} characters` });
+      yield* audit.record({
+        actor: "agent",
+        actorLabel,
+        tabId: appId,
+        action: "agent.turn",
+        detail: `${request.prompt.length} characters`,
+      });
 
       let cwd: string;
       let instructions: string;
@@ -195,7 +250,11 @@ export const make = Effect.gen(function* () {
       } else {
         cwd = yield* workspace.ensureDir(appId);
         const project = yield* workspace.info(appId);
-        instructions = buildAppPrompt({ instructions: combine(s.agent.instructions, space?.instructions), dir: cwd, hasProject: !!project });
+        instructions = buildAppPrompt({
+          instructions: combine(s.agent.instructions, space?.instructions),
+          dir: cwd,
+          hasProject: !!project,
+        });
         yield* projects.editing(appId);
       }
       // The code attached to the tab: the agent works with it through Rune Browser's source tools.
@@ -232,7 +291,15 @@ export const make = Effect.gen(function* () {
                 return Effect.asVoid(message(appId, "assistant", event.text));
               case "tool":
                 return Effect.asVoid(message(appId, "tool", event.title)).pipe(
-                  Effect.andThen(audit.record({ actor: "agent", actorLabel, tabId: appId, action: "agent.native", target: event.title })),
+                  Effect.andThen(
+                    audit.record({
+                      actor: "agent",
+                      actorLabel,
+                      tabId: appId,
+                      action: "agent.native",
+                      target: event.title,
+                    }),
+                  ),
                 );
               case "error":
                 return Effect.asVoid(message(appId, "error", event.message));
@@ -257,30 +324,32 @@ export const make = Effect.gen(function* () {
     );
 
   const start = (appId: string, request: TurnRequest) =>
-      Effect.gen(function* () {
-        const app = yield* apps.get(appId);
-        if (!app) return yield* new AgentError({ status: 404, message: "Not found" });
-        if (yield* FiberMap.has(running, appId)) {
-          return yield* new AgentError({ status: 409, message: "The agent is already working on this tab" });
-        }
-        // Shared tabs are checked before the turn starts: one that may not be shared fails the request.
-        const shared = request.shared?.length
-          ? yield* Effect.provide(sharedContext(app, request.shared), context).pipe(Effect.mapError((message) => new AgentError({ status: 400, message })))
-          : { text: "", summaries: [] };
-        const s = yield* settings.get();
-        // New tabs start with the workspace's default agent, if it has one.
-        const defaults = (yield* workspaces.ofApp(appId))?.settings.agent ?? s.agent;
-        const choice = resolveChoice(request.agent, app, defaults);
-        const status = (yield* providers.list).find((p) => p.id === choice.provider)!;
-        if (status.state !== "ready" && status.state !== "checking") {
-          return yield* new AgentError({
-            status: 400,
-            message: `${status.label} can't run: ${status.state === "disabled" ? "it's turned off in Settings" : (status.message ?? status.state)}`,
-          });
-        }
-        yield* apps.setAgent(appId, choice);
-        yield* FiberMap.run(running, appId, turn(app, choice, request, shared), { onlyIfMissing: true });
-      });
+    Effect.gen(function* () {
+      const app = yield* apps.get(appId);
+      if (!app) return yield* new AgentError({ status: 404, message: "Not found" });
+      if (yield* FiberMap.has(running, appId)) {
+        return yield* new AgentError({ status: 409, message: "The agent is already working on this tab" });
+      }
+      // Shared tabs are checked before the turn starts: one that may not be shared fails the request.
+      const shared = request.shared?.length
+        ? yield* Effect.provide(sharedContext(app, request.shared), context).pipe(
+            Effect.mapError((message) => new AgentError({ status: 400, message })),
+          )
+        : { text: "", summaries: [] };
+      const s = yield* settings.get();
+      // New tabs start with the workspace's default agent, if it has one.
+      const defaults = (yield* workspaces.ofApp(appId))?.settings.agent ?? s.agent;
+      const choice = resolveChoice(request.agent, app, defaults);
+      const status = (yield* providers.list).find((p) => p.id === choice.provider)!;
+      if (status.state !== "ready" && status.state !== "checking") {
+        return yield* new AgentError({
+          status: 400,
+          message: `${status.label} can't run: ${status.state === "disabled" ? "it's turned off in Settings" : (status.message ?? status.state)}`,
+        });
+      }
+      yield* apps.setAgent(appId, choice);
+      yield* FiberMap.run(running, appId, turn(app, choice, request, shared), { onlyIfMissing: true });
+    });
 
   /**
    * A scheduled prompt: a new chat in its tab (the current one goes to the
@@ -294,7 +363,11 @@ export const make = Effect.gen(function* () {
       if (!tabId) {
         const space = task.newTab ? yield* workspaces.get(task.newTab.workspaceId) : null;
         if (!space || !task.newTab) return failed("The workspace is gone");
-        const app = yield* apps.create(space.id, task.newTab.kind, task.newTab.kind === "web" ? (task.newTab.url ?? null) : null);
+        const app = yield* apps.create(
+          space.id,
+          task.newTab.kind,
+          task.newTab.kind === "web" ? (task.newTab.url ?? null) : null,
+        );
         yield* projects.publish(app);
         yield* opened(app.id);
         tabId = app.id;
@@ -306,13 +379,18 @@ export const make = Effect.gen(function* () {
       const started = yield* start(id, { prompt: task.prompt }).pipe(Effect.result);
       if (started._tag === "Failure") return failed(started.failure.message);
       const fiber = yield* FiberMap.get(running, id);
-      if (Option.isSome(fiber)) yield* Fiber.await(fiber.value).pipe(Effect.onInterrupt(() => FiberMap.remove(running, id)));
+      if (Option.isSome(fiber))
+        yield* Fiber.await(fiber.value).pipe(Effect.onInterrupt(() => FiberMap.remove(running, id)));
       // The chat is the turn: its errors, else the agent's last reply.
       const messages = yield* apps.messages(id);
       const error = messages.findLast((m) => m.role === "error");
       if (error) return { status: "error", message: error.content.slice(0, 500), output: null } satisfies Outcome;
       const reply = messages.findLast((m) => m.role === "assistant")?.content.trim() ?? "";
-      return { status: "ok", message: reply ? reply.split("\n")[0]!.slice(0, 200) : "Done", output: reply || null } satisfies Outcome;
+      return {
+        status: "ok",
+        message: reply ? reply.split("\n")[0]!.slice(0, 200) : "Done",
+        output: reply || null,
+      } satisfies Outcome;
     }).pipe(Effect.orDie);
   scheduler.setPromptRunner(runPrompt);
 

@@ -45,7 +45,11 @@ export function Composer(props: {
     const q = m.query.toLowerCase();
     return apps
       .filter((t) => t.workspaceId === self.workspaceId && t.id !== self.id && t.name.toLowerCase().includes(q))
-      .sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) || a.position - b.position)
+      .sort(
+        (a, b) =>
+          Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q)) ||
+          a.position - b.position,
+      )
       .slice(0, 8);
   };
   const findMention = () => {
@@ -68,7 +72,8 @@ export function Composer(props: {
       resize();
     });
   };
-  const shareLabel = (ref: ShareRef) => `${appById(ref.tabId)?.name ?? "A closed tab"}${ref.messageId !== undefined ? " · reply" : ""}`;
+  const shareLabel = (ref: ShareRef) =>
+    `${appById(ref.tabId)?.name ?? "A closed tab"}${ref.messageId !== undefined ? " · reply" : ""}`;
 
   const resize = () => {
     textarea.style.height = "auto";
@@ -116,11 +121,29 @@ export function Composer(props: {
         <div {...stylex.attrs(styles.files)} data-attachments>
           <For each={attachmentsOf(props.appId)}>
             {(file) => (
-              <span {...stylex.attrs(styles.file)} title={`${file.name} · ${Math.max(1, Math.round(file.size / 1024))} kB`} data-attachment={file.id}>
-                <Show when={file.mime.startsWith("image/")} fallback={<span {...stylex.attrs(styles.fileIcon)}><Icon name="file-text" size={16} /><span {...stylex.attrs(styles.fileName)}>{file.name}</span></span>}>
+              <span
+                {...stylex.attrs(styles.file)}
+                title={`${file.name} · ${Math.max(1, Math.round(file.size / 1024))} kB`}
+                data-attachment={file.id}
+              >
+                <Show
+                  when={file.mime.startsWith("image/")}
+                  fallback={
+                    <span {...stylex.attrs(styles.fileIcon)}>
+                      <Icon name="file-text" size={16} />
+                      <span {...stylex.attrs(styles.fileName)}>{file.name}</span>
+                    </span>
+                  }
+                >
                   <img src={attachmentUrl(props.appId, file.id)} alt={file.name} {...stylex.attrs(styles.thumb)} />
                 </Show>
-                <button type="button" title="Remove" aria-label={`Remove ${file.name}`} onClick={() => removeAttachment(props.appId, file.id)} {...stylex.attrs(styles.fileRemove)}>
+                <button
+                  type="button"
+                  title="Remove"
+                  aria-label={`Remove ${file.name}`}
+                  onClick={() => removeAttachment(props.appId, file.id)}
+                  {...stylex.attrs(styles.fileRemove)}
+                >
                   <Icon name="x" size={11} />
                 </button>
               </span>
@@ -139,12 +162,21 @@ export function Composer(props: {
             {(ref) => (
               <span
                 {...stylex.attrs(styles.share)}
-                title={ref.messageId !== undefined ? "A reply of that tab's agent, sent with your message" : "Shared with your message: what the tab shows or can do"}
+                title={
+                  ref.messageId !== undefined
+                    ? "A reply of that tab's agent, sent with your message"
+                    : "Shared with your message: what the tab shows or can do"
+                }
                 data-share-chip={ref.tabId}
               >
                 <Icon name={ref.messageId !== undefined ? "reply" : "at-sign"} size={12} />
                 <span {...stylex.attrs(styles.shareLabel)}>{shareLabel(ref)}</span>
-                <button type="button" title="Don't share" onClick={() => removeShare(props.appId, ref)} {...stylex.attrs(styles.shareRemove)}>
+                <button
+                  type="button"
+                  title="Don't share"
+                  onClick={() => removeShare(props.appId, ref)}
+                  {...stylex.attrs(styles.shareRemove)}
+                >
                   <Icon name="x" size={12} />
                 </button>
               </span>
@@ -174,7 +206,9 @@ export function Composer(props: {
                 >
                   <TabIcon tab={tab} size={14} />
                   <span {...stylex.attrs(styles.shareLabel)}>{tab.name}</span>
-                  <span {...stylex.attrs(styles.mentionKind)}>{why() ? "can't be shared here" : tab.kind === "web" ? "web page" : "app"}</span>
+                  <span {...stylex.attrs(styles.mentionKind)}>
+                    {why() ? "can't be shared here" : tab.kind === "web" ? "web page" : "app"}
+                  </span>
                 </button>
               );
             }}
@@ -229,7 +263,13 @@ export function Composer(props: {
       />
       <div {...stylex.attrs(styles.actions)}>
         <div {...stylex.attrs(styles.options)}>
-          <button type="button" title="Attach images or files (or paste a screenshot)" onClick={() => fileInput.click()} {...stylex.attrs(styles.attachButton)} data-attach-files>
+          <button
+            type="button"
+            title="Attach images or files (or paste a screenshot)"
+            onClick={() => fileInput.click()}
+            {...stylex.attrs(styles.attachButton)}
+            data-attach-files
+          >
             <Icon name="paperclip" size={15} />
           </button>
           <input
@@ -244,13 +284,19 @@ export function Composer(props: {
           />
           {props.tools}
           <Show when={states[props.appId]}>
-            {(state) => <AgentPicker choice={state().agent} onChange={(choice) => setAgentChoice(props.appId, choice)} />}
+            {(state) => (
+              <AgentPicker choice={state().agent} onChange={(choice) => setAgentChoice(props.appId, choice)} />
+            )}
           </Show>
         </div>
         <Show
           when={props.running}
           fallback={
-            <Button variant="primary" disabled={(!value().trim() && !attachmentsOf(props.appId).length) || busyUploading()} onClick={send}>
+            <Button
+              variant="primary"
+              disabled={(!value().trim() && !attachmentsOf(props.appId).length) || busyUploading()}
+              onClick={send}
+            >
               Send
             </Button>
           }
@@ -295,7 +341,14 @@ const styles = stylex.create({
   },
   thumb: { display: "block", height: 56, maxWidth: 160, objectFit: "cover" },
   fileIcon: { display: "flex", alignItems: "center", gap: 6, paddingInline: space.sm, color: colors.muted },
-  fileName: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 100, color: colors.text, fontSize: font.xs },
+  fileName: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 100,
+    color: colors.text,
+    fontSize: font.xs,
+  },
   fileRemove: {
     position: "absolute",
     top: 3,

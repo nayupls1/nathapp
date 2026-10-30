@@ -34,9 +34,14 @@ export interface AiRequest {
   readonly json?: boolean;
 }
 
-export type AiEvent = { readonly type: "delta"; readonly text: string } | { readonly type: "done"; readonly text: string; readonly provider: ProviderId; readonly model: string | null };
+export type AiEvent =
+  | { readonly type: "delta"; readonly text: string }
+  | { readonly type: "done"; readonly text: string; readonly provider: ProviderId; readonly model: string | null };
 
-export class AiError extends Data.TaggedError("AiError")<{ readonly status: 400 | 403 | 429 | 503 | 504; readonly message: string }> {}
+export class AiError extends Data.TaggedError("AiError")<{
+  readonly status: 400 | 403 | 429 | 503 | 504;
+  readonly message: string;
+}> {}
 
 export interface AiInfo {
   readonly enabled: boolean;
@@ -59,7 +64,6 @@ const CONCURRENT_PER_APP = 2;
 const MAX_INPUT_CHARS = 200_000;
 
 const today = () => new Date().toISOString().slice(0, 10);
-
 
 /** One prompt from a conversation (the providers take a single message per turn). */
 export function promptFor(messages: readonly AiMessage[]): string {
@@ -136,12 +140,17 @@ export const make = Effect.gen(function* () {
     chat: (appId, request) =>
       Effect.gen(function* () {
         const s = (yield* settings.get()).apps.ai;
-        if (!s.enabled) return yield* new AiError({ status: 403, message: "AI for apps is turned off in Rune Browser's Settings." });
+        if (!s.enabled)
+          return yield* new AiError({ status: 403, message: "AI for apps is turned off in Rune Browser's Settings." });
         if (!request.messages.length || request.messages.at(-1)!.role !== "user") {
           return yield* new AiError({ status: 400, message: "messages must end with a user message" });
         }
         const size = request.messages.reduce((n, m) => n + m.content.length, request.system?.length ?? 0);
-        if (size > MAX_INPUT_CHARS) return yield* new AiError({ status: 400, message: `The request is too long (${size} > ${MAX_INPUT_CHARS} characters)` });
+        if (size > MAX_INPUT_CHARS)
+          return yield* new AiError({
+            status: 400,
+            message: `The request is too long (${size} > ${MAX_INPUT_CHARS} characters)`,
+          });
 
         const app = yield* apps.get(appId);
         const appName = app?.name ?? "An app";
@@ -150,7 +159,15 @@ export const make = Effect.gen(function* () {
           return `${status.label}${model ? ` / ${model}` : ""}`;
         };
         const record = (label: string, outcome: "ok" | "denied" | "error", detail: string) =>
-          audit.record({ actor: "app", actorLabel: appName, tabId: appId, action: "ai.request", target: label, detail, outcome });
+          audit.record({
+            actor: "app",
+            actorLabel: appName,
+            tabId: appId,
+            action: "ai.request",
+            target: label,
+            detail,
+            outcome,
+          });
 
         // The first time, the user decides whether this app may use AI at all.
         const known = (yield* providers.list).find((p) => p.id === s.provider)!;
@@ -165,12 +182,19 @@ export const make = Effect.gen(function* () {
         if (!allowed) {
           runtime.note(appId, "AI: not allowed by the user");
           yield* record(labelOf(known), "denied", "Not allowed");
-          return yield* new AiError({ status: 403, message: "The user didn't allow this app to use AI. It can be allowed in Rune Browser's Settings → Permissions." });
+          return yield* new AiError({
+            status: 403,
+            message:
+              "The user didn't allow this app to use AI. It can be allowed in Rune Browser's Settings → Permissions.",
+          });
         }
 
         const { status } = yield* choice;
         if (status.state !== "ready") {
-          return yield* new AiError({ status: 503, message: `${status.label} isn't available: ${status.message ?? status.state}` });
+          return yield* new AiError({
+            status: 503,
+            message: `${status.label} isn't available: ${status.message ?? status.state}`,
+          });
         }
         if (request.model && !status.models.some((m) => m.id === request.model)) {
           return yield* new AiError({
@@ -182,7 +206,10 @@ export const make = Effect.gen(function* () {
         if (!(yield* take(appId, s.dailyLimit))) {
           runtime.note(appId, `AI: daily limit of ${s.dailyLimit} requests reached`);
           yield* record(label, "denied", `Daily limit of ${s.dailyLimit} reached`);
-          return yield* new AiError({ status: 429, message: `This app reached its daily AI limit (${s.dailyLimit} requests). It can be changed in Rune Browser's Settings.` });
+          return yield* new AiError({
+            status: 429,
+            message: `This app reached its daily AI limit (${s.dailyLimit} requests). It can be changed in Rune Browser's Settings.`,
+          });
         }
         const model = request.model ?? s.model ?? defaultAppModel(status);
         const effort = request.effort ?? (request.model ? null : s.effort);
@@ -225,8 +252,15 @@ export const make = Effect.gen(function* () {
                   return Stream.empty;
               }
             }),
-            Stream.concat(Stream.suspend(() => Stream.make({ type: "done", text: answer.trim(), provider: s.provider, model } as AiEvent))),
-            Stream.timeoutOrElse({ duration: TIMEOUT_MS, orElse: () => Stream.fail(new AiError({ status: 504, message: "The model took too long" })) }),
+            Stream.concat(
+              Stream.suspend(() =>
+                Stream.make({ type: "done", text: answer.trim(), provider: s.provider, model } as AiEvent),
+              ),
+            ),
+            Stream.timeoutOrElse({
+              duration: TIMEOUT_MS,
+              orElse: () => Stream.fail(new AiError({ status: 504, message: "The model took too long" })),
+            }),
             Stream.tap((event) => {
               if (event.type !== "done") return Effect.void;
               const summary = `${size.toLocaleString()} → ${event.text.length.toLocaleString()} chars · ${((Date.now() - started) / 1000).toFixed(1)}s`;
@@ -234,7 +268,9 @@ export const make = Effect.gen(function* () {
               return record(label, "ok", summary);
             }),
             Stream.tapError((err) =>
-              Effect.sync(() => runtime.note(appId, `AI: ${label} failed: ${err.message}`)).pipe(Effect.andThen(record(label, "error", err.message))),
+              Effect.sync(() => runtime.note(appId, `AI: ${label} failed: ${err.message}`)).pipe(
+                Effect.andThen(record(label, "error", err.message)),
+              ),
             ),
           );
 

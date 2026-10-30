@@ -7,7 +7,14 @@ import { createEffect, createSignal, For, on, onCleanup, onMount, Show } from "s
 import { Portal } from "solid-js/web";
 import { webPartition } from "../../shared/api";
 import type { ExtensionAction } from "../../shared/extensions";
-import { actionsVersion, extensionById, extensionList, popupRequest, setPopupRequest, showExtensionSettings } from "../lib/extensions";
+import {
+  actionsVersion,
+  extensionById,
+  extensionList,
+  popupRequest,
+  setPopupRequest,
+  showExtensionSettings,
+} from "../lib/extensions";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Icon } from "./Icon";
 
@@ -19,7 +26,12 @@ interface Popup {
   anchor: DOMRect;
 }
 
-export function ExtensionsBar(props: { workspaceId: string; tabId: () => number | null; active: boolean; onImport: () => void }) {
+export function ExtensionsBar(props: {
+  workspaceId: string;
+  tabId: () => number | null;
+  active: boolean;
+  onImport: () => void;
+}) {
   const [actions, setActions] = createSignal<ExtensionAction[]>([]);
   const [popup, setPopup] = createSignal<Popup | null>(null);
   const [menu, setMenu] = createSignal<DOMRect | null>(null);
@@ -84,7 +96,9 @@ export function ExtensionsBar(props: { workspaceId: string; tabId: () => number 
           />
         )}
       </Show>
-      <Show when={popup()}>{(p) => <ExtensionPopup popup={p()} workspaceId={props.workspaceId} onClose={() => setPopup(null)} />}</Show>
+      <Show when={popup()}>
+        {(p) => <ExtensionPopup popup={p()} workspaceId={props.workspaceId} onClose={() => setPopup(null)} />}
+      </Show>
     </>
   );
 }
@@ -93,12 +107,21 @@ function ActionIcon(props: { action: ExtensionAction; size?: number }) {
   return (
     <span {...stylex.attrs(styles.iconWrap)}>
       <Show when={props.action.icon} fallback={<Icon name="puzzle" size={props.size ?? 16} />}>
-        <img src={props.action.icon!} alt="" width={props.size ?? 18} height={props.size ?? 18} {...stylex.attrs(styles.icon)} />
+        <img
+          src={props.action.icon!}
+          alt=""
+          width={props.size ?? 18}
+          height={props.size ?? 18}
+          {...stylex.attrs(styles.icon)}
+        />
       </Show>
       <Show when={props.action.badge}>
         <span
           {...stylex.attrs(styles.badge)}
-          style={{ "background-color": props.action.badgeColor || undefined, color: props.action.badgeTextColor ?? undefined }}
+          style={{
+            "background-color": props.action.badgeColor || undefined,
+            color: props.action.badgeTextColor ?? undefined,
+          }}
           data-extension-badge
         >
           {props.action.badge.slice(0, 4)}
@@ -111,7 +134,13 @@ function ActionIcon(props: { action: ExtensionAction; size?: number }) {
 /** Its menu, like Chrome's ⋮: its own items, pin, options, manage. */
 function MoreButton(props: { extensionId: string; onActionMenu: (extensionId: string) => void }) {
   return (
-    <button type="button" title="More: options, pin, manage" onClick={() => props.onActionMenu(props.extensionId)} {...stylex.attrs(styles.pin)} data-extension-more={props.extensionId}>
+    <button
+      type="button"
+      title="More: options, pin, manage"
+      onClick={() => props.onActionMenu(props.extensionId)}
+      {...stylex.attrs(styles.pin)}
+      data-extension-more={props.extensionId}
+    >
       <Icon name="ellipsis-vertical" size={14} />
     </button>
   );
@@ -120,7 +149,8 @@ function MoreButton(props: { extensionId: string; onActionMenu: (extensionId: st
 /** Closes a popover on Escape, a click elsewhere, or focus moving away (into a page). */
 function useDismiss(el: () => HTMLElement, onClose: () => void, ignore?: () => HTMLElement | undefined) {
   onMount(() => {
-    const outside = (target: EventTarget | null) => !el().contains(target as Node) && !ignore?.()?.contains(target as Node);
+    const outside = (target: EventTarget | null) =>
+      !el().contains(target as Node) && !ignore?.()?.contains(target as Node);
     const onPointer = (e: PointerEvent) => outside(e.target) && onClose();
     const onFocus = (e: FocusEvent) => outside(e.target) && onClose();
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -137,20 +167,38 @@ function useDismiss(el: () => HTMLElement, onClose: () => void, ignore?: () => H
   });
 }
 
-function ExtensionsMenu(props: { anchor: DOMRect; actions: ExtensionAction[]; onActivate: (a: ExtensionAction) => void; onActionMenu: (extensionId: string) => void; onImport: () => void; onClose: () => void }) {
+function ExtensionsMenu(props: {
+  anchor: DOMRect;
+  actions: ExtensionAction[];
+  onActivate: (a: ExtensionAction) => void;
+  onActionMenu: (extensionId: string) => void;
+  onImport: () => void;
+  onClose: () => void;
+}) {
   let el!: HTMLDivElement;
   useDismiss(() => el, props.onClose);
   const left = () => Math.max(8, Math.min(props.anchor.left, window.innerWidth - 308));
-  const pinnedFirst = () => [...props.actions].sort((a, b) => Number(!extensionById(a.extensionId)?.pinned) - Number(!extensionById(b.extensionId)?.pinned));
+  const pinnedFirst = () =>
+    [...props.actions].sort(
+      (a, b) => Number(!extensionById(a.extensionId)?.pinned) - Number(!extensionById(b.extensionId)?.pinned),
+    );
   const others = () => extensionList().filter((e) => e.enabled && !props.actions.some((a) => a.extensionId === e.id));
   return (
     <Portal>
-      <div ref={el} role="menu" {...stylex.attrs(styles.menu)} style={{ left: `${left()}px`, top: `${props.anchor.bottom + 6}px` }} data-extensions-list>
+      <div
+        ref={el}
+        role="menu"
+        {...stylex.attrs(styles.menu)}
+        style={{ left: `${left()}px`, top: `${props.anchor.bottom + 6}px` }}
+        data-extensions-list
+      >
         <Show
           when={extensionList().length}
           fallback={
             <div {...stylex.attrs(styles.empty)}>
-              <p {...stylex.attrs(styles.emptyText)}>No extensions yet. Bring over the ones from your browser, with their settings.</p>
+              <p {...stylex.attrs(styles.emptyText)}>
+                No extensions yet. Bring over the ones from your browser, with their settings.
+              </p>
               <button type="button" onClick={props.onImport} {...stylex.attrs(styles.cta)} data-extensions-import>
                 <Icon name="download" size={14} />
                 Import from your browser
@@ -271,7 +319,12 @@ function ExtensionPopup(props: { popup: Popup; workspaceId: string; onClose: () 
   onCleanup(() => view?.remove());
   return (
     <Portal>
-      <div ref={el} {...stylex.attrs(styles.popup)} style={{ left: `${left()}px`, top: `${props.popup.anchor.bottom + 6}px` }} data-extension-popup={props.popup.extensionId}>
+      <div
+        ref={el}
+        {...stylex.attrs(styles.popup)}
+        style={{ left: `${left()}px`, top: `${props.popup.anchor.bottom + 6}px` }}
+        data-extension-popup={props.popup.extensionId}
+      >
         <webview
           ref={attach}
           src={props.popup.url}
@@ -300,7 +353,10 @@ const styles = stylex.create({
     opacity: { default: 1, ":disabled": 0.4 },
     cursor: { default: "pointer", ":disabled": "default" },
   },
-  buttonOn: { backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft }, color: { default: colors.accent, ":hover": colors.accent } },
+  buttonOn: {
+    backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft },
+    color: { default: colors.accent, ":hover": colors.accent },
+  },
   // Room for its badge before the name.
   iconWrap: { position: "relative", display: "grid", placeItems: "center", marginRight: 6 },
   icon: { display: "block", objectFit: "contain" },
@@ -357,7 +413,11 @@ const styles = stylex.create({
     textAlign: "left",
     cursor: "pointer",
   },
-  itemStatic: { backgroundColor: { default: "transparent", ":hover": "transparent" }, color: colors.muted, cursor: "default" },
+  itemStatic: {
+    backgroundColor: { default: "transparent", ":hover": "transparent" },
+    color: colors.muted,
+    cursor: "default",
+  },
   itemName: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   pin: {
     display: "grid",

@@ -24,11 +24,7 @@ export function confirmDialog(message: string, options: { confirmLabel?: string;
 
 /** Mount once at the app root. */
 export function ConfirmHost() {
-  return (
-    <Show when={request()}>
-      {(req) => <Dialog request={req()} />}
-    </Show>
-  );
+  return <Show when={request()}>{(req) => <Dialog request={req()} />}</Show>;
 }
 
 function Dialog(props: { request: Request }) {

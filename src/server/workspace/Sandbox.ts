@@ -6,7 +6,19 @@
 // apps. Without it (or on Windows and macOS), processes run directly in the
 // project folder. Commands run in the shell chosen in Settings (shells.ts).
 import { spawn as spawnChild, spawnSync, type ChildProcess } from "node:child_process";
-import { copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, isAbsolute, join, resolve, sep } from "node:path";
 import { Context, Effect, Layer } from "effect";
@@ -29,7 +41,12 @@ export interface SandboxShape {
   /** What the current settings resolve to on this machine. */
   readonly kind: Effect.Effect<SandboxKind>;
   /** How to run `command` (a shell command line) for an app. `binds`: more folders it may read and write (its data). */
-  readonly spawnSpec: (options: { dir: string; command: string; env: Record<string, string>; binds?: readonly string[] }) => Effect.Effect<SpawnSpec>;
+  readonly spawnSpec: (options: {
+    dir: string;
+    command: string;
+    env: Record<string, string>;
+    binds?: readonly string[];
+  }) => Effect.Effect<SpawnSpec>;
   /** Directory with `bun`, `bunx` and `node` for app processes and agents. */
   readonly binDir: string;
   /** What app processes get here: sandbox, shells, toolchains (Settings → Apps). */
@@ -114,7 +131,8 @@ function writeShims(config: ServerConfigShape) {
   for (const [name, content] of Object.entries(shims)) {
     const path = join(dir, name);
     rmSync(path, { force: true });
-    if (content === null) symlinkSync(bun, path); // run as `node`, Bun behaves like Node
+    if (content === null)
+      symlinkSync(bun, path); // run as `node`, Bun behaves like Node
     else writeFileSync(path, content, { mode: 0o755 });
   }
   return dir;
@@ -123,10 +141,13 @@ function writeShims(config: ServerConfigShape) {
 async function bwrapWorks() {
   if (process.platform !== "linux" || !Bun.which("bwrap")) return false;
   try {
-    const proc = Bun.spawn(["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-pid", "true"], {
-      stdout: "ignore",
-      stderr: "ignore",
-    });
+    const proc = Bun.spawn(
+      ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--unshare-pid", "true"],
+      {
+        stdout: "ignore",
+        stderr: "ignore",
+      },
+    );
     return (await proc.exited) === 0;
   } catch {
     return false;
@@ -212,7 +233,8 @@ const windowsKeep = [
 ];
 
 /** Reads an environment variable the way Windows does: case doesn't matter. */
-const hostEnv = (name: string) => process.env[name] ?? Object.entries(process.env).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
+const hostEnv = (name: string) =>
+  process.env[name] ?? Object.entries(process.env).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig;
@@ -225,18 +247,23 @@ export const make = Effect.gen(function* () {
   const hostPath = (hostEnv("PATH") ?? "").split(delimiter).filter((p) => p && isAbsolute(p));
   const bunShim = join(binDir, windows ? "bun.exe" : "bun");
 
-  const kind = settings.get().pipe(
-    Effect.map(({ apps }): SandboxKind => (apps.sandbox === "none" || !available ? "none" : "bwrap")),
-  );
+  const kind = settings
+    .get()
+    .pipe(Effect.map(({ apps }): SandboxKind => (apps.sandbox === "none" || !available ? "none" : "bwrap")));
 
   /** The folders the sandbox shows read-only besides the system, and the PATH inside it. */
   const view = (apps: { sandboxToolchains: boolean; sandboxReadOnly: readonly string[] }) => {
-    const found = apps.sandboxToolchains ? toolchains.map((t) => ({ ...t, path: join(home, t.path) })).filter((t) => existsSync(t.path)) : [];
+    const found = apps.sandboxToolchains
+      ? toolchains.map((t) => ({ ...t, path: join(home, t.path) })).filter((t) => existsSync(t.path))
+      : [];
     const extra = apps.sandboxReadOnly.filter((p) => isAbsolute(p)).map((p) => resolve(p));
     const readOnly = [...found.map((t) => t.path), ...extra.filter((p) => existsSync(p))];
     const visible = ["/usr", "/bin", "/sbin", "/lib", "/lib64", ...systemFolders, ...readOnly];
     // Your PATH, where the sandbox can see it. Version managers' shims need their config from your home, so they're left out.
-    const path = [binDir, ...hostPath.filter((p) => visible.some((root) => under(p, root)) && !/[\\/](mise|asdf)[\\/]shims$/.test(p))];
+    const path = [
+      binDir,
+      ...hostPath.filter((p) => visible.some((root) => under(p, root)) && !/[\\/](mise|asdf)[\\/]shims$/.test(p)),
+    ];
     // Toolchains not on PATH (Rune Browser started from a launcher, without your shell's setup): mise's current versions.
     const mise = join(home, ".local/share/mise/installs");
     if (found.some((t) => t.path === mise) && !path.some((p) => under(p, mise))) {
@@ -329,7 +356,10 @@ export const make = Effect.gen(function* () {
         const seen = view(apps);
         const sandboxEnv = { ...seen.env, ...base, PATH: seen.path.join(":"), TMPDIR: "/tmp" };
         // A shell from elsewhere (a custom path) is shown too, read-only.
-        const shellBind = shell.path && !["/usr", "/bin", ...systemFolders, ...seen.readOnly].some((root) => under(shell.path!, root)) ? ["--ro-bind-try", shell.path, shell.path] : [];
+        const shellBind =
+          shell.path && !["/usr", "/bin", ...systemFolders, ...seen.readOnly].some((root) => under(shell.path!, root))
+            ? ["--ro-bind-try", shell.path, shell.path]
+            : [];
         // Your additions could include Rune Browser's own data (other apps, secrets): it's hidden again below.
         const hidesData = seen.extra.some((p) => under(config.dataDir, p));
         const argv = [
