@@ -162,6 +162,27 @@ const site = Bun.serve({
   },
 });
 
+/** A one-page PDF saying `text`. */
+function minimalPdf(text: string) {
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${`BT /F1 24 Tf 40 100 Td (${text}) Tj ET`.length} >>\nstream\nBT /F1 24 Tf 40 100 Td (${text}) Tj ET\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objects.forEach((body, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return out;
+}
+
 /** Shortcuts' "Mod": Cmd on macOS, Ctrl elsewhere (a KeyboardEvent's property, and sendInputEvent's modifier). */
 const mod = process.platform === "darwin" ? "metaKey" : "ctrlKey";
 const modKey = process.platform === "darwin" ? "meta" : "control";
@@ -3337,9 +3358,43 @@ try {
       );
       await page!.eval(`document.getElementById("e2e-files")?.remove(), true`);
 
+      // A PDF opens in Chromium's viewer (an extension frame Rune Browser's extension shim must leave alone).
+      const pdf = join(dir, "doc.pdf");
+      writeFileSync(pdf, minimalPdf("Hello PDF"));
+      const pdfTab = await apiCall<{ id: string }>("/api/apps", {
+        method: "POST",
+        body: { kind: "web", url: `file://${pdf}` },
+      });
+      await page!.waitFor(`!!document.querySelector('nav li[data-app-id="${pdfTab.id}"]')`, { label: "PDF tab" });
+      await click(`nav li[data-app-id="${pdfTab.id}"]`);
+      const viewer = await waitForValue(async () => {
+        const { targetInfos } = await page!.send("Target.getTargets");
+        return (targetInfos as { targetId: string; url: string }[]).find((t) =>
+          t.url.startsWith("chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/"),
+        );
+      }, 15_000);
+      const { sessionId } = await page!.send("Target.attachToTarget", { targetId: viewer.targetId, flatten: true });
+      // Its toolbar (in shadow roots) names the document once the viewer is up.
+      const shown = await waitForValue(async () => {
+        const res = await page!.send(
+          "Runtime.evaluate",
+          {
+            expression: `(() => {
+              const text = (root) => [...root.querySelectorAll("*")].map((el) => (el.shadowRoot ? text(el.shadowRoot) : "") + (el.children.length ? "" : el.textContent)).join(" ");
+              return text(document).includes("doc.pdf");
+            })()`,
+            returnByValue: true,
+          },
+          sessionId,
+        );
+        return res.result?.value === true ? true : undefined;
+      }, 15_000).catch(() => false);
+      await shot("pdf-tab.png");
+      if (!shown) throw new Error("the PDF viewer didn't show the document");
+      opened.push(pdfTab as Tab);
       for (const t of opened) await apiCall(`/api/apps/${t.id}`, { method: "DELETE" });
       rmSync(dir, { recursive: true, force: true });
-      return `${opened.length} tabs (${text.trim().slice(0, 30)}…), then the SVG into the text file's tab`;
+      return `${opened.length} tabs (${text.trim().slice(0, 30)}…), the SVG into the text file's tab, a PDF in the viewer`;
     },
   );
 
