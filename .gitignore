@@ -9,3 +9,4 @@ release/
 .env.*
 !.env.example
 test-results/
+references/
