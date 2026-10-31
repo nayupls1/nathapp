@@ -15,42 +15,60 @@ const msg = (role: ChatMessage["role"], content: string, s = 0): ChatMessage => 
 const tool = (kind: string, title: string, s = 0) => msg("tool", JSON.stringify({ kind, title }), s);
 
 describe("timeline rows", () => {
-  test("groups consecutive tool calls and ends finished turns", () => {
+  const types = (rows: { type: string }[]) => rows.map((r) => r.type);
+
+  test("a finished turn folds its steps into its end, before the final reply", () => {
     const rows = buildRows(
       [
         msg("user", "Build it", 0),
         tool("read", "Read a.ts", 1),
         tool("command", "Ran `bun test`", 2),
-        msg("assistant", "Done", 3),
+        msg("assistant", "Looking further", 3),
         tool("edit", "Edited b.ts", 4),
+        msg("assistant", "Done", 5),
         msg("user", "Again", 10),
         msg("assistant", "Sure", 75),
       ],
       false,
       true,
     );
-    expect(rows.map((r) => r.type)).toEqual([
-      "message",
-      "work",
-      "message",
-      "work",
-      "turn-end",
-      "message",
-      "message",
-      "turn-end",
-    ]);
-    expect(rows[1]!.type === "work" && rows[1]!.entries.length).toBe(2);
-    expect(rows[4]!.type === "turn-end" && rows[4]!.ms).toBe(4000);
-    expect(rows[7]!.type === "turn-end" && rows[7]!.ms).toBe(65000);
+    expect(types(rows)).toEqual(["message", "turn-end", "message", "message", "turn-end", "message"]);
+    const end = rows[1]!;
+    if (end.type !== "turn-end") throw new Error("no end");
+    expect(end.ms).toBe(5000);
+    expect(types(end.steps)).toEqual(["work", "message", "work"]);
+    expect(end.steps[0]!.type === "work" && end.steps[0]!.entries.length).toBe(2);
+    expect(rows[2]!.type === "message" && rows[2]!.message.content).toBe("Done");
+    expect(rows[4]).toMatchObject({ type: "turn-end", ms: 65000, steps: [] });
   });
 
-  test("the running turn has no end, and a stopped one says so", () => {
+  test("the running turn shows everything as it happens", () => {
+    const messages = [msg("user", "Go", 0), tool("read", "Read a.ts", 1), msg("assistant", "Hm", 2)];
+    expect(types(buildRows(messages, true, true))).toEqual(["message", "work", "message"]);
+  });
+
+  test("a stopped turn says so, and without a reply its errors stay in view", () => {
     const messages = [msg("user", "Go", 0), tool("read", "Read a.ts", 1)];
-    expect(buildRows(messages, true, true).at(-1)!.type).toBe("work");
     const stopped = buildRows([...messages, msg("error", "Stopped.", 5)], false, true);
     expect(stopped.at(-1)).toMatchObject({ type: "turn-end", stopped: true, ms: 5000 });
-    // "Stopped." shows only in the turn's end.
     expect(stopped.some((r) => r.type === "message" && r.message.role === "error")).toBe(false);
+    const failed = buildRows([...messages, msg("error", "Overloaded", 3)], false, true);
+    expect(types(failed)).toEqual(["message", "turn-end", "message"]);
+    expect(failed.at(-1)).toMatchObject({ type: "message", message: { content: "Overloaded" } });
+  });
+
+  test("requests for a secret stay in view", () => {
+    const rows = buildRows(
+      [msg("user", "Go", 0), msg("secret", "{}", 1), tool("read", "Read a.ts", 2), msg("assistant", "Done", 3)],
+      false,
+      true,
+    );
+    expect(rows.map((r) => (r.type === "message" ? r.message.role : r.type))).toEqual([
+      "user",
+      "turn-end",
+      "secret",
+      "assistant",
+    ]);
   });
 
   test("context and attachments open the next turn", () => {
@@ -59,12 +77,23 @@ describe("timeline rows", () => {
       true,
       true,
     );
-    expect(rows.map((r) => r.type)).toEqual(["message", "message", "turn-end", "message", "message"]);
+    expect(rows.map((r) => (r.type === "message" ? r.message.role : r.type))).toEqual([
+      "user",
+      "turn-end",
+      "assistant",
+      "context",
+      "user",
+    ]);
+  });
+
+  test("messages before your first one show as they are", () => {
+    const rows = buildRows([tool("app", "Imported from x"), msg("user", "Hi", 1)], true, true);
+    expect(types(rows)).toEqual(["work", "message"]);
   });
 
   test("tool calls can be hidden", () => {
     const rows = buildRows([msg("user", "Go"), tool("read", "Read a.ts"), msg("assistant", "Hi")], true, false);
-    expect(rows.map((r) => r.type)).toEqual(["message", "message"]);
+    expect(types(rows)).toEqual(["message", "message"]);
   });
 
   test("summaries count kinds, and files once", () => {

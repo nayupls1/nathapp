@@ -12,39 +12,22 @@ export interface WorkEntry {
 export type Row =
   | { type: "message"; message: ChatMessage }
   | { type: "work"; id: number; entries: WorkEntry[] }
-  | { type: "turn-end"; id: number; ms: number; stopped: boolean };
+  /**
+   * A finished turn: "Worked for 42s" in place of its steps (tool calls,
+   * replies on the way), which open from it. The final reply comes after it.
+   */
+  | { type: "turn-end"; id: number; ms: number; stopped: boolean; steps: Row[] };
 
 /** Messages that come with your next message (they open a turn, before the `user` message itself). */
 const opensTurn = (m: ChatMessage) => m.role === "user" || m.role === "context" || m.role === "attachments";
 
 const STOPPED = "Stopped.";
 
-/** The timeline's rows; the turn still running gets no end. */
-export function buildRows(messages: readonly ChatMessage[], running: boolean, showTools: boolean): Row[] {
+/** Messages as rows, consecutive tool calls grouped. */
+function plainRows(messages: readonly ChatMessage[], showTools: boolean): Row[] {
   const rows: Row[] = [];
-  let turnStart: ChatMessage | null = null;
-  let last: ChatMessage | null = null;
-  let stopped = false;
-  const endTurn = () => {
-    if (turnStart && last && last !== turnStart) {
-      rows.push({
-        type: "turn-end",
-        id: last.id,
-        ms: Date.parse(last.createdAt) - Date.parse(turnStart.createdAt),
-        stopped,
-      });
-    }
-    turnStart = null;
-    stopped = false;
-  };
   for (const m of messages) {
-    if (opensTurn(m) && last && !opensTurn(last)) endTurn();
-    if (m.role === "user") turnStart = m;
-    last = m;
-    if (m.role === "error" && m.content === STOPPED) {
-      stopped = true;
-      continue;
-    }
+    if (m.role === "error" && m.content === STOPPED) continue;
     if (m.role === "tool") {
       if (!showTools) continue;
       const entry = { id: m.id, activity: parseToolActivity(m.content) };
@@ -55,7 +38,52 @@ export function buildRows(messages: readonly ChatMessage[], running: boolean, sh
     }
     rows.push({ type: "message", message: m });
   }
-  if (!running) endTurn();
+  return rows;
+}
+
+/**
+ * The timeline's rows. A finished turn shows your message, "Worked for …"
+ * (its steps folded into it) and its outcome: the final reply and what came
+ * after it (errors). Requests for a secret stay in view. The turn still
+ * running shows everything as it happens.
+ */
+export function buildRows(messages: readonly ChatMessage[], running: boolean, showTools: boolean): Row[] {
+  // Split into turns: what opens one (context, attachments, your message), then the agent's part.
+  const turns: { opening: ChatMessage[]; body: ChatMessage[] }[] = [{ opening: [], body: [] }];
+  for (const m of messages) {
+    const turn = turns.at(-1)!;
+    if (!opensTurn(m)) turn.body.push(m);
+    // A new turn once the agent answered (or your previous message is already there).
+    else if (turn.body.length || turn.opening.some((o) => o.role === "user")) turns.push({ opening: [m], body: [] });
+    else turn.opening.push(m);
+  }
+  const rows: Row[] = [];
+  turns.forEach((turn, i) => {
+    rows.push(...plainRows(turn.opening, showTools));
+    const body = plainRows(turn.body, showTools);
+    const user = turn.opening.find((m) => m.role === "user");
+    const finished = i < turns.length - 1 || !running;
+    if (!user || !finished || !turn.body.length) {
+      rows.push(...body);
+      return;
+    }
+    // The outcome: from the final reply on; without one, the errors after the last step.
+    let from = body.findLastIndex((r) => r.type === "message" && r.message.role === "assistant");
+    if (from === -1) from = body.findLastIndex((r) => r.type === "work") + 1;
+    const steps = body.slice(0, from);
+    const last = turn.body.at(-1)!;
+    rows.push(
+      {
+        type: "turn-end",
+        id: user.id,
+        ms: Date.parse(last.createdAt) - Date.parse(user.createdAt),
+        stopped: turn.body.some((m) => m.role === "error" && m.content === STOPPED),
+        steps: steps.filter((r) => !(r.type === "message" && r.message.role === "secret")),
+      },
+      ...steps.filter((r) => r.type === "message" && r.message.role === "secret"),
+      ...body.slice(from),
+    );
+  });
   return rows;
 }
 

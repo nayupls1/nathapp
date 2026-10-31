@@ -75,23 +75,10 @@ export function Timeline(props: { appId: string }) {
   return (
     <>
       <Index each={rows()}>
-        {(row, i) => {
-          // The tool calls the agent is making right now.
-          const live = () => state().running && i === lastIndex() && !state().draft;
-          return (
-            <Switch>
-              <Match when={row().type === "work" && (row() as Extract<Row, { type: "work" }>)}>
-                {(work) => <WorkGroup entries={work().entries} live={live()} />}
-              </Match>
-              <Match when={row().type === "turn-end" && (row() as Extract<Row, { type: "turn-end" }>)}>
-                {(end) => <TurnEnd ms={end().ms} stopped={end().stopped} />}
-              </Match>
-              <Match when={row().type === "message" && (row() as Extract<Row, { type: "message" }>)}>
-                {(m) => <Message appId={props.appId} message={m().message} />}
-              </Match>
-            </Switch>
-          );
-        }}
+        {(row, i) => (
+          // Tool calls are live while the agent is making them.
+          <RowView appId={props.appId} row={row()} live={state().running && i === lastIndex() && !state().draft} />
+        )}
       </Index>
       <Show when={state().running}>
         <Show when={state().draft}>
@@ -102,6 +89,22 @@ export function Timeline(props: { appId: string }) {
         <Working since={turnStartOf(state().messages)} />
       </Show>
     </>
+  );
+}
+
+function RowView(props: { appId: string; row: Row; live: boolean }) {
+  return (
+    <Switch>
+      <Match when={props.row.type === "work" && (props.row as Extract<Row, { type: "work" }>)}>
+        {(work) => <WorkGroup entries={work().entries} live={props.live} />}
+      </Match>
+      <Match when={props.row.type === "turn-end" && (props.row as Extract<Row, { type: "turn-end" }>)}>
+        {(end) => <TurnEnd appId={props.appId} ms={end().ms} stopped={end().stopped} steps={end().steps} />}
+      </Match>
+      <Match when={props.row.type === "message" && (props.row as Extract<Row, { type: "message" }>)}>
+        {(m) => <Message appId={props.appId} message={m().message} />}
+      </Match>
+    </Switch>
   );
 }
 
@@ -138,17 +141,40 @@ function Working(props: { since: string }) {
   );
 }
 
-/** Where a turn ended: "Worked for 42s", or "Stopped after 12s". */
-function TurnEnd(props: { ms: number; stopped: boolean }) {
+/** Where a turn ended: "Worked for 42s" (or "Stopped after 12s"), opening to its steps. */
+function TurnEnd(props: { appId: string; ms: number; stopped: boolean; steps: Row[] }) {
+  const [open, setOpen] = createSignal(false);
   const stopped = () => props.stopped;
+  const hasSteps = () => props.steps.length > 0;
+  const shown = () => open() && hasSteps();
   return (
-    <div {...stylex.attrs(styles.divider, stopped() && styles.dividerStopped)} data-turn-end>
-      <span {...stylex.attrs(styles.dividerLine)} />
-      <span {...stylex.attrs(styles.dividerLabel)}>
-        <Icon name={props.stopped ? "square" : "check"} size={12} />
-        {props.stopped ? `Stopped after ${formatElapsed(props.ms)}` : `Worked for ${formatElapsed(props.ms)}`}
-      </span>
-      <span {...stylex.attrs(styles.dividerLine)} />
+    <div {...stylex.attrs(styles.turn)}>
+      <button
+        type="button"
+        disabled={!hasSteps()}
+        aria-expanded={hasSteps() ? open() : undefined}
+        title={hasSteps() ? (open() ? "Hide the steps" : "Show the steps") : undefined}
+        onClick={() => setOpen(!open())}
+        {...stylex.attrs(styles.divider, hasSteps() && styles.dividerButton, stopped() && styles.dividerStopped)}
+        data-turn-end
+      >
+        <span {...stylex.attrs(styles.dividerLine)} />
+        <span {...stylex.attrs(styles.dividerLabel)}>
+          <Icon name={props.stopped ? "square" : "check"} size={12} />
+          {props.stopped ? `Stopped after ${formatElapsed(props.ms)}` : `Worked for ${formatElapsed(props.ms)}`}
+          <Show when={hasSteps()}>
+            <span {...stylex.attrs(styles.chevron, shown() && styles.chevronOpen)}>
+              <Icon name="chevron-right" size={12} />
+            </span>
+          </Show>
+        </span>
+        <span {...stylex.attrs(styles.dividerLine)} />
+      </button>
+      <Show when={shown()}>
+        <div {...stylex.attrs(styles.steps)} data-turn-steps>
+          <Index each={props.steps}>{(row) => <RowView appId={props.appId} row={row()} live={false} />}</Index>
+        </div>
+      </Show>
     </div>
   );
 }
@@ -615,12 +641,24 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     gap: space.sm,
+    width: "100%",
     minWidth: 0,
     paddingBlock: 2,
+    paddingInline: 0,
+    borderWidth: 0,
+    backgroundColor: "transparent",
     color: colors.muted,
+    fontFamily: "inherit",
     fontSize: 11.5,
+    cursor: "default",
   },
   dividerStopped: { color: colors.warning },
+  dividerButton: {
+    cursor: "pointer",
+    color: { default: colors.muted, ":hover": colors.text },
+  },
+  turn: { display: "flex", flexDirection: "column", gap: space.md, minWidth: 0 },
+  steps: { display: "flex", flexDirection: "column", gap: space.md, minWidth: 0 },
   dividerLine: { flex: 1, height: 1, backgroundColor: colors.border },
   dividerLabel: { display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontWeight: 500 },
   // Working.
