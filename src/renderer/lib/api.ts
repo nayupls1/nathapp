@@ -46,6 +46,7 @@ import type {
   ScheduleSpec,
   PageChange,
   PageChangeSpec,
+  ResponseOverride,
   TabKind,
   WorkspaceInfo,
 } from "../../shared/api";
@@ -256,6 +257,9 @@ export const api = {
   /** Sends a saved request with its workspace's session (credentials stay in Rune Browser's main process). */
   sendSavedRequest: (id: string, overrides?: ReplayOverrides) =>
     post<ReplayResult>(`/api/network/requests/${id}/send`, overrides ? { overrides } : {}),
+
+  responseOverrides: () => request<ResponseOverride[]>("/api/response-overrides"),
+  deleteResponseOverride: (id: string) => request<void>(`/api/response-overrides/${id}`, { method: "DELETE" }),
 
   listSites: () => request<SiteOverride[]>("/api/sites"),
   getSite: (host: string) => request<SiteOverride | null>(`/api/sites/${encodeURIComponent(host)}`),

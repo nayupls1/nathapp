@@ -9,6 +9,7 @@ import type {
   PageChange,
   ReplayOverrides,
   RequestDraft,
+  ResponseOverride,
   SiteOverride,
 } from "../../shared/api";
 import { topics } from "../../shared/hub";
@@ -221,9 +222,60 @@ watchTopic(topics.network, (msg) => {
 });
 onConnected(() => void syncRules());
 
+// Response overrides live on the server too; the main process applies them, with
+// tab-scoped ones resolved to their tab's webContents (which changes as tabs load).
+const [responseOverrides, setResponseOverrides] = createSignal<ResponseOverride[]>([]);
+/** Every response override (expired ones drop out when they're refetched). */
+export { responseOverrides };
+
+let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+async function loadOverrides() {
+  const list = await api.responseOverrides().catch((err) => {
+    console.error("Loading response overrides failed:", err);
+    return null;
+  });
+  if (!list) return;
+  setResponseOverrides(list);
+  // Refetched when the next one expires, so the lists stop showing it.
+  clearTimeout(expiryTimer);
+  const next = Math.min(...list.map((o) => (o.expiresAt ? Date.parse(o.expiresAt) : Infinity)));
+  if (Number.isFinite(next)) expiryTimer = setTimeout(() => void loadOverrides(), Math.max(next - Date.now(), 0) + 500);
+}
+
+const pushOverrides = () => {
+  const contentsOf = (tabId: string) => {
+    try {
+      return pages.get(tabId)?.webContentsId() ?? null;
+    } catch {
+      return null;
+    }
+  };
+  network.setOverrides(
+    responseOverrides().map((o) => ({
+      ...o,
+      webContentsId: o.scope.type === "tab" ? contentsOf(o.scope.tabId) : null,
+    })),
+  );
+};
+
+watchTopic(topics.network, (msg) => {
+  if (msg.type === "network-changed" && msg.what === "overrides") void loadOverrides();
+});
+onConnected(() => void loadOverrides());
+// An agent added or removed one: the main process has it before the tool returns.
+handleRpc("network.syncOverrides", async () => {
+  await loadOverrides();
+  pushOverrides();
+  return true;
+});
+
 createRoot(() => {
   createEffect(() => {
     if (settingsLoaded()) network.setRecording(settings().web.recordNetwork);
+  });
+  createEffect(() => {
+    pagesVersion();
+    pushOverrides();
   });
 });
 

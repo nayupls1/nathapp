@@ -15,6 +15,7 @@ const icons: Record<PermissionRequest["action"], string> = {
   "app.secret": "key-round",
   "agent.site": "paintbrush",
   "agent.network": "network",
+  "agent.override": "flask-conical",
   "app.data": "database",
   "app.endpoints": "waypoints",
   "app.tool": "wrench",

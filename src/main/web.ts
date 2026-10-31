@@ -32,6 +32,7 @@ import { join } from "node:path";
 import { setupExtensions } from "./extensions";
 import { setupDevtools } from "./devtools";
 import { setupNetwork } from "./network";
+import { setupOverrides } from "./overrides";
 import { setupShortcuts } from "./shortcuts";
 import type { Observation } from "../shared/endpoints";
 
@@ -66,6 +67,12 @@ export function setupWebTabs(
     onApiCall,
   });
 
+  const overrides = setupOverrides({
+    getWindow,
+    workspaceOf: (s) => webSessions.get(s),
+    onOverridden: (id, requestId, title) => network.markOverridden(id, requestId, title),
+  });
+
   const devtools = setupDevtools({ getWindow, isWebTab: (contents) => webSessions.has(contents.session) });
 
   app.on("web-contents-created", (_event, contents) => {
@@ -96,6 +103,7 @@ export function setupWebTabs(
     const isPreview = () => !webSessions.has(contents.session);
     // Traffic and console of app previews too: their agents debug with them (main/devtools.ts).
     network.watch(contents);
+    overrides.track(contents);
     devtools.track(contents);
     if (!isPreview()) extensions.trackGuest(contents);
     contents.setWindowOpenHandler(({ url, disposition }) => {

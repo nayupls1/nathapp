@@ -104,6 +104,8 @@ export interface RuneBridge {
       /** A captured request ready to be saved: its credentials sealed (only Rune Browser's main process can open them). */
       draft: (webContentsId: number, id: string) => Promise<RequestDraft>;
       setRules: (rules: NetworkRule[]) => void;
+      /** The response overrides in effect; tab-scoped ones carry their tab's webContents (null: not open). */
+      setOverrides: (overrides: (ResponseOverride & { webContentsId: number | null })[]) => void;
       setRecording: (enabled: boolean) => void;
       /** A tab's captured traffic changed (throttled). */
       onChanged: (fn: (webContentsId: number) => void) => () => void;
@@ -844,6 +846,8 @@ export interface NetworkEntrySummary {
   error: string | null;
   /** The pattern of the rule that blocked or changed it. */
   rule: string | null;
+  /** The title of the response override that answered it instead of the site (or changed the answer). */
+  override: string | null;
   /** The response body was kept (structured data only). */
   hasBody: boolean;
 }
@@ -932,6 +936,54 @@ export interface NetworkRule {
   createdAt: string;
 }
 
+/** Where a response override applies, within its workspace. */
+export type OverrideScope =
+  /** One tab (goes away with it). */
+  | { type: "tab"; tabId: string }
+  /** Pages of one site (the page's host, wherever its requests go). */
+  | { type: "site"; host: string }
+  /** Every web tab of the workspace. */
+  | { type: "workspace" };
+
+/** How a request fails (Chrome's network error reasons). */
+export type OverrideFailure =
+  "Failed" | "TimedOut" | "ConnectionRefused" | "InternetDisconnected" | "NameNotResolved" | "Aborted";
+
+/** What a response override does (see shared/overrides.ts). */
+export interface ResponseOverrideSpec {
+  /** What it's for: "Empty feed", "Server error on save". */
+  title: string;
+  scope: OverrideScope;
+  /** Requests it answers: "*" wildcards over the whole URL, or text the URL contains (as network rules). */
+  pattern: string;
+  /** null: every method. */
+  method: string | null;
+  /**
+   * respond: what comes back (status, headers, body; what isn't set comes from the site);
+   * fail: the request fails as if the network did; hang: it never answers (loading forever).
+   */
+  kind: "respond" | "fail" | "hang";
+  /** respond: null keeps the site's. */
+  status: number | null;
+  /** respond: headers to set (null removes one). */
+  headers: Record<string, string | null>;
+  /** respond: null keeps the site's. */
+  body: string | null;
+  /** fail: how. */
+  failure: OverrideFailure;
+  /** respond and fail: the answer comes this much later (a slow response). */
+  delayMs: number;
+  /** It goes away by itself then; null: when it's removed (or its tab closes). */
+  expiresAt: string | null;
+}
+
+/** Changes what a site's requests return in a workspace's web tabs, without the site. Made by the website agent; the user sees and removes them. */
+export interface ResponseOverride extends ResponseOverrideSpec {
+  id: string;
+  workspaceId: string;
+  createdAt: string;
+}
+
 // --- Permissions and audit log ----------------------------------------------------
 
 /**
@@ -939,6 +991,7 @@ export interface NetworkRule {
  * app.secret: an app uses a global secret (resource: its name).
  * agent.site: the website agent customizes a site (subject "website-agent", resource: the host).
  * agent.network: the website agent sends requests to a site with the user's session (resource: the host).
+ * agent.override: the website agent changes what a site's requests return (resource: the host of the tab's page).
  * app.data: an app reads another app's data (resource: that app's id).
  */
 export type PermissionAction =
@@ -946,6 +999,7 @@ export type PermissionAction =
   | "app.secret"
   | "agent.site"
   | "agent.network"
+  | "agent.override"
   | "app.data"
   | "app.endpoints"
   | "app.tool"

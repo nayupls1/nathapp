@@ -73,6 +73,8 @@ export function setupNetwork(options: NetworkOptions) {
   const { getWindow } = options;
   const budget = new BodyBudget();
   const logs = new Map<number, TrafficLog>();
+  /** What marks a tab's requests as answered by a response override: DevTools request id → its title. */
+  const markers = new Map<number, (requestId: string, title: string) => void>();
   const detachers = new Map<number, () => void>();
   let recording = true;
   let rules: CompiledRule[] = [];
@@ -136,8 +138,19 @@ export function setupNetwork(options: NetworkOptions) {
         console.warn("Mapping an API call failed:", err);
       }
     };
+    // Overrides pause requests before they're sent, so the mark can come first.
+    const marks = new Map<string, string>();
+    markers.set(id, (requestId, title) => {
+      const entry = current.get(requestId);
+      if (entry) entry.override = title;
+      else {
+        if (marks.size > 500) marks.clear();
+        marks.set(requestId, title);
+      }
+    });
     const finish = (requestId: string) => {
       current.delete(requestId);
+      marks.delete(requestId);
       early.delete(requestId);
       if (early.size > 2000) early.clear();
     };
@@ -169,6 +182,7 @@ export function setupNetwork(options: NetworkOptions) {
             durationMs: null,
             error: null,
             rule,
+            override: marks.get(p.requestId) ?? previous?.override ?? null,
             requestHeaders: { ...p.request.headers, ...early.get(p.requestId)?.request },
             responseHeaders: {},
             requestBody: postData === undefined ? null : postData.slice(0, MAX_REQUEST_BODY),
@@ -261,6 +275,7 @@ export function setupNetwork(options: NetworkOptions) {
       dbg.removeListener("message", onMessage);
       log.dispose();
       logs.delete(id);
+      markers.delete(id);
       detachers.delete(id);
     };
     detachers.set(id, () => {
@@ -500,7 +515,11 @@ export function setupNetwork(options: NetworkOptions) {
     if (fromWindow(event)) setRecording(enabled !== false);
   });
 
-  return { watch };
+  return {
+    watch,
+    markOverridden: (webContentsId: number, requestId: string, title: string) =>
+      markers.get(webContentsId)?.(requestId, title),
+  };
 }
 
 /** Sets headers case-insensitively; null removes one. */

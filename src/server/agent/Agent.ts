@@ -20,6 +20,7 @@ import { Sites } from "../db/Sites";
 import { Workspaces } from "../db/Workspaces";
 import { History } from "../history/History";
 import { Audit } from "../security/Audit";
+import { ResponseOverrides } from "../db/ResponseOverrides";
 import { Permissions } from "../security/Permissions";
 import { Secrets } from "../security/Secrets";
 import { Hub } from "../Hub";
@@ -109,6 +110,7 @@ export const make = Effect.gen(function* () {
     | Permissions
     | Secrets
     | Network
+    | ResponseOverrides
     | Endpoints
     | AppData
     | AppTools

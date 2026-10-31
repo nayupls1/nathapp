@@ -183,6 +183,11 @@ function RequestRow(props: { entry: NetworkEntrySummary; selected: boolean; onSe
       <Show when={blocked()}>
         <Icon name="shield" size={12} {...stylex.attrs(styles.ruleIcon)} />
       </Show>
+      <Show when={props.entry.override}>
+        <span title={`Overridden: ${props.entry.override}`} {...stylex.attrs(styles.overrideMark)} data-overridden>
+          <Icon name="flask-conical" size={12} />
+        </span>
+      </Show>
       <span {...stylex.attrs(styles.cell)}>{props.entry.type}</span>
       <span {...stylex.attrs(styles.cell)}>{props.entry.size ? sizeLabel(props.entry.size) : ""}</span>
       <span {...stylex.attrs(styles.cell)}>
@@ -290,6 +295,11 @@ function RequestDetail(props: {
             <div {...stylex.attrs(styles.detailHead)}>
               <span {...stylex.attrs(styles.method)}>{e().method}</span>
               <StatusBadge status={e().status} error={e().error} />
+              <Show when={e().override}>
+                <span title={`Overridden: ${e().override}`} {...stylex.attrs(styles.overrideMark)}>
+                  <Icon name="flask-conical" size={12} />
+                </span>
+              </Show>
               <span {...stylex.attrs(styles.url)}>{e().url}</span>
               <button type="button" title="Close" onClick={() => props.onClose()} {...stylex.attrs(styles.iconButton)}>
                 <Icon name="x" size={14} />
@@ -600,6 +610,7 @@ const styles = stylex.create({
   },
   host: { color: colors.muted },
   ruleIcon: { flexShrink: 0, color: colors.warning },
+  overrideMark: { display: "inline-flex", flexShrink: 0, color: colors.warning },
   cell: {
     flexShrink: 0,
     width: 64,

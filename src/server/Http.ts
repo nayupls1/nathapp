@@ -39,6 +39,7 @@ import { ServerConfig } from "./Config";
 import { Apps } from "./db/Apps";
 import { isIcon } from "./icons";
 import { Network } from "./db/Network";
+import { ResponseOverrides } from "./db/ResponseOverrides";
 import { Endpoints } from "./db/Endpoints";
 import { describeEndpoint, type Observation } from "../shared/endpoints";
 import { Settings } from "./db/Settings";
@@ -396,6 +397,13 @@ const removeApp = (id: string) =>
   Effect.gen(function* () {
     yield* (yield* Agent).stop(id);
     yield* (yield* Projects).remove(id);
+    yield* dropTabOverrides(id);
+  });
+
+/** A tab's response overrides go away with it. */
+const dropTabOverrides = (tabId: string) =>
+  Effect.gen(function* () {
+    if (yield* (yield* ResponseOverrides).removeTab(tabId)) yield* publishNetwork("overrides");
   });
 
 const appRoutes = HttpRouter.addAll([
@@ -494,6 +502,7 @@ const appRoutes = HttpRouter.addAll([
         }
         const closed = yield* (yield* Projects).close(id);
         if (!closed) return yield* fail(404, "No such app");
+        yield* dropTabOverrides(id);
         yield* youDid(id, "app.close", closed.name);
         return json(closed);
       }),
@@ -1954,6 +1963,7 @@ const workspaceRoutes = HttpRouter.addAll([
         yield* secrets.removeScope(workspaceScope(id));
         yield* permissions.forget(workspaceScope(id));
         yield* (yield* Network).removeWorkspace(id);
+        yield* (yield* ResponseOverrides).removeWorkspace(id);
         yield* (yield* Endpoints).remove(id);
         yield* workspaces.remove(id);
         yield* youDid(null, "workspace.delete", space.name);
@@ -2064,6 +2074,7 @@ const permissionActions = [
   "app.secret",
   "agent.site",
   "agent.network",
+  "agent.override",
   "app.data",
   "app.tool",
   "agent.schedule",
@@ -2213,7 +2224,7 @@ const Overrides = Schema.Struct({
   body: Schema.optionalKey(Schema.NullOr(str(200_000))),
 });
 
-const publishNetwork = (what: "rules" | "requests") =>
+const publishNetwork = (what: "rules" | "requests" | "overrides") =>
   Effect.gen(function* () {
     const hub = yield* Hub;
     yield* hub.publish({ type: "network-changed", topic: topics.network, what });
@@ -2242,6 +2253,38 @@ export const sendSaved = (id: string, overrides: ReplayOverrides) =>
       .pipe(Effect.mapError((err) => new HttpFail({ status: 502, message: err.message })));
     return { request: saved.request, result };
   });
+
+// --- Response overrides (db/ResponseOverrides.ts, applied by main/overrides.ts) ----------------
+// The website agent makes them (agent/networkTools.ts); the user sees and removes them.
+
+const overrideLabel = (o: { title: string; pattern: string }) =>
+  o.title === o.pattern ? o.pattern : `${o.title} (${o.pattern})`;
+
+const overrideRoutes = HttpRouter.addAll([
+  HttpRouter.route(
+    "GET",
+    "/api/response-overrides",
+    Effect.gen(function* () {
+      const params = new URL((yield* HttpServerRequest.HttpServerRequest).url, "http://x").searchParams;
+      return json(yield* (yield* ResponseOverrides).list(params.get("workspace") ?? undefined));
+    }),
+  ),
+  HttpRouter.route(
+    "DELETE",
+    "/api/response-overrides/:id",
+    handle(
+      Effect.gen(function* () {
+        const overrides = yield* ResponseOverrides;
+        const current = yield* overrides.get(yield* param("id"));
+        if (!current) return yield* fail(404, "Not found");
+        yield* overrides.remove(current.id);
+        yield* youDid(workspaceScope(current.workspaceId), "network.override.delete", overrideLabel(current));
+        yield* publishNetwork("overrides");
+        return noContent;
+      }),
+    ),
+  ),
+]);
 
 const networkRoutes = HttpRouter.addAll([
   HttpRouter.route(
@@ -2527,6 +2570,7 @@ export const routes = Layer.mergeAll(
   secretRoutes,
   permissionRoutes,
   networkRoutes,
+  overrideRoutes,
   endpointRoutes,
   guard,
 );

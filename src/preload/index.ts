@@ -60,6 +60,7 @@ const bridge: RuneBridge = {
       replay: (target, overrides, reveal) => ipcRenderer.invoke("rune:network-replay", target, overrides, reveal),
       draft: (webContentsId, id) => ipcRenderer.invoke("rune:network-draft", webContentsId, id),
       setRules: (rules) => ipcRenderer.send("rune:network-rules", rules),
+      setOverrides: (overrides) => ipcRenderer.send("rune:network-overrides", overrides),
       setRecording: (enabled) => ipcRenderer.send("rune:network-recording", enabled),
       onChanged: listen("rune:network-changed"),
     },

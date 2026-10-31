@@ -87,7 +87,7 @@ export type ServerMessage =
   /** Snapshots were restored or removed (refetch). */
   | { type: "history-changed"; topic: string; target: string }
   | { type: "settings"; topic: string; settings: Settings }
-  | { type: "network-changed"; topic: string; what: "rules" | "requests" }
+  | { type: "network-changed"; topic: string; what: "rules" | "requests" | "overrides" }
   | { type: "mods-changed"; topic: string }
   | { type: "rpc"; id: number; method: string; params: unknown };
 

@@ -324,5 +324,6 @@ const summary = (e: Captured, redact: boolean): NetworkEntrySummary => ({
   durationMs: e.durationMs,
   error: e.error,
   rule: e.rule,
+  override: e.override,
   hasBody: e.responseBody !== null,
 });
