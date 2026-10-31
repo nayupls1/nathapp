@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import { parseToolActivity, type ChatMessage } from "../src/shared/api";
 import { buildRows, formatElapsed, summarize } from "../src/renderer/lib/timeline";
 import { describeTool } from "../src/server/providers/Provider";
@@ -121,9 +122,10 @@ describe("timeline rows", () => {
 
 describe("tool activity", () => {
   test("every provider tool shows, with a kind", () => {
-    expect(describeTool("Edit", { file_path: "/p/src/a.ts" }, "/p")).toEqual({
+    // Paths are shown relative to the project, with the platform's separator.
+    expect(describeTool("Edit", { file_path: join("/p", "src", "a.ts") }, "/p")).toEqual({
       kind: "edit",
-      title: "Edited src/a.ts",
+      title: `Edited ${join("src", "a.ts")}`,
     });
     expect(describeTool("Bash", { command: "bun test" }, "/p")).toEqual({ kind: "command", title: "Ran `bun test`" });
     expect(
