@@ -63,6 +63,7 @@ import { colors, font, radius, space } from "../theme.stylex";
 import { AgentPicker } from "./AgentPicker";
 import { confirmDialog } from "./ConfirmDialog";
 import { PageChangeRows } from "./PageChanges";
+import { OverrideRows } from "./ResponseOverrides";
 import { openExtensionImport } from "./ExtensionImport";
 import { Icon } from "./Icon";
 import { ProviderIcon } from "./ProviderIcon";
@@ -405,6 +406,13 @@ function NetworkSection() {
         <Toggle checked={settings().web.recordNetwork} onChange={(recordNetwork) => set("web", { recordNetwork })} />
       </Row>
       <NetworkRules />
+      <Row
+        label="Response overrides"
+        description="What the website agent made sites return in your tabs (other data, errors, failures, slow or no answers) to see every state of a page. Remove one to get the site's real answers again; the address bar shows when a page has any."
+        wide
+      >
+        <OverrideRows />
+      </Row>
     </Section>
   );
 }
@@ -864,21 +872,23 @@ const permissionLabel = (g: Pick<PermissionGrant, "action" | "resource">) =>
       ? `Use the global secret ${g.resource}`
       : g.action === "agent.network"
         ? `Send requests to ${g.resource}`
-        : g.action === "app.data"
-          ? `Read the data of ${appById(g.resource)?.name ?? "a deleted app"}`
-          : g.action === "app.endpoints"
-            ? "Read the API map"
-            : g.action === "app.tool"
-              ? toolLabel(g.resource)
-              : g.action === "agent.schedule"
-                ? "Run things on a schedule"
-                : g.action === "agent.tab"
-                  ? `Read the tab ${appById(g.resource)?.name ?? "(deleted)"}`
-                  : g.action === "agent.browse"
-                    ? `Use ${g.resource} for you (click, type, fill in forms)`
-                    : g.action === "agent.source"
-                      ? `Change the code in ${g.resource}`
-                      : `Customize ${g.resource}`;
+        : g.action === "agent.override"
+          ? `Change what ${g.resource} returns`
+          : g.action === "app.data"
+            ? `Read the data of ${appById(g.resource)?.name ?? "a deleted app"}`
+            : g.action === "app.endpoints"
+              ? "Read the API map"
+              : g.action === "app.tool"
+                ? toolLabel(g.resource)
+                : g.action === "agent.schedule"
+                  ? "Run things on a schedule"
+                  : g.action === "agent.tab"
+                    ? `Read the tab ${appById(g.resource)?.name ?? "(deleted)"}`
+                    : g.action === "agent.browse"
+                      ? `Use ${g.resource} for you (click, type, fill in forms)`
+                      : g.action === "agent.source"
+                        ? `Change the code in ${g.resource}`
+                        : `Customize ${g.resource}`;
 
 /** "<app id>/<tool id>" as "Use add-expense in Budget". */
 const toolLabel = (resource: string) => {

@@ -107,6 +107,7 @@ describe("the traffic log", () => {
     durationMs: 5,
     error: null,
     rule: null,
+    override: null,
     requestHeaders: { Authorization: `Bearer secret-${n}`, Accept: "*/*" },
     responseHeaders: {},
     requestBody: null,

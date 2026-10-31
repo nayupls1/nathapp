@@ -57,7 +57,7 @@ folder:
 
 - **Storage:** `db/` keeps the host database (`rune.sqlite`, SQLite through
   `effect/sql`): workspaces, tabs, chats, settings, sites, page changes,
-  network rules. `security/Vault.ts` encrypts secrets with the key Electron
+  network rules, response overrides. `security/Vault.ts` encrypts secrets with the key Electron
   keeps in the OS keychain.
 - **Security:** `security/Permissions.ts` asks the user (and remembers),
   `security/Audit.ts` records what agents and apps did, `security/Secrets.ts`

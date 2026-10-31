@@ -10,6 +10,7 @@ import * as Apps from "./db/Apps";
 import * as Db from "./db/Db";
 import * as Endpoints from "./db/Endpoints";
 import * as Network from "./db/Network";
+import * as ResponseOverrides from "./db/ResponseOverrides";
 import * as PageChanges from "./db/PageChanges";
 import * as Settings from "./db/Settings";
 import * as Sites from "./db/Sites";
@@ -51,6 +52,7 @@ export const core = (config: ServerConfigShape) =>
         Sites.layer,
         PageChanges.layer,
         Network.layer,
+        ResponseOverrides.layer,
         Endpoints.layer,
         Hub.layer,
         AiTokens.tokensLayer,

@@ -2191,6 +2191,125 @@ try {
     return `${secrets.length} kinds of credentials hidden, replayed and saved with the session, blocked by ${rule.pattern}`;
   });
 
+  await check(
+    "response overrides: other data, a changed answer, failures, slow and hanging requests, removed",
+    async () => {
+      if (!webTabId) throw new Error("needs the web tab");
+      const tab = `[data-web-tab="${webTabId}"]`;
+      const inPage = <T>(code: string) =>
+        page!.eval<T>(`document.querySelector('${tab} webview').executeJavaScript(${JSON.stringify(code)})`);
+      const status = () => inPage<string>(`document.getElementById("status")?.textContent ?? ""`);
+      const shows = (text: string, timeoutMs = 15_000) =>
+        waitForValue(async () => ((await status()) === text ? true : undefined), timeoutMs);
+      const reload = async () => {
+        await inPage("location.reload(), true");
+        await Bun.sleep(200);
+      };
+      type Override = { id: string; title: string };
+      // As the website agent's override_response stores one, then hands the list to the tabs (there's no API to make one).
+      const workspaceId = (await apiCall<{ id: string; workspaceId: string }[]>("/api/apps")).find(
+        (a) => a.id === webTabId,
+      )!.workspaceId;
+      const add = async (spec: Record<string, unknown>): Promise<Override> => {
+        const { Database } = await import("bun:sqlite");
+        const id = crypto.randomUUID().slice(0, 8);
+        const full = {
+          scope: { type: "tab", tabId: webTabId },
+          pattern: "/api/feed",
+          method: null,
+          kind: "respond",
+          status: null,
+          headers: {},
+          body: null,
+          failure: "Failed",
+          delayMs: 0,
+          expiresAt: null,
+          ...spec,
+        };
+        const db = new Database(join(profile, "data", "rune.sqlite"));
+        db.run("INSERT INTO response_overrides (id, workspace_id, spec) VALUES (?, ?, ?)", [
+          id,
+          workspaceId,
+          JSON.stringify(full),
+        ]);
+        db.close();
+        await page!.eval(`window.__runeRpc("network.syncOverrides", {})`);
+        return { id, title: String(spec.title) };
+      };
+      const remove = async (o: Override) => {
+        await apiCall(`/api/response-overrides/${o.id}`, { method: "DELETE" });
+        await Bun.sleep(300); // the hub tells the window, which tells the main process
+      };
+
+      await click(`nav li[data-app-id="${webTabId}"]`);
+      await inPage(`location.href = ${JSON.stringify(`${site.url.origin}/feed`)}, true`);
+      await shows("Loaded 2 items");
+      if (await page!.eval<boolean>(`!!document.querySelector("[data-overrides]")`))
+        throw new Error("the flask shows without overrides");
+
+      // Answered without the site.
+      const empty = await add({ title: "Empty feed", status: 200, body: JSON.stringify({ items: [] }) });
+      let before = siteSeen.length;
+      await reload();
+      await shows("Loaded 0 items");
+      if (siteSeen.length !== before) throw new Error("a made-up answer still reached the site");
+      await page!.waitFor(`document.querySelector('[data-overrides]')?.innerText.trim() === "1"`, {
+        label: "the address bar's flask",
+      });
+      const logged = await page!.eval<{ url: string; override: string | null }[]>(
+        `window.__runeRpc("network.list", { tabId: ${JSON.stringify(webTabId)}, filter: { query: "/api/feed" } })`,
+      );
+      if (!logged.some((e) => e.override === "Empty feed"))
+        throw new Error(`the Network log doesn't say it was overridden: ${JSON.stringify(logged.slice(-2))}`);
+      await click("[data-overrides]");
+      await page!.waitFor(
+        `!!document.querySelector('[data-response-overrides] [data-response-override="${empty.id}"]')`,
+        {
+          label: "the overrides popover",
+        },
+      );
+      await shot("response-overrides.png");
+      await click(`[data-response-overrides] [data-response-override="${empty.id}"] [data-remove-response-override]`);
+      await page!.waitFor(`!document.querySelector("[data-overrides]")`, { label: "the flask gone" });
+      await page!.eval(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })), true`);
+
+      // The site's answer, changed: it's asked, and its body replaced.
+      const changed = await add({ title: "One item", body: JSON.stringify({ items: [1] }) });
+      before = siteSeen.length;
+      await reload();
+      await shows("Loaded 1 items");
+      if (siteSeen.length === before) throw new Error("the site wasn't asked for the answer to change");
+      await remove(changed);
+
+      // Slow: the site's answer, later.
+      const slow = await add({ title: "Slow", delayMs: 1500 });
+      const started = Date.now();
+      await reload();
+      await shows("Loaded 2 items");
+      const took = Date.now() - started;
+      if (took < 1400) throw new Error(`the slow answer came after ${took} ms`);
+      await remove(slow);
+
+      // Failing.
+      const offline = await add({ title: "Offline", kind: "fail", failure: "InternetDisconnected" });
+      await reload();
+      await shows("Failed to load");
+      await remove(offline);
+
+      // Never answering, until the override goes: then the request goes on to the site.
+      const hang = await add({ title: "Loading forever", kind: "hang" });
+      await reload();
+      await shows("Loading…");
+      await Bun.sleep(1500);
+      if ((await status()) !== "Loading…") throw new Error(`the hanging request was answered: ${await status()}`);
+      await remove(hang);
+      await shows("Loaded 2 items");
+
+      await inPage(`location.href = ${JSON.stringify(`${site.url.origin}/`)}, true`);
+      return "made-up and changed answers, slow, failing and hanging requests; the flask, the log, removal";
+    },
+  );
+
   await check("API map: the site's API learned while browsing, shapes only, browsable, deletable", async () => {
     if (!webTabId) throw new Error("needs the web tab");
     const tab = `[data-web-tab="${webTabId}"]`;

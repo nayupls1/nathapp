@@ -43,6 +43,30 @@ Every web tab's traffic is recorded in Electron's main process over the DevTools
 
 The website agent has `network_requests`, `network_request`, `replay_request`, `save_request`, `saved_requests` and `send_saved_request`. Sending anything with the user's session asks first, once per site (permission `agent.network`), and every call is in the activity log.
 
+### Response overrides
+
+The website agent can change what a site's API requests return in your tabs, so a page shows any state it needs to
+see or test (empty, failing, slow, still loading) without touching its backend (`shared/overrides.ts`, applied by
+`main/overrides.ts`). Making them is the agent's job; you see them and remove them.
+
+- **What:** an override answers requests matching a pattern (as in rules: `*` over the whole URL, or text it contains) and
+  optionally one method. It can **respond** (status, headers, body; whatever isn't set comes from the site, and with both
+  status and body set the request never goes out), **fail** like the network does (offline, timed out, refused…) or
+  **hang** (never answer: the loading state). A delay makes any of them slow.
+- **How:** the main process pauses a tab's fetch, XHR and EventSource requests with the DevTools protocol's `Fetch`
+  domain, only while an override could apply to that tab. Answers made up for another origin carry CORS headers (and
+  their preflights are answered too), a replaced body drops the old one's length and encoding, and a hanging request
+  goes on to the site once its override is removed. Pages and other resources aren't touched.
+- **Where and how long:** one tab (the default; it goes away with the tab), the pages of one site (the page's host,
+  wherever its requests go), or every tab of the workspace. They expire after an hour unless the agent asks for another
+  time or none.
+- **Tools:** `override_response`, `response_overrides` and `remove_response_override` (e.g. to go through every state of
+  a page and take a screenshot of each). The tabs have the new list before a tool returns, so a reload right after sees it.
+- **Your OK, visible, removable:** overriding a site asks first, per site (`agent.override`, rememberable). The flask in
+  the address bar counts the overrides on the page and lists them with remove buttons; Settings → Network lists all of
+  them. Requests they answered have the flask in the Network panel. Every tool call and every removal
+  (`network.override.delete`) is in the activity log. The API only lists and removes them (`/api/response-overrides`).
+
 ### API map
 
 While the user browses, web tabs' API calls (fetch, XHR, structured responses) build a map of each site's API: every

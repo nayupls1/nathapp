@@ -196,6 +196,15 @@ const migrate = Effect.gen(function* () {
       created_at   TEXT NOT NULL DEFAULT (${now})
     )`);
 
+  // What web tabs' requests get back instead of the site's answer, set by the website agent (db/ResponseOverrides.ts).
+  yield* sql.unsafe(`
+    CREATE TABLE IF NOT EXISTS response_overrides (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      spec         TEXT NOT NULL,
+      created_at   TEXT NOT NULL DEFAULT (${now})
+    )`);
+
   // Columns added over time; created on existing databases.
   const columnsOf = (table: string) =>
     sql

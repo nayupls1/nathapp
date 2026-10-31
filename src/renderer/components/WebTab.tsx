@@ -44,6 +44,7 @@ import { Icon } from "./Icon";
 import { NetworkPanel } from "./NetworkPanel";
 import { toast } from "./Toast";
 import { changesFor, PageChangesPopover } from "./PageChanges";
+import { OverridesPopover, overridesFor } from "./ResponseOverrides";
 import { FindBar, ZoomBadge } from "./FindBar";
 import { foundInPage, syncZoom } from "../lib/pageTools";
 
@@ -64,6 +65,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const setNetworkOpen = (open: boolean) => setNetworkTab(open ? props.appId : null);
   const [loadError, setLoadError] = createSignal<string>();
   const [menu, setMenu] = createSignal<MenuPosition>();
+  const [overridesMenu, setOverridesMenu] = createSignal<MenuPosition>();
   const [contentsId, setContentsId] = createSignal<number | null>(null);
   // The webview waits for the workspace's extensions (never long).
   const [prepared, setPrepared] = createSignal(false);
@@ -531,6 +533,9 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const overrideActive = () =>
     customizing() && ((customized() && override()!.enabled) || changesHere().some((c) => c.enabled));
 
+  // The address bar's flask: response overrides that apply to this tab, so a changed page is never mistaken for the real one.
+  const overridesHere = () => overridesFor(props.appId, workspaceId, currentUrl());
+
   // What the sidebar's top bar shows for this tab (components/TopBar.tsx): the address with the page's changes, and the extensions.
   onCleanup(
     registerChrome(props.appId, {
@@ -548,6 +553,21 @@ export function WebTab(props: { appId: string; active: boolean }) {
       addressExtras: () => (
         <>
           <ZoomBadge tabId={props.appId} />
+          <Show when={overridesHere().length}>
+            <button
+              type="button"
+              title={`${overridesHere().length} of this page's responses are changed by the agent: see and remove them`}
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setOverridesMenu(overridesMenu() ? undefined : { x: r.left, y: r.bottom + 6 });
+              }}
+              {...stylex.attrs(styles.overrides)}
+              data-overrides={overridesHere().length}
+            >
+              <Icon name="flask-conical" size={13} />
+              {overridesHere().length}
+            </button>
+          </Show>
           <Show when={changed()}>
             <button
               type="button"
@@ -640,6 +660,17 @@ export function WebTab(props: { appId: string; active: boolean }) {
           />
         </Show>
       </div>
+      <Show when={overridesMenu()}>
+        {(position) => (
+          <OverridesPopover
+            tabId={props.appId}
+            workspaceId={workspaceId}
+            url={currentUrl()}
+            position={position()}
+            onClose={() => setOverridesMenu()}
+          />
+        )}
+      </Show>
       <Show when={menu()}>
         {(position) => (
           <PageChangesPopover
@@ -755,6 +786,27 @@ const styles = stylex.create({
     borderRadius: radius.full,
     backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
     color: colors.muted,
+    cursor: "pointer",
+  },
+  overrides: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    flexShrink: 0,
+    height: 22,
+    minWidth: 22,
+    marginRight: -4,
+    paddingInline: 5,
+    borderStyle: "none",
+    borderRadius: radius.full,
+    backgroundColor: {
+      default: `color-mix(in srgb, ${colors.warning} 16%, transparent)`,
+      ":hover": colors.surfaceHover,
+    },
+    color: colors.warning,
+    fontFamily: "inherit",
+    fontSize: 11,
+    fontWeight: 600,
     cursor: "pointer",
   },
   customizedOn: { color: colors.accent, backgroundColor: { default: colors.accentSoft, ":hover": colors.accentSoft } },
