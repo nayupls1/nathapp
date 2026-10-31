@@ -99,6 +99,14 @@ export function WebTab(props: { appId: string; active: boolean }) {
   };
   const info = (): PageInfo =>
     webview && ready ? { url: webview.getURL(), title: webview.getTitle() } : { url: currentUrl(), title: "" };
+  /** The page's address; "" before the webview's ready or after the tab closed, where getURL would throw. */
+  const pageUrl = () => (webview && ready ? webview.getURL() : "");
+  // Closing the tab detaches the webview; work still in flight (applying changes) stops touching it.
+  onCleanup(() => (ready = false));
+  /** Page work that fails because the tab closed meanwhile isn't an error. */
+  const unlessClosed = (e: unknown) => {
+    if (ready) throw e;
+  };
 
   function go(input: string) {
     // Chrome's extensions page is Rune Browser's.
@@ -143,7 +151,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
   const customizing = () => settings().web.overrides && !window.rune.safeMode;
 
   async function activeOverride() {
-    const url = webview?.getURL() ?? "";
+    const url = pageUrl();
     const h = /^https?:/i.test(url) ? hostOf(url) : "";
     if (!h || !customizing()) return null;
     const override = await siteOverride(h).catch(() => null);
@@ -182,7 +190,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
     setChangeErrors({});
   };
   const activeChanges = () => {
-    const url = webview?.getURL() ?? "";
+    const url = pageUrl();
     return customizing() ? pageChanges().filter((c) => c.enabled && scopeMatches(c.scope, url)) : [];
   };
 
@@ -230,7 +238,8 @@ export function WebTab(props: { appId: string; active: boolean }) {
   // Serialized so concurrent updates (agent + realtime message) don't race.
   let chain: Promise<unknown> = Promise.resolve();
   const serialized = <T,>(run: () => Promise<T>): Promise<T> => {
-    const next = chain.then(run, run);
+    const guarded = () => run().catch(unlessClosed) as Promise<T>;
+    const next = chain.then(guarded, guarded);
     chain = next.catch(() => {});
     return next;
   };
@@ -507,7 +516,7 @@ export function WebTab(props: { appId: string; active: boolean }) {
         setContentsId(view.getWebContentsId());
         pagesChanged();
       }
-      loadApplied = applyOnLoad();
+      loadApplied = applyOnLoad().catch(unlessClosed);
       updateHistory();
     });
   }

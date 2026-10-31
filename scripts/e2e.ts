@@ -231,6 +231,24 @@ const apiCall = <T>(path: string, init: { method?: string; body?: unknown } = {}
     ${init.body !== undefined ? `body: ${JSON.stringify(JSON.stringify(init.body))},` : ""}
   }).then(async (r) => { if (!r.ok) throw new Error(r.status + " " + (await r.text())); return r.status === 204 ? null : r.json(); })`);
 
+/** Waits for an app to be running; if it doesn't get there, the error has its status and last log lines. */
+async function waitForAppRunning(root: string, appId: string, label: string, timeoutMs = 60_000) {
+  try {
+    await page!.waitFor(`!!document.querySelector('${root}[data-runtime-state="running"]')`, { timeoutMs, label });
+  } catch (err) {
+    const runtime = await apiCall<{
+      status: { state: string; mode: string };
+      logs: { stream: string; text: string }[];
+    }>(`/api/apps/${appId}/runtime`).catch(() => null);
+    if (!runtime) throw err;
+    const logs = runtime.logs
+      .slice(-30)
+      .map((l) => `    [${l.stream}] ${l.text.trimEnd()}`)
+      .join("\n");
+    throw new Error(`${(err as Error).message} (${runtime.status.mode}, ${runtime.status.state}); logs:\n${logs}`);
+  }
+}
+
 /** Picks provider, model and effort in the agent picker inside `root`. */
 async function chooseAgent(root: string, provider: string, model: string, effort?: string) {
   await click(`${root} [data-agent-picker]`);
@@ -500,10 +518,7 @@ try {
       async () => ((await Bun.file(file).text()).includes("A starting point:") ? true : undefined),
       15_000,
     );
-    await page!.waitFor(`!!document.querySelector('${appTab()}[data-runtime-state="running"]')`, {
-      timeoutMs: 60_000,
-      label: "app running again",
-    });
+    await waitForAppRunning(appTab(), appId, "app running again");
     await waitForValue(
       async () =>
         (await inView<string>(appTab(), `document.body.innerText`)).includes("A starting point:") ? true : undefined,
@@ -643,10 +658,7 @@ try {
 
   await check("secrets: added in the app tab, never shown again", async () => {
     const value = "e2e-secret-value-4711";
-    await page!.waitFor(`!!document.querySelector('${appTab()}[data-runtime-state="running"]')`, {
-      timeoutMs: 60_000,
-      label: "app running",
-    });
+    await waitForAppRunning(appTab(), appId, "app running");
     await click(`${chromeFor(appTab())} [data-secrets]`);
     await page!.waitFor(`!!document.querySelector('${appTab()} [data-secrets-panel] [data-secret-form]')`, {
       label: "secrets panel",
