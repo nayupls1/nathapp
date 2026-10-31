@@ -8,7 +8,7 @@
 // Routes, agent tools, the scheduler and history call these instead of
 // stringing the steps together themselves.
 import { Context, Effect, Layer } from "effect";
-import { appTarget, type AppSummary, type ProjectInfo } from "../../shared/api";
+import { appTarget, type AppSummary, type ProjectInfo, type ToolActivity } from "../../shared/api";
 import { topics } from "../../shared/hub";
 import { Apps } from "../db/Apps";
 import { Settings } from "../db/Settings";
@@ -133,10 +133,14 @@ export const make = Effect.gen(function* () {
           summary: `Imported from ${from.slice(0, 200)}`,
         });
         if (project) yield* runtime.setMode(appId, "dev");
-        const note = project
-          ? `Imported from ${from}. Rune Browser runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
-          : `Imported from ${from}. Rune Browser couldn't tell how to run it (no rune.json, and package.json has no dev or start script): ask the agent to set it up.`;
-        const message = yield* apps.addMessage(appId, "tool", note);
+        const note: ToolActivity = {
+          kind: "app",
+          title: `Imported from ${from}`,
+          detail: project
+            ? `Rune Browser runs it with \`${project.manifest.dev}\` (from its package.json); apps listen on $PORT. Ask the agent to change anything.`
+            : "Rune Browser couldn't tell how to run it (no rune.json, and package.json has no dev or start script): ask the agent to set it up.",
+        };
+        const message = yield* apps.addMessage(appId, "tool", JSON.stringify(note));
         yield* hub.publish({ type: "chat", topic: topics.app(appId), appId, event: { type: "message", message } });
         return project;
       }),

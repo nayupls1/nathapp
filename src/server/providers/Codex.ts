@@ -7,7 +7,7 @@ import { Effect } from "effect";
 import type { ProviderModel } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 import { readConfig } from "../Config";
-import { commandTitle, displayPath, streamFrom, type Probe, type ProviderDriver } from "./Provider";
+import { commandActivity, describeTool, displayPath, streamFrom, type Probe, type ProviderDriver } from "./Provider";
 import { agentEnv, findBinary, kill, readLines, runCommand, tailOf } from "./process";
 import { VERSION } from "../../shared/version";
 
@@ -212,16 +212,42 @@ export const CodexDriver: ProviderDriver = {
               case "item/completed": {
                 const item = params.item as Json;
                 if (item.type === "agentMessage" && item.text?.trim()) emit({ type: "text", text: item.text.trim() });
-                else if (item.type === "commandExecution") emit({ type: "tool", title: commandTitle(item.command) });
+                else if (item.type === "commandExecution")
+                  emit({
+                    type: "tool",
+                    activity: commandActivity(
+                      item.command,
+                      item.status === "failed" || (typeof item.exitCode === "number" && item.exitCode !== 0),
+                    ),
+                  });
                 else if (item.type === "fileChange") {
                   for (const change of item.changes ?? [])
-                    emit({ type: "tool", title: `Edited ${displayPath(change.path, input.cwd)}` });
+                    emit({
+                      type: "tool",
+                      activity: {
+                        kind: change.kind?.type === "add" ? "create" : "edit",
+                        title: `${change.kind?.type === "add" ? "Created" : change.kind?.type === "delete" ? "Deleted" : "Edited"} ${displayPath(change.path, input.cwd)}`,
+                      },
+                    });
                 } else if (item.type === "webSearch") {
                   emit({
                     type: "tool",
-                    title: item.query
-                      ? `Searched the web for “${String(item.query).slice(0, 60)}”`
-                      : "Searched the web",
+                    activity: {
+                      kind: "web",
+                      title: item.query
+                        ? `Searched the web for “${String(item.query).slice(0, 60)}”`
+                        : "Searched the web",
+                    },
+                  });
+                } else if (item.type === "mcpToolCall" && item.server !== input.mcp?.name) {
+                  // Rune Browser's own tools report themselves (Agent.ts).
+                  const activity = describeTool(`mcp__${item.server}__${item.tool}`, item.arguments ?? {}, input.cwd);
+                  if (item.status === "failed" || item.error) activity.failed = true;
+                  emit({ type: "tool", activity });
+                } else if (item.type === "imageView") {
+                  emit({
+                    type: "tool",
+                    activity: { kind: "read", title: `Viewed ${displayPath(item.path, input.cwd)}` },
                   });
                 }
                 break;

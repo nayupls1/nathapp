@@ -1,22 +1,18 @@
 import * as stylex from "@stylexjs/stylex";
-import { createEffect, createResource, createSignal, For, Match, on, onCleanup, onMount, Show, Switch } from "solid-js";
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { Portal } from "solid-js/web";
-import type { Attachment, ChatMessage } from "../../shared/api";
-import { markdownToHtml } from "../../shared/markdown";
 import { FULL_ACCESS_WARNING, fullAccess, setFullAccess } from "../lib/access";
 import { isPicking, picksOf } from "../lib/picks";
-import { settings } from "../lib/settings";
-import { handOver, refusal, sendWithShares } from "../lib/sharing";
+import { sendWithShares } from "../lib/sharing";
 import { api } from "../lib/api";
-import { attachmentUrl } from "../lib/attachments";
-import { appById, apps, newChat, openChat, setAgentCollapsed, states, stopAgent } from "../lib/store";
+import { appById, newChat, openChat, setAgentCollapsed, states, stopAgent } from "../lib/store";
 import { confirmDialog } from "./ConfirmDialog";
 import { pageOf, pagesVersion } from "../lib/webtabs";
 import { colors, font, radius, space } from "../theme.stylex";
 import { Composer } from "./Composer";
+import { Chip, Timeline } from "./ChatTimeline";
 import { SourcesBar, SourcesButton } from "./Sources";
-import { SecretRequestCard } from "./Secrets";
-import { ContextMenu, type MenuItem, type MenuPosition } from "./ContextMenu";
+import { type MenuPosition } from "./ContextMenu";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
 import { withKeys } from "../lib/shortcuts";
@@ -36,13 +32,32 @@ export function Chat(props: { appId: string }) {
   // The tab's page (a web page or an app's preview), once it's registered.
   const page = () => (pagesVersion(), pageOf(props.appId));
   let scroller!: HTMLDivElement;
-
-  // Keep the newest message in view while the agent is talking.
+  // Follow the conversation while you're at its end; scrolled up, it stays put.
+  const [pinned, setPinned] = createSignal(true);
+  const toEnd = (smooth = false) =>
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  const onScroll = () => setPinned(scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 48);
   createEffect(
-    on([() => state().messages.length, () => state().draft, () => props.appId], () => {
-      queueMicrotask(() => scroller.scrollTo({ top: scroller.scrollHeight }));
-    }),
+    on(
+      () => props.appId,
+      () => (setPinned(true), queueMicrotask(() => toEnd())),
+    ),
   );
+  // Your own message always brings you back to the end.
+  createEffect(
+    on(
+      () => state().messages.filter((m) => m.role === "user").length,
+      () => setPinned(true),
+      { defer: true },
+    ),
+  );
+  onMount(() => {
+    // Content grows while streaming, when rows open, when images load: keep the end in view.
+    const follow = new ResizeObserver(() => pinned() && toEnd());
+    follow.observe(scroller.firstElementChild!);
+    onCleanup(() => follow.disconnect());
+  });
+  const empty = () => !state().messages.length && !state().running;
 
   return (
     <aside {...stylex.attrs(styles.root)} data-agent-panel>
@@ -104,20 +119,44 @@ export function Chat(props: { appId: string }) {
           <Icon name="x" size={16} />
         </button>
       </header>
-      <div ref={scroller} {...stylex.attrs(styles.messages)}>
-        <Show when={web() && !state().messages.length && !state().running}>
-          <p {...stylex.attrs(styles.hint)}>
-            Ask about this page, or pick elements with the crosshair and say how they should look or work. Changes are
-            saved as customizations for the site.
-          </p>
-        </Show>
-        <For each={state().messages.filter((m) => m.role !== "tool" || settings().agent.showToolMessages)}>
-          {(m) => <Message appId={props.appId} message={m} />}
-        </For>
-        <Show when={state().running}>
-          <Show when={state().draft} fallback={<p {...stylex.attrs(styles.working)}>Working…</p>}>
-            <Markdown text={state().draft} />
-          </Show>
+      <div {...stylex.attrs(styles.body)}>
+        <div ref={scroller} onScroll={onScroll} {...stylex.attrs(styles.scroller)} data-chat-scroller>
+          <div {...stylex.attrs(styles.messages)} data-chat-messages>
+            <Show when={empty()}>
+              <div {...stylex.attrs(styles.empty)} data-chat-empty>
+                <span {...stylex.attrs(styles.emptyIcon)}>
+                  <Icon name={web() ? "sparkles" : state().project ? "pencil" : "wand-sparkles"} size={20} />
+                </span>
+                <p {...stylex.attrs(styles.emptyTitle)}>
+                  {web()
+                    ? "Ask about this page"
+                    : state().project
+                      ? "What should change?"
+                      : "Describe the app you want"}
+                </p>
+                <p {...stylex.attrs(styles.hint)}>
+                  {web()
+                    ? "Ask about this page, or pick elements with the crosshair and say how they should look or work. Changes are saved as customizations for the site."
+                    : state().project
+                      ? "The agent edits the app's code and runs it; you'll see every file it touches and command it runs here."
+                      : "The agent sets up a project and builds it; you'll see every file it touches and command it runs here."}
+                </p>
+              </div>
+            </Show>
+            <Timeline appId={props.appId} />
+          </div>
+        </div>
+        <Show when={!pinned()}>
+          <button
+            type="button"
+            title="Scroll to the end"
+            aria-label="Scroll to the end"
+            onClick={() => (setPinned(true), toEnd(true))}
+            {...stylex.attrs(styles.toEnd)}
+            data-chat-to-end
+          >
+            <Icon name="arrow-down" size={15} />
+          </button>
         </Show>
       </div>
       <div {...stylex.attrs(styles.composer)}>
@@ -181,207 +220,23 @@ export function Chat(props: { appId: string }) {
   );
 }
 
-function Message(props: { appId: string; message: ChatMessage }) {
-  return (
-    <Switch>
-      <Match when={props.message.role === "user"}>
-        <p {...stylex.attrs(styles.user)}>{props.message.content}</p>
-      </Match>
-      <Match when={props.message.role === "assistant"}>
-        <Reply appId={props.appId} message={props.message} />
-      </Match>
-      <Match when={props.message.role === "tool"}>
-        <p {...stylex.attrs(styles.tool)}>✓ {props.message.content}</p>
-      </Match>
-      <Match when={props.message.role === "error"}>
-        <p {...stylex.attrs(styles.errorMsg)}>{props.message.content}</p>
-      </Match>
-      <Match when={props.message.role === "context"}>
-        <PickedContext content={props.message.content} />
-      </Match>
-      <Match when={props.message.role === "attachments"}>
-        <SentAttachments appId={props.appId} content={props.message.content} />
-      </Match>
-      <Match when={props.message.role === "secret"}>
-        <SecretRequestCard appId={props.appId} content={props.message.content} />
-      </Match>
-    </Switch>
-  );
-}
-
-/** Files sent with the next message: images as thumbnails (click to open in a new web tab), others by name. */
-function SentAttachments(props: { appId: string; content: string }) {
-  const files = () => {
-    try {
-      return JSON.parse(props.content) as Attachment[];
-    } catch {
-      return [];
-    }
-  };
-  return (
-    <div {...stylex.attrs(styles.sentFiles)} data-sent-attachments>
-      <For each={files()}>
-        {(file) => (
-          <Show
-            when={file.mime.startsWith("image/")}
-            fallback={
-              <span {...stylex.attrs(styles.sentFile)} title={file.name}>
-                <Icon name="file-text" size={14} />
-                {file.name}
-              </span>
-            }
-          >
-            <img
-              src={attachmentUrl(props.appId, file.id)}
-              alt={file.name}
-              title={file.name}
-              {...stylex.attrs(styles.sentImage)}
-            />
-          </Show>
-        )}
-      </For>
-    </div>
-  );
-}
-
-/** An agent's reply, with "Send to…": hands it over to another tab's agent (lib/sharing.ts). */
-function Reply(props: { appId: string; message: ChatMessage }) {
-  const [menu, setMenu] = createSignal<MenuPosition>();
-  const targets = (): MenuItem[] => {
-    const self = appById(props.appId);
-    if (!self) return [];
-    return apps
-      .filter((t) => t.workspaceId === self.workspaceId && t.id !== self.id)
-      .sort((a, b) => a.position - b.position)
-      .map((t) => {
-        // Asked the other way round: may this tab's reply go to t?
-        const why = refusal(t.id, self.id);
-        return {
-          label: why ? `${t.name} (not for app builders)` : t.name,
-          icon: t.kind === "web" ? "globe" : "app-window",
-          disabled: !!why,
-          onSelect: () =>
-            void handOver(self.id, props.message.id, t.id).then((err) => err && toast({ message: err, kind: "error" })),
-        };
-      });
-  };
-  return (
-    <div {...stylex.attrs(stylex.defaultMarker(), styles.reply)} data-reply={props.message.id}>
-      <Markdown text={props.message.content} />
-      <Show when={props.message.id > 0}>
-        <button
-          type="button"
-          title="Send this reply to another tab's agent"
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect();
-            setMenu(menu() ? undefined : { x: r.left, y: r.bottom + 4 });
-          }}
-          {...stylex.attrs(styles.handOver)}
-          data-hand-over
-        >
-          <Icon name="forward" size={13} />
-          Send to…
-        </button>
-      </Show>
-      <Show when={menu()}>
-        {(position) => (
-          <ContextMenu
-            items={targets().length ? targets() : [{ label: "No other tabs here", disabled: true, onSelect: () => {} }]}
-            position={position()}
-            onClose={() => setMenu()}
-          />
-        )}
-      </Show>
-    </div>
-  );
-}
-
-/** Assistant text (Markdown; escaped, so it can't inject markup). Links open as web tabs. */
-function Markdown(props: { text: string }) {
-  return (
-    <div {...stylex.attrs(styles.assistant, styles.markdown)}>
-      <div class="rune-markdown" innerHTML={markdownToHtml(props.text)} />
-    </div>
-  );
-}
-
-/** What came with a message (stored as JSON): the elements the user picked, or the tabs they shared. */
-function PickedContext(props: { content: string }) {
-  const parsed = () => {
-    try {
-      return JSON.parse(props.content) as {
-        selection?: { selector: string; tag: string; text: string }[];
-        shared?: { tabId: string; name: string; kind: string; what: string }[];
-      };
-    } catch {
-      return {};
-    }
-  };
-  const picked = () => parsed().selection ?? [];
-  return (
-    <div {...stylex.attrs(styles.context)}>
-      <For each={parsed().shared ?? []}>
-        {(tab) => (
-          <span
-            {...stylex.attrs(styles.chip)}
-            title={
-              tab.what === "reply"
-                ? "A reply of its agent"
-                : tab.kind === "web"
-                  ? "What the page showed"
-                  : "What the app can do and how its data is laid out"
-            }
-            data-shared-context
-          >
-            <Icon name={tab.what === "reply" ? "reply" : "at-sign"} size={12} />
-            {tab.name}
-          </span>
-        )}
-      </For>
-      <For each={picked()}>
-        {(el) => (
-          <span {...stylex.attrs(styles.chip)} title={el.selector}>
-            <Icon name="crosshair" size={12} />
-            {el.text ? `${el.tag} “${el.text.slice(0, 30)}${el.text.length > 30 ? "…" : ""}”` : el.selector}
-          </span>
-        )}
-      </For>
-    </div>
-  );
-}
-
-/** A picked element shown as a removable chip. */
-export function Chip(props: { label: string; title?: string; onRemove?: () => void }) {
-  return (
-    <span {...stylex.attrs(styles.chip)} title={props.title} data-picked-chip>
-      <Icon name="crosshair" size={12} />
-      <span {...stylex.attrs(styles.chipLabel)}>{props.label}</span>
-      <Show when={props.onRemove}>
-        <button type="button" title="Remove" onClick={() => props.onRemove!()} {...stylex.attrs(styles.chipRemove)}>
-          <Icon name="x" size={12} />
-        </button>
-      </Show>
-    </span>
-  );
-}
-
 const pulse = stylex.keyframes({
   "0%": { opacity: 0.4 },
   "50%": { opacity: 1 },
   "100%": { opacity: 0.4 },
 });
 
-const bubble = {
-  margin: 0,
-  fontSize: font.md,
-  lineHeight: 1.5,
-  whiteSpace: "pre-wrap",
-  overflowWrap: "anywhere",
-} as const;
-
 const styles = stylex.create({
   // The agent sidebar sizes it.
-  root: { display: "flex", flexDirection: "column", width: "100%", height: "100%", minHeight: 0 },
+  root: {
+    display: "flex",
+    flexDirection: "column",
+    width: "100%",
+    minWidth: 0,
+    height: "100%",
+    minHeight: 0,
+    overflow: "hidden",
+  },
   header: {
     display: "flex",
     alignItems: "center",
@@ -393,8 +248,6 @@ const styles = stylex.create({
     borderBottomStyle: "solid",
     borderBottomColor: colors.border,
   },
-  headerIcon: { color: colors.accent },
-  headerTitle: { flexShrink: 0, fontSize: font.sm, fontWeight: 600 },
   headerTab: {
     flex: 1,
     minWidth: 0,
@@ -527,107 +380,62 @@ const styles = stylex.create({
     animationDuration: "1.2s",
     animationIterationCount: "infinite",
   },
-  messages: {
+  body: { position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" },
+  scroller: {
     flex: 1,
+    minHeight: 0,
     overflowY: "auto",
+    overflowX: "hidden",
+    scrollbarGutter: "stable",
+  },
+  messages: {
     display: "flex",
     flexDirection: "column",
     gap: space.md,
-    padding: space.lg,
+    minWidth: 0,
+    paddingBlock: space.lg,
+    paddingInline: space.lg,
   },
   composer: { padding: space.md, paddingTop: 0 },
-  user: {
-    ...bubble,
-    alignSelf: "flex-end",
-    maxWidth: "85%",
-    paddingBlock: space.sm,
-    paddingInline: space.md,
-    borderRadius: radius.lg,
-    backgroundColor: colors.accentSoft,
-  },
-  assistant: { ...bubble },
-  sentFiles: {
+  empty: {
     display: "flex",
-    flexWrap: "wrap",
-    justifyContent: "flex-end",
-    gap: 6,
-    alignSelf: "flex-end",
-    maxWidth: "85%",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: space.sm,
+    marginTop: "18vh",
+    paddingInline: space.lg,
+    textAlign: "center",
   },
-  sentImage: {
-    display: "block",
-    maxHeight: 140,
-    maxWidth: 220,
+  emptyIcon: {
+    display: "grid",
+    placeItems: "center",
+    width: 40,
+    height: 40,
+    marginBottom: space.xs,
     borderRadius: radius.md,
+    backgroundColor: colors.accentSoft,
+    color: colors.accent,
+  },
+  emptyTitle: { margin: 0, fontSize: font.lg, fontWeight: 600, letterSpacing: "-0.01em" },
+  hint: { margin: 0, maxWidth: 320, fontSize: font.sm, lineHeight: 1.5, color: colors.muted },
+  toEnd: {
+    position: "absolute",
+    bottom: space.sm,
+    left: "50%",
+    transform: "translateX(-50%)",
+    display: "grid",
+    placeItems: "center",
+    width: 30,
+    height: 30,
+    padding: 0,
+    borderRadius: radius.full,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: colors.border,
-    objectFit: "cover",
-  },
-  sentFile: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    height: 30,
-    paddingInline: space.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
-    fontSize: font.xs,
-  },
-  markdown: { whiteSpace: "normal" },
-  tool: { ...bubble, fontSize: font.xs, color: colors.success },
-  errorMsg: { ...bubble, fontSize: font.sm, color: colors.danger },
-  hint: { ...bubble, fontSize: font.sm, color: colors.muted },
-  reply: { display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 },
-  handOver: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    height: 22,
-    paddingInline: 6,
-    borderWidth: 0,
-    borderRadius: radius.sm,
-    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
-    color: colors.muted,
-    fontSize: font.xs,
-    cursor: "pointer",
-    opacity: { default: 0, [stylex.when.ancestor(":hover")]: 1, ":focus-visible": 1 },
-  },
-  context: { display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 4, marginBottom: -8 },
-  chip: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 4,
-    maxWidth: "100%",
-    height: 22,
-    paddingInline: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.accentSoft,
+    backgroundColor: { default: colors.surface, ":hover": colors.surfaceHover },
+    boxShadow: "0 4px 14px rgb(0 0 0 / 0.12)",
     color: colors.text,
-    fontSize: font.xs,
-    whiteSpace: "nowrap",
-  },
-  chipLabel: { overflow: "hidden", textOverflow: "ellipsis", maxWidth: 220 },
-  chipRemove: {
-    display: "grid",
-    placeItems: "center",
-    width: 16,
-    height: 16,
-    marginRight: -3,
-    padding: 0,
-    borderWidth: 0,
-    borderRadius: radius.full,
-    backgroundColor: { default: "transparent", ":hover": colors.surfaceHover },
-    color: colors.muted,
     cursor: "pointer",
-  },
-  working: {
-    ...bubble,
-    fontSize: font.sm,
-    color: colors.muted,
-    animationName: pulse,
-    animationDuration: "1.4s",
-    animationIterationCount: "infinite",
   },
 });
 

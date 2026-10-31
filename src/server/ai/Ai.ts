@@ -246,7 +246,7 @@ export const make = Effect.gen(function* () {
                   return Stream.fail(new AiError({ status: 503, message: event.message }));
                 case "tool":
                   // There are no tools; if a provider reports one anyway, say so in the logs.
-                  runtime.note(appId, `AI: unexpected tool use: ${event.title}`);
+                  runtime.note(appId, `AI: unexpected tool use: ${event.activity.title}`);
                   return Stream.empty;
                 default:
                   return Stream.empty;
