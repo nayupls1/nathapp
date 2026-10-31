@@ -206,8 +206,12 @@ export const ClaudeDriver: ProviderDriver = {
         } else if (msg.type === "assistant") {
           for (const block of msg.message.content) {
             if (block.type !== "tool_use") continue;
-            const title = describeTool(block.name, block.input as Record<string, unknown>, input.cwd);
-            if (title) emit({ type: "tool", title });
+            // Rune Browser's own tools report themselves (Agent.ts).
+            if (input.mcp && block.name.startsWith(`mcp__${input.mcp.name}__`)) continue;
+            emit({
+              type: "tool",
+              activity: describeTool(block.name, block.input as Record<string, unknown>, input.cwd),
+            });
           }
           const text = msg.message.content
             .filter((b) => b.type === "text")

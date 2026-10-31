@@ -3,7 +3,7 @@
 // interrupting the stream stops the turn.
 import { relative } from "node:path";
 import { Data, Effect, Queue, Stream } from "effect";
-import type { ProviderId, ProviderModel, ProviderStatus } from "../../shared/api";
+import type { ProviderId, ProviderModel, ProviderStatus, ToolActivity } from "../../shared/api";
 import type { ProviderSettings } from "../../shared/settings";
 
 /** Rune Browser's MCP server for this turn (agent tools: app runtime, pages, …). */
@@ -46,8 +46,8 @@ export type AgentEvent =
   | { readonly type: "delta"; readonly text: string }
   /** A finished assistant message. */
   | { readonly type: "text"; readonly text: string }
-  /** One line of activity, e.g. "Edited src/App.tsx". */
-  | { readonly type: "tool"; readonly title: string }
+  /** A tool call, e.g. "Edited src/App.tsx". */
+  | { readonly type: "tool"; readonly activity: ToolActivity }
   | { readonly type: "error"; readonly message: string };
 
 export class ProviderError extends Data.TaggedError("ProviderError")<{ readonly message: string }> {}
@@ -80,44 +80,114 @@ export function displayPath(path: unknown, cwd: string): string {
   return rel && !rel.startsWith("..") ? rel : path;
 }
 
-export const commandTitle = (command: unknown) => {
+/** A shell command without the `bash -lc "…"` Codex wraps it in. */
+const innerCommand = (command: unknown) => {
   const text = Array.isArray(command) ? command.join(" ") : String(command ?? "");
-  // Codex wraps commands in `bash -lc "…"`.
-  const inner = /^(?:\/\S*\/)?(?:ba|z)?sh -l?c ['"]?([\s\S]*?)['"]?$/.exec(text)?.[1] ?? text;
-  return `Ran \`${clip(inner.replace(/\s+/g, " ").trim(), 80)}\``;
+  return (/^(?:\/\S*\/)?(?:ba|z)?sh -l?c ['"]?([\s\S]*?)['"]?$/.exec(text)?.[1] ?? text).trim();
 };
 
-/** "Edited src/App.tsx" etc. for the common file/shell/web tools of any provider. */
-export function describeTool(name: string, input: Record<string, unknown>, cwd: string): string | null {
+export const commandActivity = (command: unknown, failed?: boolean): ToolActivity => {
+  const inner = innerCommand(command);
+  const line = inner.replace(/\s+/g, " ");
+  return {
+    kind: "command",
+    title: `Ran \`${clip(line, 80)}\``,
+    ...(line.length > 80 || inner.includes("\n") ? { detail: clip(inner, 4000) } : {}),
+    ...(failed ? { failed } : {}),
+  };
+};
+
+/** Tool arguments as readable detail: short values as they are, long ones clipped. */
+export function argsDetail(input: Record<string, unknown>): string | undefined {
+  const lines = Object.entries(input).map(([key, value]) => {
+    const text = typeof value === "string" ? value : JSON.stringify(value);
+    return `${key}: ${clip(text ?? "", 400)}`;
+  });
+  return lines.length ? clip(lines.join("\n"), 4000) : undefined;
+}
+
+const humanize = (name: string) => {
+  const words = name
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+/** "Edited src/App.tsx" etc. for the file/shell/web tools of any provider, and a plain line for any other tool. */
+export function describeTool(name: string, input: Record<string, unknown>, cwd: string): ToolActivity {
   const tool = name.toLowerCase();
   const file = input.file_path ?? input.filePath ?? input.path ?? input.notebook_path;
   switch (tool) {
     case "read":
-      return `Read ${displayPath(file, cwd)}`;
+      return { kind: "read", title: `Read ${displayPath(file, cwd)}` };
     case "write":
-      return `Wrote ${displayPath(file, cwd)}`;
+      return { kind: "create", title: `Wrote ${displayPath(file, cwd)}` };
     case "edit":
     case "multiedit":
     case "notebookedit":
     case "patch":
-      return `Edited ${displayPath(file, cwd)}`;
+      return { kind: "edit", title: `Edited ${displayPath(file, cwd)}` };
     case "bash":
-      return commandTitle(input.command);
+    case "shell":
+      return commandActivity(input.command);
     case "glob":
     case "grep":
     case "list":
-      return input.pattern ? `Searched for ${clip(String(input.pattern), 60)}` : "Looked through files";
+    case "ls":
+      return input.pattern
+        ? { kind: "search", title: `Searched for ${clip(String(input.pattern), 60)}`, detail: argsDetail(input) }
+        : { kind: "search", title: "Looked through files" };
     case "webfetch":
-      return input.url ? `Fetched ${clip(String(input.url), 70)}` : "Fetched a page";
+      return input.url
+        ? { kind: "web", title: `Fetched ${clip(String(input.url), 70)}` }
+        : { kind: "web", title: "Fetched a page" };
     case "websearch":
-      return input.query ? `Searched the web for “${clip(String(input.query), 60)}”` : "Searched the web";
-    case "todowrite":
+      return input.query
+        ? { kind: "web", title: `Searched the web for “${clip(String(input.query), 60)}”` }
+        : { kind: "web", title: "Searched the web" };
+    case "todowrite": {
+      const todos = Array.isArray(input.todos) ? (input.todos as { content?: string; status?: string }[]) : [];
+      const done = todos.filter((t) => t.status === "completed").length;
+      return {
+        kind: "plan",
+        title: todos.length ? `Updated the plan (${done}/${todos.length} done)` : "Updated the plan",
+        ...(todos.length
+          ? {
+              detail: todos
+                .map(
+                  (t) =>
+                    `${t.status === "completed" ? "✓" : t.status === "in_progress" ? "→" : "○"} ${t.content ?? ""}`,
+                )
+                .join("\n"),
+            }
+          : {}),
+      };
+    }
     case "todoread":
+      return { kind: "plan", title: "Checked the plan" };
     case "task":
-      return null;
-    default:
-      return null;
+    case "agent": {
+      const what = input.description ?? input.subagent_type;
+      return {
+        kind: "agent",
+        title: what ? `Started a subagent: ${clip(String(what), 60)}` : "Started a subagent",
+        ...(typeof input.prompt === "string" ? { detail: clip(input.prompt, 4000) } : {}),
+      };
+    }
+    case "exitplanmode":
+      return { kind: "plan", title: "Made a plan" };
+    case "toolsearch":
+      return { kind: "search", title: "Looked up tools" };
   }
+  // MCP tools of other servers: mcp__server__tool (Claude), server_tool (OpenCode).
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(name);
+  return {
+    kind: "other",
+    title: mcp ? `${humanize(mcp[2]!)} (${mcp[1]})` : humanize(name),
+    detail: argsDetail(input),
+  };
 }
 
 // --- Bridging async producers ---------------------------------------------------------

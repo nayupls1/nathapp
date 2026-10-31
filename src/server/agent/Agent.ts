@@ -36,6 +36,7 @@ import { Sandbox } from "../workspace/Sandbox";
 import { Sources } from "../workspace/Sources";
 import { Workspace } from "../workspace/Workspace";
 import { Mcp, type Tool } from "./Mcp";
+import { describeRuneTool, toolKind } from "./activity";
 import { buildAppPrompt, buildWebPrompt, contextSummary, withPageContext } from "./prompts";
 import { browseTools } from "./browseTools";
 import { devtoolsTools } from "./devtoolsTools";
@@ -57,6 +58,11 @@ export function summarizeArgs(args: unknown): string | null {
   });
   return parts.length ? parts.join(", ") : null;
 }
+
+/** The Rune Browser tool call in progress: which tool, and whether it logged a line of its own. */
+const CurrentCall = Context.Reference<{ tool: string; logged: boolean } | null>("rune/agent/CurrentCall", {
+  defaultValue: () => null,
+});
 
 export class AgentError extends Data.TaggedError("AgentError")<{
   readonly status: 404 | 409 | 400;
@@ -126,22 +132,30 @@ export const make = Effect.gen(function* () {
   const message = (appId: string, role: ChatMessage["role"], content: string) =>
     apps.addMessage(appId, role, content).pipe(Effect.tap((m) => emit(appId, { type: "message", message: m })));
 
-  /** A tool whose calls go to the audit log (arguments summarized; long text only as its length). */
+  /**
+   * A tool whose calls show in the chat (its own line, or one from activity.ts)
+   * and go to the audit log (arguments summarized; long text only as its length).
+   */
   const audited = (t: Tool, tabId: string, actorLabel: string): Tool => ({
     ...t,
     run: (args) =>
-      t.run(args).pipe(
-        Effect.tap((result) =>
-          audit.record({
-            actor: "agent",
-            actorLabel,
-            tabId,
-            action: `tool.${t.name}`,
-            target: summarizeArgs(args),
-            outcome: result.isError ? "error" : "ok",
-          }),
-        ),
-      ),
+      Effect.gen(function* () {
+        const call = { tool: t.name, logged: false };
+        const result = yield* t.run(args).pipe(Effect.provideService(CurrentCall, call));
+        if (!call.logged || result.isError) {
+          const activity = describeRuneTool(t.name, args);
+          yield* message(tabId, "tool", JSON.stringify(result.isError ? { ...activity, failed: true } : activity));
+        }
+        yield* audit.record({
+          actor: "agent",
+          actorLabel,
+          tabId,
+          action: `tool.${t.name}`,
+          target: summarizeArgs(args),
+          outcome: result.isError ? "error" : "ok",
+        });
+        return result;
+      }),
   });
 
   /** The request's choice, else the tab's last one, else the defaults (the workspace's or Settings'). */
@@ -202,7 +216,12 @@ export const make = Effect.gen(function* () {
       const actorLabel = `${web ? "Website agent" : "App builder"} · ${status?.label ?? choice.provider}${choice.model ? ` (${choice.model})` : ""}`;
       const env: ToolEnv = {
         tabId: appId,
-        log: (line) => Effect.asVoid(message(appId, "tool", line)),
+        log: (line) =>
+          Effect.gen(function* () {
+            const call = yield* CurrentCall;
+            if (call) call.logged = true;
+            yield* message(appId, "tool", JSON.stringify({ kind: toolKind(call?.tool ?? ""), title: line }));
+          }),
         message: (role, content) => Effect.asVoid(message(appId, role, content)),
         label: actorLabel,
       };
@@ -297,14 +316,14 @@ export const make = Effect.gen(function* () {
               case "text":
                 return Effect.asVoid(message(appId, "assistant", event.text));
               case "tool":
-                return Effect.asVoid(message(appId, "tool", event.title)).pipe(
+                return Effect.asVoid(message(appId, "tool", JSON.stringify(event.activity))).pipe(
                   Effect.andThen(
                     audit.record({
                       actor: "agent",
                       actorLabel,
                       tabId: appId,
                       action: "agent.native",
-                      target: event.title,
+                      target: event.activity.title,
                     }),
                   ),
                 );

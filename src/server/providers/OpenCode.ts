@@ -255,8 +255,10 @@ export const OpenCodeDriver: ProviderDriver = {
               ) {
                 if (reported.has(part.id) || (input.mcp && String(part.tool).startsWith(`${input.mcp.name}_`))) break;
                 reported.add(part.id);
-                const title = describeTool(part.tool, part.state.input ?? {}, input.cwd) ?? part.state.title;
-                if (title) emit({ type: "tool", title });
+                const activity = describeTool(part.tool, part.state.input ?? {}, input.cwd);
+                if (activity.kind === "other" && part.state.title) activity.title = part.state.title;
+                if (part.state.status === "error") activity.failed = true;
+                emit({ type: "tool", activity });
               }
               break;
             }
@@ -269,7 +271,8 @@ export const OpenCodeDriver: ProviderDriver = {
                   message: "Not allowed here.",
                 })
                 .catch(() => {});
-              if (!ours && input.access === "workspace") emit({ type: "tool", title: `Refused: ${p.permission}` });
+              if (!ours && input.access === "workspace")
+                emit({ type: "tool", activity: { kind: "other", title: `Refused: ${p.permission}`, failed: true } });
               break;
             }
             case "session.error":

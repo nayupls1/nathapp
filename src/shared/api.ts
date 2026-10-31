@@ -643,7 +643,7 @@ export interface ChatSummary {
 export interface ChatMessage {
   id: number;
   /**
-   * tool: one line of agent activity ("Edited src/App.tsx").
+   * tool: one tool call of the agent (JSON: ToolActivity).
    * context: what the user pointed at (picked elements) with their message.
    * secret: the agent asks the user for a secret (JSON: { name, description }).
    * attachments: files sent with the next message (JSON: Attachment[]).
@@ -651,6 +651,51 @@ export interface ChatMessage {
   role: "user" | "assistant" | "tool" | "error" | "context" | "secret" | "attachments";
   content: string;
   createdAt: string;
+}
+
+/** What a tool call did, for its icon and for summing up a run of calls ("Ran 2 commands, read 3 files"). */
+export type ToolKind =
+  | "read"
+  | "edit"
+  | "create"
+  | "command"
+  | "search"
+  | "web"
+  | "page"
+  | "browse"
+  | "screenshot"
+  | "inspect"
+  | "code"
+  | "performance"
+  | "network"
+  | "plan"
+  | "agent"
+  | "app"
+  | "customize"
+  | "schedule"
+  | "snapshot"
+  | "secret"
+  | "source"
+  | "tab"
+  | "other";
+
+/** A tool call of the agent: the content of a `tool` chat message. */
+export interface ToolActivity {
+  kind: ToolKind;
+  /** One line: "Edited src/App.tsx". */
+  title: string;
+  /** More, shown when the row is opened: the whole command, the arguments. */
+  detail?: string;
+  failed?: boolean;
+}
+
+/** A `tool` message's activity (a plain line if it isn't JSON). */
+export function parseToolActivity(content: string): ToolActivity {
+  try {
+    const parsed = JSON.parse(content) as ToolActivity;
+    if (parsed && typeof parsed.title === "string") return parsed;
+  } catch {}
+  return { kind: "other", title: content };
 }
 
 /** Pushed on the hub topic `app:<id>` while the agent works. */
