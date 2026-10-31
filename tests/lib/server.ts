@@ -30,7 +30,8 @@ export async function startServer(options: { dataDir?: string } = {}) {
     stdout: "ignore",
     stderr: "inherit",
   });
-  const deadline = Date.now() + 10_000;
+  // The first start on Windows CI can take over 10s (a cold start, and refused connections take ~2s there).
+  const deadline = Date.now() + 20_000;
   for (;;) {
     try {
       if ((await fetch(`${url}/api/health`)).ok) break;
